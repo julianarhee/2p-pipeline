@@ -58,7 +58,7 @@ def uint16_to_RGB(img):
     return rgb
 
 def plot_roi_contours(zproj, cnts, clip_limit=0.01, ax=None, 
-                          roi_highlight = [],
+                          roi_highlight = [], cmap=None,
                           label_all=False, roi_color_default=(127, 127, 127),
                           label_highlight=False, roi_color_highlight=(0, 255, 0),
                           thickness=1, fontsize=12):
@@ -102,17 +102,24 @@ def plot_roi_contours(zproj, cnts, clip_limit=0.01, ax=None,
             if label_highlight:
                 ax.text(xpos, ypos, str(rid+1), color='gray', fontsize=fontsize)
         else:
-            col255 = tuple([cval/255. for cval in roi_color_default])
+            if cmap is None:
+                col255 = tuple([cval/255. for cval in roi_color_default])
+            else:
+                curr_color = cmap[rid]
+                if len(curr_color) == 4:
+                    curr_color = curr_color[0:-1]
+                if any(curr_color) > 1:
+                    col255 = tuple([cval/255. for cval in curr_color])
+                else:
+                    col255 = curr_color
             if label_all:
                 ax.text(xpos, ypos, str(rid+1), color='gray', fontsize=fontsize)
-            
+
         #cv2.drawContours(orig, cnt, -1, col255, thickness)
         if single:
             ax.plot(contour[0], contour[1], color=col255)
         else:
-            ax.plot(contour[-1, 0], contour[-1, 1], color=col255)
-
-
+            ax.plot(contour[:, 0], contour[:, 1], color=col255)
         ax.imshow(orig)
         
 #%%

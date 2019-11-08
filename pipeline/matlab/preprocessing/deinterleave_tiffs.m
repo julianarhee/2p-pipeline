@@ -31,12 +31,12 @@ for sl = slices %1:nslices
         % TODO: set this to work with other mc methods....
         mov_filename = feval(namingFunction, base_filename, sl, ch, fid);
         try
-            tiffWrite(Y(:, :, frame_idx:(nslices):end), mov_filename, write_dir, 'int16');
+            tiffWrite(newtiff(:, :, frame_idx:(nslices):end), mov_filename, write_dir, 'int16');
         catch
             % Sometimes, disk access fails due to intermittent
             % network problem. In that case, wait and re-try once:
             pause(60);
-            tiffWrite(Y(:, :, frame_idx:(nslices):end), mov_filename, write_dir, 'int16');
+            tiffWrite(newtiff(:, :, frame_idx:(nslices):end), mov_filename, write_dir, 'int16');
         end
         
     else

@@ -4,7 +4,7 @@
 #SBATCH -p cox # run on cox gpu to use correct env 
 #SBATCH -n 12 # one core
 #SBATCH -N 1 # on one node
-#SBATCH -t 0-0:30 # Running time of 5 min
+#SBATCH -t 0-1:00 # Running time of 5 min
 #SBATCH --mem 32768 # Memory request of 12 GB 
 
 # load modules

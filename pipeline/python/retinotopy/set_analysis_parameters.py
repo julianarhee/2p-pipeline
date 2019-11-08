@@ -86,9 +86,17 @@ def create_retinoid(options):
     # Create analysis params 
     tiff_sourcedir = os.path.split(tiffpaths[0])[0]
 
+
+    exclude_str = options.excluded_tiffs
+    excluded_tiffs = []
+    if len(exclude_str) > 0:
+        excluded_tiffs.extend(['File%03d' % int(f) for f in exclude_str.split(',')])
+        print "Excluding tiffs:", excluded_tiffs
+
+
     if pixelflag:
-        PARAMS = get_params_dict_pixels(tiff_sourcedir,downsample,smooth_fwhm,rolling_mean,average_frames,
-                                        notnative,rootdir,homedir)
+        PARAMS = get_params_dict_pixels(tiff_sourcedir,downsample,smooth_fwhm,rolling_mean,average_frames, excluded_tiffs=excluded_tiffs,
+                                        notnative=notnative, rootdir=rootdir, homedir=homedir)
     else:
         #get RID
         with open(os.path.join(session_dir, 'ROIs', 'rids_%s.json' % session), 'r') as f:
@@ -106,11 +114,11 @@ def create_retinoid(options):
         print "Loading PARAM info... Looking in ROI dst dir: %s" % rparams_dir
         with open(os.path.join(rparams_dir, 'roiparams.json'), 'r') as f:
             roiparams = json.load(f)
-        excluded_tiffs = roiparams['excluded_tiffs']
+        excluded_tiffs.extend(roiparams['excluded_tiffs'])
 
         PARAMS = get_params_dict_rois(signal_channel, tiff_sourcedir, RID, 
-                                downsample,smooth_fwhm,rolling_mean,average_frames, excluded_tiffs,
-                                notnative, rootdir, homedir, auto)
+                                downsample,smooth_fwhm,rolling_mean,average_frames, excluded_tiffs=excluded_tiffs,
+                                notnative=notnative, rootdir=rootdir, homedir=homedir, auto=auto)
 
 
     RETINOID = initialize_retinoid(PARAMS, run_dir, auto=auto)
@@ -178,6 +186,10 @@ def extract_options(options):
 
     parser.add_option('--default', action='store_true', dest='default', default='store_false', help="Use all DEFAULT params, for params not specified by user (prevent interactive)")
 
+    parser.add_option('-x', '--exclude', action='store', dest='excluded_tiffs', default='', help="User-selected tiff numbers to exclude (comma-sep, 1-indexed")
+
+
+
     (options, args) = parser.parse_args(options)
 
     if options.slurm is True:
@@ -191,7 +203,7 @@ def extract_options(options):
     return options
 
 #%%
-def get_params_dict_pixels(tiff_sourcedir,downsample,smooth_fwhm,rolling_mean,average_frames,
+def get_params_dict_pixels(tiff_sourcedir,downsample,smooth_fwhm,rolling_mean,average_frames, excluded_tiffs=[],
                             notnative=False, rootdir='', homedir=''):
     PARAMS = dict()
     PARAMS['tiff_source'] = tiff_sourcedir
@@ -200,6 +212,8 @@ def get_params_dict_pixels(tiff_sourcedir,downsample,smooth_fwhm,rolling_mean,av
     PARAMS['smooth_fwhm'] = smooth_fwhm
     PARAMS['minus_rolling_mean'] = rolling_mean
     PARAMS['average_frames'] = average_frames
+    PARAMS['excluded_tiffs'] = excluded_tiffs
+
 
     # Replace PARAM paths with processing-machine paths:
     if notnative is True:

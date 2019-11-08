@@ -117,7 +117,7 @@ class FOV():
     def estimate_RFs_by_roi(self, fitness_thr=0.4, size_thr=0.1):
         acquisition_dir = os.path.join(self.rootdir, self.animalid, self.session, self.acquisition)
         print "retino id:", self.retino_id['analysis_id']
-        RF_estimates, _ = rf.get_RF_size_estimates(acquisition_dir, fitness_thr=fitness_thr, size_thr=fitness_thr, analysis_id=self.retino_id['analysis_id'])
+        RF_estimates, _, _  = rf.get_RF_size_estimates(acquisition_dir, fitness_thr=fitness_thr, size_thr=fitness_thr, analysis_id=self.retino_id['analysis_id'])
         
         return RF_estimates
         

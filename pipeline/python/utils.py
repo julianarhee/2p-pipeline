@@ -55,6 +55,7 @@ def print_elapsed_time(t_start):
 # -----------------------------------------------------------------------------
 # Data-saving and -formatting methods:
 # -----------------------------------------------------------------------------
+
 def jsonify_array(curropts):
     jsontypes = (list, tuple, str, int, float, bool, unicode, long)
     for pkey in curropts.keys():
@@ -541,48 +542,80 @@ def zproj_tseries(source_dir, runinfo_path, zproj_type='mean', write_dir=None, f
 
     tiffs = sorted([t for t in os.listdir(source_dir) if t.endswith('tif')], key=natural_keys)
     print tiffs
-    filenames = ['File%03d' % int(i+1) for i in range(len(tiffs))] #nfiles)]
+    #filenames = ['File%03d' % int(i+1) for i in range(len(tiffs))] #nfiles)]
+    filenames = [str(re.search('File(\d{3})', tf_path).group(0)) for tf_path in tiffs]
+    print filenames
     for fi, (tfn, fname) in enumerate(zip(sorted(tiffs, key=natural_keys), sorted(filenames, key=natural_keys))):
-        filenum = int(fi + 1)
-	print fi, fname, tfn
-        #tiff_fns = [t for t in tiffs if fname in t]
-        #tfn = tiff_fns[0]
+        filenum = int(fname[4:]) #int(fi + 1)
+        print "Z-projecting %i of %i tiff files." % (fi+1, len(tiffs))
+	print "...", fi, fname, tfn
+       
+        # Get tif info:
         nvolumes = simeta[fname]['SI']['hFastZ']['numVolumes']
-        if isinstance(simeta[fname]['SI']['hFastZ']['numVolumes'], int):
+        if isinstance(simeta[fname]['SI']['hChannels']['channelSave'], int):
             nchannels = 1
         else:
             nchannels = len(simeta[fname]['SI']['hChannels']['channelSave'])
         currtiff = tf.imread(os.path.join(source_dir, tfn))
-        nslices_actual = currtiff.shape[0]/(nchannels*nvolumes)
+        print "-- tif shape: %s" % str(currtiff.shape)
+        if currtiff.shape[0] == nvolumes and nchannels > 1:  # channels already split
+            nslices_actual = currtiff.shape[0] / nvolumes
+            channels_are_split = True
+        else:
+            nslices_actual = float(currtiff.shape[0])/float(nchannels*nvolumes) 
+            channels_are_split = False
+
 	ndiscard = nslices_actual - nslices
+        print "--- --- N channels: %i, N volumes: %i" % (nchannels, nvolumes)
+        print "--- --- N slices actual: %i, N slices expected: %i (discard: %i)" % (nslices_actual, nslices, ndiscard)
         if currtiff.shape[0] != nchannels*(nslices+ndiscard)*nvolumes:
             print "*** WARNING: Loaded tiff shape does not match dims expected:", os.path.join(source_dir, tfn)
-            print "nchannels: %i, nslices: %i, ndiscard: %i, nvolumes: %i" % (nchannels, nslices, ndiscard, nvolumes)
+            print "--- nchannels: %i, nslices: %i, ndiscard: %i, nvolumes: %i" % (nchannels, nslices, ndiscard, nvolumes)
 
-        for ch in range(nchannels):
-    	    channelnum = int(ch+1)
-    	    ch_tiff = currtiff[ch::nchannels]
-    	    for sl in range(nslices):
-    	        slicenum = int(sl+1)
-    	        sl_tiff = ch_tiff[sl::(nslices+ndiscard)]
-	        print "Slice tiff shape:", sl_tiff.shape
-	        if filter3D:
-		    if filter_type == 'median':
-		        print "Median filtering, size %i" % filter_size
-		        sl_tiff = ndimage.median_filter(sl_tiff, size=filter_size)
-	        if zproj_type == 'mean' or zproj_type == 'average':
-		    zprojslice = np.mean(sl_tiff, axis=0).astype(currtiff.dtype)
-	        elif zproj_type == 'std':
-		    zprojslice = np.std(sl_tiff, axis=0).astype(currtiff.dtype)
-	        curr_slice_fn = default_filename(slicenum, channelnum, filenum, acq=None, run=None)
-	        tf.imsave(os.path.join(write_dir, '%s_%s.tif' % (zproj_type, curr_slice_fn)), zprojslice)
+        if channels_are_split:
+            nchannel_cycles = 1
+        else:
+            nchannel_cycles = nchannels 
+
+ 
+        for ch in range(nchannel_cycles):
+            if 'Channel' in tfn: # channels are split
+                curr_channel = str(re.search('Channel(\d{2})', tfn).group(0))
+                assert (channels_are_split is True) or (nchannels==1), "Not sure if 1 channel or multiple split channels..."
+                ch_tiff = currtiff
+            else:
+                if isinstance(simeta[fname]['SI']['hChannels']['channelSave'], int):
+                    curr_channel = 'Channel%02d' %  int(simeta[fname]['SI']['hChannels']['channelSave'])
+                    ch_tiff = currtiff
+                else:
+                    curr_channel = 'Channel%02d' % int(ch+1) # there are multi channels, nad we are cycling thru (not split)
+                    assert channels_are_split is False, "More than 1 channel found and no split detected..."
+                    print "... CH %i:  Grabbing every other channel" % int(ch+1)
+                    ch_tiff = currtiff[ch::nchannels, :, :]
+ 
+    	    channelnum = int(curr_channel[7:]) #int(ch+1)
+            for sl in range(nslices):
+                slicenum = int(sl+1)
+                stack_step = int(nslices+ndiscard)
+                sl_tiff = ch_tiff[sl::stack_step, :, :]
+                print "... Slice tiff shape:", sl_tiff.shape
+                if filter3D:
+                    if filter_type == 'median':
+                        print "Median filtering, size %i" % filter_size
+                        sl_tiff = ndimage.median_filter(sl_tiff, size=filter_size)
+                if zproj_type == 'mean' or zproj_type == 'average':
+                    zprojslice = np.mean(sl_tiff, axis=0).astype(currtiff.dtype)
+                elif zproj_type == 'std':
+                    zprojslice = np.std(sl_tiff, axis=0).astype(currtiff.dtype)
+                curr_slice_fn = default_filename(slicenum, channelnum, filenum, acq=None, run=None)
+                tf.imsave(os.path.join(write_dir, '%s_%s.tif' % (zproj_type, curr_slice_fn)), zprojslice)
             
-            # Save visible too:
-            byteimg = img_as_ubyte(zprojslice)
-            zproj_vis = exposure.rescale_intensity(byteimg, in_range=(byteimg.min(), byteimg.max()))
-            tf.imsave(os.path.join(write_dir, 'vis_%s_%s.tif' % (zproj_type, curr_slice_fn)), zproj_vis)
+                # Save visible too:
+                byteimg = img_as_ubyte(zprojslice)
+                zproj_vis = exposure.rescale_intensity(byteimg, in_range=(byteimg.min(), byteimg.max()))
+                tf.imsave(os.path.join(write_dir, 'vis_%s_%s.tif' % (zproj_type, curr_slice_fn)), zproj_vis)
 
-            print "Finished zproj for %s, Slice%02d, Channel%02d." % (fname, int(sl+1), int(ch+1))
+                print "... Finished zproj for %s, Slice%02d, Channel%02d." % (fname, int(sl+1), channelnum) #int(ch+1))
 
     # Sort separated tiff slice images:
     sort_deinterleaved_tiffs(write_dir, runinfo_path)  # Moves all 'vis_' files to separate subfolder 'visible'

@@ -5,6 +5,7 @@ import uuid
 import sys
 import os
 import commands
+import json
 
 parser = argparse.ArgumentParser(
     description = '''Look for XID files in session directory.\nFor PID files, run tiff-processing and evaluate.\nFor RID files, wait for PIDs to finish (if applicable) and then extract ROIs and evaluate.\n''',
@@ -95,6 +96,14 @@ for pi,pid_path in enumerate(pid_files):
 pid_jobids = {}
 for pid_file in pid_files:
     phash = os.path.splitext(os.path.split(pid_file)[-1])[0].split('_')[-1]
+    print pid_file
+    with open(pid_file, 'r') as f: sPID = json.load(f)
+    if 'run' not in sPID.keys():
+        run = sPID['PARAMS']['source']['run']
+        fov = sPID['PARAMS']['source']['acquisition']
+    else:
+        run = sPID['run']
+        fov = sPID['acquisition']
     cmd = "sbatch --job-name={PROCID}.processpid.{PHASH} \
 		-o 'log/{PROCID}.processpid.{PHASH}.out' \
 		-e 'log/{PROCID}.processpid.{PHASH}.err' \
@@ -104,7 +113,7 @@ for pid_file in pid_files:
     status, joboutput = commands.getstatusoutput(cmd)
     jobnum = joboutput.split(' ')[-1]
     pid_jobids[phash] = jobnum
-    info("PROCESSING jobids [%s]: %s" % (phash, jobnum))
+    info("PROCESSING jobids [%s]: %s - %s, %s" % (phash, jobnum, fov, run))
 
 
 # STEP2: MC EVALUATION. Each mceval call will start when the corresponding processing 

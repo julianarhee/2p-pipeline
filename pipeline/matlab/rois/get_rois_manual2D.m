@@ -8,8 +8,8 @@ clc; clear all;
 % roi_id = 'rois007'; %'e4893c';
 
 rootdir = '/n/coxfs01/2p-data' %'/mnt/odyssey'
-animalid = 'JC022' %'JR063';
-session = '20181016' %'20171202_JR063';
+animalid = 'JC070' %'JR063';
+session = '20190316' %'20171202_JR063';
 roi_id = 'rois001' %'e4893c';
 
 %% Load RID parameter set:
@@ -107,7 +107,7 @@ if strfind(zproj_type, '_warped_')
     [slice_sourcedir, slice_tiff_fn, ext] = fileparts(rid_src_dir);
     slice_tiffs = {[slice_tiff_fn ext]};
 else
-    average_images_dir = [rid_src_dir sprintf('_%s_deinterleaved', zproj_type)];
+    average_images_dir = fullfile([rid_src_dir sprintf('_%s_deinterleaved', zproj_type)], ref_channelname, ref_filename) % ];
     if length(dir(fullfile(average_images_dir, '*.tif'))) == 0
         slice_sourcedir = fullfile(average_images_dir, ref_channelname, ref_filename);
     else

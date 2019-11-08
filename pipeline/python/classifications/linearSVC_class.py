@@ -23,7 +23,7 @@ import optparse
 import sys
 import glob
 import itertools
-
+import datetime
 import pprint
 pp = pprint.PrettyPrinter(indent=4)
 
@@ -48,6 +48,7 @@ import pipeline.python.traces.combine_runs as cb
 import pipeline.python.paradigm.align_acquisition_events as acq
 import pipeline.python.visualization.plot_psths_from_dataframe as vis
 from pipeline.python.traces.utils import load_TID
+from pipeline.python.segmentation.segmentation import Segmentations
 from pipeline.python.paradigm import utils as fmt
 from pipeline.python.classifications import utils as util
 from mpl_toolkits.axes_grid1 import make_axes_locatable
@@ -67,7 +68,7 @@ from sklearn.preprocessing import LabelBinarizer
 from sklearn.decomposition import PCA
 from sklearn.cross_decomposition import CCA
 
-from sklearn.feature_selection import RFE
+from sklearn.feature_selection import RFE, SelectKBest, chi2, f_classif, RFECV
 from sklearn.svm import SVR #LinearSVR
 from sklearn.externals import joblib
 
@@ -95,6 +96,53 @@ from sklearn.model_selection import LeavePGroupsOut, LeaveOneGroupOut, LeaveOneO
 from sklearn import metrics
 
 
+#%%
+
+
+def plot_transform_grid(performance_grid, rowvals=[], colvals=[], 
+                                          ylabel='rows', xlabel='columns', 
+                                          cmap='hot', vmin=0.5, vmax=1.0,
+                                          data_identifier='', ax=None, title=None):
+    return_fig = False
+    if ax is None:
+        fig, ax = pl.subplots(1, figsize=(15,8))
+        return_fig = True
+    if len(rowvals) != performance_grid.shape[0]:
+        print "Not enough ROW labels:", rowvals
+        rowvals = np.arange(performance_grid.shape[0])
+    if len(colvals) != performance_grid.shape[1]:
+        print "Not enough COL labels:", colvals
+        colvals = np.arange(performance_grid.shape[1])
+    
+    
+    im = ax.imshow(performance_grid, cmap=cmap, vmin=vmin, vmax=vmax)
+    if title is not None:
+        ax.set_title(title)
+    ax.set_xticks(range(len(colvals)))
+    ax.set_xticklabels(colvals)
+    ax.set_xlabel(xlabel)
+    ax.set_yticks(range(len(rowvals)))
+    ax.set_yticklabels(rowvals)
+    ax.set_ylabel(ylabel)
+
+    divider = make_axes_locatable(ax)
+    cax = divider.append_axes("right", size="5%", pad=0.05)
+    pl.colorbar(im, cax=cax)
+    
+    # Loop over data dimensions and create text annotations.
+    for i in range(len(rowvals)):
+        for j in range(len(colvals)):
+            textcolor='k' if performance_grid[i, j] >= vmax*0.75 else 'w'
+            text = ax.text(j, i, '%.2f' % performance_grid[i, j],
+                       ha="center", va="center", color=textcolor)          
+#            stimkey = [k for k, v in config_grid.items() if v[0]==i and v[1]==j][0]
+#            text = ax.text(j, i-0.2, '(%i, %i)' % (stimkey[0], stimkey[1]),
+#                           ha='center', va='top', color=textcolor)
+    
+    if return_fig:
+        return fig
+    
+        
 #%%
 
 def intersection(lst1, lst2): 
@@ -182,8 +230,9 @@ def get_default_gratings_params():
     return clfparams
     
 
-def get_best_C(svc, cX, cy, output_dir=None):
+def get_best_C(svc_in, cX, cy, output_dir=None, figname=None):
     # Look at cross-validation scores as a function of parameter C
+    svc = copy.copy(svc_in)
     C_s = np.logspace(-10, 10, 50)
     scores = list()
     scores_std = list()
@@ -209,7 +258,8 @@ def get_best_C(svc, cX, cy, output_dir=None):
     pl.title('best C: %0.4f' % best_C)
 
     if output_dir is not None:
-        figname = 'crossval_scores_by_C.png'
+        if figname is None:
+            figname = 'crossval_scores_by_C.png'
         pl.savefig(os.path.join(output_dir, figname))
         pl.close()
 
@@ -267,7 +317,7 @@ def hist_cv_permutations(svc, cX, cy, clfparams, scoring='accuracy',
 
 def get_roi_list(run_info, roi_selector='visual', metric='meanstimdf'):
         
-    trans_types = run_info['transforms'].keys()
+    trans_types = run_info['trans_types'].keys() #run_info['transforms'].keys()
     
     # Load sorted ROI info:
     # -----------------------------------------------------------------------------
@@ -867,7 +917,7 @@ def cv_permutation_test(svc, cX_std, cy, clfparams, scoring='accuracy',
     
 
 
-def get_cv_folds(svc, clfparams, cX, cy, cy_labels=None, output_dir=None):
+def get_cv_folds(svc, clfparams, cX, cy, cy_labels=None, output_dir=None, data_id=None):
     
     cv_method = clfparams['cv_method']
     cv_nfolds = clfparams['cv_nfolds']
@@ -956,7 +1006,10 @@ def get_cv_folds(svc, clfparams, cX, cy, cy_labels=None, output_dir=None):
     if output_dir is not None:
         # Save CV info:
         # -----------------------------------------------------------------------------
-        f = open(os.path.join(output_dir, 'results', 'CV_report.txt'), 'w')
+        if data_id is None:
+            data_id = datetime.datetime.now().strftime("%Y%m%d%H%M%S")
+
+        f = open(os.path.join(output_dir, 'CV_report_%s.txt' % data_id), 'w')
         for y_true, y_pred in zip(true, predicted):
             f.write(metrics.classification_report(y_true, y_pred, target_names=[str(c) for c in classes]))
         f.close()
@@ -971,7 +1024,7 @@ def get_cv_folds(svc, clfparams, cX, cy, cy_labels=None, output_dir=None):
                       'cy_labels': list(cy_labels),
                       'config_names': [list(p) for p in config_names]
                       }
-        with open(os.path.join(output_dir, 'results', 'CV_results.json'), 'w') as f:
+        with open(os.path.join(output_dir, 'CV_results_%s.json' % data_id), 'w') as f:
             json.dump(cv_results, f, sort_keys=True, indent=4)
         
         print "Saved CV results: %s" % output_dir
@@ -984,12 +1037,16 @@ def get_confusion_matrix(predicted, true, classes, average_iters=True):
     # Compute confusion matrix:
     # -----------------------------------------------------------------------------
     if average_iters:
-        cmatrix_tframes = confusion_matrix(true[0], predicted[0], labels=classes)
-        for iter_idx in range(len(predicted))[1:]:
-            print "adding iter %i" % iter_idx
-            cmatrix_tframes += confusion_matrix(true[iter_idx], predicted[iter_idx], labels=classes)
-        conf_mat_str = 'AVG'
+        if not isinstance(predicted[0], (int, float, str)) and len(predicted[0]) > 1:
+            cmatrix = confusion_matrix(true[0], predicted[0], labels=classes)
+            for iter_idx in range(len(predicted))[1:]:
+                print "adding iter %i" % iter_idx
+                cmatrix += confusion_matrix(true[iter_idx], predicted[iter_idx], labels=classes)
+            conf_mat_str = 'AVG'
         #cmatrix_tframes /= float(len(pred_results))
+        else:
+            cmatrix = confusion_matrix(true, predicted, labels=classes)
+            conf_mat_str = 'single_test'
     else:
         avg_scores = []
         for y_pred, y_test in zip(predicted, true):
@@ -997,38 +1054,45 @@ def get_confusion_matrix(predicted, true, classes, average_iters=True):
             avg_scores.append(pred_score)
         best_fold = avg_scores.index(np.max(avg_scores))
 
-        cmatrix_tframes = confusion_matrix(true[best_fold], predicted[best_fold], labels=classes)
+        cmatrix = confusion_matrix(true[best_fold], predicted[best_fold], labels=classes)
         conf_mat_str = 'best'
                 
-    return cmatrix_tframes, conf_mat_str
+    return cmatrix, conf_mat_str
 
 
 
-def plot_confusion_matrix_subplots(predicted, true, classes, cv_method='kfold', data_identifier='', output_dir='/tmp'): #calculate_confusion_matrix(predicted, true, clfparams, data_identifier=''):
+def plot_confusion_matrix_subplots(predicted, true, classes, cv_method='kfold', 
+                                   data_identifier='', output_dir=None, figname=None): #calculate_confusion_matrix(predicted, true, clfparams, data_identifier=''):
 
-    cmatrix_tframes, conf_mat_str = get_confusion_matrix(predicted, true, classes)
+    cmatrix, conf_mat_str = get_confusion_matrix(predicted, true, classes)
 
     #% Plot confusion matrix:
     # -----------------------------------------------------------------------------
     sns.set_style('white')
-    fig = pl.figure(figsize=(10,4))
+    fig = pl.figure(figsize=(20,8))
     ax1 = fig.add_subplot(1,2,1)
-    plot_confusion_matrix(cmatrix_tframes, classes=classes, ax=ax1, normalize=False,
+    plot_confusion_matrix(cmatrix, classes=classes, ax=ax1, normalize=False,
                       title='Confusion matrix (%s, %s)' % (conf_mat_str, cv_method))
     
     ax2 = fig.add_subplot(1,2,2)
-    plot_confusion_matrix(cmatrix_tframes, classes=classes, ax=ax2, normalize=True,
+    plot_confusion_matrix(cmatrix, classes=classes, ax=ax2, normalize=True,
                           title='Normalized')
     
     #%
-    if '/classifiers' in output_dir:
-        classif_identifier = os.path.split(output_dir.split('/classifiers')[-1])[-1]
-        figname = '%s__confusion_%s_iters.png' % (classif_identifier, conf_mat_str)
-    else:
+#    if '/classifiers' in output_dir:
+#        classif_identifier = os.path.split(output_dir.split('/classifiers')[-1])[-1]
+#        figname = '%s__confusion_%s_iters.png' % (classif_identifier, conf_mat_str)
+#    else:
+    if figname is None:
         figname = 'confusion_matrix_%s_iters.png' % conf_mat_str
     label_figure(fig, data_identifier)
-    pl.savefig(os.path.join(output_dir, 'figures', figname))
-    pl.close()
+    
+    print "Confusion figure:", figname
+    if output_dir is not None:
+        pl.savefig(os.path.join(output_dir, figname))
+        pl.close()
+    
+    return cmatrix
 
 def plot_normed_confusion_matrix(predicted, true, classes, normalize=True, cv_method='kfold', ax=None):
     
@@ -1097,8 +1161,8 @@ def plot_normed_confusion_matrix(predicted, true, classes, normalize=True, cv_me
 def plot_confusion_matrix(cmatrix, classes,
                           ax=None,
                           normalize=False,
-                          title='Confusion matrix',
-                          cmap=pl.cm.Blues, cmax=1.0):
+                          title='Confusion matrix', clim=None,
+                          cmap=pl.cm.Blues, cmin=0, cmax=1.0):
     """
     This function prints and plots the confusion matrix.
     Normalization can be applied by setting `normalize=True`.
@@ -1106,6 +1170,8 @@ def plot_confusion_matrix(cmatrix, classes,
     if normalize:
         cmatrix = cmatrix.astype('float') / cmatrix.sum(axis=1)[:, np.newaxis]
         print("Normalized confusion matrix")
+        if clim=='max':
+            cmax = cmatrix.max()
     else:
         print('Confusion matrix, without normalization')
 
@@ -1121,14 +1187,14 @@ def plot_confusion_matrix(cmatrix, classes,
     im = ax.imshow(cmatrix, interpolation='nearest', cmap=cmap, vmax=cmax)
     tick_marks = np.arange(len(classes))
     ax.set_xticks(tick_marks)
-    ax.set_xticklabels(classes, rotation=45, fontsize=10)
+    ax.set_xticklabels(classes, rotation=45, fontsize=8)
     ax.set_yticks(tick_marks)
-    ax.set_yticklabels(classes, fontsize=10)
-    fmt = '.2f' if normalize else 'd'
+    ax.set_yticklabels(classes, fontsize=8)
+    fmt = '.1f' if normalize else 'd'
     thresh = cmatrix.max() / 2.
     for i, j in itertools.product(range(cmatrix.shape[0]), range(cmatrix.shape[1])):
         ax.text(j, i, format(cmatrix[i, j], fmt),
-                 horizontalalignment="center",
+                 horizontalalignment="center", fontsize=6,
                  color="white" if cmatrix[i, j] > thresh else "black")
 
     #pl.tight_layout()
@@ -1529,6 +1595,8 @@ class TransformClassifier():
             
 
     def load_dataset(self, visual_area_info=None):
+        print "------------ Loading dataset."
+
         # Store DATASET:            
         dt = np.load(self.data_fpath)
         if 'arr_0' in dt.keys():
@@ -1549,18 +1617,25 @@ class TransformClassifier():
             self.run_info = self.dataset['run_info']
         else:
             self.run_info = self.dataset['run_info'][()]
-
+        
+        
         # Store stim configs:
         if isinstance(self.dataset['sconfigs'], dict):
             orig_sconfigs = self.dataset['sconfigs']
         else:
             orig_sconfigs = self.dataset['sconfigs'][()]
-            
+
         # Make sure numbers are rounded:
         for cname, cdict in orig_sconfigs.items():
             for stimkey, stimval in cdict.items():
                 if isinstance(stimval, (int, float)):
                     orig_sconfigs[cname][stimkey] = round(stimval, 1)
+                    
+        # Add combined 'position' variable to stim configs if class_name == 'position:
+        for cname, config in orig_sconfigs.items():
+            pos = '_'.join([str(config['xpos']), str(config['ypos'])])
+            config.update({'position': pos})
+            
                 
         if int(self.session) < 20180602:
             # Rename morphs:
@@ -1577,8 +1652,20 @@ class TransformClassifier():
                 else:
                     print "Unknown morphlevel converstion: %i" % orig_sconfigs[cfg]['morphlevel']
         self.sconfigs = orig_sconfigs
-#
-#            
+        
+        
+        # Make sure specified const_trans are actually tested transforms:
+        sdf = pd.DataFrame(self.sconfigs).T
+        id_preserving_transforms = ['xpos', 'ypos', 'size', 'yrot']
+        true_trans_dict = dict((tkey, list(set(sdf[tkey]))) for tkey in id_preserving_transforms)
+        varying_transforms = [t for t,vals in true_trans_dict.items() if len(vals) > 1]
+        
+        if self.params['const_trans'] != '':
+            tested_transforms = [t for t in self.params['const_trans'] if t in varying_transforms]
+            self.params['const_trans'] = tested_transforms
+        
+        
+        
 #        if isinstance(self.dataset['sconfigs'], dict):    
 #            self.sconfigs = self.dataset['sconfigs']
 #        else:
@@ -1589,6 +1676,7 @@ class TransformClassifier():
         if visual_area_info is not None:
             (visual_area, visual_areas_fpath), = visual_area_info.items()
             print "Getting ROIs for area: %s" % visual_area
+            print "Loading file:", visual_areas_fpath
             with open(visual_areas_fpath, 'rb') as f:
                 areas = pkl.load(f)
             if visual_area not in areas.regions.keys():
@@ -1598,21 +1686,23 @@ class TransformClassifier():
                 sel = input("Select IDX of area to use: ")
                 visual_area = areas.regions.keys()[sel]
             
-            ret_analysis_id = areas.source.retinoID_rois
-            rdictpath = glob.glob(os.path.join(self.rootdir, areas.source.animalid, areas.source.session, areas.source.acquisition,
-                                               areas.source.run, 'retino_analysis', 'analysisids*.json'))[0]
-            with open(rdictpath, 'r') as f: rdicts = json.load(f)
-            retinoID = rdicts[ret_analysis_id]
-            
-            roi_masks = areas.get_roi_masks(retinoID)
-            nrois = roi_masks.shape[-1]
-            region_mask = areas.regions[visual_area]['region_mask']
-            # Mask ROIs with area mask:
-            region_mask_copy = np.copy(region_mask)
-            region_mask_copy[region_mask==0] = np.nan
-            
-            included_rois = [ri for ri in range(nrois) if ((roi_masks[:, :, ri] + region_mask_copy) > 1).any()]
-
+#            ret_analysis_id = areas.source.retinoID_rois
+#            rdictpath = glob.glob(os.path.join(self.rootdir, areas.source.animalid, areas.source.session, areas.source.acquisition,
+#                                               areas.source.run, 'retino_analysis', 'analysisids*.json'))[0]
+#            with open(rdictpath, 'r') as f: rdicts = json.load(f)
+#            retinoID = rdicts[ret_analysis_id]
+#            
+#            roi_masks = areas.get_roi_masks(retinoID)
+#            nrois = roi_masks.shape[-1]
+#            region_mask = areas.regions[visual_area]['region_mask']
+#            # Mask ROIs with area mask:
+#            region_mask_copy = np.copy(region_mask)
+#            region_mask_copy[region_mask==0] = np.nan
+#                        
+#            included_rois = [ri for ri in range(nrois) if ((roi_masks[:, :, ri] + region_mask_copy) > 1).any()]
+            included_rois = [int(ri) for ri in areas.regions[visual_area]['included_rois']]
+        else:
+            included_rois = None
         self.sample_data, self.sample_labels = self.get_formatted_data(included_rois=included_rois)
         
 
@@ -1623,6 +1713,8 @@ class TransformClassifier():
             nframes x nrois (data_type = 'frames')
         Filters nrois by roi_selector.
         '''
+        print "------------ Formatting data into samples."
+
         # Get data array:
         assert self.params['inputdata_type'] in self.dataset.keys(), "Specified dtype %s not found. Select from %s." % (self.params['data_type'], str(self.dataset.keys()))
         Xdata = np.array(self.dataset[self.params['inputdata_type']])
@@ -1630,15 +1722,16 @@ class TransformClassifier():
             
         selected_rois = self.load_roi_list(roi_selector=self.params['roi_selector'])
         if included_rois is not None:
+            print "---> only including specified ROIs from visual area."
             roi_list = intersection(selected_rois, included_rois)
         else:
             roi_list = selected_rois
             
         # Get subset of ROIs, if roi_selector is not 'all':
-        self.rois = roi_list
+        self.rois = np.array(roi_list)
         if self.rois is not None:
             print "Selecting %i out of %i ROIs (selector: %s)" % (len(self.rois), Xdata.shape[-1], self.params['roi_selector'])
-            Xdata = Xdata[:, self.rois]
+            Xdata = np.squeeze(Xdata[:, self.rois])
         
         # Determine whether all trials have the same structure or not:
         multiple_durs = isinstance(self.run_info['nframes_on'], list)
@@ -1673,6 +1766,8 @@ class TransformClassifier():
         return roi_list
     
     def set_params(self, train_params):
+        print "------------ Saving input params for linear classifier."
+
         # Check arg validity:
         valid_choices = {
                         'data_type': ['frames', 'stat'],
@@ -1682,6 +1777,11 @@ class TransformClassifier():
         for opt, choices in valid_choices.items():
             assert train_params[opt] in choices, "Specified %s --%s-- NOT valid. Select from %s" % (opt, train_params[opt], str(choices))                
         
+#        # Make sure specified const_trans are actually tested transforms:
+#        if train_params['const_trans'] != '':
+#            tested_transforms = [t for t in train_params['const_trans'] if t in self.run_info['trans_types']]
+#            train_params['const_trans'] = tested_transforms
+#        
         self.params = get_classifier_params(
                                     classifier = 'LinearSVC', 
                                     cv_method = train_params['cv_method'], 
@@ -1704,6 +1804,8 @@ class TransformClassifier():
                                     binsize = train_params['binsize'] if train_params['data_type'] =='frames' else '')
     
     def create_classifier_dirs(self):
+        print "------------ Creating output directories for each classifier."
+
         # What are we classifying:
         if len(self.params['class_subset']) > 0:
             class_list = self.params['class_subset']
@@ -1717,12 +1819,13 @@ class TransformClassifier():
         # Is there a subgroup of class_name that we want to train the classifier on:
         if self.params['const_trans'] is not '':
             train_transforms_list = self.get_constant_transforms()
-            #transforms_desc = '_'.join('%i%s' % (len(v) if isinstance(v, list) else v, k) for k,v in train_transforms_list.items())
-            #if any([isinstance(v, list) and len(v) > 1 for tdict in train_transforms_list for k, v in tdict.items()]):
-            transforms_desc = '_'.join('%s%s' % (k, str(v)) for tdict in train_transforms_list for k,v in tdict.items())
-            transforms_desc = transforms_desc.replace(' ', '')
-            transforms_desc = transforms_desc.replace('[','(').replace(']', ')')
-
+            
+            if self.params['indie'] is True:
+                trans_info = dict((trans_name, len(list(set([tdict[trans_name] for tdict in train_transforms_list])))) for trans_name in self.params['const_trans'])
+                transforms_desc = '_'.join('%i%s' % (1, k) for k, v in trans_info.items()) # in train_transforms_list for k,v in tdict.items())
+                
+            else:
+                transforms_desc = '_'.join('%s%s' % (k, str(v)) for tdict in train_transforms_list for k,v in tdict.items())
             #transforms_desc = '_'.join('%i%s' % (len(v) if (isinstance(v, list) and len(v) > 1) else v if isinstance(v, (int, float)) else v[0], k) for tdict in train_transforms_list for k,v in tdict.items()) #train_transforms_list.items())
 
         else:
@@ -1730,8 +1833,17 @@ class TransformClassifier():
             transforms_desc = 'alltransforms'
             
         if len(self.params['test_set']) > 0:
-            transforms_desc = '%s_holdtest%s' % (transforms_desc, len(self.params['test_set']))
-        
+            testkeys = sorted(self.params['test_set'][0].keys())
+            tvals = []
+            for tkey in testkeys:
+                tvals.append(list(set([tdict[tkey] for tdict in self.params['test_set']])))
+            test_str = '_'.join( ['_'.join([str(s) for s in spair]) for spair in [(t, tv) for t, tv in zip(testkeys, tvals)]] )
+            transforms_desc = '%s_holdtest_%i_%s' % (transforms_desc, len(self.params['test_set']), test_str) # len(T.params['test_set']))
+
+        transforms_desc = transforms_desc.replace(' ', '')
+        transforms_desc = transforms_desc.replace('[','(').replace(']', ')')
+        print transforms_desc
+
         # What is the input data type:
         data_desc = '%s_%s_%s' % (self.params['data_type'], self.params['inputdata_type'], self.params['stat_type'])
 
@@ -1782,6 +1894,7 @@ class TransformClassifier():
             transforms = []
             
         if len(transforms) > 0:
+            # Get rid of combinations that weren't actually tested
             remove_pairs = []
             for config_set in transforms:
                 found_configs = [s for s,cfg in self.sconfigs.items() if all([cfg[currkey]==currval for currkey, currval in config_set.items()])]
@@ -1808,101 +1921,112 @@ class TransformClassifier():
         return train_transforms_list #const_trans_dict
     
     
-    def initialize_classifiers(self):
-
-#        if self.const_trans_dict is not None:
-#            keys, values = zip(*self.const_trans_dict.items())
-#            values_flat = [val[0] for val in values]
-#            transforms = [dict(zip(keys, v)) for v in itertools.product(*values_flat)]
-#        else:
-#            transforms = []
-            
-#        if len(transforms) > 0:
-#            remove_pairs = []
-#            for config_set in transforms:
-#                found_configs = [s for s,cfg in self.sconfigs.items() if all([cfg[currkey]==currval for currkey, currval in config_set.items()])]
-#                if len(found_configs) == 0:
-#                    remove_pairs.append(config_set)
-#            if len(remove_pairs) > 0:
-#                tmp_transforms = [sdict for sdict in transforms if sdict not in remove_pairs]
-#                transforms = tmp_transforms
-            
+    def initialize_classifiers(self, feature_select_method=None, feature_select_n='best', C_select='best'):            
         # If we are testing subset of the data (const_trans and trans_val are non-empty),
         # create a classifier + output subdirs for each subset:
-        print "Initializing classifiers..."
+        print "------------ Initializing all classifiers."
+
         print "--> transform subsets:"
         pp.pprint(self.train_transforms_list)
-        confirm = raw_input("Create classifiers for each transformation?: Enter <Y> to accept, <ENTER> to quit: ")
-        if confirm != 'Y':
-            return
+#        confirm = raw_input("Create classifiers for each transformation?: Enter <Y> to accept, <ENTER> to quit: ")
+#        if confirm != 'Y':
+#            return
+        
+        datasource = struct()
+        datasource.animalid = self.animalid
+        datasource.session = self.session
+        datasource.acquisition = self.acquisition
+        datasource.run = self.run
+        datasource.traceid = self.traceid
         
         if len(self.train_transforms_list) > 0:
             for transform in self.train_transforms_list:
                 curr_clfparams = self.params.copy()
                 curr_clfparams['const_trans'] = transform.keys()
                 curr_clfparams['trans_value'] = sorted([v for v in transform.values()], key=lambda x: transform.keys())
-                self.classifiers.append(LinearSVM(curr_clfparams, 
+                #print curr_clfparams['const_trans'], curr_clfparams['trans_value']
+                self.classifiers.append(LinearSVM(datasource,
+                                                  curr_clfparams, 
                                                   self.sample_data, 
                                                   self.sample_labels, 
                                                   self.sconfigs, 
                                                   self.classifier_dir,
                                                   self.run_info,
+                                                  feature_select_method=feature_select_method, 
+                                                  feature_select_n=feature_select_n,
+                                                  C_select=C_select,
                                                   data_identifier=self.data_identifier))
         else:
-            self.classifiers.append(LinearSVM(self.params, 
+            self.classifiers.append(LinearSVM(datasource,
+                                              self.params, 
                                               self.sample_data,
                                               self.sample_labels,
                                               self.sconfigs,
                                               self.classifier_dir,
                                               self.run_info,
+                                              feature_select_method=feature_select_method, 
+                                              feature_select_n=feature_select_n,
+                                              C_select=C_select,
                                               data_identifier=self.data_identifier))
             
-    def label_classifier_data(self):
+#    def label_classifier_data(self):
+#        print "------------ Labeling classifier data."
+#        for ci, clf in enumerate(self.classifiers):
+#            clf.label_training_data()
+#            print "Created %i of %i classifiers: %s" % (ci+1, len(self.classifiers), clf.classifier_dir)
+
+#    def create_classifiers(self):
+#        print "------------ Creating classifiers."
+#        for ci, clf in enumerate(self.classifiers):
+#            clf.create_classifier()
+
+
+    def create_classifiers(self, feature_select_method='rfe', feature_select_n='best', C_select='best'):
+        ##
+        '''
+        feature_select_method = ('rfe', 'k_best', None)
+        feature_select_n = ('best', int, None)
+        C_select = ('best', None)
+        '''
+        print "------------ Determining classifier meta params."
+        self.initialize_classifiers(feature_select_method=feature_select_method, 
+                                     feature_select_n=feature_select_n, 
+                                     C_select=C_select)
+#        self.label_classifier_data()
+#        self.create_classifiers()
+        print "------------ Labeling classifier data."
         for ci, clf in enumerate(self.classifiers):
+            print "... %i of %i clfs." % ((ci+1), len(self.classifiers)) #))))
             clf.label_training_data()
             clf.create_classifier()
             print "Created %i of %i classifiers: %s" % (ci+1, len(self.classifiers), clf.classifier_dir)
+
+
+    def train_classifiers(self, scoring='accuracy', full_train=False, test_size=0.33, col_label=None, row_label=None):
+        print "------------ TRAINING."
+
+        for clf in self.classifiers:
             
-#    
-#    def train_classifier(self, clf):
-#        print "Training classifier.\n--- output saved to: %s" % clf.classifier_dir
-#        if self.params['data_type'] == 'frames':
-#            self.train_on_trial_epochs(clf)
-#        else:
-#            self.train_on_trials(clf)
+            clf.do_cv(scoring=scoring, permutation_test=True, n_jobs=4, n_permutations=500)
+            clf.train_classifier(full_train=full_train, test_size=test_size)
 #            
-#    def train_on_trial_epochs(self, clf):
-#        
-#        epochs, decode_dict, bins, clf.clfparams['binsize'], class_labels = \
-#                                        format_epoch_dataset(clf.clfparams, clf.cX, clf.cy, self.run_info, self.sconfigs)
-#                                        
-#        decode_trial_epochs(clf.class_labels, clf.clfparams, bins, decode_dict, 
-#                                self.run_info, data_identifier=self.data_identifier, 
-#                                niterations=10, scoring='accuracy', output_dir=clf.classifier_dir)
-#        
-#    def train_on_trials(self, clf):
-#        
-#        print "... running permutation test for CV accuracy."
-#        clf.cv_kfold_permutation(data_identifier=self.data_identifier,
-#                                  scoring='accuracy', 
-#                                  permutation_test=True, 
-#                                  n_permutations=500)
-#        
-#        print "... plotting confusion matrix."
-#        clf.confusion_matrix(data_identifier=self.data_identifier)
-#        
-#        print "... doing RFE."
-#        clf.do_RFE(data_identifier=self.data_identifier, scoring='accuracy')
-    
-    def save_me(self):
-        with open(os.path.join(self.classifier_dir, 'TransformClassifier.pkl'), 'wb') as f:
-            pkl.dump(self, f, protocol=pkl.HIGHEST_PROTOCOL)
-    
+#            test_transforms_dir = os.path.join(self.classifier_dir, 'test_transforms')
+#            if not os.path.exists(test_transforms_dir): os.makedirs(test_transforms_dir)
+#            clf.get_classifier_accuracy_by_stimconfig(row_label=row_label, col_label=col_label, output_dir=test_transforms_dir)
+
 #%%
+            
+class struct():
+    pass
+
 class LinearSVM():
     
-    def __init__(self, clfparams, sample_data, sample_labels, sconfigs, classifier_dir,
-                         run_info, data_identifier=''):
+    def __init__(self, source, clfparams, sample_data, sample_labels, sconfigs, classifier_dir,
+                         run_info, feature_select_method=None, feature_select_n=None,
+                         C_select=None, data_identifier='', full_train=False, test_size=0.33):
+        self.source = source
+        self.data_id = '_'.join([source.animalid, source.session, source.acquisition])
+        self.svc = None
         self.clfparams = clfparams
         self.cX = sample_data
         self.cy = sample_labels
@@ -1910,7 +2034,24 @@ class LinearSVM():
         self.classifier_dir = classifier_dir
         self.run_info = run_info
         self.data_identifier = data_identifier
-    
+        self.cv_results = {'predicted_classes': None,
+                           'true_classes': None,
+                           'confusion_matrix': None,
+                           'config_labels': None,
+                           'cross_val_score': None}
+        self.model_selection = struct()
+        self.model_selection.features = {'method': feature_select_method,
+                                         'nfeatures': feature_select_n,
+                                         'kept_rids': None,
+                                         'score': None}
+        self.model_selection.findC = C_select
+        
+        self.train_results = {}
+        self.train_params = {'full_train': full_train,
+                             'test_size': test_size}
+        self.test_results = {}
+        
+
         if self.clfparams['const_trans'] is not '':
             # Create SUBDIR for specific const-trans and trans-val pair:
             const_trans_dict = dict((k, v) for k,v in zip([t for t in clfparams['const_trans']], [v for v in clfparams['trans_value']]))
@@ -1918,18 +2059,19 @@ class LinearSVM():
             pp.pprint(const_trans_dict)
             print "Testing EACH value of const transforms."
             if any([(isinstance(v, list) and len(v) > 1) for k, v in const_trans_dict.items()]):
-                transforms_desc = '_'.join('%s_%i' % (k, len(v)) for k,v in const_trans_dict.items())
+                transforms_desc = '_'.join('%i%s' % (len(v), k) for k,v in const_trans_dict.items())
+            elif any([(isinstance(v, list) and len(v)==1) for k, v in const_trans_dict.items()]):
+                transforms_desc = '_'.join('%s_n%.1f' % (k, abs(v[0])) if v[0] < 0 else '%s_%.1f' % (k, v[0]) for k,v in const_trans_dict.items())
             else:
-                transforms_desc = '_'.join('%s_n%.1f' % (k, abs(v[0])) if v < 0 else '%s_%.1f' % (k, v[0]) for k,v in const_trans_dict.items())
+                transforms_desc = '_'.join('%s_n%.1f' % (k, abs(v)) if v < 0 else '%s_%.1f' % (k, v) for k,v in const_trans_dict.items())
             self.classifier_dir = os.path.join(self.classifier_dir, transforms_desc)
             
         # Set output dirs:
-        if not os.path.exists(os.path.join(self.classifier_dir, 'figures')):
-            os.makedirs(os.path.join(self.classifier_dir, 'figures'))
-        if not os.path.exists(os.path.join(self.classifier_dir, 'results')):
-            os.makedirs(os.path.join(self.classifier_dir, 'results'))
+        if not os.path.exists(os.path.join(self.classifier_dir, 'cv_model_selection')):
+            os.makedirs(os.path.join(self.classifier_dir, 'cv_model_selection'))
+#        if not os.path.exists(os.path.join(self.classifier_dir, 'results')):
+#            os.makedirs(os.path.join(self.classifier_dir, 'results'))
             
-        self.results = {}
             
     def label_training_data(self):
         
@@ -1951,7 +2093,7 @@ class LinearSVM():
         # Check that nsamples are the same for all groups:
         counts_by_class = Counter(cy)
         print counts_by_class
-        tmp_cX = cX.copy(); tmp_cy = cy.copy();
+        tmp_cX = cX.copy(); tmp_cy = copy.copy(cy) #.copy();
         remove_ixs=[]
         if len(list(set([v for k,v in counts_by_class.items()]))) > 1:
             print "Uneven n samples for each class."
@@ -1973,16 +2115,19 @@ class LinearSVM():
         self.class_labels = class_labels
         self.cy_labels = cy_labels
 
-        # Add finalized info to clfparams:        
-        self.clfparams['dual'] = cX.shape[0] > cX.shape[1]
-        
+        # Update clfparams where relevant:
+        self.clfparams['dual'] = self.cX.shape[0] > self.cX.shape[1]
+
     
     def group_by_class(self):
         
         cX = self.cX
         cy_tmp = self.cy
         cy = np.array([self.sconfigs[cv][self.clfparams['class_name']] if cv != 'bas' else 'bas' for cv in cy_tmp])
-        class_labels = sorted(np.unique(cy))
+#        if not isinstance(cy[0], (int, float, str, unicode)):
+#            cy = [tuple(c) for c in cy]
+        class_labels = sorted(list(set(cy))) #sorted(np.unique(cy))
+        #cy = np.array(cy)
         
         return cX, cy, class_labels, cy_tmp
     
@@ -2020,7 +2165,10 @@ class LinearSVM():
         cy_tmp = self.cy[kept_ixs]
         
         cy = np.array([self.sconfigs[cname][self.clfparams['class_name']] if cname != 'bas' else 'bas' for cname in cy_tmp])
-        class_labels = sorted(np.unique(cy))
+#        if not isinstance(cy[0], (int, float, str, unicode)):
+#            cy = [tuple(c) for c in cy]
+        class_labels = sorted(list(set(cy))) # sorted(np.unique(cy))
+        #cy = np.array(cy)
         
         return cX, cy, class_labels, cy_tmp
 
@@ -2064,13 +2212,17 @@ class LinearSVM():
         cy_tmp = self.cy[kept_ixs]
         
         cy = np.array([self.sconfigs[cname][self.clfparams['class_name']] if cname != 'bas' else 'bas' for cname in cy_tmp])
-        class_labels = sorted(np.unique(cy))
+#        if not isinstance(cy[0], (int, float, str, unicode)):
+#            cy = [tuple(c) for c in cy]
+        class_labels = sorted(list(set(cy))) #sorted(np.unique(cy))
+        #cy = np.array(cy)
         
         return cX, cy, class_labels, cy_tmp
 
 
     def group_by_class_and_transform_subset(self):
-        const_trans_dict = dict((k, v) if isinstance(v, list) else (k, [v]) for k,v in zip([t for t in self.clfparams['const_trans']], [v for v in self.clfparams['trans_value']]))
+        const_trans_dict = dict((k, v) if isinstance(v, list) else (k, [v]) for k,v in 
+                                    zip([t for t in self.clfparams['const_trans']], [v for v in self.clfparams['trans_value']]))
         sconfigs_df = pd.DataFrame(self.sconfigs).T
         configs_subset = sconfigs_df[sconfigs_df[self.clfparams['class_name']].isin(self.clfparams['class_subset'])].index.tolist()
         sconfigs_df = sconfigs_df[sconfigs_df.index.isin(configs_subset)]
@@ -2116,40 +2268,167 @@ class LinearSVM():
         cy_tmp = self.cy[kept_ixs]
         
         cy = np.array([self.sconfigs[cname][self.clfparams['class_name']] if cname != 'bas' else 'bas' for cname in cy_tmp])
-        class_labels = sorted(np.unique(cy))
+#        if not isinstance(cy[0], (int, float, str, unicode)):
+#            cy = [tuple(c) for c in cy]
+        class_labels = sorted(list(set(cy))) #sorted(np.unique(cy))
+        #cy = np.array(cy)
         
         return cX, cy, class_labels, cy_tmp
     
-    
+
+    def iterate_feature_selection(self, method='rfe', scoring='accuracy', n_jobs=4, output_dir=None, figname=None):
+        feature_selection = {}
+        
+        valid_choices = ['rfe', 'k_best']
+        assert method in valid_choices, "Invalid feature selection method chosen. Select from: %s" % str(valid_choices)
+        
+        nrois_total = self.cX.shape[-1]
+
+        roi_list = np.arange(0, nrois_total)[::-1]
+        iter_results = {}
+        if method == 'rfe':
+            rfe = RFECV(estimator=self.svc, step=1, cv=StratifiedKFold(self.clfparams['cv_nfolds']), scoring=scoring, n_jobs=n_jobs)
+            fit = rfe.fit(self.cX, self.cy)
+            best_score = fit.grid_scores_[fit.n_features_ - 1]
+            kept_rids = fit.get_support(indices=True)
+            nfeatures_best = len(kept_rids) #fit.n_features_
+            print "N features", nfeatures_best, fit.n_features_, fit.grid_scores_.shape
+            all_scores = fit.grid_scores_
+        elif method == 'k_best':
+            scoring = 'R^2'
+            for nrois in roi_list:
+                rfe = SelectKBest(f_classif, k=nrois)
+                fit = rfe.fit(self.cX, self.cy)
+                score = fit.score(self.cX, self.cy)
+                kept_rids = fit.get_support(indices=True)
+                iter_results[nrois] = {'kept_rids': kept_rids, 'score': score}
+            all_scores = sorted([v['score'] for k, v in iter_results.items()], key=lambda x: x[0])
+            nfeatures_best = np.argmax(all_scores)
+            kept_rids = iter_results[nfeatures_best]['kept_rids']
+            best_score = iter_results[nfeatures_best]['score']
+
+        fig = pl.figure()
+        pl.plot(range(1, len(all_scores) + 1), all_scores)
+        pl.xlabel("N features selected")
+        pl.ylabel(scoring)
+        pl.title("optimal: %i" % len(kept_rids))
+        label_figure(fig, self.data_identifier)
+        
+        if output_dir is not None:
+            if figname is None:
+                figname = 'feature_selection_%s_%s.png' % (method, scoring)
+            pl.savefig(os.path.join(output_dir, figname))
+            pl.close()
+        
+        feature_selection['method'] = method
+        feature_selection['nfeatures'] = nfeatures_best
+        feature_selection['kept_rids'] = kept_rids
+        feature_selection['score'] = best_score
+        
+        return feature_selection
+            
+
+    def do_model_selection(self, scoring='accuracy', output_dir=None, meta_params_str='metaparams'):
+        #output_dir = os.path.join(self.classifier_dir, 'cv_model_selection')
+        
+        feature_selection = self.model_selection.features
+        
+        self.svc = LinearSVC(random_state=0, dual=self.clfparams['dual'], multi_class='ovr') #, C=self.clfparams['C_val'])
+        
+        if self.model_selection.findC == 'best':
+            print "Finding optimal C value..."
+            self.clfparams['C_val'] = get_best_C(self.svc, self.cX, self.cy, 
+                                              output_dir=output_dir, 
+                                              figname='findC_%s_%s.png' % (meta_params_str, self.data_id))
+            
+        print "[PARAMS]: C = %.5f" % self.clfparams['C_val']
+        self.svc.C = self.clfparams['C_val']
+
+        if self.model_selection.features['method'] is not None:
+            if self.model_selection.features['nfeatures'] is None or self.model_selection.features['nfeatures'] == 'best':
+                feature_selection = self.iterate_feature_selection(method=self.model_selection.features['method'],
+                                                                   scoring=scoring, output_dir=output_dir,
+                                                                   figname='feature_selection_%s_%s_%s.png' % (meta_params_str, 
+                                                                                                               scoring, self.data_id))
+                cX_tmp = self.cX[:, feature_selection['kept_rids']]
+            else:
+                if self.model_selection.features['nfeatures'] > self.cX.shape[0]:
+                    self.model_selection.features['nfeatures'] = self.cX.shape[0]-1
+                    
+                if self.model_selection.features['method'] == 'k_best':
+                    feature_fit = SelectKBest(f_classif, k=self.model_selection.features['nfeatures']).fit(self.cX, self.cy)
+                    kids = feature_fit.get_support(indices=True)
+                    kbest_scores = cross_val_score(self.svc, self.cX[:, kids], self.cy)
+                    scoring = np.mean(kbest_scores)
+                elif self.model_selection.features['method'] == 'RFE':
+                    feature_fit = RFE(self.svc, n_features_to_select=self.model_selection.features['nfeatures'])
+                    scoring = feature_fit.score(self.cX, self.cy)
+                feature_selection['kept_rids'] = feature_fit.get_support(indices=True)
+                feature_selection['score'] = scoring
+                cX_tmp = feature_fit.transform(self.cX)
+            
+            self.cX = cX_tmp
+            self.model_selection.features = feature_selection
+        
+        
     def create_classifier(self):
+        '''
+        Does some model selection to choose classifier parameters and data subsets.
+        Creates classifier sub-dir for feature-selection and C-value    
+        '''
+        feature_select_method = self.model_selection.features['method']
+        feature_select_n = self.model_selection.features['nfeatures']
+        C_select = self.model_selection.findC
+        
+        meta_params_str = '%s_%s_C_%s' % ('all' if feature_select_method is None else feature_select_method,
+                                          'features' if feature_select_n is None else str(feature_select_n),
+                                          C_select if isinstance(C_select, str) else '%.4f' % self.clfparams['C_val'])
+                
+        output_dir = os.path.join(self.classifier_dir, 'cv_model_selection')
+        if not os.path.exists(output_dir): os.makedirs(output_dir)
+        print "MODEL SELECTION: Saving to subdir: ./cv_model_selection"
+        
+        # 1.  Do model selection, if relevant:
+        # --------------------------------------------
+        self.do_model_selection(output_dir=output_dir, meta_params_str=meta_params_str)
+        
         # Save clfparams and check file hash:
+        # --------------------------------------------
         clfparams_hash = hashlib.md5(json.dumps(self.clfparams, ensure_ascii=True, indent=4, sort_keys=True)).hexdigest()
-        clfparams_fpath = os.path.join(self.classifier_dir, 'clfparams_%s.json' % clfparams_hash[0:6])
+        self.hash = clfparams_hash
+        
+        if self.model_selection.features['method'] is not None:
+            feature_str = 'select%i_%s' % (self.model_selection.features['nfeatures'], self.model_selection.features['method'])
+        else:
+            feature_str = 'selectall'
+        C_str = 'C%.5f' % self.clfparams['C_val']
+            
+        # Create output dir:
+        # --------------------------------------------
+        model_select_str = '%s_%s' % (feature_str, C_str)
+#        clf_output_dir = os.path.join(self.classifier_dir, clf_subdir)
+#        if not os.path.exists(os.path.join(clf_output_dir, 'figures')): os.makedirs(os.path.join(clf_output_dir, 'figures'))
+#        if not os.path.exists(os.path.join(clf_output_dir, 'results')): os.makedirs(os.path.join(clf_output_dir, 'results'))
+#
+#        print "Saving current CLF results to:", clf_output_dir
+#        self.classifier_dir = clf_output_dir
+        
+        clfparams_fpath = os.path.join(output_dir, 'clfparams_%s_%s_%s_%s.json' % (clfparams_hash[0:6], self.data_id, meta_params_str, model_select_str))
         with open(clfparams_fpath, 'w') as f: 
             json.dump(self.clfparams, f, indent=4, sort_keys=True)
         
-        self.hash = clfparams_hash
-        
-        self.clf = LinearSVC(random_state=0, dual=self.clfparams['dual'], multi_class='ovr', C=self.clfparams['C_val'])
 
-#    def correlation_matrix(self):
-#        '''
-#        Correlation matrix only works with data_type == 'stat'.
-#        '''
-#        # Create output dir for population-level figures:
-#        output_dir = os.path.join(self.data.traceid_dir, 'figures', 'population')
-#        if not os.path.exists(output_dir): os.makedirs(output_dir)
-#            
-#        correlation_matrix(self.clfparams, self.class_labels, self.cX, self.cy, 
-#                               data_identifier=self.data.data_identifier, output_dir=output_dir)
+    def do_cv(self, output_dir=None, scoring='accuracy', permutation_test=True, n_jobs=4, n_permutations=500):
         
-
-    def train_classifier(self):
-        print "Training classifier.\n--- output saved to: %s" % self.classifier_dir
+        if output_dir is None:
+            output_dir = os.path.join(self.classifier_dir, 'cross_validation')
+        if not os.path.exists(output_dir): os.makedirs(output_dir)
+        
+        print "Training classifier.\n--- output saved to: %s" % output_dir
         if self.clfparams['data_type'] == 'frames':
             self.train_on_trial_epochs()
         else:
-            self.train_on_trials()
+            self.train_on_trials(output_dir=output_dir)
             
     def train_on_trial_epochs(self):
         
@@ -2160,30 +2439,33 @@ class LinearSVM():
                                 self.run_info, data_identifier=self.data_identifier, 
                                 niterations=10, scoring='accuracy', output_dir=self.classifier_dir)
         
-    def train_on_trials(self):
+    def train_on_trials(self, scoring='accuracy', output_dir=None, permutation_test=True, n_permutations=500, n_jobs=4):
         
+        #print "... doing RFE."
+        #self.do_RFE(scoring=scoring)
+                
         print "... running permutation test for CV accuracy."
-        self.cv_kfold_permutation(data_identifier=self.data_identifier,
-                                  scoring='accuracy', 
-                                  permutation_test=True, 
-                                  n_permutations=500)
+        self.cv_kfold_permutation(scoring=scoring, 
+                                  permutation_test=permutation_test, 
+                                  n_jobs=n_jobs,
+                                  n_permutations=n_permutations,
+                                  output_dir=output_dir,
+                                  figname='cv_permutation_%s_%s_%s.png' % (self.clfparams['cv_method'], self.clfparams['cv_nfolds'], self.data_id))
         
         print "... plotting confusion matrix."
-        self.confusion_matrix(data_identifier=self.data_identifier)
-        
-        print "... doing RFE."
-        self.do_RFE(data_identifier=self.data_identifier, scoring='accuracy')
+        self.confusion_matrix(output_dir=output_dir, figname='confusion_matrix_%s.png' % self.data_id)
         
         
-    def cv_kfold_permutation(self, scoring='accuracy', permutation_test=True, n_jobs=4, n_permutations=500, data_identifier=''):
+        
+    def cv_kfold_permutation(self, scoring='accuracy', permutation_test=True, n_jobs=4, n_permutations=500, output_dir=None, figname=None):
         # -----------------------------------------------------------------------------
         # Do cross-validation
         # -----------------------------------------------------------------------------
         kfold = StratifiedKFold(n_splits=self.clfparams['cv_nfolds'], shuffle=True)
     
-        cv_results = cross_val_score(self.clf, self.cX, self.cy, cv=kfold, scoring=scoring)
+        cv_results = cross_val_score(self.svc, self.cX, self.cy, cv=kfold, scoring=scoring)
         print "CV RESULTS [%s]: %.3f (%.3f)" % (scoring, cv_results.mean(), cv_results.std()*2.) # Print score and 95% CI of score estimate
-        self.results['cv_results'] = cv_results
+        self.cv_results['cross_val_score'] = cv_results
         
         if permutation_test:
             # -----------------------------------------------------------------------------
@@ -2193,7 +2475,7 @@ class LinearSVM():
             # randomizing and permuting labels).
             # -----------------------------------------------------------------------------
             score, permutation_scores, pvalue = permutation_test_score(
-                                                    self.clf, self.cX, self.cy, 
+                                                    self.svc, self.cX, self.cy, 
                                                     scoring=scoring, 
                                                     cv=kfold, 
                                                     n_permutations=n_permutations, 
@@ -2213,32 +2495,538 @@ class LinearSVM():
             pl.legend()
             pl.xlabel('Score - %s' % scoring)
             
-            if self.clf.C == 1: Cstring = 'C1';
-            elif self.clf.C == 1E9: Cstring = 'bigC';
-            else: Cstring = 'C%i' % self.clf.C
+            if self.svc.C == 1: Cstring = 'C1';
+            elif self.svc.C == 1E9: Cstring = 'bigC';
+            else: Cstring = 'C%i' % self.svc.C
                 
-            label_figure(fig, data_identifier)
-            figname = 'cv_permutation_test_%s_%s_%i.png' % (Cstring, self.clfparams['cv_method'], self.clfparams['cv_nfolds'])            
-            pl.savefig(os.path.join(self.classifier_dir, 'figures', figname))
+            label_figure(fig, self.data_identifier)
+            if figname is None:
+                figname = 'cv_permutation_test_%s_%s_%i.png' % (Cstring, self.clfparams['cv_method'], self.clfparams['cv_nfolds'])       
+            print "CV permutations figure:", figname
+            if output_dir is not None:
+                pl.savefig(os.path.join(output_dir, figname))
+                pl.close()
+
+
+    def confusion_matrix(self, output_dir=None, figname=None):
+#        output_dir = os.path.join(self.classifier_dir, 'cv_model_selection')
+        
+        predicted, true, classes, config_labels = get_cv_folds(self.svc, self.clfparams, self.cX, self.cy, cy_labels=self.cy_labels, 
+                                                               output_dir=output_dir, data_id = self.data_id)
+        cv_confusion = plot_confusion_matrix_subplots(predicted, true, classes, cv_method=self.clfparams['cv_method'], 
+                                                      data_identifier=self.data_identifier, output_dir=output_dir, figname=figname)
+        self.cv_results['predicted_classes'] = predicted
+        self.cv_results['true_classes'] = true
+        self.cv_results['config_labels'] = config_labels
+        self.cv_results['confusion_matrix'] = cv_confusion
+
+#    def do_RFE(self, scoring='accuracy'):
+#        results_topN = iterate_RFE(self.clfparams, self.cX, self.cy, scoring=scoring, 
+#                                       output_dir=self.classifier_dir)
+#        plot_RFE_results(results_topN, len(self.class_labels), scoring=scoring, 
+#                                     data_identifier=self.data_identifier, 
+#                                     output_dir=self.classifier_dir)
+
+#    def get_clf_RFE(self):
+#        rfe_summary = {}
+#        #clf_key = os.path.split(self.classifier_dir)[-1]
+#        rfe_results = self.load_RFE_results()
+#        rfe_scores = np.array([np.mean(cv_scores) for ri, cv_scores in enumerate(rfe_results['results'])])
+#        best_iter = rfe_scores.argmax()
+#        kept_rids = rfe_results['kept_rids_by_iter'][best_iter-1]
+#        bestN = len(kept_rids)
+#        print ">>> RFE RESULTS:  Best score: %.2f" % rfe_scores.max(), "N rois: %i" % bestN
+#        print " --->", kept_rids
+#        rfe_summary = {'iter_ix': best_iter,
+#                       'kept_rids': kept_rids,
+#                       'max_score': rfe_scores.max()}
+#        return rfe_summary
+#        
+
+#    def load_RFE_results(self):
+#        
+#        found_rfe_results = sorted(glob.glob(os.path.join(self.classifier_dir, 'results', 'RFE*.pkl')), key=natural_keys)
+#        if len(found_rfe_results) == 0:
+#            print "No RFE results found in clf dir: %s" % self.classifier_dir
+#            self.do_RFE(scoring='accuracy')
+#        if len(found_rfe_results) > 1:
+#            for ri, rfe in enumerate(found_rfe_results):
+#                print ri, rfe
+#            sel = input("Select IDX of RFE results to use: ")
+#            rfe_fpath = found_rfe_results[sel]
+#        else:
+#            rfe_fpath = found_rfe_results[0]
+#        
+#        with open(rfe_fpath, 'rb') as f:
+#            rfe_results = pkl.load(f)
+#    
+#        return rfe_results
+
+    def train_classifier(self, full_train=False, test_size=0.2):
+        '''
+        Returns dict: traindata
+            'train_data': split (or full) cX input data
+            'train_labels': corresponding labels
+            'test_data':  subset of cX held out for validation (None, if full_train=True)
+            'test_labels': corresponding labels (None, if full_train=True)
+            'predicted': classifier predictions on held out test set (None, if full_train=True)
+            'results_by_config': classifier accuracy on test set, split by stim config (CV accuracy split by stim config, if full_train=True)
+            'results_by_class':  classifier accuracy on test set for trained labels (CV accuracy, if full_train=True)
+        '''
+        self.train_params['full_train'] = full_train
+        self.train_params['test_size'] = test_size
+        
+        if self.train_params['full_train']:
+            training_regime = 'trainfull'
+        else:
+            training_regime = 'trainpart_testsize%.2f' % self.train_params['test_size']
+        
+        
+        sdf = pd.DataFrame(self.sconfigs).T
+        if self.clfparams['class_subset'] == '':
+            classes = list(sdf[self.clfparams['class_name']].unique())
+        else:
+            classes = self.clfparams['class_subset']
+        print "----- ----- Training classifier on %i labels: %s" % (len(classes), str(classes))
+        
+        X_test = None; test_true=None; test_predicted=None;
+        traintest_results = {'by_class': {},
+                             'by_config': {}}
+
+        # Turn data and labels into dataframes to preserve indices:
+        cX = pd.DataFrame(self.cX)
+        cy = pd.Series(self.cy)
+        
+        if self.train_params['full_train']:
+            # Fit with data:
+            self.svc.fit(cX, cy)
+            
+            # Get CV results for trained labels:
+            for classix, classname in enumerate(classes):
+                ncorrect = self.cv_results['confusion_matrix'][classix,classix]
+                ntotal = np.sum(self.cv_results['confusion_matrix'][classix, :])
+                traintest_results['by_class'][classname] = float(ncorrect) / float(ntotal)
+            X_train = cX
+            train_true = cy
+            
+            # Split CV results by confg, since we don't have a held out test set:
+            traintest_by_config = self.split_cv_by_stimconfig()
+        else:
+            # Split input data into train/test sets:
+            X_train, X_test, train_true, test_true = train_test_split(cX, cy, test_size=self.train_params['test_size'], random_state=0, shuffle=True)
+            
+            # Fit with training set:
+            self.svc.fit(X_train, train_true)
+            
+            # Predict on test set:
+            test_predicted = self.svc.predict(X_test)
+            
+            # Get test accuracy for trained classes:
+            for classix, classname in enumerate(sorted(np.unique(test_true))):
+                # Use re-zero'ed indices of test_true to index into test_predicted, since test_true is indexed by original indices:
+                sample_ixs = np.array([i for i, orig_ix in enumerate(test_true.index.tolist()) if orig_ix in test_true[test_true==classname].index.tolist()])
+                curr_pred = test_predicted[sample_ixs]
+                ncorrect = np.sum([p==classname for p in curr_pred])
+                ntotal = len(sample_ixs)
+                traintest_results['by_class'][classname] = float(ncorrect) / float(ntotal)
+    
+            # Get test accuracy for trained classes, split by stimulus config:
+            all_configs = sorted(list(set(self.cy_labels)), key=natural_keys)
+            orig_ixs_testset = test_true.index.tolist()
+            test_labels_by_config = self.cy_labels[orig_ixs_testset]
+            # if not every stimulus config was covered in test set, just use CV accuracy for those:
+            missing_in_test = [cfg for cfg in all_configs if cfg not in list(set(test_labels_by_config))]
+            if len(missing_in_test) > 0:
+                cv_by_config = self.split_cv_by_stimconfig()
+            traintest_by_config = dict((cfg, {'ncorrect': [], 'ntotal': []}) for cfg in all_configs)
+            for cfg in all_configs:
+                if cfg in missing_in_test:
+                    traintest_by_config[cfg]['ncorrect'] = np.sum(cv_by_config[cfg]['ncorrect'])
+                    traintest_by_config[cfg]['ntotal'] = np.sum(cv_by_config[cfg]['ntotal'])
+                    traintest_by_config[cfg]['percent_correct'] = cv_by_config[cfg]['percent_correct']
+                else:
+                    curr_trials = np.where(test_labels_by_config==cfg)[0]
+                    trials_by_orig_ix = np.array([orig_ix for i, orig_ix in enumerate(test_true.index.tolist()) if i in curr_trials])
+                    curr_true_class = test_true[trials_by_orig_ix].unique()[0]
+                    curr_pred_class = test_predicted[curr_trials]
+                    traintest_by_config[cfg]['ncorrect'] = float(np.sum([p==curr_true_class for p in curr_pred_class]))
+                    traintest_by_config[cfg]['ntotal'] = float(len(curr_trials))
+                    traintest_by_config[cfg]['percent_correct'] = traintest_by_config[cfg]['ncorrect']  / traintest_by_config[cfg]['ntotal']
+            
+        traintest_results['by_config'] = traintest_by_config
+    
+    #    testdata = {'data': X_test, 'labels': test_true, 'predicted': test_predicted}
+        traindata = {'train_data': X_train, 
+                     'train_labels': train_true,
+                     'test_data': X_test,
+                     'test_labels': test_true,
+                     'predicted': test_predicted,
+                     'results_by_config': traintest_results['by_config'],
+                     'results_by_class': traintest_results['by_class'],
+                     'training_regime': training_regime}
+        
+        self.train_results = traindata
+        
+        return traindata
+    
+
+    def test_classifier(self, test_data=None, test_labels=None, config_labels=None, include_cv=False):
+        
+        if test_data is None:
+            test_results = copy.copy(self.train_results)
+        else:
+            test_results = {}
+            predicted_classes = self.svc.predict(test_data)
+            
+            # Get accuracy by CLASS:
+            tested_classes = list(set(test_labels))
+            test_by_class = dict((cfg, {}) for cfg in tested_classes)
+            for tested_class in tested_classes:
+                curr_trials = np.where(np.array(test_labels) == tested_class)[0]
+#                curr_predictions = predicted_classes[curr_trials]
+#                test_by_class[tested_class]['ncorrect'] = float(np.sum([p==tested_class for p in curr_predictions]))
+#                test_by_class[tested_class]['ntotal'] = float(len(curr_trials))
+                test_by_class[tested_class]['predicted'] = predicted_classes[curr_trials]
+                test_by_class[tested_class]['true'] = test_labels[curr_trials]
+                test_by_class[tested_class]['indices'] = curr_trials
+
+#                
+#                # Also add held-out set tested during training/validation:
+#                if self.train_params['full_train'] is False:
+#                    test_by_class[tested_class]['ncorrect'] += float(np.sum([p==tested_class for p in self.train_results['predicted']]))
+#                    test_by_class[tested_class]['ntotal'] += float(len(self.train_results['predicted']))
+
+#                test_by_class[tested_class]['percent_correct'] = test_by_class[tested_class]['ncorrect'] / test_by_class[tested_class]['ntotal'] 
+            
+            # Save results split by stimulus config:
+            tested_configs = sorted(list(set(config_labels)), key=natural_keys)
+            test_by_config = dict((cfg, {}) for cfg in tested_configs)
+            for cfg in tested_configs:
+                curr_trials = np.where(config_labels == cfg)[0]
+#                true_label = list(set([pred for pi, pred in enumerate(test_labels) if pi in curr_trials]))[0]
+#                curr_predictions = predicted_classes[curr_trials]                
+#                test_by_config[cfg]['ncorrect'] = float(np.sum([p==true_label for p in curr_predictions]))
+#                test_by_config[cfg]['ntotal'] = float(len(curr_trials))
+#                test_by_config[cfg]['percent_correct'] = test_by_config[cfg]['ncorrect']  / test_by_config[cfg]['ntotal']
+                test_by_config[cfg]['predicted'] = predicted_classes[curr_trials]
+                test_by_config[cfg]['true'] = test_labels[curr_trials]
+                test_by_config[cfg]['indices'] = curr_trials
+#            
+            if self.train_params['full_train'] and include_cv:
+                # Add held-out test set from cross-validation, if relevant:
+                train_configs = self.train_results['results_by_config'].keys()
+                for cfg in train_configs:
+                    if cfg not in test_by_config.keys():
+                        print "Adding training CV accuracy for untested cfg: %s" % cfg
+                        test_by_config[cfg] = self.train_results['results_by_config'][cfg]
+
+                #config_labels.extend(self.train_results['results_by_config'].keys())
+                
+            test_results = {'test_data': test_data,
+                            'test_labels': test_labels,
+                            'predicted_classes': predicted_classes,
+                            'results_by_config': test_by_config,
+                            'results_by_class': test_by_class,
+                            'config_labels': config_labels}
+            
+        self.test_results = test_results
+            
+        return test_results
+    
+
+    def split_cv_by_stimconfig(self):
+
+        # Also save CV results by config, if relevant:
+        trained_configs = list(set([cfg for sublist in self.cv_results['config_labels'] for cfg in sublist]))
+        cv_by_config = dict((cfg, {'ncorrect': [], 'ntotal': []}) for cfg in trained_configs)
+        for cfg in trained_configs:
+            for fold in range(len(self.cv_results['predicted_classes'])):
+                tested_ixs = np.where(self.cv_results['config_labels'][fold]==cfg)[0]
+                if len(tested_ixs)> 0:
+                    curr_true = self.cv_results['true_classes'][fold][tested_ixs]
+                    curr_pred = self.cv_results['predicted_classes'][fold][tested_ixs]
+                    curr_ncorrect = sum([tru==guess for tru, guess in zip(curr_true, curr_pred)])
+                    curr_ntotal = len(tested_ixs)
+                else:
+                    curr_ncorrect = 0
+                    curr_ntotal = 0
+                cv_by_config[cfg]['ncorrect'].append(curr_ncorrect)
+                cv_by_config[cfg]['ntotal'].append(curr_ntotal)
+            cv_by_config[cfg]['percent_correct'] = np.nanmean([float(corr)/float(tot) if tot > 0 else np.nan \
+                                                               for corr, tot in zip(cv_by_config[cfg]['ncorrect'], cv_by_config[cfg]['ntotal'])])
+        
+        return cv_by_config
+    
+    
+    
+    def get_classifier_accuracy_by_stimconfig(self, m50=53, m100=106, row_label=None, col_label=None, train_cv_append_labels=None,
+                                              output_dir=None, figname=None): # full_train=False, test_size=0.33):
+#        
+#        if output_dir is None:
+#            test_transforms_dir = os.path.join(self.classifier_dir, 'test_transforms')
+#            if not os.path.exists(test_transforms_dir): os.makedirs(test_transforms_dir)
+        sdf = pd.DataFrame(self.sconfigs).T 
+
+        if self.train_params['full_train']:
+            train_set = 'fulltrain'
+        else:
+            train_set = 'testsize%.2f' % self.train_params['test_size']
+        
+        
+        test_results_accuracy = self.convert_predictions_to_accuracy(m50=m50, m100=m100, train_cv_append_labels=train_cv_append_labels)
+        accuracy, counts = self.split_test_results_by_stimconfig(test_results_accuracy)
+        
+#        row_label = 'ypos'
+#        col_label = 'xpos'
+        if isinstance(accuracy.keys()[0], (float, int)):
+            if row_label is not None:
+                rvals = list(set(sdf[row_label]))
+            if col_label is not None:
+                cvals = list(set(sdf[col_label]))
+                
+                
+        accuracy_grid, counts_grid, config_grid = self.get_stimconfig_grid(accuracy, counts, row_label=row_label, col_label=col_label)
+        
+        # Plot PERFORMANCE:
+        ignore_row = False; ignore_column = False;
+        if isinstance(accuracy.keys()[0], (float, int)):
+            if col_label is not None:
+                colvals = sorted(list(sdf[col_label].unique()))
+                if len(colvals) == 1:
+                    ignore_column = True
+                else:
+                    ignore_column = False
+            if row_label is not None:
+                rowvals = sorted(list(sdf[row_label].unique()))
+                if len(rowvals) == 1:
+                    ignore_row = True
+                else:
+                    ignore_row = False
+            
+        if ignore_row:
+            colvals = sorted(list(set([stim for stim in accuracy.keys()])))
+            rowvals = np.ones((len(colvals),)) * rowvals[0]
+        if ignore_column:
+            rowvals = sorted(list(set([stim for stim in accuracy.keys()])))
+            colvals = np.ones((len(rowvals),)) * colvals[0]
+        else:
+            rowvals = sorted(list(set([stim[1] for stim in accuracy.keys()])))
+            colvals = sorted(list(set([stim[0] for stim in accuracy.keys()])))
+            
+        fig, axes = pl.subplots(1,2,figsize=(14,8)) #, sharey=True)
+        
+        chance_level = 1./len(self.class_labels)
+        
+        plot_transform_grid(accuracy_grid, rowvals=rowvals, colvals=colvals,
+                            ylabel=row_label, xlabel=col_label, cmap='hot', vmin=chance_level, vmax=1., 
+                            data_identifier=self.data_identifier, ax=axes[0])
+        plot_transform_grid(counts_grid, rowvals=rowvals, colvals=colvals,
+                            ylabel=row_label, xlabel=col_label, cmap='Blues_r', vmin=0, vmax=counts_grid.max(),
+                            data_identifier=self.data_identifier, ax=axes[1])
+        
+        label_figure(fig, self.data_identifier)
+        
+        if output_dir is not None:
+            if figname is None:
+                figname = 'test_transforms_performance_grid_%s_%i%s_%s.png' % (train_set, len(self.class_labels), self.clfparams['class_name'], self.data_id)
+            pl.savefig(os.path.join(output_dir, figname))
             pl.close()
+            
+        return accuracy_grid, counts_grid, config_grid
+    
+    def get_stimconfig_grid(self, accuracy, counts, row_label=None, col_label=None):
+        sdf = pd.DataFrame(self.sconfigs).T 
+        if self.clfparams['class_name'] == 'position':
+            # We actually train on stimconfig, and should be averaging across object ID (or orientation):
+            trans_types = ['position']
+        else:
+            #trans_types = [trans for trans in clf.run_info['trans_types'] if trans != self.clfparams['class_name']]
+            id_preserving_transforms = ['xpos', 'ypos', 'size', 'yrot']
+            true_trans_dict = dict((tkey, list(set(sdf[tkey]))) for tkey in id_preserving_transforms)
+            trans_types = [t for t,vals in true_trans_dict.items() if len(vals) > 1]
+            
+        if row_label is None or col_label is None:
+#            trans_types = [trans for trans in clf.run_info['trans_types'] if trans != clf.clfparams['class_name']]
 
+            if len(trans_types) > 0:
+                print "No row or column label specified. Found %i transform types: %s" % (len(trans_types), ', '.join(trans_types))
+                if len(trans_types) == 1:
+                    col_label = trans_types[0]
+                    row_label = None
+                elif len(trans_types) > 1:
+                    row_label = trans_types[0]
+                    col_label = trans_types[1]
+        
+        placehold = False
+        if col_label is not None:
+            colvals = sorted(list(sdf[col_label].unique()))
+        else:
+            colvals = [0]
+            placehold = True
+        if row_label is not None:
+            rowvals = sorted(list(sdf[row_label].unique()))
+        else:
+            rowvals = [0]
+            placehold = True
+            
+        print "COLUMNS: %s %s" % (col_label, str(colvals))
+        print "ROWS: %s %s" % (row_label, str(rowvals))
 
-    def confusion_matrix(self, data_identifier=''):
+        ncorrect_grid = np.zeros((len(rowvals), len(colvals))) #*np.nan
+        counts_grid = np.zeros((len(rowvals), len(colvals))) #*np.nan
+        config_grid = {}
+        grid_pairs = sorted(list(itertools.product(colvals, rowvals)), key=lambda x: (x[0], x[1]))
+        for trans_config in grid_pairs:
+            if placehold is True and not all([t in accuracy.keys() for t in trans_config]):
+                continue
+            if len(colvals) == 1:
+                if trans_config[1] not in accuracy.keys():
+                    continue
+                else:
+                    dict_key = trans_config[1]
+                    
+            elif len(rowvals) == 1:
+                if trans_config[0] not in accuracy.keys():
+                    continue
+                else:
+                    dict_key = trans_config[0]
+                    
+            elif (len(colvals) > 1 and len(rowvals) > 1):
+                if trans_config not in accuracy.keys():
+                    continue
+                else:
+                    dict_key = trans_config
+            
+            if 'position' in trans_types and isinstance(trans_config, str):
+                # Convert str to tuple for indexing:
+                trans_config = tuple([float(p) for p in dict_key.split('_')])
+                dict_key = trans_config
                 
-        predicted, true, classes, config_names = get_cv_folds(self.clf, self.clfparams, self.cX, self.cy, cy_labels=self.cy_labels, output_dir=self.classifier_dir)
-        plot_confusion_matrix_subplots(predicted, true, classes, cv_method=self.clfparams['cv_method'], 
-                                       data_identifier=data_identifier, output_dir=self.classifier_dir)
-        self.results['test'] = {'predicted': predicted,
-                                'true': true,
-                                'classes': classes,
-                                'config_names': config_names}
+                
+            rix = rowvals.index(trans_config[1])
+            cix = colvals.index(trans_config[0])
+            if placehold: # second trans_config value is fake
+                nc = accuracy[dict_key]
+                cc = counts[dict_key]
+            else:
+                nc = accuracy[dict_key]
+                cc = counts[dict_key]
+            
+            if np.isnan(nc): nc=0.
+            if np.isnan(cc): cc=0.
+                
+            if np.isnan(ncorrect_grid[rix, cix]):
+                ncorrect_grid[rix, cix] = nc #ncorrect[trans_config]
+                counts_grid[rix, cix] = cc #counts[trans_config]
+            else:
+                ncorrect_grid[rix, cix] += nc #ncorrect[trans_config] 
+                counts_grid[rix, cix] += cc #counts[trans_config]
+            config_grid[trans_config] = (rix, cix)
 
-    def do_RFE(self, scoring='accuracy', data_identifier=''):
-        results_topN = iterate_RFE(self.clfparams, self.cX, self.cy, scoring=scoring, 
-                                       output_dir=self.classifier_dir)
-        plot_RFE_results(results_topN, len(self.class_labels), scoring=scoring, 
-                                     data_identifier=data_identifier, 
-                                     output_dir=self.classifier_dir)
+        return ncorrect_grid, counts_grid, config_grid
+
+        
+    def split_test_results_by_stimconfig(self, test_results_accuracy):
+        sdf = pd.DataFrame(self.sconfigs).T 
+        if self.clfparams['class_name'] == 'position':
+            # We actually train on stimconfig, and should be averaging across object ID (or orientation):
+            trans_types = ['position']
+        else:
+            #trans_types = [trans for trans in self.run_info['trans_types'] if trans != self.clfparams['class_name']]
+            id_preserving_transforms = ['xpos', 'ypos', 'size', 'yrot']
+            true_trans_dict = dict((tkey, list(set(sdf[tkey]))) for tkey in id_preserving_transforms)
+            trans_types = [t for t,vals in true_trans_dict.items() if len(vals) > 1]
+            
+        print "Transform types:", trans_types
+        
+    
+        # Get TRAINED stimulus configs:
+        if self.clfparams['const_trans'] is not '':
+            # Trained on subset of configs:
+            transforms = dict((k, v) for k,v in  zip(self.clfparams['const_trans'], self.clfparams['trans_value']))
+            keys, values = zip(*transforms.items())
+            if isinstance(values[0], list):
+                trained_configs_list = [dict(zip(keys, v)) for v in itertools.product(*values)]
+            else:
+                values_list = [[v] for v in values]
+                trained_configs_list = [dict(zip(keys, v)) for v in itertools.product(*values_list)]
+        else:
+            # Trained on ALL configs:
+            transforms = dict((trans, list(sdf[trans].unique())) for trans in trans_types)
+            keys, values = zip(*transforms.items())
+            #values_flat = [val[0] for val in values]
+            trained_configs_list = [dict(zip(keys, v)) for v in itertools.product(*values)]
+        
+        train_transforms = [tuple(tdict.values()) for tdict in trained_configs_list if tdict not in self.clfparams['test_set']]
+        print "Current CLF trained on %i stim configs (%s)." % (len(train_transforms), ', '.join(trans_types))
+        
+        grouped_sdf = sdf.groupby(trans_types)
+        accuracy={}; counts={};
+        test_configs = [t for t in list(set(test_results_accuracy.keys())) if test_results_accuracy[t]['ntotal'] > 0]
+        for config, g in grouped_sdf:
+            if 'position' in trans_types:
+                # Convert str to tuple for indexing:
+                config = tuple([float(p) for p in config.split('_')])
+            print '%s: %i cfgs' % (str(config), len(g.index.tolist()))
+            # Get mean accuracy (averaged across cv folds) for included configs:
+            tmp_curr_configs = g.index.tolist()
+            curr_configs = [t for t in tmp_curr_configs if t in test_configs]
+            curr_scores = np.mean([test_results_accuracy[cfg]['percent_correct'] for cfg in curr_configs]) #g.index.tolist()])
+            curr_counts = np.sum([test_results_accuracy[cfg]['ntotal'] for cfg in curr_configs]) # g.index.tolist()])
+            accuracy[config] = curr_scores
+            counts[config] = curr_counts
+            #counts[config] = clf.train_results['train_labels']
+        
+        return accuracy, counts
+
+
+    def convert_predictions_to_accuracy(self, m50=53, m100=106, train_cv_append_labels=None):
+        sdf = pd.DataFrame(self.sconfigs).T
+        
+        test_by_config = self.test_results['results_by_config']
+        orig_configs = self.test_results['config_labels']
+        true_test_set = list(set(orig_configs))
+        tested_configs = sorted(list(set(orig_configs)), key=natural_keys)
+        if train_cv_append_labels is not None:
+            tested_configs.extend(train_cv_append_labels)
+            
+            
+        test_results_accuracy = dict((cfg, {}) for cfg in tested_configs)
+        for tested_config in tested_configs:
+            if self.clfparams['class_name'] == 'morphlevel':
+                if sdf.loc[tested_config]['morphlevel'] == m50:
+                    ncorrect = np.nan; ntotal=np.nan; pcorrect=np.nan;
+                else:
+                    if train_cv_append_labels is not None and tested_config not in true_test_set:
+                        # Dont' need to look for mimorphs and such:
+                        print "---- %s: Using average CV accuracy (innclude_cv was True)" % tested_config
+                        ncorrect = sum(test_by_config[tested_config]['ncorrect'])
+                        ntotal = sum(test_by_config[tested_config]['ntotal'])
+                        pcorrect = test_by_config[tested_config]['percent_correct']
+                    else:
+                        config_names_all = orig_configs[test_by_config[tested_config]['indices']]
+                        true_labels_all = np.array([sdf.loc[cfg]['morphlevel'] for cfg in config_names_all])
+                        #print "----- ----- excluding middle morphs (%i) to calculate accuracy." % m50
+                        excluding_midmorph_ixs = np.array([ti for ti, tvalue in enumerate(true_labels_all) if tvalue != m50])
+                        
+                        # Take only those tested samples that are NOT mid morphs so we can calculate %-correct:
+                        curr_preds = test_by_config[tested_config]['predicted'][excluding_midmorph_ixs]
+                        curr_trues = [0 if tl < m50 else m100 for tl in true_labels_all[excluding_midmorph_ixs]]
+                        ncorrect = sum([p==t for p, t in zip(curr_preds, curr_trues)])
+                        ntotal = len(excluding_midmorph_ixs)
+                        pcorrect = float(ncorrect) / float(ntotal)
+            else:
+                ncorrect = sum([p==t for p, t in zip(test_by_config[tested_config]['predicted'], test_by_config[tested_config]['true'])])
+                ntotal = len(test_by_config[tested_config]['indices'])
+                pcorrect = float(ncorrect) / float(ntotal)
+                
+            if not np.isnan(ntotal):
+                print "%s: Morph %i - %i, %i (%.2f)" % (tested_config, sdf.loc[tested_config]['morphlevel'], ncorrect, ntotal, pcorrect)
+            test_results_accuracy[tested_config] = {'ncorrect': ncorrect, 'ntotal': ntotal, 'percent_correct': pcorrect}
+            
+        return test_results_accuracy
+    
+        
     
 #%%
     

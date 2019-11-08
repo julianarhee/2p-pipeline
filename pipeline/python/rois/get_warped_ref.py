@@ -24,7 +24,7 @@ import pylab as pl
 import cPickle as pkl
 import tifffile as tf
 from scipy.ndimage import zoom
-from pipeline.python.utils import write_dict_to_json, get_tiff_paths, replace_root
+from pipeline.python.utils import write_dict_to_json, get_tiff_paths, replace_root, natural_keys
 from pipeline.python.rois.utils import save_roi_params
 
 def get_gradient(im):
@@ -41,8 +41,6 @@ def warp_images(img_list, ref, warp_mode=cv2.MOTION_HOMOGRAPHY, nprocs=1):
     height, width = img_list[0].shape
     
     # Allocate space for aligned image
-
-
 
     # Set the stopping criteria for the algorithm.
     criteria = (cv2.TERM_CRITERIA_EPS | cv2.TERM_CRITERIA_COUNT, 5000,  1e-6)
@@ -153,9 +151,15 @@ def convert_range(img, min_new=0.0, max_new=255.0):
     img_new = (img - img.min()) * ((max_new - min_new) / (img.max() - img.min())) + min_new
     return img_new
 
-def enhance_image_and_save(warped_mean, warped_mean_image_path, factor=2.0):
+def enhance_image_and_save(warped_mean, warped_mean_image_path, scale=True, factor=2.0):
     # Get brightness range - i.e. darkest and lightest pixels
     #img = np.array(Image.fromarray(warped_mean).convert("L"))
+    
+    d1, d2 = warped_mean.shape
+    if d1 != d2 and scale is True:
+        dim_r = max([d1, d2])
+        warped_mean = cv2.resize(warped_mean, (dim_r, dim_r))
+        
     img = convert_range(warped_mean)
     img = np.array(Image.fromarray(img).convert("L"))
     
@@ -174,7 +178,8 @@ def enhance_image_and_save(warped_mean, warped_mean_image_path, factor=2.0):
         
 
 
-def warp_runs_in_fov(acquisition_dir, roi_id, warp_threshold=0.7, enhance_factor=2.0, zproj='mean', 
+def warp_runs_in_fov(acquisition_dir, roi_id, stimtype=None, zproj='mean',
+                     warp_threshold=0.7, enhance_factor=2.0, scale=True, 
                      create_new=False, nprocs=1):
     
     # Load RID:
@@ -196,6 +201,7 @@ def warp_runs_in_fov(acquisition_dir, roi_id, warp_threshold=0.7, enhance_factor
         zproj_orig = zproj.split('_')[-1]
         print "ORIG zproj:", zproj_orig
     pid = str(re.search('processed(\d{3})', RID['PARAMS']['tiff_sourcedir']).group(0))
+    print "PID: %s" % pid
 
     if rootdir not in RID['DST']:
         RID['DST'] = replace_root(RID['DST'], rootdir, animalid, session) 
@@ -224,7 +230,7 @@ def warp_runs_in_fov(acquisition_dir, roi_id, warp_threshold=0.7, enhance_factor
                     final_ref = np.max(aligned_stack, axis=-1)
                 else:
                     print "Unknown zproj type: %s" % zproj
-                warped_mean = enhance_image_and_save(final_ref, warped_mean_image_path, factor=new_factor)
+                warped_mean = enhance_image_and_save(final_ref, warped_mean_image_path, scale=scale, factor=new_factor)
                 return warp_results
             else:
                 return warp_results #None
@@ -237,27 +243,60 @@ def warp_runs_in_fov(acquisition_dir, roi_id, warp_threshold=0.7, enhance_factor
     if create_new:
         primary_warp = cv2.MOTION_HOMOGRAPHY
         secondary_warp = cv2.MOTION_AFFINE
-        
-        # Get a list of ALL zproj images for all runs in acquisition:
-        img_paths = glob.glob(os.path.join(acquisition_dir, '*run*', 'processed', '%s*' % pid, \
+    
+        stack = [] # List of images to warp 
+       
+        # First check if std_images.tif already exists:
+        if stimtype is not None:
+            std_stack_paths = []
+            img_paths = []
+            for stim in stimtype:
+                # Only get zproj images for current stimtype:
+                curr_std_stack_paths = glob.glob(os.path.join(acquisition_dir, '%s_run*' % stim, 'processed', '%s*' % pid, 'mcorrected_*_%s_deinterleaved' % zproj_orig, 'std_images.tif'))
+                #print curr_std_stack_paths
+                curr_img_paths = sorted(glob.glob(os.path.join(acquisition_dir, '%s_run*' % stim, 'processed', '%s*' % pid, 'mcorrected_*_%s_deinterleaved' % zproj_orig, channel, 'File*', '*.tif')), key=natural_keys)
+                print channel
+                #print curr_img_paths
+                #print "TOTAL N IMAGES (across %s runs): %i" % (stim, len(img_paths))
+                std_stack_paths.extend(curr_std_stack_paths)
+                img_paths.extend(curr_img_paths)
+            print "TOTAL N IMAGES (across %i stim types): %i" % (len(stimtype), len(img_paths))
+
+        else:
+            std_stack_paths = glob.glob(os.path.join(acquisition_dir, '*run*', 'processed', '%s*' % pid, 'mcorrected_*_%s_deinterleaved' % zproj_orig, 'std_images.tif'))
+            # Get a list of ALL zproj images for all runs in acquisition:
+            img_paths = glob.glob(os.path.join(acquisition_dir, '*run*', 'processed', '%s*' % pid, \
                                            'mcorrected_*_%s_deinterleaved' % zproj_orig, channel,  'File*', '*.tif'))
-        nfiles_total = len(img_paths)
-        print "TOTAL N IMAGES (across all runs): %i" % nfiles_total
-        
-        # ---------------------------------------------------------------------
-        stack = []
-        for i,imgp in enumerate(img_paths):
-            img = tf.imread(imgp)
-            if len(img.shape) == 3:
-                std_img = np.empty((img.shape[1], img.shape[2]), dtype=img.dtype)
-                std_img[:] = np.std(img, axis=0)
-                tf.imsave(imgp, std_img)
-                stack.append(std_img)
-            else:
-                stack.append(img)
-        # ---------------------------------------------------------------------
-        
+            print "TOTAL N IMAGES (across all runs): %i" % len(img_paths)
+
+
+        load_each_image = True
+        if len(std_stack_paths) > 0:
+            print "Loading existing STD stack img."
+            load_each_image = False
+            for std_path in std_stack_paths:
+                std_stack = tf.imread(std_path)
+                stack.extend([std_stack[i, :, :] for i in range(std_stack.shape[0])])
+            
+        if load_each_image: 
+                   
+            # ---------------------------------------------------------------------
+            for i,imgp in enumerate(img_paths):
+                img = tf.imread(imgp)
+                if len(img.shape) == 3:
+                    std_img = np.empty((img.shape[1], img.shape[2]), dtype=img.dtype)
+                    std_img[:] = np.std(img, axis=0)
+                    tf.imsave(imgp, std_img)
+                    stack.append(std_img)
+                else:
+                    stack.append(img)
+            # ---------------------------------------------------------------------
+            
         # Select reference and warp each image to it:
+        print "------------------------------------------"
+        print "Warping %i zprojected images." % len(stack)
+        print "------------------------------------------"
+        nfiles_total = len(stack) 
         reference_ix = nfiles_total/2
         ref = stack[reference_ix]
         warps = warp_images(stack, ref=ref, warp_mode=primary_warp, nprocs=nprocs)
@@ -354,7 +393,7 @@ def warp_runs_in_fov(acquisition_dir, roi_id, warp_threshold=0.7, enhance_factor
     return warp_results
 
 
-
+#%%
 def extract_options(options):
     parser = optparse.OptionParser()
 
@@ -371,7 +410,7 @@ def extract_options(options):
                           default='', help='session dir (format: YYYMMDD_ANIMALID')
     parser.add_option('-A', '--acq', action='store', dest='acquisition',
                           default='FOV1', help="acquisition folder (ex: 'FOV1_zoom3x') [default: FOV1]")
-
+    parser.add_option('-s', '--stimtype', action='store', dest='stimtype', default=None, help='stim type over which to combine zproj warp')
 
     #parser.add_option('-R', '--run', dest='run', default='', action='store', help="run name")
     #parser.add_option('-p', '--pid', dest='pid', default='processed001', action='store', help="PID for all runs (default: processed001)")
@@ -384,6 +423,8 @@ def extract_options(options):
     parser.add_option('--new', action='store_true', dest='create_new', default=False, help="set flag if making warps anew")
     parser.add_option('-n', '--nproc', action='store', dest='nprocesses', default=1, help="N processes if running in par (default=1)")
     
+    parser.add_option('--orig', action='store_false', dest='scale', default=True, help="set flag to not scale image to be square")
+
     (options, args) = parser.parse_args(options)
     if options.slurm:
         options.rootdir = '/n/coxfs01/2p-data'
@@ -398,9 +439,16 @@ def get_roi_reference(options):
     roi_id = optsE.rid
     warp_threshold = float(optsE.warp_threshold)
     enhance_factor = float(optsE.enhance_factor)
-    
+    #stimtype = optsE.stimtype
+    if optsE.stimtype is not None:
+        stimtype = optsE.stimtype.split(',')
+        print("Warping all runs of stim type:", stimtype) 
+    else:
+        stimtype = optsE.stimtype
     warp_results = warp_runs_in_fov(acquisition_dir, roi_id, 
+                                        stimtype=stimtype,
                                         zproj=optsE.zproj,
+                                        scale=optsE.scale,
                                         warp_threshold=warp_threshold, 
                                         enhance_factor=enhance_factor,
                                         create_new=optsE.create_new,
