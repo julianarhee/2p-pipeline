@@ -3,6 +3,8 @@
 
 # In[1]:
 
+import matplotlib
+matplotlib.use('agg')
 
 import os
 import glob
@@ -246,11 +248,16 @@ def compare_experiments_responsivity(gdfs, response_type='dff', exp_names=[], ex
     
     # Fraction of cells:
     ax = axes[1]
+    print "RESP TYPE:", response_type 
     for exp_name in exp_names:
         print(exp_name)
         peak_values= [gdfs[exp_name].gdf.get_group(ri).groupby(['config']).mean()[response_type].max() \
                     for ri in gdfs[exp_name].gdf.groups]
+        peak_values = [p for p in peak_values if p != np.inf]
         #peak_values = gdfs[exp_name].gdf.max()[response_type].values
+        if len(peak_values) == 0:
+            continue
+        print peak_values
         weights = np.ones_like(peak_values) / float(len(event_rois))
         exp_str = '%s (%i)' % (exp_name, len(peak_values))
         sns.distplot(peak_values, label=exp_str, ax=ax, norm_hist=0, kde=False,
