@@ -1126,7 +1126,9 @@ def get_rolling_baseline(Xdf, window_size, quantile=0.08):
     #quantile = 0.08
     window_size = int(round(window_size))
     Fsmooth = Xdf.apply(rolling_quantile, args=(window_size, quantile))
-    Xdata = (Xdf - Fsmooth)
+    offset = Fsmooth.mean().mean()
+    print("drift offset:", offset)
+    Xdata = (Xdf - Fsmooth) #+ offset
     #Xdata = np.array(Xdata_tmp)
     
     return Xdata, Fsmooth

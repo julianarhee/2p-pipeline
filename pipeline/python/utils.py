@@ -109,10 +109,16 @@ def load_data(data_fpath, add_offset=True, make_equal=False):
     
     xdata_df = pd.DataFrame(dset['data'][:]) # neuropil-subtracted & detrended
     F0 = pd.DataFrame(dset['f0'][:]).mean().mean() # detrended offset
-    #neuropil_df = pd.concat(dfs['neuropil-detrended'], axis=0).reset_index(drop=True) #drop=True)
-    #neuropil_F0 = pd.concat(dfs['np_subtracted-F0'], axis=0).reset_index(drop=True).mean() #drop=True)
-
+    # paradigm.utils.get_rolling_baseline() - does/doesn't add mean offset of baseline back in after subtracting time-points of baseline from orig, so don't need to add this back in.
+    
+    # Need to add original data offset back to np-subtracted traces
     if add_offset:
+#        raw_fpath = soma_fpath.replace('np_subtracted', 'raw')
+#        rawdata = np.load(raw_fpath)
+#        raw_offset = pd.DataFrame(rawdata['f0'][:]).mean().mean() #+ pd.DataFrame(npdata['f0'][:])
+#        print("adding offset...", raw_offset)
+#        raw_traces = xdata_df + raw_offset #neuropil_df.mean(axis=0) #;+ F0 #neuropil_F0 + F0
+
         #% Add baseline offset back into raw traces:
         neuropil_fpath = soma_fpath.replace('np_subtracted', 'neuropil')
         npdata = np.load(neuropil_fpath)
@@ -120,7 +126,7 @@ def load_data(data_fpath, add_offset=True, make_equal=False):
         print("adding NP offset...")
         raw_traces = xdata_df + neuropil_df.mean(axis=0) + F0 #neuropil_F0 + F0
     else:
-        raw_traces = xdata_df + F0
+        raw_traces = xdata_df.copy() #+ F0
 
     labels = pd.DataFrame(data=dset['labels_data'], columns=dset['labels_columns'])
     
