@@ -11,7 +11,8 @@ import h5py
 import copy
 import cv2
 import imutils
-
+import itertools
+import time
 import numpy as np
 import pandas as pd
 import pylab as pl
@@ -25,21 +26,17 @@ from pipeline.python.classifications import responsivity_stats as rstats
 from pipeline.python.utils import label_figure, natural_keys, convert_range
 from pipeline.python.retinotopy import convert_coords as coor
 from pipeline.python.retinotopy import fit_2d_rfs as fitrf
-from matplotlib.patches import Ellipse, Rectangle
 
+from matplotlib.patches import Ellipse, Rectangle, Polygon
 from shapely.geometry.point import Point
+from shapely.geometry import box
 from shapely import affinity
-from matplotlib.patches import Polygon
 
 from matplotlib.ticker import FormatStrFormatter
 from matplotlib.ticker import MaxNLocator
 
-from shapely.geometry import box
-
-
 import matplotlib_venn as mpvenn
-import itertools
-import time
+
 import multiprocessing as mp
 
 #%%

@@ -435,8 +435,18 @@ def aggregate_experiment_runs(animalid, session, fov, experiment, traceid='trace
             windowsize = window_size_sec*framerate
                 
             for trace_type in trace_types:
-                # Load raw traces and detrend
+                print("... processing trace type: %s" % trace_type)
+                # Load raw traces and detrend within .tif file
                 df = pd.DataFrame(fdata['traces'][trace_type][:])
+
+                # If trace_type is np_subtracted, need to add original offset back in, first.
+                # np_subtracted traces are created in traces/get_traces.py, without offset added.
+                #if trace_type == 'np_subtracted':
+                #    print "Adding offset for np_subtracted traces"
+                #    orig_offset = pd.DataFrame(fdata['traces']['raw'][:]).mean.mean()
+                #    df = df + orig_offset
+
+                # Remove rolling baseline, return detrended traces with offset added back in? 
                 detrended_df, F0_df = putils.get_rolling_baseline(df, windowsize, quantile=quantile)
                 print "Showing initial drift correction (quantile: %.2f)" % quantile
                 print "Min value for all ROIs:", np.min(np.min(detrended_df, axis=0))
