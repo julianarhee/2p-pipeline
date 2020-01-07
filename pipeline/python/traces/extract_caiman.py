@@ -93,7 +93,7 @@ def extract_options(options):
 
     return options
 
-def caiman_params(fnames, **kwargs):
+def caiman_params(fnames, kwargs=None):
     # dataset dependent parameters
     fr = 44.65                             # imaging rate in frames per second
     decay_time = 0.4                    # length of a typical transient in seconds
@@ -246,7 +246,7 @@ def get_file_paths(results_dir, mm_prefix='Yr'):
 def get_full_memmap_path(results_dir, mm_prefix='Yr'):
     print("Getting full mmap path for prefix: %s" % mm_prefix)
     print("-- dir: %s" % results_dir)
-    print glob.glob(os.path.join(results_dir, 'memmap', '*%s*.mmap'))
+    print(glob.glob(os.path.join(results_dir, 'memmap', '*%s*.mmap')))
     fname_new = glob.glob(os.path.join(results_dir, 'memmap', '*%s*_d*_.mmap' % mm_prefix))[0]
     mm_prefix = os.path.splitext(os.path.split(fname_new)[-1])[0].split('_d1_')[0]
     print("CORRECTED PREFIX: %s" % mm_prefix)
@@ -324,11 +324,11 @@ def run_cnmf_seeded(animalid, session, fov, experiment='', traceid='traces001', 
     print("--> Elapsed time: {0:.2f}sec".format(end_t))
     print("A:", cnm.estimates.A.shape)
 
-    Cn = cm.local_correlations(images.transpose(1,2,0))
-    fig = pl.figure()
-    pl.imshow(Cn, cmap='gray')
-    pl.savefig(os.path.join(results_dir, '%s_Cn.png' % prefix))
-    pl.close()
+    #Cn = cm.local_correlations(images.transpose(1,2,0))
+    #fig = pl.figure()
+    #pl.imshow(Cn, cmap='gray')
+    #pl.savefig(os.path.join(results_dir, '%s_Cn.png' % prefix))
+    #pl.close()
    
     # Evaluate components 
     print("Evaluatnig components...")
@@ -359,7 +359,7 @@ def run_cnmf_seeded(animalid, session, fov, experiment='', traceid='traces001', 
     quantileMin = 10 # 8
     frames_window_sec = 30.
     if 'downsample' in mm_prefix:
-        ds_factor = float(mm_prefix.split('downsample-')[-1]) #opts.init['tsub']
+        ds_factor = float(mm_prefix.split('downsample-')[-1].split('-')[0]) #opts.init['tsub']
     else:
         ds_factor = float(opts.init['tsub'])
     fr = float(opts.data['fr'])
@@ -540,7 +540,8 @@ def run_cnmf_patches(animalid, session, fov, experiment='', traceid='traces001',
     quantileMin = 10 # 8
     frames_window_sec = 30.
     if 'downsample' in mm_prefix:
-        ds_factor = float(mm_prefix.split('downsample-')[-1]) #opts.init['tsub']
+        ds_factor = float(mm_prefix.split('downsample-')[-1].split('-')[0]) #opts.init['tsub']
+        #ds_factor = float(mm_prefix.split('downsample-')[-1]) #opts.init['tsub']
     else:
         ds_factor = float(opts.init['tsub'])
     fr = float(opts.data['fr'])
