@@ -12,6 +12,7 @@ import optparse
 import re
 import shutil
 import sys
+from pipeline.python.utils import natural_keys
 
 def extract_options(options):
     
@@ -35,7 +36,8 @@ options = ['-i', 'JC089', '-S', '20190520']
 def main(options):
         
     optsE = extract_options(options)
-    
+   
+    # Get all FOVs in session: 
     session_dir = os.path.join(optsE.rootdir, optsE.animalid, optsE.session)
     fovs = glob.glob(os.path.join(session_dir, 'FOV*'))
     print("[%s - %s] Found %i FOVs." % (optsE.animalid, optsE.session, len(fovs)))
@@ -46,15 +48,29 @@ def main(options):
     assert os.path.exists(raw_paradigm_dir), "No raw paradigm files found! Did you transfer the files?"
     
     for fov in fovs:
-        fov_num = int(re.search("FOV\d{1}", fov).group()[-1])
+        # Get all runs in current acquisition ('run'):
+        fov_num = int(re.search("FOV\d{1}", fov).group()[-1]) 
         all_runs = [os.path.split(runpath)[-1] for runpath in glob.glob(os.path.join(fov, '*run*'))]
+        # Get experiment types:
         experiment_types = list(set([r.split('_')[0] for r in all_runs]))
         print("Found %i experiment types:" % len(experiment_types))
         for exp in experiment_types:
+            #if 'blobs' in exp:
+            #    continue
             print "- [FOV%i] organizing runs: %s" % (fov_num, exp)
-            curr_runs = glob.glob(os.path.join(fov, '%s_run*' % exp))
-            for run_dir in curr_runs:
-                run_num = int(re.search("_run\d{1}", run_dir).group()[-1])
+            curr_runs = sorted(glob.glob(os.path.join(fov, '%s_run*' % exp)), key=natural_keys)
+            # Get number of runs:
+            nruns = len(curr_runs) 
+            for ri, run_dir in enumerate(curr_runs):
+                if ri >=9: #10:
+                    run_num = int(re.search("_run\d{1,2}", run_dir).group()[-1])
+                else:
+                    try:
+                        run_num = int(re.search("_run\d{1}", run_dir).group()[-1])
+                    except Exception as e:
+                        print("... error IDing run num: %s\n... trying 2d" % run_dir)
+                        run_num = int(re.search("_run\d{1,2}", run_dir).group()[-1])
+                print("... ... run: %i" % run_num) 
                 dest_paradigm_dir = os.path.join(run_dir, 'raw', 'paradigm_files')
                 dest_eyetracker_dir = os.path.join(run_dir, 'raw', 'eyetracker_files')
                 if not os.path.exists(dest_paradigm_dir):
