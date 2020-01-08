@@ -76,13 +76,14 @@ def extract_options(options):
                       dest="ds_factor", default=5, help="Downsample factor (int, default: 5)")
 
     parser.add_option('--destdir', action="store",
-                      dest="destdir", default='/n/scratchlfs/cox_lab/julianarhee/downsampled', help="output dir for movie files [default: /n/scratchlfs/cox_lab/julianarhee/downsampled]")
+                      dest="destdir", default='/n/scratchlfs02/cox_lab/julianarhee/downsampled', help="output dir for movie files [default: /n/scratchlfs/cox_lab/julianarhee/downsampled]")
     parser.add_option('--plot', action='store_true', dest='plot_rois', default=False, help="set to plot results of each roi's analysis")
     parser.add_option('--processed', action='store_false', dest='use_raw', default=True, help="set to downsample on non-raw source")
 
     parser.add_option('--new', action='store_true', dest='create_new', default=False, help="Set to downsample and motion correct anew")
     parser.add_option('--motion', action='store_true', dest='do_motion', default=False, help="Set to do motion correction")
     parser.add_option('--downsample', action='store_true', dest='do_downsample', default=False, help="Set to temporally downsample tifs before caiman memmap and MC")
+    parser.add_option('--memmap', action='store_true', dest='do_memmap', default=False, help="Set to do memmap only (assumes prev MC-corrected)")
 
     parser.add_option('--prefix', action="store",
                       dest="prefix", default='Yr', help="Prefix for memmapped files [default: Yr]")
@@ -265,6 +266,48 @@ def get_full_memmap_path(results_dir, prefix='Yr'):
     return fname_new
 
 
+def do_memmap_no_mc(animalid, session, fov, run_label='res', base_name='Yr', resize_fact=(1, 1, 1), remove_init=0,
+                    add_to_movie=0., border_to_0=0, dview=None, rootdir='/n/coxfs01/2p-data', n_processes=8):
+    fovdir = os.path.join(rootdir, animalid, session, fov)
+    results_dir = os.path.join(fovdir, 'caiman_results', run_label)
+
+    if not os.path.exists(results_dir):
+        os.makedirs(results_dir)
+
+    start_t = time.time()
+    #%% start a cluster for parallel processing
+    # (if a cluster already exists it will be closed and a new session will be opened)
+    if 'dview' in locals():
+        cm.stop_server(dview=dview)
+    c, dview, n_processes = cm.cluster.setup_cluster(
+        backend='local', n_processes=n_processes, single_thread=False)
+
+    srcfiles = sorted(glob.glob(os.path.join(fovdir, '%s_*' % run_label, 'processed', 'processed001*', '*mcorrected_*', 'fov*.tif')), key=natural_keys)
+    print("Found %i previously corrected src files to memmap." % len(srcfiles))
+
+    mmapdir = os.path.join(results_dir, 'memmap')
+    prefix = base_name
+    base_name = '%s/%s' % (mmapdir, prefix)
+ 
+    fname_tot = cm.save_memmap(srcfiles, base_name=base_name, resize_fact=resize_fact,
+                            remove_init=remove_init, add_to_movie=add_to_movie, border_to_0=border_to_0,
+                            dview=dview)
+
+    end_t = time.time() - start_t
+    print("... MMAP total - Elapsed time: {0:.2f}sec".format(end_t))
+
+    # Also save params as json 
+    if 'downsample' in prefix:
+        ds_fact = int(prefix.split('downsample-')[-1])
+        resize_fact = (1, 1, 1./ds_fact)
+    else:
+        resize_fact = (1, 1, 1)
+    save_memmap_params(results_dir, resize_fact=resize_fact, add_to_movie=mc.min_mov, 
+                   border_to_0=mc.border_to_0, fnames=mc.fname, prefix=prefix)
+    print("--- saved MC params to JSON")
+    print("PREFIX: %s" % prefix)
+
+    return fname_tot
 
 def do_motion_correction(animalid, session, fov, run_label='res', srcdir='/tmp', rootdir='/n/coxfs01/2p-data', n_processes=None, prefix=None, save_total=True, opts_kws=None):
     if srcdir is None:
@@ -285,7 +328,7 @@ def do_motion_correction(animalid, session, fov, run_label='res', srcdir='/tmp',
         memfiles = glob.glob(os.path.join(srcdir, '*_.mmap'))
         if len(fnames) == len(memfiles):
             print("... Found %i existing MC memmaped files. Skipping memmap step." % len(memfiles))
-            dco_memmap = False
+            do_memmap = False
         else:
             do_memmap = True
 
@@ -373,6 +416,7 @@ def main(options):
     do_motion = opts.do_motion
     prefix = opts.prefix
     do_downsample = opts.do_downsample
+    do_memmap = opts.do_memmap
 
     outdir = None
     if do_downsample:
@@ -388,6 +432,12 @@ def main(options):
 
         print("--- finished motion correction ----")
         #print("All results saved to: %s" % results_dir)
+
+    elif do_memmap:
+        fname_tot = do_memmap_no_mc(animalid, session, fov, run_label=experiment, base_name=prefix, resize_fact=(1, 1, 1), remove_init=0,
+                                    add_to_movie=0., border_to_0=0, dview=None, rootdir='/n/coxfs01/2p-data')
+
+        print("---- finished memmapping previously MC files")
 
 if __name__=='__main__':
     mp.freeze_support()
