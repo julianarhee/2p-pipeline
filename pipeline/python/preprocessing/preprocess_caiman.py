@@ -155,7 +155,7 @@ def caiman_params(fnames, **kwargs):
                 'cnn_lowest': cnn_lowest}
 
    
-    if kwargs is not None:
+    if kwargs is not None and kwargs != {}:
         for k, v in kwargs.iteritems():
             opts_dict.update({k: v})
             print("... updating opt %s to value %s" % (k, str(v)))
@@ -313,20 +313,21 @@ def do_memmap_no_mc(animalid, session, fov, run_label='res', base_name='Yr', res
     return fname_tot
 
 def do_motion_correction(animalid, session, fov, run_label='res', srcdir='/tmp', rootdir='/n/coxfs01/2p-data', n_processes=None, prefix=None, save_total=True, opts_kws=None):
+    if prefix is None:
+        prefix = ''
+    source_key = '-'.join([animalid, session, fov, run_label, prefix])
+
     if srcdir is None:
         fnames = glob.glob(os.path.join(rootdir, animalid, session, fov, '%s_run*' % run_label, 'raw*', '*.tif'))
         print("No sourcedir provided. Found %i .tif files to process." % len(fnames))
         do_memmap=True
-        if prefix is None:
-            prefix = ''
-        source_key = '-'.join([animalid, session, fov, run_label, prefix])
     else:
         fnames = glob.glob(os.path.join(srcdir, '*.tif')) 
         fnames = sorted(fnames, key=natural_keys)
         print("Found %i movies." % len(fnames))
 
         # Check for existing memmaped/processed files
-        source_key = os.path.split(srcdir)[-1]
+        #source_key = os.path.split(srcdir)[-1]
         print("... Checking for existing processed mmaps in src: %s" % source_key)
         memfiles = glob.glob(os.path.join(srcdir, '*_.mmap'))
         if len(fnames) == len(memfiles):
@@ -357,12 +358,12 @@ def do_motion_correction(animalid, session, fov, run_label='res', srcdir='/tmp',
     c, dview, n_processes = cm.cluster.setup_cluster(
         backend='local', n_processes=n_processes, single_thread=False)
 
-
+    print('opts:', opts_kws)
     #mc = load_mc_results(results_dir, prefix=prefix)
     if do_memmap:
         print("Creating memmapped files and motion-correcting...")
         start_t = time.time()
-        opts = caiman_params(fnames, opts_kws)
+        opts = caiman_params(fnames, **opts_kws)
 
         # first we create a motion correction object with the parameters specified
         mc = MotionCorrect(fnames, dview=dview, **opts.get_group('motion'))
@@ -427,21 +428,25 @@ def main(options):
         outdir = preproc.downsample_experiment_movies(animalid, session, fov, experiment=experiment,
                                 ds_factor=ds_factor, destdir=destdir, use_raw=use_raw, n_processes=n_processes, create_new=create_new) 
         srcdir = outdir
-
-    print("[Downsampling] Complete!")
-    print("... all movies saved to:\n... %s" % outdir)
+        print("[Downsampling] Complete!")
+        print("... all movies saved to:\n... %s" % outdir)
 
 
     if do_motion:
+        print("[Motion correction] Starting...")
         if srcdir is None:
-            srctifs = sorted(glob.glob(os.path.join(rootdir, animalid, session, fov, '%s_*' % experiment, 'raw_*', '*.tif')), key=natural_keys)
+            srctifs = glob.glob(os.path.join(rootdir, animalid, session, fov, '%s_*' % experiment, 'raw_*', '*.tif'))
+            #print(srctifs)
             srcdir = os.path.split(srctifs[0])[0]
+        print("... src: %s" % srcdir)
+
         prefix = do_motion_correction(animalid, session, fov, run_label=experiment, srcdir=srcdir, rootdir=rootdir, n_processes=n_processes, prefix=prefix, opts_kws=c_args)
 
         print("--- finished motion correction ----")
         #print("All results saved to: %s" % results_dir)
 
     elif do_memmap:
+        print("[Memmap] Starting...")
         fname_tot = do_memmap_no_mc(animalid, session, fov, run_label=experiment, base_name=prefix, resize_fact=(1, 1, 1), remove_init=0, srcdir=srcdir,
                                     add_to_movie=0., border_to_0=0, dview=None, rootdir='/n/coxfs01/2p-data')
 
