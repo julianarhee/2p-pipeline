@@ -282,7 +282,10 @@ def do_memmap_no_mc(animalid, session, fov, run_label='res', base_name='Yr', res
     c, dview, n_processes = cm.cluster.setup_cluster(
         backend='local', n_processes=n_processes, single_thread=False)
 
-    srcfiles = sorted(glob.glob(os.path.join(fovdir, '%s_*' % run_label, 'processed', 'processed001*', '*mcorrected_*', 'fov*.tif')), key=natural_keys)
+    if srcdir is None:
+        srcfiles = sorted(glob.glob(os.path.join(fovdir, '%s_*' % run_label, 'processed', 'processed001*', '*mcorrected_*', 'fov*.tif')), key=natural_keys)
+    else:
+        srcfiles = sorted(glob.glob(os.path.join(srcdir, '*.tif')), key=natural_keys)
     print("Found %i previously corrected src files to memmap." % len(srcfiles))
 
     mmapdir = os.path.join(results_dir, 'memmap')
@@ -418,23 +421,28 @@ def main(options):
     do_downsample = opts.do_downsample
     do_memmap = opts.do_memmap
 
+    srcdir = None
     outdir = None
     if do_downsample:
         outdir = preproc.downsample_experiment_movies(animalid, session, fov, experiment=experiment,
                                 ds_factor=ds_factor, destdir=destdir, use_raw=use_raw, n_processes=n_processes, create_new=create_new) 
-    
+        srcdir = outdir
+
     print("[Downsampling] Complete!")
     print("... all movies saved to:\n... %s" % outdir)
 
 
     if do_motion:
-        prefix = do_motion_correction(animalid, session, fov, run_label=experiment, srcdir=outdir, rootdir=rootdir, n_processes=n_processes, prefix=prefix, opts_kws=c_args)
+        if srcdir is None:
+            srctifs = sorted(glob.glob(os.path.join(rootdir, animalid, session, fov, '%s_*' % experiment, 'raw_*', '*.tif')), key=natural_keys)
+            srcdir = os.path.split(srctifs[0])[0]
+        prefix = do_motion_correction(animalid, session, fov, run_label=experiment, srcdir=srcdir, rootdir=rootdir, n_processes=n_processes, prefix=prefix, opts_kws=c_args)
 
         print("--- finished motion correction ----")
         #print("All results saved to: %s" % results_dir)
 
     elif do_memmap:
-        fname_tot = do_memmap_no_mc(animalid, session, fov, run_label=experiment, base_name=prefix, resize_fact=(1, 1, 1), remove_init=0,
+        fname_tot = do_memmap_no_mc(animalid, session, fov, run_label=experiment, base_name=prefix, resize_fact=(1, 1, 1), remove_init=0, srcdir=srcdir,
                                     add_to_movie=0., border_to_0=0, dview=None, rootdir='/n/coxfs01/2p-data')
 
         print("---- finished memmapping previously MC files")
