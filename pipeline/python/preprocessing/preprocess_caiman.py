@@ -266,7 +266,7 @@ def get_full_memmap_path(results_dir, prefix='Yr'):
     return fname_new
 
 
-def do_memmap_no_mc(animalid, session, fov, run_label='res', base_name='Yr', resize_fact=(1, 1, 1), remove_init=0,
+def do_memmap_no_mc(animalid, session, fov, run_label='res', base_name='Yr', resize_fact=(1, 1, 1), remove_init=0, srcdir=None,
                     add_to_movie=0., border_to_0=0, dview=None, rootdir='/n/coxfs01/2p-data', n_processes=8):
     fovdir = os.path.join(rootdir, animalid, session, fov)
     results_dir = os.path.join(fovdir, 'caiman_results', run_label)
@@ -312,24 +312,23 @@ def do_memmap_no_mc(animalid, session, fov, run_label='res', base_name='Yr', res
 
     return fname_tot
 
-def do_motion_correction(animalid, session, fov, run_label='res', srcdir='/tmp', rootdir='/n/coxfs01/2p-data', n_processes=None, prefix=None, save_total=True, opts_kws=None):
+def do_motion_correction(animalid, session, fov, run_label='res', srcdir=None, rootdir='/n/coxfs01/2p-data', n_processes=None, prefix=None, save_total=True, opts_kws=None):
     if prefix is None:
         prefix = ''
     source_key = '-'.join([animalid, session, fov, run_label, prefix])
 
     if srcdir is None:
-        fnames = glob.glob(os.path.join(rootdir, animalid, session, fov, '%s_run*' % run_label, 'raw*', '*.tif'))
+        fnames = sorted(glob.glob(os.path.join(rootdir, animalid, session, fov, '%s_run*' % run_label, 'raw*', '*.tif')), key=natural_keys)
         print("No sourcedir provided. Found %i .tif files to process." % len(fnames))
         do_memmap=True
     else:
-        fnames = glob.glob(os.path.join(srcdir, '*.tif')) 
-        fnames = sorted(fnames, key=natural_keys)
+        fnames = sorted(glob.glob(os.path.join(srcdir, '*.tif')), key=natural_keys)
         print("Found %i movies." % len(fnames))
 
         # Check for existing memmaped/processed files
         #source_key = os.path.split(srcdir)[-1]
         print("... Checking for existing processed mmaps in src: %s" % source_key)
-        memfiles = glob.glob(os.path.join(srcdir, '*_.mmap'))
+        memfiles = sorted(glob.glob(os.path.join(srcdir, '*_.mmap')), key=natural_keys)
         if len(fnames) == len(memfiles):
             print("... Found %i existing MC memmaped files. Skipping memmap step." % len(memfiles))
             do_memmap = False
@@ -434,12 +433,11 @@ def main(options):
 
     if do_motion:
         print("[Motion correction] Starting...")
-        if srcdir is None:
-            srctifs = glob.glob(os.path.join(rootdir, animalid, session, fov, '%s_*' % experiment, 'raw_*', '*.tif'))
-            #print(srctifs)
-            srcdir = os.path.split(srctifs[0])[0]
+        #if srcdir is None:
+        #    srctifs = glob.glob(os.path.join(rootdir, animalid, session, fov, '%s_*' % experiment, 'raw_*', '*.tif'))
+            #srcdir = os.path.split(srctifs[0])[0]
         print("... src: %s" % srcdir)
-
+        
         prefix = do_motion_correction(animalid, session, fov, run_label=experiment, srcdir=srcdir, rootdir=rootdir, n_processes=n_processes, prefix=prefix, opts_kws=c_args)
 
         print("--- finished motion correction ----")
