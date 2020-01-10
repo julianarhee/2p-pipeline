@@ -239,8 +239,9 @@ def save_mc_results(mc, results_dir, prefix='Yr'):
 
 def load_mc_results(results_dir, mc, prefix='Yr'):
     try:
-        mc_results = np.load(os.path.join(results_dir, '%s_mc-rigid.npz' % prefix))
+        res = np.load(os.path.join(results_dir, '%s_mc-rigid.npz' % prefix), allow_pickle=True)
         #mc = mc_results[mc] 
+        print(list(res.keys()))
         mc.fname = res['fname']
         mc.max_shifts = res['max_shifts']
         mc.min_mov = res['min_mov']
@@ -248,19 +249,23 @@ def load_mc_results(results_dir, mc, prefix='Yr'):
         mc.fname_tot_rig = res['fname_tot_rig']
         mc.total_template_rig = res['total_template_rig']
         mc.templates_rig = res['templates_rig']
-        mc.shifts_rig = res['mc_shifts_rig']
+        mc.shifts_rig = res['shifts_rig']
         mc.mmap_file = res['mmap_file']
         mc.border_to_0 = res['border_to_0']
         mc.gSig_filt = res['gSig_filt']
 
     except Exception as e:
+        print(e)
+        print("Error loading MC")
         return None
 
     return mc 
 
-def get_full_memmap_path(results_dir, prefix='Yr'):
+def get_full_memmap_path(results_dir, framestr='order_C_frames', prefix='Yr'):
     try:
-        fname_new = glob.glob(os.path.join(results_dir, 'memmap', '*%s*_d*_.mmap' % prefix))[0]
+        fname_new = glob.glob(os.path.join(results_dir, 'memmap', '*%s*_d*%s*_.mmap' % (prefix, framestr)))
+        assert len(fname_new)==1, "Unique fname_new not found: %s" % str(fname_new)
+        fname_new = fname_new[0] 
     except Exception as e:
         return None
     return fname_new
@@ -283,7 +288,10 @@ def do_memmap_no_mc(animalid, session, fov, run_label='res', base_name='Yr', res
         backend='local', n_processes=n_processes, single_thread=False)
 
     if srcdir is None:
-        srcfiles = sorted(glob.glob(os.path.join(fovdir, '%s_*' % run_label, 'processed', 'processed001*', '*mcorrected_*', 'fov*.tif')), key=natural_keys)
+        if 'run' in run_label:
+            srcfiles = sorted(glob.glob(os.path.join(fovdir, '%s*' % run_label, 'processed', 'processed001*', '*mcorrected_*', 'fov*.tif')), key=natural_keys)
+        else:
+            srcfiles = sorted(glob.glob(os.path.join(fovdir, '%s_*' % run_label, 'processed', 'processed001*', '*mcorrected_*', 'fov*.tif')), key=natural_keys)
     else:
         srcfiles = sorted(glob.glob(os.path.join(srcdir, '*.tif')), key=natural_keys)
     print("Found %i previously corrected src files to memmap." % len(srcfiles))
@@ -306,95 +314,108 @@ def do_memmap_no_mc(animalid, session, fov, run_label='res', base_name='Yr', res
     else:
         resize_fact = (1, 1, 1)
     save_memmap_params(results_dir, resize_fact=resize_fact, add_to_movie=mc.min_mov, 
-                   border_to_0=mc.border_to_0, fnames=mc.fname, prefix=prefix)
+                   uorder_to_0=mc.border_to_0, fnames=mc.fname, prefix=prefix)
     print("--- saved MC params to JSON")
     print("PREFIX: %s" % prefix)
 
     return fname_tot
 
 def do_motion_correction(animalid, session, fov, run_label='res', srcdir=None, rootdir='/n/coxfs01/2p-data', n_processes=None, prefix=None, save_total=True, opts_kws=None):
-    if prefix is None:
-        prefix = ''
+
     source_key = '-'.join([animalid, session, fov, run_label, prefix])
-
-    if srcdir is None:
-        fnames = sorted(glob.glob(os.path.join(rootdir, animalid, session, fov, '%s_run*' % run_label, 'raw*', '*.tif')), key=natural_keys)
-        print("No sourcedir provided. Found %i .tif files to process." % len(fnames))
-        do_memmap=True
-    else:
-        fnames = sorted(glob.glob(os.path.join(srcdir, '*.tif')), key=natural_keys)
-        print("Found %i movies." % len(fnames))
-
-        # Check for existing memmaped/processed files
-        #source_key = os.path.split(srcdir)[-1]
-        print("... Checking for existing processed mmaps in src: %s" % source_key)
-        memfiles = sorted(glob.glob(os.path.join(srcdir, '*_.mmap')), key=natural_keys)
-        if len(fnames) == len(memfiles):
-            print("... Found %i existing MC memmaped files. Skipping memmap step." % len(memfiles))
-            do_memmap = False
-        else:
-            do_memmap = True
-
-
     data_identifier = '|'.join([animalid, session, fov, run_label])
     print("*** Dataset: %s ***" % data_identifier)
     
-    #%%
+    #%% Create output dirs
     fovdir = os.path.join(rootdir, animalid, session, fov)
     results_dir = os.path.join(fovdir, 'caiman_results', run_label)
     if not os.path.exists(results_dir):
         os.makedirs(results_dir)
-    if prefix is not None and prefix not in source_key:
+    if not os.path.exists(os.path.join(results_dir, 'memmap')):
+        os.makedirs(os.path.join(results_dir, 'memmap'))
+
+    # Get input source
+    if prefix is None:
+        prefix = ''
+    if prefix not in source_key:
         prefix = '%s_%s' % (source_key, prefix)
-    else:
-        prefix = source_key #run_label if prefix is None else prefix
     print("***PROCESSING: %s ***" % prefix)
 
+    print("SOURCE for mc is: ", srcdir)
+    if srcdir is None:
+        runstr = '%s' % run_label if 'run' in run_label else '%s_run' % run_label
+        fnames = sorted(glob.glob(os.path.join(rootdir, animalid, session, fov, '%s*' % runstr, 'raw*', '*.tif')), key=natural_keys)
+        print("... No sourcedir provided. Found %i .tif files to process." % len(fnames))
+
+    else:
+        fnames = sorted(glob.glob(os.path.join(srcdir, '*.tif')), key=natural_keys)
+        print("... Found %i movies" % len(fnames)) 
+
+    # Check for existing MC file (and saved mmap files)
+    opts = caiman_params(fnames, **opts_kws)
+    print('opts:', opts_kws)
+
+    try:
+        print("... Checking for existing .mmap files")
+        mc = MotionCorrect(fnames, **opts.get_group('motion'))
+        mc = load_mc_results(results_dir, mc, prefix=prefix)
+        assert mc is not None, "---> No completed MC found. Running now..."
+        assert len(mc.mmap_file)==len(fnames), "--> Incorrect .mmap files found (%i - should be %i)" % (len(mc.mmap_file), len(fnames))
+
+    except Exception as e:
+        print(e)
+        motion_correct = True
+    
+    # first we create a motion correction object with the parameters specified
+    print("Creating MotionCorrect object and preprocessing data...")
+    start_t = time.time()
+    # note that the file is not loaded in memory
+ 
     #%% start a cluster for parallel processing
     # (if a cluster already exists it will be closed and a new session will be opened)
     if 'dview' in locals():
         cm.stop_server(dview=dview)
     c, dview, n_processes = cm.cluster.setup_cluster(
         backend='local', n_processes=n_processes, single_thread=False)
-
-    print('opts:', opts_kws)
-    #mc = load_mc_results(results_dir, prefix=prefix)
-    if do_memmap:
-        print("Creating memmapped files and motion-correcting...")
-        start_t = time.time()
-        opts = caiman_params(fnames, **opts_kws)
-
-        # first we create a motion correction object with the parameters specified
+ 
+    if motion_correct:
+        print("... running motion correction step")
         mc = MotionCorrect(fnames, dview=dview, **opts.get_group('motion'))
-        # note that the file is not loaded in memory
-
         #%% Run piecewise-rigid motion correction using NoRMCorre
         mc.motion_correct(save_movie=True)
-        memfiles = mc.mmap_file
-
-        print("... memmaped %i MC files (prefix: %s)." % (len(memfiles), prefix))
+        print("... memmapped %i MC files (prefix: %s)." % (len(mc.mmap_file), prefix))
         print("... motion correction - Elapsed time: {0:.2f}sec".format(time.time()-start_t))
-       
+ 
         # Save MC info 
         save_mc_results(mc, results_dir, prefix=prefix)
        
-      
-
     # memory map the file in order 'C'
+    #if len(mc.fname_tot_rig)>1:
+    nframes_total = sum([int(mf.split('_')[-2]) for mf in mc.mmap_file])
+    d1, d2 = mc.total_template_rig.shape
+    dimstr = 'd1_%i_d2_%i' % (d1, d2)
+    framestr = 'order_C_frames_%i' % nframes_total
+    print('... checking for existing mmap total: %s, %s' % (dimstr, framestr))
+    bord_px = np.ceil(np.max(np.abs(mc.shifts_rig))).astype(np.int)
+
+    fname_new = get_full_memmap_path(results_dir, framestr=framestr, prefix=prefix)
+    save_total = True
+    if fname_new is not None: 
+        print("... Got mmap! %s" % fname_new)
+        Yr, dims, T = cm.load_memmap(fname_new)
+        save_total = T!=nframes_total
+        print("Expected %i frames, found %i in mmap" % (nframes_total, T))
+
     if save_total:
         start_t = time.time() 
         base_name = '%s/memmap/%s' % (results_dir, prefix)
         print("... saving total result to: %s" % base_name)
-        if not os.path.exists(os.path.join(results_dir, 'memmap')):
-            os.makedirs(os.path.join(results_dir, 'memmap'))
-        fname_new = get_full_memmap_path(results_dir, prefix=prefix)
-        if fname_new is None:
-            fname_new = cm.save_memmap_join(memfiles, base_name=base_name, dview=dview)                
-            #fname_new = cm.save_memmap(memfiles, base_name=base_name, dview=dview, order='C')
+        fname_new = cm.save_memmap(mc.fname_tot_rig, base_name=base_name, border_to_0=bord_px, order='C', dview=dview)     
         end_t = time.time() - start_t
         print("... MMAP total - Elapsed time: {0:.2f}sec".format(end_t))
 
-        print("DONE! MMAP and MC results saved to: %s" % fname_new)
+    print("***DONE!*********")
+    print("Results saved to: %s" % fname_new)
 
     return prefix #results_dir, Cn
 

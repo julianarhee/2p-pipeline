@@ -243,14 +243,35 @@ def get_file_paths(results_dir, mm_prefix='Yr'):
     return fnames #fnames = mparams['fnames']
 
 
-def get_full_memmap_path(results_dir, mm_prefix='Yr'):
-    print("Getting full mmap path for prefix: %s" % mm_prefix)
+#def get_full_memmap_path(results_dir, mm_prefix='Yr'):
+#    print("Getting full mmap path for prefix: %s" % mm_prefix)
+#    print("-- dir: %s" % results_dir)
+#    print(glob.glob(os.path.join(results_dir, 'memmap', '*%s*.mmap')))
+#    fname_new = glob.glob(os.path.join(results_dir, 'memmap', '*%s*_d*_.mmap' % mm_prefix))[0]
+#    mm_prefix = os.path.splitext(os.path.split(fname_new)[-1])[0].split('_d1_')[0]
+#    print("CORRECTED PREFIX: %s" % mm_prefix)
+#    return fname_new, mm_prefix
+
+def get_full_memmap_path(results_dir, framestr='order_C_frames', prefix='Yr'):
+    print("Getting full mmap path for prefix: %s" % prefix)
     print("-- dir: %s" % results_dir)
-    print(glob.glob(os.path.join(results_dir, 'memmap', '*%s*.mmap')))
-    fname_new = glob.glob(os.path.join(results_dir, 'memmap', '*%s*_d*_.mmap' % mm_prefix))[0]
-    mm_prefix = os.path.splitext(os.path.split(fname_new)[-1])[0].split('_d1_')[0]
-    print("CORRECTED PREFIX: %s" % mm_prefix)
+    print(glob.glob(os.path.join(results_dir, 'memmap', '*%s*.mmap'))) 
+    try:
+        fname_new = glob.glob(os.path.join(results_dir, 'memmap', '*%s*_d*%s*_.mmap' % (prefix, framestr)))
+        if len(fname_new) > 1:
+            nframes = max([int(i.split('_')[-2]) for i in fname_new])
+            framestr = '_frames_%i_' % nframes
+            fname_new = glob.glob(os.path.join(results_dir, 'memmap', '*%s*_d*%s*_.mmap' % (prefix, framestr)))[0]
+        else:
+            assert len(fname_new)==1, "Unique fname_new not found: %s" % str(fname_new)
+            fname_new = fname_new[0] 
+        mm_prefix = os.path.splitext(os.path.split(fname_new)[-1])[0].split('_d1_')[0]
+        print("CORRECTED PREFIX: %s" % mm_prefix)
+    except Exception as e:
+        print(e)
+        return None
     return fname_new, mm_prefix
+
 
 
 def run_cnmf_seeded(animalid, session, fov, experiment='', traceid='traces001', rootdir='/n/coxfs01/2p-data', mm_prefix='Yr', prefix=None, n_processes=1, opts_kws=None):
@@ -265,7 +286,8 @@ def run_cnmf_seeded(animalid, session, fov, experiment='', traceid='traces001', 
     # Load memmapped file(s)
     fovdir = glob.glob(os.path.join(rootdir, animalid, session, fov))[0]
     results_dir = os.path.join(fovdir, 'caiman_results', experiment)
-    fname_tot, mm_prefix = get_full_memmap_path(results_dir, mm_prefix=mm_prefix)
+
+    fname_tot, mm_prefix = get_full_memmap_path(results_dir, prefix=mm_prefix)
     print("Extracting CNMF from: %s" % fname_tot)
 
     # Load data
@@ -285,7 +307,7 @@ def run_cnmf_seeded(animalid, session, fov, experiment='', traceid='traces001', 
     opts = caiman_params(fnames, opts_kws)
     if prefix is None:
          prefix = mm_prefix
-    prefix = 'seeded-%s' % prefix
+    prefix = 'seeded_%s' % prefix
 
     #%% start a cluster for parallel processing 
     #(if a cluster already exists it will be closed and a new session will be opened)
@@ -371,7 +393,7 @@ def run_cnmf_seeded(animalid, session, fov, experiment='', traceid='traces001', 
                   'frames_window': frames_window,
                   'source': fname_tot}
 
-    with open(os.path.join(results_dir, '%s_processing-params.json' % prefix), 'w') as f:
+    with open(os.path.join(results_dir, 'seeded_%s_processing-params.json' % prefix), 'w') as f:
         json.dump(dff_params, f, indent=4)
 
     start_t = time.time()
@@ -382,8 +404,8 @@ def run_cnmf_seeded(animalid, session, fov, experiment='', traceid='traces001', 
     # save results
     save_results = True
     if save_results:
-        cnm.save(os.path.join(results_dir, 'seed-cnm_%s_results.hdf5' % prefix))
-    print("Saved results: %s" % os.path.join(results_dir, 'seed-cnm_%s_results.hdf5' % prefix))
+        cnm.save(os.path.join(results_dir, 'seeded_%s_results.hdf5' % prefix))
+    print("Saved results: %s" % os.path.join(results_dir, 'seeded_%s_results.hdf5' % prefix))
 
     print("******DONE!**********")
 
@@ -452,7 +474,11 @@ def run_cnmf_patches(animalid, session, fov, experiment='', traceid='traces001',
     # Load memmapped file(s)
     fovdir = glob.glob(os.path.join(rootdir, animalid, session, fov))[0]
     results_dir = os.path.join(fovdir, 'caiman_results', experiment)
-    fname_tot, mm_prefix = get_full_memmap_path(results_dir, mm_prefix=mm_prefix)
+    try:
+        fname_tot, mm_prefix = get_full_memmap_path(results_dir, mm_prefix=mm_prefix)
+    except Exception as e:
+        print("Unable to find .mmap.  Creating new.")
+        create_memmap()
     print("Extracting CNMF from: %s" % fname_tot)
 
     # Load data
@@ -469,7 +495,7 @@ def run_cnmf_patches(animalid, session, fov, experiment='', traceid='traces001',
        
     if prefix is None:
          prefix = mm_prefix
-    prefix = 'patches-%s' % prefix
+    prefix = 'patches_%s' % prefix
 
     #%% start a cluster for parallel processing 
     #(if a cluster already exists it will be closed and a new session will be opened)
@@ -501,12 +527,12 @@ def run_cnmf_patches(animalid, session, fov, experiment='', traceid='traces001',
     end_t = time.time() - start_t
     print("--> refit - Elapsed time: {0:.2f}sec".format(end_t))
 
-    print("Getting local correlations...")
-    Cn = cm.local_correlations(images.transpose(1,2,0))
-    fig = pl.figure()
-    pl.imshow(Cn, cmap='gray')
-    pl.savefig(os.path.join(results_dir, '%s_Cn.png' % prefix))
-    pl.close()
+    #print("Getting local correlations...")
+    #Cn = cm.local_correlations(images.transpose(1,2,0))
+    #fig = pl.figure()
+    #pl.imshow(Cn, cmap='gray')
+    #pl.savefig(os.path.join(results_dir, '%s_Cn.png' % prefix))
+    #pl.close()
  
  
     # Evaluate components 
@@ -532,7 +558,8 @@ def run_cnmf_patches(animalid, session, fov, experiment='', traceid='traces001',
     cnm.estimates.evaluate_components(images, cnm.params, dview=dview)
     end_t = time.time() - start_t
     print("--> evaluation - Elapsed time: {0:.2f}sec".format(end_t))
-
+    cnm.estimates.select_components(use_object=True)
+    print("Discarding %i of %i initially selected components." % (len(cnm.estimates.idx_components), cnm.estimates.A.shape[-1]))
 
     #%% Extract DF/F values
     print("Extracting df/f...")
@@ -553,16 +580,17 @@ def run_cnmf_patches(animalid, session, fov, experiment='', traceid='traces001',
                   'frames_window': frames_window,
                   'source': fname_tot}
 
-    with open(os.path.join(results_dir, '%s_processing-params.json' % prefix), 'w') as f:
+    with open(os.path.join(results_dir, 'patches_%s_processing-params.json' % prefix), 'w') as f:
         json.dump(dff_params, f, indent=4)
     cnm.estimates.detrend_df_f(quantileMin=quantileMin, frames_window=frames_window)
     end_t = time.time() - start_t
     print("--> dF_F - Elapsed time: {0:.2f}sec".format(end_t))
 
     # save results
+    save_results = True
     if save_results:
-        cnm.save(os.path.join(results_dir, 'patch-cnm_%s_results.hdf5' % prefix))
-    print("Saved results 2: %s" % os.path.join(results_dir, 'patch-cnm_%s_results.hdf5' % prefix))
+        cnm.save(os.path.join(results_dir, 'patches_%s_results.hdf5' % prefix))
+    print("Saved results 2: %s" % os.path.join(results_dir, 'patches_%s_results.hdf5' % prefix))
 
 
     print("******DONE!**********")
