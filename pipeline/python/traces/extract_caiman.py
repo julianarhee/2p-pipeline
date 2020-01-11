@@ -273,6 +273,64 @@ def get_full_memmap_path(results_dir, framestr='order_C_frames', prefix='Yr'):
     return fname_new, mm_prefix
 
 
+def get_roiid_from_traceid(animalid, session, fov, run_type=None, traceid='traces001', rootdir='/n/coxfs01/2p-data'):
+    
+    if run_type is not None:
+        if int(session) < 20190511 and run_type == 'gratings':
+            a_traceid_dict = glob.glob(os.path.join(rootdir, animalid, session, fov, '*run*', 'traces', 'traceids*.json'))[0]
+        else:
+            a_traceid_dict = glob.glob(os.path.join(rootdir, animalid, session, fov, '*%s*' % run_type, 'traces', 'traceids*.json'))[0]
+    else:
+        a_traceid_dict = glob.glob(os.path.join(rootdir, animalid, session, fov, '*run*', 'traces', 'traceids*.json'))[0]
+    with open(a_traceid_dict, 'r') as f:
+        tracedict = json.load(f)
+    
+    tid = tracedict[traceid]
+    roiid = tid['PARAMS']['roi_id']
+    
+    return roiid
+
+
+def load_roi_masks(animalid, session, fov, rois=None, rootdir='/n/coxfs01/2p-data'):
+    masks=None; zimg=None;
+    mask_fpath = glob.glob(os.path.join(rootdir, animalid, session, 'ROIs', '%s*' % rois, 'masks.hdf5'))[0]
+    try:
+        mfile = h5py.File(mask_fpath, 'r')
+
+        # Load and reshape masks
+        fkey = list(mfile.keys())[0]
+        masks = mfile[fkey]['masks']['Slice01'][:] #.T
+        #print(masks.shape)
+        #mfile[mfile.keys()[0]].keys()
+
+        zimg = mfile[fkey]['zproj_img']['Slice01'][:] #.T
+        zimg.shape
+    except Exception as e:
+        print("error loading masks")
+    finally:
+        mfile.close()
+        
+    return masks, zimg
+
+# def reshape_and_binarize_masks(masks):
+#     # Binarze and reshape:
+#     nrois, d1, d2 = masks.shape
+#     Ain = np.reshape(masks, (nrois, d1*d2))
+#     Ain[Ain>0] = 1
+#     Ain = Ain.astype(bool).T 
+    
+#     return Ain
+
+def reshape_and_binarize_masks(masks):
+    # Binarze and reshape:
+    nrois, d1, d2 = masks.shape
+    #masks2 = np.swapaxes(masks, 1, 2)
+    Ain = np.reshape(masks, (nrois, d1*d2))
+    Ain[Ain>0] = 1
+    Ain = Ain.astype(bool).T 
+    
+    return Ain
+
 
 def run_cnmf_seeded(animalid, session, fov, experiment='', traceid='traces001', rootdir='/n/coxfs01/2p-data', mm_prefix='Yr', prefix=None, n_processes=1, opts_kws=None):
 
@@ -408,66 +466,6 @@ def run_cnmf_seeded(animalid, session, fov, experiment='', traceid='traces001', 
     print("Saved results: %s" % os.path.join(results_dir, 'seeded_%s_results.hdf5' % prefix))
 
     print("******DONE!**********")
-
-
-def get_roiid_from_traceid(animalid, session, fov, run_type=None, traceid='traces001', rootdir='/n/coxfs01/2p-data'):
-    
-    if run_type is not None:
-        if int(session) < 20190511 and run_type == 'gratings':
-            a_traceid_dict = glob.glob(os.path.join(rootdir, animalid, session, fov, '*run*', 'traces', 'traceids*.json'))[0]
-        else:
-            a_traceid_dict = glob.glob(os.path.join(rootdir, animalid, session, fov, '*%s*' % run_type, 'traces', 'traceids*.json'))[0]
-    else:
-        a_traceid_dict = glob.glob(os.path.join(rootdir, animalid, session, fov, '*run*', 'traces', 'traceids*.json'))[0]
-    with open(a_traceid_dict, 'r') as f:
-        tracedict = json.load(f)
-    
-    tid = tracedict[traceid]
-    roiid = tid['PARAMS']['roi_id']
-    
-    return roiid
-
-
-def load_roi_masks(animalid, session, fov, rois=None, rootdir='/n/coxfs01/2p-data'):
-    masks=None; zimg=None;
-    mask_fpath = glob.glob(os.path.join(rootdir, animalid, session, 'ROIs', '%s*' % rois, 'masks.hdf5'))[0]
-    try:
-        mfile = h5py.File(mask_fpath, 'r')
-
-        # Load and reshape masks
-        fkey = list(mfile.keys())[0]
-        masks = mfile[fkey]['masks']['Slice01'][:] #.T
-        #print(masks.shape)
-        #mfile[mfile.keys()[0]].keys()
-
-        zimg = mfile[fkey]['zproj_img']['Slice01'][:] #.T
-        zimg.shape
-    except Exception as e:
-        print("error loading masks")
-    finally:
-        mfile.close()
-        
-    return masks, zimg
-
-# def reshape_and_binarize_masks(masks):
-#     # Binarze and reshape:
-#     nrois, d1, d2 = masks.shape
-#     Ain = np.reshape(masks, (nrois, d1*d2))
-#     Ain[Ain>0] = 1
-#     Ain = Ain.astype(bool).T 
-    
-#     return Ain
-
-def reshape_and_binarize_masks(masks):
-    # Binarze and reshape:
-    nrois, d1, d2 = masks.shape
-    #masks2 = np.swapaxes(masks, 1, 2)
-    Ain = np.reshape(masks, (nrois, d1*d2))
-    Ain[Ain>0] = 1
-    Ain = Ain.astype(bool).T 
-    
-    return Ain
-
 
 def run_cnmf_patches(animalid, session, fov, experiment='', traceid='traces001', rootdir='/n/coxfs01/2p-data', mm_prefix='Yr', prefix=None, n_processes=1, opts_kws=None):
 
