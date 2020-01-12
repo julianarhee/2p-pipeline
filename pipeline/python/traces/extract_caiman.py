@@ -473,9 +473,9 @@ def run_cnmf_patches(animalid, session, fov, experiment='', traceid='traces001',
     fovdir = glob.glob(os.path.join(rootdir, animalid, session, fov))[0]
     results_dir = os.path.join(fovdir, 'caiman_results', experiment)
     try:
-        fname_tot, mm_prefix = get_full_memmap_path(results_dir, mm_prefix=mm_prefix)
+        fname_tot, mm_prefix = get_full_memmap_path(results_dir, prefix=mm_prefix)
     except Exception as e:
-        print("Unable to find .mmap.  Creating new.")
+        print("Unable to find .mmap (%s).  Creating new." % mm_prefix)
         create_memmap()
     print("Extracting CNMF from: %s" % fname_tot)
 
@@ -499,8 +499,9 @@ def run_cnmf_patches(animalid, session, fov, experiment='', traceid='traces001',
     #(if a cluster already exists it will be closed and a new session will be opened)
     if 'dview' in locals():
         cm.stop_server(dview=dview)
-    c, dview, n_processes = cm.cluster.setup_cluster(
-        backend='local', n_processes=n_processes, single_thread=False)
+    dview=None
+    #c, dview, n_processes = cm.cluster.setup_cluster(
+    #    backend='local', n_processes=n_processes, single_thread=False)
     print("--- running on %i processes ---" % n_processes)
     print("--- dview: ", dview)
     #dview=None 
@@ -512,7 +513,7 @@ def run_cnmf_patches(animalid, session, fov, experiment='', traceid='traces001',
     # Run cnmf
     print("Extracting from patches...")
     start_t = time.time() 
-    cnm = cnmf.CNMF(n_processes, params=opts, dview=dview)
+    cnm = cnmf.CNMF(n_processes, params=opts, dview=None) #dview)
     cnm = cnm.fit(images)
     end_t = time.time() - start_t
     print("--> patches - Elapsed time: {0:.2f}sec".format(end_t))
