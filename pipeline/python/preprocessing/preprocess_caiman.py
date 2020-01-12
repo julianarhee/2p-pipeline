@@ -86,7 +86,7 @@ def extract_options(options):
     parser.add_option('--memmap', action='store_true', dest='do_memmap', default=False, help="Set to do memmap only (assumes prev MC-corrected)")
 
     parser.add_option('--prefix', action="store",
-                      dest="prefix", default='Yr', help="Prefix for memmapped files [default: Yr]")
+                      dest="prefix", default=None, help="Prefix for memmapped files [default: Yr]")
     parser.add_option('--source-file', action="store",
                       dest="source_file", default=None, help="Full path to full memmaped file [default: None]")
 
@@ -322,7 +322,7 @@ def do_memmap_no_mc(animalid, session, fov, run_label='res', base_name='Yr', res
 
 def do_motion_correction(animalid, session, fov, run_label='res', srcdir=None, rootdir='/n/coxfs01/2p-data', n_processes=None, prefix=None, save_total=True, opts_kws=None):
 
-    source_key = '-'.join([animalid, session, fov, run_label, prefix])
+    source_key = '-'.join([animalid, session, fov, run_label]) #, prefix])
     data_identifier = '|'.join([animalid, session, fov, run_label])
     print("*** Dataset: %s ***" % data_identifier)
     
@@ -336,9 +336,9 @@ def do_motion_correction(animalid, session, fov, run_label='res', srcdir=None, r
 
     # Get input source
     if prefix is None:
-        prefix = ''
-    if prefix not in source_key:
-        prefix = '%s_%s' % (source_key, prefix)
+        prefix = 'Yr'
+    #if prefix not in source_key:
+    prefix = '%s-%s' % (source_key, prefix)
     print("***PROCESSING: %s ***" % prefix)
 
     print("SOURCE for mc is: ", srcdir)
@@ -361,7 +361,7 @@ def do_motion_correction(animalid, session, fov, run_label='res', srcdir=None, r
         mc = load_mc_results(results_dir, mc, prefix=prefix)
         assert mc is not None, "---> No completed MC found. Running now..."
         assert len(mc.mmap_file)==len(fnames), "--> Incorrect .mmap files found (%i - should be %i)" % (len(mc.mmap_file), len(fnames))
-
+        motion_correct = False
     except Exception as e:
         print(e)
         motion_correct = True
