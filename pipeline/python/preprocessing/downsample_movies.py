@@ -76,7 +76,7 @@ def extract_options(options):
                       dest="ds_factor", default=5, help="Downsample factor (int, default: 5)")
 
     parser.add_option('--destdir', action="store",
-                      dest="destdir", default='/n/scratchlfs/cox_lab/julianarhee/downsampled', help="output dir for movie files [default: /n/scratchlfs/cox_lab/julianarhee/downsampled]")
+                      dest="destdir", default='/n/scratchlfs02/cox_lab/julianarhee/downsampled', help="output dir for movie files [default: /n/scratchlfs02/cox_lab/julianarhee/downsampled]")
     parser.add_option('--plot', action='store_true', dest='plot_rois', default=False, help="set to plot results of each roi's analysis")
     parser.add_option('--processed', action='store_false', dest='use_raw', default=True, help="set to downsample on non-raw source")
 
