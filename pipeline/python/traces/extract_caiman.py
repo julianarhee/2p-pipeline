@@ -46,7 +46,13 @@ import time
 import re
 import optparse
 import sys
+import logging
 
+
+logging.basicConfig(format=
+                    "%(relativeCreated)12d [%(filename)s:%(funcName)20s():%(lineno)s]"\
+                    "[%(process)d] %(message)s",
+                    level=logging.DEBUG)
 
 def atoi(text):
     return int(text) if text.isdigit() else text
@@ -108,7 +114,7 @@ def caiman_params(fnames, kwargs=None):
     # parameters for source extraction and deconvolution
     p = 2                       # order of the autoregressive system
     gnb = 2                     # number of global background components
-    merge_thr = 0.85            # merging threshold, max correlation allowed
+    merge_thr = 0.8             # merging threshold, max correlation allowed
     rf = 25                     # half-size of the patches in pixels. e.g., if rf=25, patches are 50x50
     stride_cnmf = 12             # amount of overlap between the patches in pixels
     K = 8                       # number of components per patch
@@ -119,8 +125,8 @@ def caiman_params(fnames, kwargs=None):
 
     # parameters for component evaluation
     min_SNR = 2.0               # signal to noise ratio for accepting a component
-    rval_thr = 0.85              # space correlation threshold for accepting a component
-    cnn_thr = 0.99              # threshold for CNN based classifier
+    rval_thr = 0.8              # space correlation threshold for accepting a component
+    cnn_thr = 0.9              # threshold for CNN based classifier
     cnn_lowest = 0.1 # neurons with cnn probability lower than this value are rejected
 
     opts_dict = {'fnames': fnames,
@@ -255,13 +261,19 @@ def get_file_paths(results_dir, mm_prefix='Yr'):
 def get_full_memmap_path(results_dir, framestr='order_C_frames', prefix='Yr'):
     print("Getting full mmap path for prefix: %s" % prefix)
     print("-- dir: %s" % results_dir)
-    print(glob.glob(os.path.join(results_dir, 'memmap', '*%s*.mmap'))) 
+    print("-- frame str: %s" % framestr)
+    print(glob.glob(os.path.join(results_dir, 'memmap', '*%s*.mmap' % prefix))) 
     try:
         fname_new = glob.glob(os.path.join(results_dir, 'memmap', '*%s*_d*%s*_.mmap' % (prefix, framestr)))
         if len(fname_new) > 1:
+            for f in fname_new:
+                print("fname_new: %s" % f)
+                print(f.split('_'))
+           
             nframes = max([int(i.split('_')[-2]) for i in fname_new])
             framestr = '_frames_%i_' % nframes
-            fname_new = glob.glob(os.path.join(results_dir, 'memmap', '*%s*_d*%s*_.mmap' % (prefix, framestr)))[0]
+            print("Found framestr: %i" % nframes)
+            fname_new = glob.glob(os.path.join(results_dir, 'memmap', '*%s*_d*%s*.mmap' % (prefix, framestr)))[0]
         else:
             assert len(fname_new)==1, "Unique fname_new not found: %s" % str(fname_new)
             fname_new = fname_new[0] 
@@ -274,18 +286,38 @@ def get_full_memmap_path(results_dir, framestr='order_C_frames', prefix='Yr'):
 
 
 def get_roiid_from_traceid(animalid, session, fov, run_type=None, traceid='traces001', rootdir='/n/coxfs01/2p-data'):
-    
-    if run_type is not None:
-        if int(session) < 20190511 and run_type == 'gratings':
-            a_traceid_dict = glob.glob(os.path.join(rootdir, animalid, session, fov, '*run*', 'traces', 'traceids*.json'))[0]
+   
+    if 'trace' in traceid: 
+        if run_type is not None:
+            if int(session) < 20190511 and run_type == 'gratings':
+                a_traceid_dict = glob.glob(os.path.join(rootdir, animalid, session, fov, '*run*', 'traces', 'traceids*.json'))[0]
+            else:
+                a_traceid_dict = glob.glob(os.path.join(rootdir, animalid, session, fov, '*%s*' % run_type, 'traces', 'traceids*.json'))[0]
         else:
-            a_traceid_dict = glob.glob(os.path.join(rootdir, animalid, session, fov, '*%s*' % run_type, 'traces', 'traceids*.json'))[0]
-    else:
-        a_traceid_dict = glob.glob(os.path.join(rootdir, animalid, session, fov, '*run*', 'traces', 'traceids*.json'))[0]
+            a_traceid_dict = glob.glob(os.path.join(rootdir, animalid, session, fov, '*run*', 'traces', 'traceids*.json'))[0]
+    else: # is retino
+        a_traceid_dict = glob.glob(os.path.join(rootdir, animalid, session, fov, '%s*' % run_type, 'retino_analysis', 'analysisids*.json'))[0]
+        
     with open(a_traceid_dict, 'r') as f:
         tracedict = json.load(f)
-    
+
     tid = tracedict[traceid]
+   
+    if tid['PARAMS']['roi_type'] != 'manual2D_circle':
+        try:
+            print("**** warning: specified traceid <%s> is not a manual ROI." % traceid)
+            print("... finding traceid extracted with manual ROIs...")
+            tmp_ids = sorted([k for k, v in tracedict.items() if v['PARAMS']['roi_type']=='manual2D_circle'], key=natural_keys)
+            assert len(tmp_ids) > 0, "NO MANUAL ROIS FOUND."
+            for ti, tname in enumerate(sorted(tmp_ids, key=natural_keys)):
+                print(ti, tname)
+            print("Selecting: %s" % tmp_ids[0])
+            traceid = tmp_ids[0]
+            tid = tracedict[traceid] 
+        except Exception as e:
+            print(e)
+            return None
+
     roiid = tid['PARAMS']['roi_id']
     
     return roiid
@@ -332,11 +364,14 @@ def reshape_and_binarize_masks(masks):
     return Ain
 
 
-def run_cnmf_seeded(animalid, session, fov, experiment='', traceid='traces001', rootdir='/n/coxfs01/2p-data', mm_prefix='Yr', prefix=None, n_processes=1, opts_kws=None):
+def run_cnmf_seeded(animalid, session, fov, experiment='', roiid=None, traceid='traces001', rootdir='/n/coxfs01/2p-data', mm_prefix='Yr', prefix=None, n_processes=1, opts_kws=None):
 
     # Load manual ROIs and format
-    print("Getting seeds...")
-    roiid = get_roiid_from_traceid(animalid, session, fov, run_type=experiment, traceid=traceid)
+    if roiid is None:
+        roiid = get_roiid_from_traceid(animalid, session, fov, run_type=experiment, traceid=traceid)
+    assert roiid is not None, "NO ROIS FOUND."
+
+    print("Getting seeds from ROI set: %s..." % roiid)
     masks, zimg = load_roi_masks(animalid, session, fov, rois=roiid)
     uimg = zimg.T
     Ain = reshape_and_binarize_masks(masks)
@@ -390,7 +425,7 @@ def run_cnmf_seeded(animalid, session, fov, experiment='', traceid='traces001', 
                 'rf': rf,
                 'only_init': only_init,
                 'merge_thr': 0.85,
-                'n_pixels_per_process': 100}
+                'n_pixels_per_process': 2000}
 
     opts.change_params(opts_dict)
 
@@ -399,7 +434,7 @@ def run_cnmf_seeded(animalid, session, fov, experiment='', traceid='traces001', 
     start_t = time.time()
 
     cnm = cnmf.CNMF(n_processes, params=opts, dview=dview, Ain=Ain)
-    cnm.fit(images)
+    cnm.fit(images) #fit_file() #cnm.fit(images)
     end_t = time.time() - start_t
     print("--> Elapsed time: {0:.2f}sec".format(end_t))
     print("A:", cnm.estimates.A.shape)
@@ -413,10 +448,10 @@ def run_cnmf_seeded(animalid, session, fov, experiment='', traceid='traces001', 
     # Evaluate components 
     print("Evaluatnig components...")
     # parameters for component evaluation
-    min_SNR = 1.5               # signal to noise ratio for accepting a component
+    min_SNR = 2.0               # signal to noise ratio for accepting a component
     rval_thr = 0.85              # space correlation threshold for accepting a component
     min_cnn_thr = 0.99          # threshold for CNN based classifier
-    cnn_lowest = 0.05           # neurons with cnn probability lower than this value are rejected
+    cnn_lowest = 0.1           # neurons with cnn probability lower than this value are rejected
     #cnm_seeded.estimates.restore_discarded_components()
     cnm.params.set('quality', {'min_SNR': min_SNR,
                                'rval_thr': rval_thr,
@@ -451,7 +486,7 @@ def run_cnmf_seeded(animalid, session, fov, experiment='', traceid='traces001', 
                   'frames_window': frames_window,
                   'source': fname_tot}
 
-    with open(os.path.join(results_dir, 'seeded_%s_processing-params.json' % prefix), 'w') as f:
+    with open(os.path.join(results_dir, '%s_processing-params.json' % prefix), 'w') as f:
         json.dump(dff_params, f, indent=4)
 
     start_t = time.time()
@@ -462,8 +497,14 @@ def run_cnmf_seeded(animalid, session, fov, experiment='', traceid='traces001', 
     # save results
     save_results = True
     if save_results:
-        cnm.save(os.path.join(results_dir, 'seeded_%s_results.hdf5' % prefix))
-    print("Saved results: %s" % os.path.join(results_dir, 'seeded_%s_results.hdf5' % prefix))
+        cnm.save(os.path.join(results_dir, '%s_results.hdf5' % prefix))
+    print("Saved results: %s" % os.path.join(results_dir, '%s_results.hdf5' % prefix))
+
+    #%% STOP CLUSTER and clean up log files
+    cm.stop_server(dview=dview)
+    log_files = glob.glob('*_LOG_*')
+    for log_file in log_files:
+        os.remove(log_file)
 
     print("******DONE!**********")
 
@@ -490,7 +531,7 @@ def run_cnmf_patches(animalid, session, fov, experiment='', traceid='traces001',
     print("--> got %i files for extraction" % len(fnames))
       
     opts = caiman_params(fnames, opts_kws)
-       
+                  
     if prefix is None:
          prefix = mm_prefix
     prefix = 'patches_%s' % prefix
@@ -499,12 +540,11 @@ def run_cnmf_patches(animalid, session, fov, experiment='', traceid='traces001',
     #(if a cluster already exists it will be closed and a new session will be opened)
     if 'dview' in locals():
         cm.stop_server(dview=dview)
-    dview=None
-    #c, dview, n_processes = cm.cluster.setup_cluster(
-    #    backend='local', n_processes=n_processes, single_thread=False)
+    c, dview, n_processes = cm.cluster.setup_cluster(
+        backend='local', n_processes=n_processes, single_thread=False)
     print("--- running on %i processes ---" % n_processes)
-    print("--- dview: ", dview)
     #dview=None 
+    print("--- dview: ", dview)
 
     # First extract spatial and temporal components on patches and combine them
     # for this step deconvolution is turned off (p=0)
@@ -513,7 +553,12 @@ def run_cnmf_patches(animalid, session, fov, experiment='', traceid='traces001',
     # Run cnmf
     print("Extracting from patches...")
     start_t = time.time() 
-    cnm = cnmf.CNMF(n_processes, params=opts, dview=None) #dview)
+    cnm = cnmf.CNMF(n_processes, params=opts, dview=dview)
+    cnm.params.change_params({'p': 0,
+                              'only_init': True,
+                              'rolling_sum': True,
+                              'method_init': 'greedy_roi'})
+    print("images:",images.shape)
     cnm = cnm.fit(images)
     end_t = time.time() - start_t
     print("--> patches - Elapsed time: {0:.2f}sec".format(end_t))
@@ -525,6 +570,7 @@ def run_cnmf_patches(animalid, session, fov, experiment='', traceid='traces001',
     cnm = cnm.refit(images, dview=dview)
     end_t = time.time() - start_t
     print("--> refit - Elapsed time: {0:.2f}sec".format(end_t))
+    print("*Found %i potential components after patches." % cnm.estimates.A.shape[-1])
 
     #print("Getting local correlations...")
     #Cn = cm.local_correlations(images.transpose(1,2,0))
@@ -537,9 +583,9 @@ def run_cnmf_patches(animalid, session, fov, experiment='', traceid='traces001',
     # Evaluate components 
     print("Evaluatnig components...")
     # parameters for component evaluation
-    min_SNR = 1.5               # signal to noise ratio for accepting a component
-    rval_thr = 0.85              # space correlation threshold for accepting a component
-    min_cnn_thr = 0.99          # threshold for CNN based classifier
+    min_SNR = 1.0               # signal to noise ratio for accepting a component
+    rval_thr = 0.80              # space correlation threshold for accepting a component
+    min_cnn_thr = 0.9          # threshold for CNN based classifier
     cnn_lowest = 0.05           # neurons with cnn probability lower than this value are rejected
     #cnm_seeded.estimates.restore_discarded_components()
     cnm.params.set('quality', {'min_SNR': min_SNR,
@@ -557,8 +603,8 @@ def run_cnmf_patches(animalid, session, fov, experiment='', traceid='traces001',
     cnm.estimates.evaluate_components(images, cnm.params, dview=dview)
     end_t = time.time() - start_t
     print("--> evaluation - Elapsed time: {0:.2f}sec".format(end_t))
-    cnm.estimates.select_components(use_object=True)
     print("Discarding %i of %i initially selected components." % (len(cnm.estimates.idx_components), cnm.estimates.A.shape[-1]))
+    #cnm.estimates.select_components(use_object=True)
 
     #%% Extract DF/F values
     print("Extracting df/f...")
@@ -579,7 +625,7 @@ def run_cnmf_patches(animalid, session, fov, experiment='', traceid='traces001',
                   'frames_window': frames_window,
                   'source': fname_tot}
 
-    with open(os.path.join(results_dir, 'patches_%s_processing-params.json' % prefix), 'w') as f:
+    with open(os.path.join(results_dir, '%s_processing-params.json' % prefix), 'w') as f:
         json.dump(dff_params, f, indent=4)
     cnm.estimates.detrend_df_f(quantileMin=quantileMin, frames_window=frames_window)
     end_t = time.time() - start_t
@@ -588,9 +634,14 @@ def run_cnmf_patches(animalid, session, fov, experiment='', traceid='traces001',
     # save results
     save_results = True
     if save_results:
-        cnm.save(os.path.join(results_dir, 'patches_%s_results.hdf5' % prefix))
-    print("Saved results 2: %s" % os.path.join(results_dir, 'patches_%s_results.hdf5' % prefix))
+        cnm.save(os.path.join(results_dir, '%s_results.hdf5' % prefix))
+    print("Saved results 2: %s" % os.path.join(results_dir, '%s_results.hdf5' % prefix))
 
+    #%% STOP CLUSTER and clean up log files
+    cm.stop_server(dview=dview)
+    log_files = glob.glob('*_LOG_*')
+    for log_file in log_files:
+        os.remove(log_file)
 
     print("******DONE!**********")
 
