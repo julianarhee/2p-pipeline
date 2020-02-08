@@ -359,12 +359,14 @@ def do_motion_correction(animalid, session, fov, run_label='res', srcdir=None, r
         print("... Checking for existing .mmap files")
         mc = MotionCorrect(fnames, **opts.get_group('motion'))
         mc = load_mc_results(results_dir, mc, prefix=prefix)
-        assert mc is not None, "---> No completed MC found. Running now..."
-        assert len(mc.mmap_file)==len(fnames), "--> Incorrect .mmap files found (%i - should be %i)" % (len(mc.mmap_file), len(fnames))
+        assert mc is not None, "~WARNING~ No completed MC found. Running now..."
+        assert len(mc.mmap_file)==len(fnames), "~WARNING~ Incorrect .mmap files found (%i - should be %i)" % (len(mc.mmap_file), len(fnames))
+        assert all(['_rig_' in m for m in mc.mmap_file]), "~WARNING~ No rigid MC found"
         motion_correct = False
     except Exception as e:
         print(e)
         motion_correct = True
+        print("~~~~~~~~~~~~Running MC now~~~~~~~~~~~~~~~~~~")
     
     # first we create a motion correction object with the parameters specified
     print("Creating MotionCorrect object and preprocessing data...")
@@ -377,14 +379,14 @@ def do_motion_correction(animalid, session, fov, run_label='res', srcdir=None, r
         cm.stop_server(dview=dview)
     c, dview, n_processes = cm.cluster.setup_cluster(
         backend='local', n_processes=n_processes, single_thread=False)
- 
+    print("Started cluster...") 
     if motion_correct:
-        print("... running motion correction step")
+        print("... Starting motion correction step")
         mc = MotionCorrect(fnames, dview=dview, **opts.get_group('motion'))
         #%% Run piecewise-rigid motion correction using NoRMCorre
         mc.motion_correct(save_movie=True)
-        print("... memmapped %i MC files (prefix: %s)." % (len(mc.mmap_file), prefix))
-        print("... motion correction - Elapsed time: {0:.2f}sec".format(time.time()-start_t))
+        print("... Corrected %i files (prefix: %s)." % (len(mc.mmap_file), prefix))
+        print("... [Motion correction] Elapsed {0:.2f}sec".format(time.time()-start_t))
  
         # Save MC info 
         save_mc_results(mc, results_dir, prefix=prefix)
@@ -395,22 +397,34 @@ def do_motion_correction(animalid, session, fov, run_label='res', srcdir=None, r
     d1, d2 = mc.total_template_rig.shape
     dimstr = 'd1_%i_d2_%i' % (d1, d2)
     framestr = 'order_C_frames_%i' % nframes_total
-    print('... checking for existing mmap total: %s, %s' % (dimstr, framestr))
+    print('... Checking for existing mmap total: %s, %s' % (dimstr, framestr))
     bord_px = np.ceil(np.max(np.abs(mc.shifts_rig))).astype(np.int)
 
     fname_new = get_full_memmap_path(results_dir, framestr=framestr, prefix=prefix)
     save_total = True
     if fname_new is not None: 
-        print("... Got mmap! %s" % fname_new)
-        Yr, dims, T = cm.load_memmap(fname_new)
-        save_total = T!=nframes_total
-        print("Expected %i frames, found %i in mmap" % (nframes_total, T))
+        try:
+            print("... Got mmap! %s" % fname_new)
+            Yr, dims, T = cm.load_memmap(fname_new)
+            save_total = T!=nframes_total
+            print("... Expected %i frames, found %i in mmap" % (nframes_total, T))
+            images = np.reshape(Yr.T, [T] + list(dims), order='F')
+            mxv = images.max()
+            assert mxv > 0, "*ERROR* Memmapped file is blank. Likely that order is incorrect. Check:\n-->%s" % fname_new
+            print("... Max val non-zero:", mxv)
+            save_total = False
+        except Exception as e:
+            print(e)
+            save_total = True
+
 
     if save_total:
         start_t = time.time() 
         base_name = '%s/memmap/%s' % (results_dir, prefix)
         print("... saving total result to: %s" % base_name)
-        fname_new = cm.save_memmap(mc.fname_tot_rig, base_name=base_name, border_to_0=bord_px, order='C', dview=dview)     
+        for m in mc.mmap_file:
+            print(os.path.split(m)[-1])
+        fname_new = cm.save_memmap_join(mc.mmap_file, base_name=base_name, dview=dview, add_to_mov=mc.min_mov, n_chunks=100)     
         end_t = time.time() - start_t
         print("... MMAP total - Elapsed time: {0:.2f}sec".format(end_t))
 
