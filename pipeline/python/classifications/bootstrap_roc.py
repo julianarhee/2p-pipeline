@@ -27,7 +27,7 @@ import multiprocessing as mp
 
 from sklearn.utils import shuffle
 
-from pipeline.python.classifications import utils as util
+#from pipeline.python.classifications import experiment_classes as util #utils as util
 from pipeline.python.classifications import test_responsivity as resp
 from pipeline.python.utils import label_figure, natural_keys
 
@@ -52,7 +52,14 @@ def get_hits_and_fas(resp_stim, resp_bas):
 
 
 def load_data(experiment_name, animalid, session, fov, traceid, trace_type='corrected', rootdir='/n/coxfs01/2p-data'):
-    exp = util.Experiment(experiment_name, animalid, session, fov, traceid) #, trace_type=trace_type)
+    from pipeline.python.classifications import experiment_classes as util #utils as util
+
+    if 'gratings' in experiment_name:
+        exp = util.Gratings(animalid, session, fov, traceid=traceid, rootdir=rootdir)
+    elif 'blobs' in experiment_name:
+        exp = util.Objects(animalid, session, fov, traceid=traceid, rootdir=rootdir)
+    else: 
+        exp = util.Experiment(experiment_name, animalid, session, fov, traceid) #, trace_type=trace_type)
     exp.load(trace_type=trace_type)
     
     exp.data.traces, exp.data.labels = util.check_counts_per_condition(exp.data.traces, exp.data.labels)
@@ -67,7 +74,7 @@ def load_data(experiment_name, animalid, session, fov, traceid, trace_type='corr
         fix_cfgs = exp.data.sdf[np.isnan(exp.data.sdf['size'])].index.tolist()
         for cfg in fix_cfgs:
             exp.data.sdf.loc[cfg, 'size'] = 0
-    elif experiment_name == 'rfs':
+    elif experiment_name in ['rfs', 'rfs10']:
         excluded_params = ['position']
             
     all_params = [c for c in exp.data.sdf.columns if c not in excluded_params]
@@ -248,11 +255,30 @@ def main(options):
     n_iters = int(opts.n_iterations)
     n_processes = int(opts.n_processes)
     plot_rois = opts.plot_rois
+    try:
+        bootstrap_roc_func(opts.animalid, opts.session, opts.fov, opts.traceid, opts.experiment, 
+                            trace_type=opts.trace_type,
+                            rootdir=opts.rootdir, n_processes=n_processes, plot_rois=plot_rois, n_iters=n_iters)
+    except Exception as e:
+        print(e)
+    print("******DONE BOOTSTRAP ROC ANALYSIS.")
+ 
+
+def bootstrap_roc_func(animalid, session, fov, traceid, experiment, trace_type='corrected', rootdir='/n/coxfs01/2p-data',
+                        n_processes=1, plot_rois=True, n_iters=1000):
+ 
+#    exp, gdf = load_data(opts.experiment, opts.animalid, opts.session, opts.fov, opts.traceid, 
+#                         trace_type=opts.trace_type, rootdir=opts.rootdir)
+#    
+#    data_identifier = '|'.join([opts.animalid, opts.session, opts.fov, opts.traceid, opts.experiment, opts.trace_type])
+
+    print(".... starting boot.")#
+    exp, gdf = load_data(experiment, animalid, session, fov, traceid, 
+                         trace_type=trace_type, rootdir=rootdir)
     
-    exp, gdf = load_data(opts.experiment, opts.animalid, opts.session, opts.fov, opts.traceid, 
-                         trace_type=opts.trace_type, rootdir=opts.rootdir)
-    
-    data_identifier = '|'.join([opts.animalid, opts.session, opts.fov, opts.traceid, opts.experiment, opts.trace_type])
+    data_identifier = '|'.join([animalid, session, fov, traceid, experiment, trace_type])
+
+    print("... data id: %s" % data_identifier)
 
     results, roc_dir = do_roc_bootstrap_mp(exp, gdf, n_iters=n_iters, 
                                   n_processes=n_processes, plot_rois=plot_rois,

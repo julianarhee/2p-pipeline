@@ -69,6 +69,7 @@ from pipeline.python.classifications import test_responsivity as resp
 #from pipeline.python.classifications import bootstrap_fit_tuning_curves as osi
 from pipeline.python.classifications import bootstrap_osi as osi
 from pipeline.python.utils import label_figure, natural_keys, get_frame_info, check_counts_per_condition
+from pipeline.python.classifications.bootstrap_roc import bootstrap_roc_func
 
 import glob
 import os
@@ -507,9 +508,27 @@ def get_responsive_cells(animalid, session, fov, run=None, traceid='traces001',
 #                     trace_type=trace_type, response_type=response_type, 
 #                     responsive_test=responsive_test, responsive_thr=responsive_thr, 
 #                     rootdir=rootdir)
+    traceid_dir =  glob.glob(os.path.join(rootdir, animalid, session, fov, run, 'traces', '%s*' % traceid))[0]        
+    stats_dir = os.path.join(traceid_dir, 'summary_stats', responsive_test)
+    stats_fpath = glob.glob(os.path.join(stats_dir, '*results*.pkl'))
+
+    print("-- stats: %s" % run)
+    print(stats_fpath)
+    if len(stats_fpath)==0:
+        return None, None
+
+    if len(stats_fpath)==0 and (('gratings' in run) or ('blobs' in run)):
+        try:
+            print("DOING BOOT - run: %s" % run) 
+            bootstrap_roc_func(animalid, session, fov, traceid, run, trace_type='corrected', rootdir=rootdir,
+                        n_processes=1, plot_rois=True, n_iters=1000)
+        except Exception as e:
+            print("JK ERROR")
+            print(e)
+
     try:
-        traceid_dir =  glob.glob(os.path.join(rootdir, animalid, session, fov, run, 'traces', '%s*' % traceid))[0]        
-        stats_dir = os.path.join(traceid_dir, 'summary_stats', responsive_test)
+        #traceid_dir =  glob.glob(os.path.join(rootdir, animalid, session, fov, run, 'traces', '%s*' % traceid))[0]        
+        #stats_dir = os.path.join(traceid_dir, 'summary_stats', responsive_test)
         stats_fpath = glob.glob(os.path.join(stats_dir, '*results*.pkl'))
         assert len(stats_fpath) > 0, "No stats results found for: %s" % stats_dir
         with open(stats_fpath[0], 'rb') as f:
@@ -949,11 +968,14 @@ class Experiment(object):
             traceids = json.load(f)
             
         roi_id = traceids[traceid]['PARAMS']['roi_id']
+        print("GET ROI SET: %s" % roi_id)
         
         if 'retino' in self.name: #extraction_type == 'retino_analysis':
             extraction_type = 'retino_analysis'
             try:
-                retinoid_info_fpath = glob.glob(os.path.join(rootdir, self.animalid, self.session, self.fov, '*%s*' % self.name, \
+                #print(self.name)
+                print(glob.glob(os.path.join(rootdir, self.animalid, self.session, self.fov, '*%s*' % 'retino', 'retino_analysis', '*.json')))
+                retinoid_info_fpath = glob.glob(os.path.join(rootdir, self.animalid, self.session, self.fov, '*%s*' % 'retino', \
                                                      '%s' % extraction_type, '*.json'))[0] # % traceid, ))
                 with open(retinoid_info_fpath, 'r') as f:
                     retino_ids = json.load(f)
@@ -967,6 +989,7 @@ class Experiment(object):
                 else:
                     traceid = found_ids[0]
             except Exception as e:
+                print(e)
                 print("-- can't create EXP for retino, not processed: %s|%s|%s|%s" % (self.animalid, self.session, self.fov, self.name))
                 roi_id = None
             
@@ -1119,12 +1142,24 @@ class Experiment(object):
         print("... getting data paths - name: %s" % self.name)
         fov_dir = os.path.join(rootdir, self.animalid, self.session, self.fov)
         if 'retino' in self.name:
-            all_runs = glob.glob(os.path.join(fov_dir, '*%s*' % self.name, 'retino_analysis', 'anaylsis*', 'traces', '*.h5'))
+            print("retino traceid:", self.traceid)
+            # Check that this is ROI:
+            roi_info_fp = glob.glob(os.path.join(fov_dir, 'retino*', 'retino_analysis', 'analysis*.json'))[0]
+            with open(roi_info_fp, 'r') as f:
+                rids = json.load(f)
+            traceid_name = self.traceid if 'traces' not in self.traceid else self.traceid.replace('traces', 'analysis')
+            if rids[traceid_name]['PARAMS']['roi_type'] != 'manual2D_circle':
+                traceid_name = [r for r, k in rids.items() if k['PARAMS']['roi_type']=='manual2D_circle'][0]
+            self.traceid = traceid_name
+            print("updated analysis id:", traceid_name)
+
+            #print(glob.glob(os.path.join(fov_dir, '*%s*' % 'retino', 'retino_analysis', 'analysis*', 'traces', '*.h5'))) #, 'retino_analysis', 'anaylsis*')))
+            all_runs = glob.glob(os.path.join(fov_dir, '*%s*' % 'retino', 'retino_analysis', 'analysis*', 'traces', '*.h5'))
             trace_extraction = 'retino_analysis'
         else:
             all_runs = glob.glob(os.path.join(fov_dir, '*%s_*' % self.name, 'traces', 'traces*', 'data_arrays', '*.npz'))
             trace_extraction = 'traces'
-            
+        print("FOUND RUNS:", all_runs)    
         if len(all_runs) == 0:
             print("... No extracted traces: %s" % self.name) #(self.animalid, self.session, self.fov, self.name))
             return None
@@ -1760,7 +1795,8 @@ class Retinobar(Experiment):
     def __init__(self, animalid, session, fov, traceid='analysis002', rootdir='/n/coxfs01/2p-data'):
         super(Retinobar, self).__init__('retinobar', animalid, session, fov, traceid=traceid, rootdir=rootdir)
         self.experiment_type = 'retinobar'
-        
+        self.load(update_self=True)
+        print("--> loaded RetinoBar data:", self.data.traces.shape)
     
     def get_responsive_cells(self, responsive_thr=0.01):
         assert 'retino' in self.name, "Incorrect call for retinotopy moving-bar analysis."
