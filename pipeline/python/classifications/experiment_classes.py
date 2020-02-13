@@ -1045,13 +1045,16 @@ class Experiment(object):
                     # Traces
                     xdata_df = pd.DataFrame(dset['data'][:]) # neuropil-subtracted & detrended
                     F0 = pd.DataFrame(dset['f0'][:]).mean().mean() # detrended offset
+                    print("NP_subtracted offset was: %.2f" % F0)
                     if add_offset:
                         #% Add baseline offset back into raw traces:
                         neuropil_fpath = soma_fpath.replace('np_subtracted', 'neuropil')
                         npdata = np.load(neuropil_fpath)
-                        neuropil_df = pd.DataFrame(npdata['data'][:]) #+ pd.DataFrame(npdata['f0'][:])
-                        print("adding NP offset...")
-                        raw_traces = xdata_df + neuropil_df.mean(axis=0).T + F0
+                        neuropil_f0 = pd.DataFrame(npdata['f0'][:]).mean().mean()
+                        neuropil_df = pd.DataFrame(npdata['data'][:]) #+ pd.DataFrame(npdata['f0'][:]).mean().mean()
+                        print("adding NP offset... (NP baseline offset: %.2f)" % neuropil_f0)
+                        print(xdata_df.shape, neuropil_df.mean(axis=0).shape, F0.shape)
+                        raw_traces = xdata_df + list(neuropil_df.mean(axis=0)) + F0 #.T + F0
                     else:
                         raw_traces = xdata_df + F0
 
@@ -1159,7 +1162,7 @@ class Experiment(object):
         else:
             all_runs = glob.glob(os.path.join(fov_dir, '*%s_*' % self.name, 'traces', 'traces*', 'data_arrays', '*.npz'))
             trace_extraction = 'traces'
-        print("FOUND RUNS:", all_runs)    
+        #print("FOUND RUNS:", all_runs)    
         if len(all_runs) == 0:
             print("... No extracted traces: %s" % self.name) #(self.animalid, self.session, self.fov, self.name))
             return None
