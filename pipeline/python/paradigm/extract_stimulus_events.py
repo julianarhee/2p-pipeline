@@ -1088,7 +1088,7 @@ def extract_frames_to_trials(serialfn_path, mwtrial_path, runinfo, blank_start=T
 def extract_options(options):
     parser = optparse.OptionParser()
 
-    parser.add_option('-D', '--root', action='store', dest='rootdir', default='/nas/volume1/2photon/data', help='data root dir (root project dir containing all animalids) [default: /nas/volume1/2photon/data, /n/coxfs01/2pdata if --slurm]')
+    parser.add_option('-D', '--root', action='store', dest='rootdir', default='/n/coxfs01/2p-data', help='data root dir (root project dir containing all animalids) [default: /n/coxfs01/2pdata if --slurm]')
     parser.add_option('-i', '--animalid', action='store', dest='animalid', default='', help='Animal ID')
 
     # Set specific session/run for current animal:
