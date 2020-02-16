@@ -211,8 +211,10 @@ def format_retino_traces(data_fpath, info=None, trace_type='corrected'):
     dtype = f[f.keys()[0]][trace_type].dtype
     nfiles = len(f.keys())
     tmat = np.empty((nframes_per*nfiles, nrois), dtype=dtype)
+    print("retino: nframes per trial (%i) for %i files" % (nframes_per, nfiles))
     s_ix = 0
     for tix, tfile in enumerate(sorted(f.keys(), key=natural_keys)):
+        print("retino file %s: %i" % (tfile, s_ix))
         tmat[s_ix:s_ix+nframes_per, :] = f[tfile][trace_type][:].T
         
         if info is not None:
@@ -431,10 +433,10 @@ def get_screen_info(animalid, session, fov=None, interactive=True, rootdir='/n/c
         for epath in epi_fpaths:
             with open(epath, 'r') as f:
                 epi = json.load(f)
-            
-            screen['azimuth'] = epi['screen_params']['screen_size_x_degrees']
-            screen['elevation'] = epi['screen_params']['screen_size_t_degrees']
-            screen['resolution'] = [epi['screen_params']['screen_size_x_pixels'], epi['screen_params']['screen_size_y_pixels']]
+            print("getting screen info") 
+            screen['azimuth'] = 59.7782*2. #epi['screen_params']['screen_size_x_degrees']
+            screen['elevation'] = 33.6615*2. #epi['screen_params']['screen_size_t_degrees']
+            screen['resolution'] = [1920, 1080] ##[epi['screen_params']['screen_size_x_pixels'], epi['screen_params']['screen_size_y_pixels']]
 
             if 'screen_boundaries' in epi.keys():
                 if 'boundary_left_degrees' in epi['screen_boundaries'].keys():

@@ -641,6 +641,15 @@ class Session():
         self.experiment_list = self.get_experiment_list(rootdir=rootdir)
         
         self.screen = retinotools.get_retino_info(animalid, session, fov=fov, rootdir=rootdir)
+        print("checking res...")
+        if self.screen['resolution'] != [1920, 1080]:
+            self.screen['resolution'] = [1920, 1080]
+        if self.screen['linmaxH'] != 33.6615:
+            self.screen['linmaxH'] = 33.6615
+            self.screen['linminH'] = -33.6615
+        if self.screen['linmaxW'] != 59.7782:
+            self.screen['linmaxW'] = 59.7782
+            self.screen['linminW'] = -59.7782
 
     def get_stimulus_coordinates(self, update_self=False):
 
@@ -1718,7 +1727,8 @@ class ReceptiveFields(Experiment):
             estats.gdf = resp.group_roidata_stimresponse(self.data.traces[roi_list], self.data.labels, 
                                                              roi_list=roi_list,
                                                              return_grouped=get_grouped)
-    
+            estats.rfits = rfits 
+            print("got rfits...") 
             estats.fits = fitrf.rfits_to_df(rfits['fit_results'], 
                                             row_vals=rfits['row_vals'],
                                             col_vals=rfits['col_vals'],
