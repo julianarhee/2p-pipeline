@@ -1059,11 +1059,11 @@ class Experiment(object):
                         #% Add baseline offset back into raw traces:
                         neuropil_fpath = soma_fpath.replace('np_subtracted', 'neuropil')
                         npdata = np.load(neuropil_fpath)
-                        neuropil_f0 = pd.DataFrame(npdata['f0'][:]).mean().mean()
+                        neuropil_f0 = np.nanmean(np.nanmean(pd.DataFrame(npdata['f0'][:])))
                         neuropil_df = pd.DataFrame(npdata['data'][:]) #+ pd.DataFrame(npdata['f0'][:]).mean().mean()
                         print("adding NP offset... (NP baseline offset: %.2f)" % neuropil_f0)
                         print(xdata_df.shape, neuropil_df.mean(axis=0).shape, F0.shape)
-                        raw_traces = xdata_df + list(neuropil_df.mean(axis=0)) + F0 #.T + F0
+                        raw_traces = xdata_df + list(np.nanmean(neuropil_df, axis=0)) + F0 #.T + F0
                     else:
                         raw_traces = xdata_df + F0
 
