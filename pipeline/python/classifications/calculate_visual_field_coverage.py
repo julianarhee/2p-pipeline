@@ -450,7 +450,7 @@ def main(options):
 
     # Get screen bounds [bottom left upper right]
     screen_bounds = [S.screen['linminH'], S.screen['linminW'], S.screen['linmaxH'], S.screen['linmaxW']]
-    screen_aspect = S.screen['resolution'][0] / S.screen['resolution'][1]
+    screen_aspect = S.screen['resolution'][0] / float(S.screen['resolution'][1])
 
     stiminfo = {'stimulus_sizes': S.get_stimulus_sizes(),
                 'screen_bounds': screen_bounds,

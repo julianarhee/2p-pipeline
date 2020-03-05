@@ -977,7 +977,7 @@ class Experiment(object):
             traceids = json.load(f)
             
         roi_id = traceids[traceid]['PARAMS']['roi_id']
-        print("GET ROI SET: %s" % roi_id)
+        #print("GET ROI SET: %s" % roi_id)
         
         if 'retino' in self.name: #extraction_type == 'retino_analysis':
             extraction_type = 'retino_analysis'
@@ -1016,7 +1016,7 @@ class Experiment(object):
         
         return sdf
     
-    def load(self, trace_type='corrected', update_self=True, make_equal=True, add_offset=True, rootdir='/n/coxfs01/2p-data'):
+    def load(self, trace_type='corrected', update_self=True, make_equal=True, add_offset=True, rootdir='/n/coxfs01/2p-data', create_new=False):
         '''
         Populates trace_type and data
         '''
@@ -1033,7 +1033,7 @@ class Experiment(object):
                     if 'np_subtraced' not in basename:
                         soma_fpath = self.source.replace(basename, 'np_subtracted')
                     print(soma_fpath)
-                    if not os.path.exists(soma_fpath):
+                    if create_new is True or not os.path.exists(soma_fpath):
                         # Realign traces
                         print("*****corrected offset unfound, running now*****")
                         print("%s | %s | %s | %s | %s" % (self.animalid, self.session, self.fov, self.experiment_type, self.traceid))
@@ -1214,7 +1214,7 @@ class Experiment(object):
             if not isinstance(data_fpath, list):
                 corresp_run_name = os.path.split(data_fpath.split('/%s/' % extraction_name)[0])[-1]
                 if self.name != corresp_run_name:
-                    print("... renaming experiment to run name: %s" % corresp_run_name)
+                    #print("... renaming experiment to run name: %s" % corresp_run_name)
                     self.name = corresp_run_name
 
 
@@ -1762,7 +1762,7 @@ class ReceptiveFields(Experiment):
                       transform_fov=True, sigma_scale=2.35, 
                       create_new=False, rootdir='/n/coxfs01/2p-data'):
         
-        from pipeline.python.classifications.analyze_retino_structure import evaluate_rfs as evalrfs
+        from pipeline.python.classifications import analyze_retino_structure as evalrfs
         # Get output dir for stats
         estats = self.get_stats(response_type=response_type, fit_thr=fit_thr) # estats.rois = list of all cells that pass fit-thr
     

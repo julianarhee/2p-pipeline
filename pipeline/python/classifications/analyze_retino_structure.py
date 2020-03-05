@@ -318,9 +318,79 @@ def regplot(x, y, data=None, x_estimator=None, x_bins=None, x_ci="ci",
     return ax, plotter
 
 
+#def do_regr_on_fov(bootdata, bootcis, posdf, cond='azimuth', ci=.95, xaxis_lim=None):
+#    
+#    fig, ax = pl.subplots(figsize=(20,10))
+#    
+#    ax.set_title(cond)
+#    ax.set_ylabel('RF position (rel. deg.)')
+#    ax.set_xlabel('FOV position (um)')
+#    if xaxis_lim is not None:
+#        ax.set_xlim([0, xaxis_lim])
+#    
+#    axname = 'xpos' if cond=='azimuth' else 'ypos'
+#    parname = 'x0' if cond=='azimuth' else 'y0'
+#    
+#    # Get lis of cells that pass boot
+#    roi_list = [k for k, g in bootdata.groupby(['cell'])]  
+#    
+#    # Identify which cells fail...
+#    fail_rois = [r for r in posdf.index.tolist() if r not in roi_list]
+#    fadedf = posdf.loc[fail_rois]
+#    sns.regplot('%s_fov' % axname, '%s_rf' % axname, data=fadedf, color='k', marker='x', fit_reg=False,
+#                scatter_kws=dict(s=5, alpha=0.2), ax=ax, label='no fit')
+#
+#    # Plot successes
+#    ax, plotter = regplot('%s_fov' % axname, '%s_rf' % axname, data=posdf.loc[roi_list], ci=ci*100, color='r', marker='o',
+#                scatter_kws=dict(s=5, alpha=0.5), ax=ax, label='measured (regr: %i%% CI)' % int(ci*100) )
+#
+#    # Get CIs from regression fit to "good data"
+#    grid, yhat, err_bands = plotter.fit_regression(grid=plotter.x)
+#    e1 = err_bands[0, :] # err_bands[0, np.argsort(xvals)] <- sort by xpos to plot
+#    e2 = err_bands[1, :] #err_bands[1, np.argsort(xvals)]
+#    regr_cis = [(ex, ey) for ex, ey in zip(e1, e2)]
+#    
+#    # Get rois sorted by position:
+#    x0_meds = np.array([g[parname].mean() for k, g in bootdata.groupby(['cell'])])
+#    x0_lower = bootcis['%s_lower' % parname][roi_list]
+#    x0_upper = bootcis['%s_upper' % parname][roi_list]
+#
+#    ci_intervals = bootcis['x0_upper'] - bootcis['x0_lower']
+#    weird = [i for i in ci_intervals.index.tolist() if ci_intervals[i] > 10]
+#    #weird = [i for ii, i in enumerate(bootcis.index.tolist()) if ((bootcis['%s_upper' % parname][i]) - (bootcis['%s_lower' % parname][i])) > 40]
+#    rlist = [i for i in roi_list if i not in weird]
+#    roi_ixs = np.array([roi_list.index(i) for i in rlist])
+#    roi_list = np.array([i for i in roi_list if i not in weird])
+#    
+#    # Plot bootstrap results
+#    xvals = posdf['%s_fov' % axname][roi_list].values
+#    yvals = posdf['%s_rf' % axname][roi_list].values
+#    
+#    ax.scatter(xvals, x0_meds[roi_ixs], c='k', marker='_', label='bootstrapped (%i%% CI)' % int(ci*100) )
+#    ax.errorbar(xvals, x0_meds[roi_ixs], yerr=np.array(zip(x0_meds[roi_ixs]-x0_lower.iloc[roi_ixs], x0_upper.iloc[roi_ixs]-x0_meds[roi_ixs])).T, 
+#            fmt='none', color='k', alpha=0.5)
+#    
+#    if xaxis_lim is not None:
+#        ax.set_xticks(np.arange(0, xaxis_lim, 100))
+#        
+#    ax.set_ylim([-10, 40])
+#    sns.despine(offset=1, trim=True, ax=ax)
+#    
+#    ax.legend()
+#
+#    # Check that values make sense
+#    deviants = []
+#    for roi,lo,up,med in zip(roi_list, x0_lower, x0_upper, yvals):
+#        if lo <= med <= up:
+#            continue
+#        else:
+#            deviants.append(roi)
+#            
+#    return fig, regr_cis, deviants
+
 def do_regr_on_fov(bootdata, bootcis, posdf, cond='azimuth', ci=.95, xaxis_lim=None):
     
-    fig, ax = pl.subplots(figsize=(20,10))
+    fig, ax = pl.subplots(figsize=(10,8))
     
     ax.set_title(cond)
     ax.set_ylabel('RF position (rel. deg.)')
@@ -338,17 +408,18 @@ def do_regr_on_fov(bootdata, bootcis, posdf, cond='azimuth', ci=.95, xaxis_lim=N
     fail_rois = [r for r in posdf.index.tolist() if r not in roi_list]
     fadedf = posdf.loc[fail_rois]
     sns.regplot('%s_fov' % axname, '%s_rf' % axname, data=fadedf, color='k', marker='x', fit_reg=False,
-                scatter_kws=dict(s=5, alpha=0.2), ax=ax, label='no fit')
+                scatter_kws=dict(s=10, alpha=0.1), ax=ax, label='no fit')
 
-    # Plot successes
-    ax, plotter = regplot('%s_fov' % axname, '%s_rf' % axname, data=posdf.loc[roi_list], ci=ci*100, color='r', marker='o',
-                scatter_kws=dict(s=5, alpha=0.5), ax=ax, label='measured (regr: %i%% CI)' % int(ci*100) )
+    # Plot successes and regression with CI
+    ax, plotter = regplot('%s_fov' % axname, '%s_rf' % axname, data=posdf.loc[roi_list], ci=ci*100, 
+                          color='k', marker='o',
+                scatter_kws=dict(s=8, alpha=.7), ax=ax, label='measured (regr: %i%% CI)' % int(ci*100) )
 
     # Get CIs from regression fit to "good data"
     grid, yhat, err_bands = plotter.fit_regression(grid=plotter.x)
     e1 = err_bands[0, :] # err_bands[0, np.argsort(xvals)] <- sort by xpos to plot
     e2 = err_bands[1, :] #err_bands[1, np.argsort(xvals)]
-    regr_cis = [(ex, ey) for ex, ey in zip(e1, e2)]
+    regr_cis = np.array([(ex, ey) for ex, ey in zip(e1, e2)])
     
     # Get rois sorted by position:
     x0_meds = np.array([g[parname].mean() for k, g in bootdata.groupby(['cell'])])
@@ -357,36 +428,46 @@ def do_regr_on_fov(bootdata, bootcis, posdf, cond='azimuth', ci=.95, xaxis_lim=N
 
     ci_intervals = bootcis['x0_upper'] - bootcis['x0_lower']
     weird = [i for i in ci_intervals.index.tolist() if ci_intervals[i] > 10]
-    #weird = [i for ii, i in enumerate(bootcis.index.tolist()) if ((bootcis['%s_upper' % parname][i]) - (bootcis['%s_lower' % parname][i])) > 40]
+    print(len(weird))
     rlist = [i for i in roi_list if i not in weird]
     roi_ixs = np.array([roi_list.index(i) for i in rlist])
     roi_list = np.array([i for i in roi_list if i not in weird])
-    
-    # Plot bootstrap results
+    #print(regr_cis[roi_ixs])
+
     xvals = posdf['%s_fov' % axname][roi_list].values
     yvals = posdf['%s_rf' % axname][roi_list].values
     
-    ax.scatter(xvals, x0_meds[roi_ixs], c='k', marker='_', label='bootstrapped (%i%% CI)' % int(ci*100) )
+    # Plot bootstrap results    
+    ax.scatter(xvals, x0_meds[roi_ixs], c='k', marker='_', alpha=0.7, 
+               label='bootstrapped (%i%% CI)' % int(ci*100) )
     ax.errorbar(xvals, x0_meds[roi_ixs], yerr=np.array(zip(x0_meds[roi_ixs]-x0_lower.iloc[roi_ixs], x0_upper.iloc[roi_ixs]-x0_meds[roi_ixs])).T, 
-            fmt='none', color='k', alpha=0.5)
+            fmt='none', color='k', alpha=0.7, lw=1)
     
     if xaxis_lim is not None:
         ax.set_xticks(np.arange(0, xaxis_lim, 100))
         
-    ax.set_ylim([-10, 40])
-    sns.despine(offset=1, trim=True, ax=ax)
-    
+    #ax.set_ylim([-10, 40])
+    sns.despine(offset=4, trim=True, ax=ax)
     ax.legend()
 
     # Check that values make sense
     deviants = []
-    for roi,lo,up,med in zip(roi_list, x0_lower, x0_upper, yvals):
-        if lo <= med <= up:
-            continue
+    bad_fits = []
+    for roi,lo,up,(regL, regU), med in zip(roi_list, x0_lower.iloc[roi_ixs], x0_upper.iloc[roi_ixs], regr_cis[roi_ixs], yvals):
+        if (lo <= med <= up):
+            if (lo < med < up) and ((regL > lo and regL > up) or (regU < lo and regU < up)):
+                #print(lo, med, up)
+                xv = posdf['%s_fov' % axname][roi]
+                yv = posdf['%s_rf' % axname][roi]
+                ax.plot(xv, yv, marker='o', markersize=5, color='magenta', alpha=0.8)
+                ax.plot(xv, yv, marker='x', markersize=5, color='magenta', alpha=1.0)
+                deviants.append(roi)
         else:
-            deviants.append(roi)
-            
-    return fig, regr_cis, deviants
+            # Measured not within CIs
+            bad_fits.append(roi)
+   
+    return fig, regr_cis, deviants, bad_fits
+
 
 
 def plot_regr_and_cis(bootresults, posdf, cond='azimuth', ci=.95, xaxis_lim=1200, ax=None):
@@ -775,8 +856,8 @@ def evaluate_rfs(estats, rfdir='/tmp', response_type='dff', n_bootstrap_iters=10
     # Create output dir for bootstrap results
     bootstrapdir = os.path.join(rfdir, 'evaluation')
 #    roidir = os.path.join(bootstrapdir, 'rois_bootstrap-%i-iters_%i-resample' % (n_bootstrap_iters, n_resamples))
-#    if not os.path.exists(os.path.join(roidir)):
-#        os.makedirs(roidir)
+    if not os.path.exists(os.path.join(bootstrapdir)):
+        os.makedirs(bootstrapdir)
     bootstrap_fpath = os.path.join(bootstrapdir, 'evaluation_results.pkl')
     
     do_bootstrap = False
@@ -859,10 +940,11 @@ def compare_regr_to_boot_params(bootresults, fovinfo,
     xaxis_lim = max([xlim, ylim])
     regresults={}
     for cond in ['azimuth', 'elevation']:
-        fig, regci, outliers = do_regr_on_fov(bootdata, bootcis, posdf, cond=cond, xaxis_lim=xaxis_lim)
+        fig, regci, deviants, bad_fits = do_regr_on_fov(bootdata, bootcis, posdf, cond=cond, xaxis_lim=xaxis_lim)
         
-        regresults[cond] = {'cis': regci, 'outliers': outliers}
-        
+        #regresults[cond] = {'cis': regci, 'outliers': outliers}
+        regresults[cond] = {'cis': regci, 'deviants': deviants, 'bad_fits': bad_fits}
+
         label_figure(fig, data_identifier)
         pl.savefig(os.path.join(statsdir, 'receptive_fields', 'fit-regr_bootstrap-params_%s.svg' % cond))
         pl.close()
@@ -921,7 +1003,7 @@ def identify_deviants(regresults, bootresults, posdf, ci=0.95, rfdir='/tmp'):
         
         sns.despine( trim=True, ax=ax)
       
-        pl.savefig(os.path.join(rfdir, 'evaluation', 'regr-with-deviants_%s.svg' % cond))
+        pl.savefig(os.path.join(rfdir, 'evaluation', 'regr-with-deviants_%s-test.svg' % cond))
         pl.close()
 
         deviants[cond] = trudeviants

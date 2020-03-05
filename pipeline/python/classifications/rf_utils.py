@@ -69,7 +69,8 @@ def calculate_rf_luminances(images, rfstats, rfparams, sdf, roi_list=None):
             lum_level = None
             if curr_object == -1:
                 lum_level = float(sdf[(sdf['morphlevel']==-1) & (sdf['size']==size_deg)]['color'])
-                imarray = np.ones((rfparams['screen_resolution'][1], rfparams['screen_resolution'][0]))*lum_level
+                imarray = np.ones((rfparams['screen_resolution'][1], rfparams['screen_resolution'][0]))*lum_level*255.
+                print(imarray.max().max())
                 curr_object_name = 'fullscreen'
             else:
                 curr_img = images[curr_object]
@@ -82,6 +83,10 @@ def calculate_rf_luminances(images, rfstats, rfparams, sdf, roi_list=None):
             for rid in roi_list:
                 # Transform rfmap to screen
                 rfmap = rfstats['fit_results'][rid]['data']
+                if rfmap.min().min() < 0:
+                    print("NONNEG")
+                    rfmap = rfmap - rfmap.min().min()
+                    
                 rfscreen = transform_rfmap(rfmap, rfparams)
                 rfarray = rfscreen.copy()
                 lumarray = imarray * rfarray
@@ -102,6 +107,57 @@ def calculate_rf_luminances(images, rfstats, rfparams, sdf, roi_list=None):
     rfdf = pd.concat(rfdf, axis=0)
     return rfdf
 
+
+def plot_luminance_calculation(imarray, rfarray, lumarray, rfparams,
+                               rf_cmap='hot', lum_cmap='jet'):
+    rf_cmap = 'hot'
+    lum_cmap = 'jet'
+    #plot_roi = False
+    fig, axes = pl.subplots(1, 3, figsize=(15,3))
+
+    axes[0].imshow(imarray, origin='bottom', alpha=1, cmap='gray')
+    axes[1].imshow(rfarray, origin='bottom', alpha=1, cmap=rf_cmap)
+    axes[2].imshow(lumarray, origin='bottom', alpha=1, cmap=lum_cmap)
+
+    for ax in axes:
+
+        # Draw cells for RF tiling boundaries
+        for rv in rfparams['col_vals_pix']:
+            ax.axvline(rv - pix_per_deg*rfparams['spacing']/2., color='w', lw=0.5)
+        ax.axvline(rv + pix_per_deg*rfparams['spacing']/2., color='w', lw=0.5)
+        for rv in rfparams['row_vals_pix']:
+            ax.axhline(rv - pix_per_deg*rfparams['spacing']/2., color='w', lw=0.5)
+        ax.axhline(rv + pix_per_deg*rfparams['spacing']/2., color='w', lw=0.5)
+
+        # Label coordinates
+        ax.set_xticks(rfparams['col_vals_pix'])
+        ax.set_xticklabels([int(i) for i in rfparams['col_vals']], fontsize=6)
+
+        ax.set_yticks(rfparams['row_vals_pix'])
+        ax.set_yticklabels([int(i) for i in rfparams['row_vals']], fontsize=6)
+        
+    return fig
+
+from matplotlib.colors import LinearSegmentedColormap, ListedColormap, BoundaryNorm
+import matplotlib.cm as cm
+
+def create_color_bar(fig, hue_colors, hue_values, hue_param='label', #cmap='cube_helix', 
+                     orientation='horizontal', cbar_axes=[0.58, 0.17, 0.3, 0.02]):
+
+    cmap = ListedColormap(hue_colors)
+    bounds = np.arange(0, len(hue_values))
+    norm = BoundaryNorm(bounds, cmap.N)
+    mappable = cm.ScalarMappable(cmap=cmap)
+    mappable.set_array(bounds)
+
+    cbar_ax = fig.add_axes(cbar_axes)
+    cbar = fig.colorbar(mappable, cax=cbar_ax, boundaries=np.arange(-0.5,len(hue_values),1), \
+                        ticks=bounds, norm=norm, orientation='horizontal')
+    cbar.ax.tick_params(axis='both', which='both',length=0)
+    cbar.ax.set_xticklabels(hue_values, fontsize=6) #(['%i' % i for i in morphlevels])  # horizontal colorbar
+    cbar.ax.set_xlabel(hue_param, fontsize=12)
+
+    return cbar
 # ------------------------------------------------------------------------------------
 # Generic screen/stimuli functions
 # ------------------------------------------------------------------------------------
@@ -327,4 +383,15 @@ def resize_image_to_screen(im, size_deg=30, pix_per_deg=16.06, aspect_scale=1.74
     scale_factor = (size_deg*aspect_scale)/(1./pix_per_deg) / ref_dim
     imr = cv2.resize(im, None, fx=scale_factor, fy=scale_factor)
 
+    return imr
+
+
+def resize_image_to_coords(im, size_deg=30, pix_per_deg=16.05, aspect_scale=1.747):
+    print(pix_per_deg)
+    ref_dim = max(im.shape)
+    resize_factor = ((size_deg*pix_per_deg) / ref_dim ) / pix_per_deg
+    scale_factor = resize_factor * aspect_scale
+    
+    imr = cv2.resize(im, None, fx=scale_factor, fy=scale_factor)
+    
     return imr
