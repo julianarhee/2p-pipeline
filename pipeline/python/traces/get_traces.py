@@ -198,7 +198,28 @@ def load_RID(session_dir, roi_id):
 
     return RID
 
-    
+def load_AID(run_dir, traceid):
+    run = os.path.split(run_dir)[-1]
+    trace_dir = os.path.join(run_dir, 'retino_analysis')
+    tracedict_path = os.path.join(trace_dir, 'analysisids_%s.json' % run)
+    with open(tracedict_path, 'r') as f:
+        tracedict = json.load(f)
+
+    if 'traces' in traceid:
+        tmp_tdictpath = glob.glob(os.path.join(fovdir, '*run*', 'traces', 'traceids*.json'))[0]
+        with open(tmp_tdictpath, 'r') as f:
+            tmptids = json.load(f)
+        roi_id = tmptids[traceid]['PARAMS']['roi_id']
+        analysis_id = [t for t, v in tracedict.items() if v['PARAMS']['roi_type']=='manual2D_circle' and v['PARAMS']['roi_id'] == roi_id][0]
+        print("Corresponding ANALYSIS ID (for %s with %s) is: %s" % (traceid, roi_id, analysis_id))
+
+    else:
+        analysis_id = traceid 
+    TID = tracedict[analysis_id]
+    pp.pprint(TID)
+    return TID
+
+ 
 def load_TID(run_dir, trace_id, auto=False):
     run = os.path.split(run_dir)[-1]
     trace_dir = os.path.join(run_dir, 'traces')

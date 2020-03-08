@@ -21,6 +21,7 @@ from pipeline.python.paradigm import process_mw_files as mw
 from pipeline.python.utils import natural_keys, replace_root
 from pipeline.python.retinotopy.visualize_rois import roi_retinotopy
 from pipeline.python.traces import get_traces as traces
+from pipeline.python.traces import remake_neuropil_masks as rmasks
 
 pp = pprint.PrettyPrinter(indent=4)
 
@@ -39,7 +40,12 @@ def extract_options(options):
                         help="ANALYSIS ID for retinoid param set to use (created with set_analysis_parameters.py, e.g., analysis001,  etc.)")
     parser.add_option('--slurm', action='store_true', dest='slurm', default=False, help="Set if running as SLURM job on Odyssey")
 
-    parser.add_option('-a', '--np-niter', action='store', dest='np_niter', default=20, help="n iterations for creating neuropil annulus (default: 20. standard is 20 for zoom2p0x, 10 for zoom4p0x")
+    parser.add_option('-a', '--np-niter', action='store', dest='np_niters', default=24, help="n iterations for creating neuropil annulus (default: 24. standard is 24 for zoom2p0x, 10 for zoom4p0x")
+    parser.add_option('-g', '--gap-niter', action='store', dest='gap_niters', default=4, help="n iterations for creating neuropil annulus (default: 4. standard is 4 for zoom2p0x")
+    parser.add_option('-c', '--np-cfactor', action='store', dest='np_cfactor', default=0.7, help="neuropil correction factor (default: 0.7)")
+    parser.add_option('--new', action='store_true', dest='create_new', default=False, help="set flag to re-extract traces and redo anaylsis")
+    parser.add_option('--masks', action='store_true', dest='create_new_masks', default=False, help="set flag to re-create masks")
+
 
 
     (options, args) = parser.parse_args(options)
@@ -229,7 +235,7 @@ def get_mask_traces(tiff_stack,masks):
 
 	
 
-def analyze_tiff(tiff_path_full,tiff_fn,stack_info, RETINOID,file_dir,tiff_fig_dir,masks_file,slicenum=0, np_cfactor=0.7):
+def analyze_tiff(tiff_path_full,tiff_fn,stack_info, RETINOID,file_dir,tiff_fig_dir,masks_file,slicenum=0, np_cfactor=0.7, create_new=False, create_new_masks=False):
 
 
     #intialize file to save data
@@ -361,11 +367,17 @@ def analyze_tiff(tiff_path_full,tiff_fn,stack_info, RETINOID,file_dir,tiff_fig_d
         tiffs_r = np.reshape(tiff_stack, (tiff_d1*tiff_d2, nframes))
  
         #  TRACES outfile:  Save processed roi trace
-        mset = traces_outfile.create_dataset('/'.join([file_str, 'masks']), masks_r.shape, masks_r.dtype)
+        if '%s/masks' % file_str in traces_outfile.keys():
+            mset = traces_outfile['%s/masks' % file_str]
+        else:
+            mset = traces_outfile.create_dataset('/'.join([file_str, 'masks']), masks_r.shape, masks_r.dtype)
         mset[...] = masks_r     
         mset.attrs['nmasks'] = nmasks
         mset.attrs['dims'] = (szx, szy)
-        npset = traces_outfile.create_dataset('/'.join([file_str, 'np_masks']), np_maskarray.shape, np_maskarray.dtype)
+        if '%s/np_masks' % file_str in traces_outfile.keys():
+            npset = traces_outfile['%s/np_masks' % file_str]
+        else:
+            npset = traces_outfile.create_dataset('/'.join([file_str, 'np_masks']), np_maskarray.shape, np_maskarray.dtype)
         npset[...] = np_maskarray     
         npset.attrs['nmasks'] = nmasks
         npset.attrs['dims'] = (szx, szy)
@@ -383,7 +395,7 @@ def analyze_tiff(tiff_path_full,tiff_fn,stack_info, RETINOID,file_dir,tiff_fig_d
         nset = traces_outfile.create_dataset('/'.join([file_str, 'neuropil']), np_trace.shape, np_trace.dtype)
         nset[...] = np_trace 
         #nset.attrs['correction_factor'] = np_cfactor
-        tset = traces_outfile.create_dataset('/'.join([file_str, 'corrected']), roi_trace.shape, roi_trace.dtype)
+        tset = traces_outfile.create_dataset('/'.join([file_str, 'np_subtracted']), roi_trace.shape, roi_trace.dtype)
         tset[...] = roi_trace 
         tset.attrs['correction_factor'] = np_cfactor
 
@@ -838,7 +850,13 @@ def do_analysis(options):
     analysis_id = options.analysis_id
     run = options.run
 
-    np_niter = int(options.np_niter)
+    np_niters = int(options.np_niters)
+    gap_niters = int(options.gap_niters)
+    np_cfactor = float(options.np_cfactor)
+ 
+    create_new = options.create_new
+    create_new_masks = options.create_new_masks
+
 
     #%%
     # =============================================================================
@@ -848,6 +866,21 @@ def do_analysis(options):
     analysis_dir = os.path.join(run_dir, 'retino_analysis')
     tmp_retinoid_dir = os.path.join(analysis_dir, 'tmp_retinoids')
 
+    if 'traces' in analysis_id:
+        traceid = analysis_id
+        trace_dir = os.path.join(run_dir, 'retino_analysis')
+        tracedict_path = os.path.join(trace_dir, 'analysisids_%s.json' % run)
+        with open(tracedict_path, 'r') as f:
+            tracedict = json.load(f)
+
+       # correct this:
+        fovdir = os.path.split(run_dir)[0]
+        tmp_tdictpath = glob.glob(os.path.join(fovdir, '*run*', 'traces', 'traceids*.json'))[0]
+        with open(tmp_tdictpath, 'r') as f:
+            tmptids = json.load(f)
+        roi_id = tmptids[traceid]['PARAMS']['roi_id']
+        analysis_id = [t for t, v in tracedict.items() if v['PARAMS']['roi_type']=='manual2D_circle' and v['PARAMS']['roi_id'] == roi_id][0]
+        print("Corresponding ANALYSIS ID (for %s with %s) is: %s" % (traceid, roi_id, analysis_id))
 
     if not os.path.exists(analysis_dir):
         os.makedirs(analysis_dir)
@@ -971,12 +1004,23 @@ def do_analysis(options):
         #mask_path = os.path.join(rid_dst, 'masks.hdf5')
         #masks_file = h5py.File(mask_path,  'r')#read
         mask_path = os.path.join(retino_dest_dir, 'MASKS.hdf5')
-        if not os.path.exists(mask_path):
-            maskinfo = traces.get_mask_info(RETINOID, RID, nslices=nslices, rootdir=rootdir)
-            print "************ masks info **************"
-            print maskinfo
+        if create_new_masks is True:
+            #make masks
+            print("--- creating new masks:")
+            print("    - np inner: %i" % gap_niters)
+            print("    - np outer: %i" % np_niters)
+            print("    - correction: %.2f" % np_cfactor)
 
-            mask_path = traces.get_masks(mask_path, maskinfo, RID, save_warp_images=True, do_neuropil_correction=True, niter=np_niter, rootdir=rootdir)
+            mask_path = rmasks.create_masks_for_run(run_dir, traceid=analysis_id, np_niterations=np_niters, gap_niterations=gap_niters)
+        else:
+            if not os.path.exists(mask_path):
+                maskinfo = traces.get_mask_info(RETINOID, RID, nslices=nslices, rootdir=rootdir)
+                print("************ masks info **************")
+                print(maskinfo)
+
+                mask_path = traces.get_masks(mask_path, maskinfo, RID, save_warp_images=True, do_neuropil_correction=True, niter=np_niters, rootdir=rootdir)
+        
+        # load mask file 
         masks_file = h5py.File(mask_path, 'r')
 
     else:
@@ -1022,10 +1066,11 @@ def do_analysis(options):
                 data_str = '%s_Slice%02d' % (data_str, int(slicenum+1))
             data_fn = '%s.h5' % data_str
             analyzed_fpath = os.path.join(file_dir, data_fn)
-            if os.path.isfile(analyzed_fpath) and os.stat(analyzed_fpath).st_size > 0: #check if we already analyzed this tiff
+            if (create_new is False) and (os.path.isfile(analyzed_fpath) and os.stat(analyzed_fpath).st_size > 0): #check if we already analyzed this tiff
                 print('TIFF already analyzed!')
             else:
-                analyze_tiff(tiff_path_full,tiff_fn,stack_info, RETINOID,file_dir,tiff_fig_dir, masks_file, slicenum=slicenum)
+                print("Analyzing tif (NP correction %.2f)" % np_cfactor)
+                analyze_tiff(tiff_path_full,tiff_fn,stack_info, RETINOID,file_dir,tiff_fig_dir, masks_file, slicenum=slicenum, np_cfactor=np_cfactor)
 
     if RETINOID['PARAMS']['roi_type'] != 'pixels':
         masks_file.close()
