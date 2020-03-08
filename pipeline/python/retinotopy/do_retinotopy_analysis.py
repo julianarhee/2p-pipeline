@@ -368,7 +368,7 @@ def analyze_tiff(tiff_path_full,tiff_fn,stack_info, RETINOID,file_dir,tiff_fig_d
  
         #  TRACES outfile:  Save processed roi trace
         print(traces_outfile.keys())
-        if 'masks' in traces_outfile[filestr].keys():
+        if 'masks' in traces_outfile[file_str].keys():
             mset = traces_outfile['%s/masks' % file_str]
         else:
             mset = traces_outfile.create_dataset('/'.join([file_str, 'masks']), masks_r.shape, masks_r.dtype)
