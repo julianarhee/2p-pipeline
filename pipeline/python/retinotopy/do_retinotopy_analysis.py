@@ -367,14 +367,15 @@ def analyze_tiff(tiff_path_full,tiff_fn,stack_info, RETINOID,file_dir,tiff_fig_d
         tiffs_r = np.reshape(tiff_stack, (tiff_d1*tiff_d2, nframes))
  
         #  TRACES outfile:  Save processed roi trace
-        if '%s/masks' % file_str in traces_outfile.keys():
+        print(traces_outfile.keys())
+        if 'masks' in traces_outfile[filestr].keys():
             mset = traces_outfile['%s/masks' % file_str]
         else:
             mset = traces_outfile.create_dataset('/'.join([file_str, 'masks']), masks_r.shape, masks_r.dtype)
         mset[...] = masks_r     
         mset.attrs['nmasks'] = nmasks
         mset.attrs['dims'] = (szx, szy)
-        if '%s/np_masks' % file_str in traces_outfile.keys():
+        if 'np_masks' in traces_outfile[file_str].keys():
             npset = traces_outfile['%s/np_masks' % file_str]
         else:
             npset = traces_outfile.create_dataset('/'.join([file_str, 'np_masks']), np_maskarray.shape, np_maskarray.dtype)
