@@ -144,7 +144,7 @@ def create_masks_for_all_runs(animalid, session, fov, traceid='traces001', np_ni
 
     print("FINISHED.")
 
-    return
+    return 
 
 
 def apply_masks_for_all_runs(animalid, session, fov, traceid='traces001', np_correction_factor=0.7, rootdir='/n/coxfs01/2p-data'):
@@ -172,7 +172,7 @@ def apply_masks_for_all_runs(animalid, session, fov, traceid='traces001', np_cor
 
     print("FINISHED.")
     
-    return
+    return filetraces_dir
 
 
     
@@ -292,9 +292,19 @@ def main(options):
     print("---- completed NP mask extraction ----")
 
     print("2. Applying neuropil masks")
-    apply_masks_for_all_runs(animalid, session, fov, traceid=traceid, 
+    filetraces_dir = apply_masks_for_all_runs(animalid, session, fov, traceid=traceid, 
                             rootdir=rootdir, np_correction_factor=np_correction_factor)
     print("---- applied NP masks to tifs ----")
+
+    traceid_dir = os.path.split(filetraces_dir)[0]
+    with open(os.path.join(traceid_dir, 'extraction_params.json'), 'r') as f:
+        eparams = json.load(f)
+    eparams.update({'np_niterations': np_niterations,
+                    'gap_niterations': gap_niterations,
+                    'np_correction_factor': np_correction_factor})
+    with open(os.path.join(traceid_dir, 'extraction_params.json'), 'w') as f: 
+        json.dump(eparams, f, indent=4, sort_keys=True)
+    print("--- updated extraction info ---")
 
 
     print("FINISHED.")
