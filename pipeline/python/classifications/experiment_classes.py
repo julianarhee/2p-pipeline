@@ -738,6 +738,8 @@ class Session():
     
     def get_all_responsive_cells(self, traceid='traces001', response_type='dff',
                                  responsive_test='ROC', responsive_thr=0.05, n_stds=2.5, fit_thr=0.5):
+        '''Get all cells that were "responsive" to something
+        '''
         all_rois = []
         experiment_list = self.get_experiment_list(traceid=traceid)
         for e in experiment_list:

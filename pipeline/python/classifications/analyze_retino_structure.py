@@ -1055,25 +1055,7 @@ def do_rf_fits_and_evaluation(animalid, session, fov, rfname=None, traceid='trac
                               n_processes=1, create_new=False, rootdir='/n/coxfs01/2p-data'):
 
     from pipeline.python.classifications import experiment_classes as util
-#    opts = extract_options(options)
-#    animalid = opts.animalid
-#    session = opts.session
-#    fov = opts.fov
-#    traceid = opts.traceid
-#    response_type = opts.response_type
-#    fit_thr = opts.fit_thr
-#    rootdir = opts.rootdir
-#    
-#    n_resamples = opts.n_resamples
-#    n_bootstrap_iters = opts.n_bootstrap_iters
-#    create_new = opts.create_new
-#    n_processes = int(opts.n_processes)
-#    
-#    ci = opts.ci
-#    transform_fov = opts.transform_fov
-#    plot_boot_distns = opts.plot_boot_distns
-#    sigma_scale = opts.sigma_scale
-    
+
     #%% Create session and experiment objects
     S = util.Session(animalid, session, fov)
     experiment_list = S.get_experiment_list(traceid=traceid)
@@ -1103,15 +1085,13 @@ def do_rf_fits_and_evaluation(animalid, session, fov, rfname=None, traceid='trac
     # Get RF dir for current fit type         
     rfdir, fit_desc = fitrf.create_rf_dir(exp.animalid, exp.session, exp.fov, exp.name, traceid=exp.traceid,
                                     response_type=response_type, fit_thr=fit_thr)
-
     data_identifier = '|'.join([exp.animalid, exp.session, exp.fov, exp.traceid, exp.rois, exp.trace_type, fit_desc])
             
     #%% Load session's rois:
     print("Getting FOV info for rois.")
     rfdf = estats.fits
     #% Plot spatially ordered rois
-    if len(glob.glob(os.path.join(statsdir, 'receptive_fields', 'spatially_sorted*.svg'))) == 0:
-        
+    if len(glob.glob(os.path.join(statsdir, 'receptive_fields', 'spatially_sorted*.svg'))) == 0: 
         fig = spatially_sort_compare_position(estats.fovinfo, transform=transform_fov)
         #%
         label_figure(fig, data_identifier)

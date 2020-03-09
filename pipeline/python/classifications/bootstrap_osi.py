@@ -995,7 +995,7 @@ def get_tuning(animalid, session, fov, run_name, return_iters=False,
                traceid='traces001', roi_list=None, statdf=None,
                response_type='dff', allconfigs=True,
                n_bootstrap_iters=1000, n_resamples=20, n_intervals_interp=3,
-               make_plots=True, responsive_test='ROC', responsive_thr=0.05, n_stds=2.5,
+               make_plots=True, responsive_test='nstds', responsive_thr=10, n_stds=2.5,
                create_new=False, rootdir='/n/coxfs01/2p-data', n_processes=1,
                min_cfgs_above=2, min_nframes_above=10):
     
