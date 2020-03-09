@@ -1656,7 +1656,7 @@ class ReceptiveFields(Experiment):
                 traceback.print_exc()
 
         print("... got rf fits")
-        roi_list = [r for r, res in rfits['fit_results'].items() if res['fit_r']['r2'] >= fit_thr]
+        roi_list = [r for r, res in rfits['fit_results'].items() if res['fit_r']['r2'] > fit_thr]
         #if exp_name == 'gratings':
         #    exp_name = 'rfs'
         nrois_total = len(rfits['fit_results'].keys())

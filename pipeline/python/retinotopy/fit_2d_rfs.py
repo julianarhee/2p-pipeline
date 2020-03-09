@@ -1564,7 +1564,7 @@ def fit_2d_receptive_fields(animalid, session, fov, run, traceid, create_new=Fal
             
                 figname = 'roi%05d-overlay_zscore' % (int(rid+1)) #, fit_thr, response_type)
                 pl.savefig(os.path.join(best_rois_figdir, 'svg', '%s.svg' % figname))
-                pl.savefig(os.path.join(best_rois_figdir, '%s.png' % figname))
+                #pl.savefig(os.path.join(best_rois_figdir, '%s.png' % figname))
 
                 pl.close()
                 

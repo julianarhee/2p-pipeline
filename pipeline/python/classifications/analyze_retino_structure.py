@@ -430,7 +430,7 @@ def do_regr_on_fov(bootdata, bootcis, posdf, cond='azimuth', ci=.95, xaxis_lim=N
 
     ci_intervals = bootcis['x0_upper'] - bootcis['x0_lower']
     weird = [i for i in ci_intervals.index.tolist() if ci_intervals[i] > 10]
-    print(len(weird))
+    print('weird', len(weird))
     rlist = [i for i in roi_list if i not in weird]
     roi_ixs = np.array([roi_list.index(i) for i in rlist])
     roi_list = np.array([i for i in roi_list if i not in weird])
@@ -445,8 +445,8 @@ def do_regr_on_fov(bootdata, bootcis, posdf, cond='azimuth', ci=.95, xaxis_lim=N
     ax.errorbar(xvals, x0_meds[roi_ixs], yerr=np.array(zip(x0_meds[roi_ixs]-x0_lower.iloc[roi_ixs], x0_upper.iloc[roi_ixs]-x0_meds[roi_ixs])).T, 
             fmt='none', color='k', alpha=0.7, lw=1)
     
-    if xaxis_lim is not None:
-        ax.set_xticks(np.arange(0, xaxis_lim, 100))
+    #if xaxis_lim is not None:
+    #    ax.set_xticks(np.arange(0, xaxis_lim, 100))
         
     #ax.set_ylim([-10, 40])
     sns.despine(offset=4, trim=True, ax=ax)
@@ -464,10 +464,12 @@ def do_regr_on_fov(bootdata, bootcis, posdf, cond='azimuth', ci=.95, xaxis_lim=N
                 ax.plot(xv, yv, marker='o', markersize=5, color='magenta', alpha=0.8)
                 ax.plot(xv, yv, marker='x', markersize=5, color='magenta', alpha=1.0)
                 deviants.append(roi)
+
         else:
             # Measured not within CIs
             bad_fits.append(roi)
-   
+    print("---> %s: deviants" % cond, deviants)
+  
     return fig, regr_cis, deviants, bad_fits
 
 
@@ -1005,7 +1007,7 @@ def identify_deviants(regresults, bootresults, posdf, ci=0.95, rfdir='/tmp'):
         #trudeviants = [r for r in roi_list if r not in within and r not in regresults[cond]['outliers']]
         trudeviants = [r for r in roi_list if r not in within[cond] and r not in regresults[cond]['bad_fits']]
 
-        print("... There are %i true deviants!" % len(trudeviants))
+        print("... There are %i true deviants!" % len(trudeviants), trudeviants)
         
         fig, ax = pl.subplots(figsize=(15,10))
         ax = plot_regr_and_cis(bootresults, posdf, cond=cond, ax=ax)
@@ -1033,7 +1035,7 @@ def identify_deviants(regresults, bootresults, posdf, ci=0.95, rfdir='/tmp'):
 
     #%
     deviant_both = sorted(intersection(deviants['azimuth'], deviants['elevation']))
-    print deviant_both
+    #print deviant_both
     within_both = sorted(intersection(within['azimuth'], within['elevation']))
    
     deviants['bad'] = bad_rois
