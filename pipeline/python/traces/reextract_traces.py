@@ -107,7 +107,7 @@ def redo_manual_extraction(options):
     rmasks.apply_masks_for_all_runs(animalid, session, fov, traceid=traceid, 
                             rootdir=rootdir, np_correction_factor=np_correction_factor)
     
-    # Get runs to extract
+    # Get event-basd runs to extract
     session_dir = os.path.join(rootdir, animalid, session)
     nonretino_rundirs = [r for r in sorted(glob.glob(os.path.join(session_dir, fov, '*_run*')), key=natural_keys) if 'retino' not in r]
 
@@ -128,7 +128,39 @@ def redo_manual_extraction(options):
         retino_opts = ['-i', animalid, '-S', session, '-A', fov, '-g', gap_niterations, '-a', np_niterations, '--new', '--masks']
         retino.do_analysis(retino_opts)
 
+    # Do RF fits
+    if int(session) < 20190511 and 'gratings' in experiment_types:
+            rf_runs = ['rfs']
+    else:
+        rf_runs = [r for r in experiment_types if 'rfs' in r]
 
+    for rf_run in rf_runs:
+        print("[%s] 6a.  Fitting RF runs." % rf_run)
+        # fit RFs
+        res_, fov_ = fitrfs.fit_2d_receptive_fields(animalid, session, fov, rf_run, traceid, fit_thr=fit_thr, 
+                             make_pretty_plots=True)
+
+        # evaluate  
+        print("[%s] 6b. Evaluating RF fits." % rf_run)
+        devs_ = evalrfs.do_rf_fits_and_evaluation(animalid, session, fov, rfname=rf_run,
+                              traceid=traceid, response_type=response_type, fit_thr=fit_thr, n_processes=n_processes) 
+
+    # Do ROC responsivity test
+    if 'blobs' in experiment_types:
+        print("[blobs] 7.  Doing ROC test.")
+        roc.bootstrap_roc_func(animalid, session, fov, traceid, 'blobs', n_processes=n_processes)
+
+    if 'gratings' in experiment_types and int(session) < 20190511:
+        print("[gratings] 8.  Doing ROC test.")
+        roc.bootstrap_roc_func(animalid, session, fov, traceid, 'gratings', n_processes=n_processes)
+
+        print("[gratings] 9.  Doing OSI fits, using nstds")
+        osi_thr = 0.66
+        exp = cutils.Gratings(animalid, session, fov, traceid=traceid)
+        bootr_, fitparams = exp.get_tuning(n_processes=n_processes, make_plots=True, create_new=True)
+        evalosi_, goodfits = exp.evaluate_fits(bootr_, fitparams, goodness_thr=osi_thr, make_plots=True)
+        print("--- done: %i cells with good fits (thr %.2f)" % (len(goodfits), osi_thr)
+    
     print("********************************")
     print("Finished.")
     print("********************************")

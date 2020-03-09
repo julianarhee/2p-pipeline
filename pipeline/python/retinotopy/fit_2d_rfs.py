@@ -1505,7 +1505,7 @@ def fit_2d_receptive_fields(animalid, session, fov, run, traceid, create_new=Fal
         col_vals = results['col_vals']
         fitdf = rfits_to_df(results['fit_results'], row_vals=row_vals, col_vals=col_vals) #, roi_list=None)
         fit_thr = 0.5
-        fit_roi_list = fitdf[fitdf['r2'] >= fit_thr].sort_values('r2', axis=0, ascending=False).index.tolist()
+        fit_roi_list = fitdf[fitdf['r2'] > fit_thr].sort_values('r2', axis=0, ascending=False).index.tolist()
         print "%i out of %i fit rois with r2 > %.2f" % (len(fit_roi_list), fitdf.shape[0], fit_thr)
     #    
         # Plot all RF maps for fit cells (limit = 60 to plot)
@@ -1668,12 +1668,13 @@ def main(options):
     response_thr = optsE.response_thr
     plot_rois = optsE.plot_rois
     
-    
-    results = fit_2d_receptive_fields(animalid, session, fov, run, traceid, 
+    fit_thr = 0.50 
+    rfresults, fovinfo = fit_2d_receptive_fields(animalid, session, fov, run, traceid, 
                                 trace_type=trace_type, visual_area=visual_area, select_rois=select_rois,
                                 #response_type=response_type, response_thr=response_thr, 
                                 make_pretty_plots=plot_rois)
 
+    print("--- fit %i rois (R2 thr > %.2f) ---" % (len(rfresults['fit_results'].keys()), fit_thr))
 
     #%
 
