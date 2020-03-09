@@ -14,6 +14,8 @@ import cv2
 import traceback
 import optparse
 import sys
+import matplotlib as mpl
+mpl.use('agg')
 
 import numpy as np
 import pylab as pl
@@ -131,6 +133,11 @@ def redo_manual_extraction(options):
     print("********************************")
     print("Finished.")
     print("********************************")
+
+
+def main(options):
+    redo_manual_extraction(options)
+
 
 if __name__ == '__main__':
     main(sys.argv[1:])
