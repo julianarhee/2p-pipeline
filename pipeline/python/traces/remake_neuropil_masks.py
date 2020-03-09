@@ -131,7 +131,7 @@ def create_masks_for_all_runs(animalid, session, fov, traceid='traces001', np_ni
     # Get runs to extract
     session_dir = os.path.join(rootdir, animalid, session)
     all_rundirs = [r for r in sorted(glob.glob(os.path.join(session_dir, fov, '*_run*')), key=natural_keys)\
-                   if 'retino' not in r] 
+                   if 'retino' not in r and 'compare' not in r] 
 
     run_dir = all_rundirs[0]
     for ri, run_dir in enumerate(all_rundirs): 
