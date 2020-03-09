@@ -12,6 +12,8 @@ import json
 import h5py
 import cv2
 import traceback
+import optparse
+import sys
 
 import numpy as np
 import pylab as pl
@@ -21,8 +23,63 @@ from pipeline.python.traces import realign_epochs as realign
 from pipeline.python.traces import remake_neuropil_masks as rmasks
 
 
+def extract_options(options):
+    parser = optparse.OptionParser()
+
+    # PATH opts:
+    parser.add_option('-D', '--root', action='store', dest='rootdir', default='/n/coxfs01/2p-data', 
+                      help='root project dir containing all animalids [default: /n/coxfs01/2pdata]')
+    parser.add_option('-i', '--animalid', action='store', dest='animalid', default='', 
+                      help='Animal ID')
+    parser.add_option('-S', '--session', action='store', dest='session', default='', 
+                      help='Session (format: YYYYMMDD)')
+    
+    # Set specific session/run for current animal:
+    parser.add_option('-A', '--fov', action='store', dest='fov', default='FOV1_zoom2p0x', 
+                      help="fov name (default: FOV1_zoom2p0x)")
+    parser.add_option('-E', '--experiment', action='store', dest='experiment', default='', 
+                      help="experiment name (e.g,. gratings, rfs, rfs10, or blobs)") #: FOV1_zoom2p0x)")
+    
+    parser.add_option('-t', '--traceid', action='store', dest='traceid', default='traces001', 
+                      help="traceid (default: traces001)")
+
+    # Neuropil mask params
+    parser.add_option('-N', '--np-outer', action='store', dest='np_niterations', default=24, 
+                      help="Num cv dilate iterations for outer annulus (default: 24, ~50um for zoom2p0x)")
+    parser.add_option('-g', '--np-inner', action='store', dest='gap_niterations', default=4, 
+                      help="Num cv dilate iterations for inner annulus (default: 4, gap ~8um for zoom2p0x)")
+    parser.add_option('-c', '--factor', action='store', dest='np_correction_factor', default=0.7, 
+                      help="Neuropil correction factor (default: 0.7)")
+
+    # Alignment params
+    parser.add_option('-p', '--iti-pre', action='store', dest='iti_pre', default=1.0, 
+                      help="pre-stim amount in sec (default: 1.0)")
+    parser.add_option('-P', '--iti-post', action='store', dest='iti_post', default=1.0, 
+                      help="post-stim amount in sec (default: 1.0)")
+
+    parser.add_option('--plot', action='store_true', dest='plot_masks', default=False, 
+                      help="set flat to plot soma and NP masks")
+
+#    parser.add_option('-r', '--rows', action='store', dest='rows',
+#                          default=None, help='Transform to plot along ROWS (only relevant if >2 trans_types)')
+#    parser.add_option('-c', '--columns', action='store', dest='columns',
+#                          default=None, help='Transform to plot along COLUMNS')
+#    parser.add_option('-H', '--hue', action='store', dest='subplot_hue',
+#                          default=None, help='Transform to plot by HUE within each subplot')
+#    parser.add_option('-d', '--response', action='store', dest='response_type',
+#                          default='dff', help='Traces to plot (default: dff)')
+#
+#    parser.add_option('-f', '--filetype', action='store', dest='filetype',
+#                          default='svg', help='File type for images [default: svg]')
+#
+    (options, args) = parser.parse_args(options)
+
+    return options
+
 
 def redo_manual_extraction(options):
+
+    opts = extract_options(options)
 
     animalid = opts.animalid
     session = opts.session
@@ -74,4 +131,9 @@ def redo_manual_extraction(options):
     print("********************************")
     print("Finished.")
     print("********************************")
+
+if __name__ == '__main__':
+    main(sys.argv[1:])
+    
+
 
