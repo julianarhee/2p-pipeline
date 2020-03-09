@@ -116,7 +116,6 @@ def redo_manual_extraction(options):
         print("3. Parsing trials - %s" % experiment) 
         realign.parse_trial_epochs(animalid, session, fov, experiment, traceid, 
                             iti_pre=iti_pre, iti_post=iti_post)
-
         
         print("4. Aligning traces to trials - %s" % experiment)
         relign.align_traces(animalid, session, fov, experiment, traceid, rootdir=rootdir)

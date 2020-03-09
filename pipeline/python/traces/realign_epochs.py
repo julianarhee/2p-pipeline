@@ -20,6 +20,7 @@ import pandas as pd
 import numpy as np
 from pipeline.python.utils import natural_keys, get_frame_info
 from pipeline.python.paradigm import align_acquisition_events as alignacq
+from pipeline.python.traces import trial_alignment as talignment
 
 from pipeline.python.classifications import experiment_classes as cutils
 
@@ -90,12 +91,15 @@ def parse_trial_epochs(animalid, session, fov, experiment, traceid,
     print("Done!")
    
 def align_traces(animalid, session, fov, experiment, traceid, rootdir='/n/coxfs01/2p-data'):
-    if experiment == 'blobs':
-        exp = cutils.Objects(animalid, session, fov, traceid=traceid, rootdir=rootdir)
-    elif experiment == 'gratings':
-        exp = cutils.Gratings(animalid, session, fov, traceid=traceid, rootdir=rootdir)
 
-    exp.load(trace_type='dff', update_self=True, make_equal=False, create_new=True)
+    talignment.aggregate_experiment_runs(animalid, session, fov, experiment, traceid=traceid)
+
+#    if experiment == 'blobs':
+#        exp = cutils.Objects(animalid, session, fov, traceid=traceid, rootdir=rootdir)
+#    elif experiment == 'gratings':
+#        exp = cutils.Gratings(animalid, session, fov, traceid=traceid, rootdir=rootdir)
+#
+#    exp.load(trace_type='dff', update_self=True, make_equal=False, create_new=True)
     print("Aligned traces!") 
 
 
