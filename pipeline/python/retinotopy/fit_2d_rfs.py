@@ -821,8 +821,8 @@ def overlay_traces_on_rfmap(rid, avg_resp_by_cond, zscored_traces, labels, sdf,
             ymin = min([ymin, np.nanmin(avg_trace)-np.nanmin(sem_trace)])
             ymax = max([ymax, np.nanmax(avg_trace) + np.nanmax(sem_trace)])
 
-    ymin = round(ymin, 1) #if scaley is None else scaley[0] #round(min([ymin, 0]), 1)
-    ymax = round(ymax, 1) #if scaley is None else scaley[1]
+    ymin = round(ymin, 2) #if scaley is None else scaley[0] #round(min([ymin, 0]), 1)
+    ymax = round(ymax, 2) #if scaley is None else scaley[1]
     for ax in axes.flat:
         ax.set_ylim([ymin, ymax])
         #for pos in ['top', 'bottom', 'right', 'left']:
@@ -841,10 +841,13 @@ def overlay_traces_on_rfmap(rid, avg_resp_by_cond, zscored_traces, labels, sdf,
     leg = fig.add_subplot(111, position=rect, aspect='auto')
     leg.clear()
     leg.plot(tsecs, avg_trace, alpha=1)
-    
-    
+     
     leg.set_ylim([ymin, ymax])
-    yscale = min([ymax, 0.4])
+    if response_type == 'zscore':
+        trace_scale = min([ymax, 2.0])
+    else:
+        trace_scale = min([ymax, 0.5])
+    yscale = trace_scale #min([ymax, trace_scale])
     leg.set_yticks([ymin, yscale-np.abs(ymin)])
     yunits = 'std' if response_type=='zscore' else response_type
     leg.set_ylabel('%.1f %s' % (yscale, yunits))
@@ -1549,7 +1552,7 @@ def fit_2d_receptive_fields(animalid, session, fov, run, traceid, create_new=Fal
             for rid in fit_roi_list:
                 fig = overlay_traces_on_rfmap(rid, avg_resp_by_cond_plot, zscored_traces_plot, labels, sdf,
                                               #vmin=-0.05, vmax=0.5, scaley=[-0.05, 0.6], lw=0.5,
-                                              nframes_per_trial=nframes_per_trial, response_type=response_type,
+                                              nframes_per_trial=nframes_per_trial, response_type='zscore', #response_type,
                                               nframes_plot=nframes_plot, start_frame=start_frame, yunit_sec=yunit_sec,
                                               row_vals=row_vals, col_vals=col_vals, linecolor=linecolor, cmap=cmap)
                 

@@ -5,6 +5,8 @@ Created on Fri Aug 16 11:10:13 2019
 
 @author: julianarhee
 """
+import matplotlib as mpl
+mpl.use('agg')
 import os
 import glob
 import json
@@ -962,8 +964,8 @@ def compare_regr_to_boot_params(bootresults, fovinfo, evaldir='/tmp',
         #pl.savefig(os.path.join(statsdir, 'receptive_fields', 'fit-regr_bootstrap-params_%s.svg' % cond))
         pl.close()
 
-    with open(os.path.join(evaldir, 'good_bad_weird_rois.json'), 'w') as f:
-        json.dump(evalres, f, indent=4)    
+    with open(os.path.join(evaldir, 'good_bad_weird_rois_bycond.json'), 'w') as f:
+        json.dump(evalresults, f, indent=4)    
     print("--- saved roi info after evaluation.")
   
     return regresults
@@ -981,7 +983,7 @@ def identify_deviants(regresults, bootresults, posdf, ci=0.95, rfdir='/tmp'):
     #bad_rois = intersection(regresults['azimuth']['outliers'], regresults['elevation']['outliers']) # these are cells whose mean value does not lie within the 95% CI 
     bad_rois = intersection(regresults['azimuth']['bad_fits'], regresults['elevation']['bad_fits']) # these are cells whose mean value does not lie within the 95% CI 
 
-    within={}
+    within = dict((k, []) for k in conditions)
     for cond in conditions:
         print("%s:  checking for deviants..." % cond)
         param = 'x0' if cond=='azimuth' else 'y0'
@@ -999,7 +1001,7 @@ def identify_deviants(regresults, bootresults, posdf, ci=0.95, rfdir='/tmp'):
                 within[cond].append(roi)
             elif (pci[0] <= rci[0] <= pci[1]) or (pci[0] <= rci[1] <= pci[1]):
                 within[cond].append(roi)
-        print("... %i out of %i cells' bootstrapped param distNs lie within %i%% CI of regression fit" % (len(within), len(roi_list), int(ci*100)))
+        print("... %i out of %i cells' bootstrapped param distNs lie within %i%% CI of regression fit" % (len(within[cond]), len(roi_list), int(ci*100)))
         #trudeviants = [r for r in roi_list if r not in within and r not in regresults[cond]['outliers']]
         trudeviants = [r for r in roi_list if r not in within[cond] and r not in regresults[cond]['bad_fits']]
 
@@ -1165,7 +1167,7 @@ def do_rf_fits_and_evaluation(animalid, session, fov, rfname=None, traceid='trac
     # Identify deviants
     deviants = identify_deviants(regresults, bootresults, estats.fovinfo['positions'], ci=ci, rfdir=rfdir)
     
-    with open(os.path.join(rfdir, 'evaluation', 'deviants.json'), 'w') as f:
+    with open(os.path.join(rfdir, 'evaluation', 'deviants_bothconds.json'), 'w') as f:
         json.dump(deviants, f, indent=4)
 
 
