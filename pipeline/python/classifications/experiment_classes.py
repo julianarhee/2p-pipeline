@@ -207,6 +207,13 @@ def get_anatomical(animalid, session, fov, channel_num=2, rootdir='/n/coxfs01/2p
 # Data processing and formatting
 # #############################################################################
 
+def reformat_morph_values(sdf):
+    control_ixs = sdf[sdf['morphlevel']==-1].index.tolist()
+    sizevals = np.array([round(s, 1) for s in sdf['size'].unique() if s not in ['None', None] and not np.isnan(s)])
+    sdf.loc[sdf.morphlevel==-1, 'size'] = pd.Series(sizevals, index=control_ixs)
+    sdf['size'] = [round(s, 1) for s in sdf['size'].values]
+    return sdf
+
 def process_traces(raw_traces, labels, response_type='dff', nframes_post_onset=None):
 
 #    stim_on_frame = labels['stim_on_frame'].unique()[0]
@@ -1013,7 +1020,8 @@ class Experiment(object):
                                            self.fov, self.name, 'traces/traces*', 'data_arrays', 'labels.npz'))[0]
         dset = np.load(dset_path)
         sdf = pd.DataFrame(dset['sconfigs'][()]).T
-        
+        sdf = reformat_morph_values(sdf)
+     
         return sdf
     
     def load(self, trace_type='corrected', update_self=True, make_equal=True, add_offset=True, rootdir='/n/coxfs01/2p-data', create_new=False):
@@ -1046,9 +1054,9 @@ class Experiment(object):
                     # Stimulus / condition info
                     self.data.labels = pd.DataFrame(data=dset['labels_data'], columns=dset['labels_columns'])
                     sdf = pd.DataFrame(dset['sconfigs'][()]).T
-                    round_sz = [int(round(s)) if s is not None else s for s in sdf['size']]
-                    sdf['size'] = round_sz
-                    self.data.sdf = sdf
+                    #round_sz = [int(round(s)) if s is not None else s for s in sdf['size']]
+                    #sdf['size'] = round_sz
+                    self.data.sdf = reformat_morph_values(sdf)
                     self.data.info = dset['run_info'][()]
                     
                     # Traces
