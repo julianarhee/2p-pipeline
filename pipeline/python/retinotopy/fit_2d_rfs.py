@@ -825,8 +825,8 @@ def overlay_traces_on_rfmap(rid, avg_resp_by_cond, zscored_traces, labels, sdf,
     ymax = round(ymax, 1) #if scaley is None else scaley[1]
     for ax in axes.flat:
         ax.set_ylim([ymin, ymax])
-        for pos in ['top', 'bottom', 'right', 'left']:
-            ax.spines[pos].set_edgecolor('w')
+        #for pos in ['top', 'bottom', 'right', 'left']:
+        #    ax.spines[pos].set_edgecolor('w')
 
     pl.subplots_adjust(left=0.05, right=0.8, wspace=0, hspace=0)
 
@@ -1486,9 +1486,9 @@ def fit_2d_receptive_fields(animalid, session, fov, run, traceid, create_new=Fal
         
         # zscore the traces:
         nframes_post_onset = nframes_on + int(round(1.*fr))
+        trials_by_cond = get_trials_by_cond(labels)
         zscored_traces, zscores = process_traces(raw_traces, labels, response_type=response_type,
                                                 nframes_post_onset=nframes_post_onset)
-        trials_by_cond = get_trials_by_cond(labels)
         avg_resp_by_cond = group_trial_values_by_cond(zscores, trials_by_cond)
 
     
@@ -1527,6 +1527,11 @@ def fit_2d_receptive_fields(animalid, session, fov, run, traceid, create_new=Fal
         #%%
         #make_pretty_plots= False
         if make_pretty_plots:
+            zscored_traces_plot, zscores_plot = process_traces(raw_traces, labels, response_type='zscore',
+                                                nframes_post_onset=nframes_post_onset)
+            avg_resp_by_cond_plot = group_trial_values_by_cond(zscores, trials_by_cond)
+
+
             #%
             # Overlay RF map and mean traces:
             # -----------------------------------------------------------------------------
@@ -1538,11 +1543,11 @@ def fit_2d_receptive_fields(animalid, session, fov, run, traceid, create_new=Fal
                 
             best_rois_figdir = os.path.join(rfdir, 'best_rfs')
             # Plot overlay?
-            if not os.path.exists(best_rois_figdir):
-                os.makedirs(best_rois_figdir)
-    
+            if not os.path.exists(os.path.join(best_rois_figdir, 'svg')):
+                os.makedirs(os.path.join(best_rois_figdir, 'svg'))
+              
             for rid in fit_roi_list:
-                fig = overlay_traces_on_rfmap(rid, avg_resp_by_cond, zscored_traces, labels, sdf,
+                fig = overlay_traces_on_rfmap(rid, avg_resp_by_cond_plot, zscored_traces_plot, labels, sdf,
                                               #vmin=-0.05, vmax=0.5, scaley=[-0.05, 0.6], lw=0.5,
                                               nframes_per_trial=nframes_per_trial, response_type=response_type,
                                               nframes_plot=nframes_plot, start_frame=start_frame, yunit_sec=yunit_sec,
@@ -1551,8 +1556,8 @@ def fit_2d_receptive_fields(animalid, session, fov, run, traceid, create_new=Fal
                 label_figure(fig, data_identifier)
                 fig.suptitle('roi %i' % int(rid+1))
             
-                figname = 'roi%05d-overlay' % (int(rid+1)) #, fit_thr, response_type)
-                pl.savefig(os.path.join(best_rois_figdir, '%s.pdf' % figname))
+                figname = 'roi%05d-overlay_zscore' % (int(rid+1)) #, fit_thr, response_type)
+                pl.savefig(os.path.join(best_rois_figdir, 'svg', '%s.svg' % figname))
                 pl.savefig(os.path.join(best_rois_figdir, '%s.png' % figname))
 
                 pl.close()
