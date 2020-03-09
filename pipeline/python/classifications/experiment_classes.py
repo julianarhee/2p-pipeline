@@ -1016,7 +1016,7 @@ class Experiment(object):
         
         return sdf
     
-    def load(self, trace_type='corrected', update_self=True, make_equal=True, add_offset=True, rootdir='/n/coxfs01/2p-data', create_new=False):
+    def load(self, trace_type='corrected', update_self=True, make_equal=False, add_offset=True, rootdir='/n/coxfs01/2p-data', create_new=False):
         '''
         Populates trace_type and data
         '''
@@ -1083,43 +1083,7 @@ class Experiment(object):
                             tmp_df.append(tmat_df)
                         traces = pd.concat(tmp_df, axis=0)
                         del tmp_df
-                    # -----------------------------------------------------------
-#                    dset = np.load(self.source)
-                    #print("... loaded")
-                    
-#                    self.data.labels = pd.DataFrame(data=dset['labels_data'], columns=dset['labels_columns'])
-#                    # print self.data.labels.shape
-#                    sdf = pd.DataFrame(dset['sconfigs'][()]).T
-#                    round_sz = [int(round(s)) if s is not None else s for s in sdf['size']]
-#                    sdf['size'] = round_sz
-#                    self.data.sdf = sdf
-#                    self.data.info = dset['run_info'][()]
-                    
-#                    #% Add baseline offset back into raw traces:
-#                    assert 'corrected' in dset.keys() and 'dff' in dset.keys(), "Unable to find correct/dff traces..."
-#                    if add_offset:
-#                        F0 = np.nanmean(dset['corrected'][:] / dset['dff'][:] )
-#                        print("... offset: %.2f" % F0)
-#                        raw_traces = pd.DataFrame(dset['corrected'][:]) + F0
-#                    else:
-#                        raw_traces = pd.DataFrame(dset['corrected'][:])
-#                        min_mov = raw_traces.min().min()
-#                        if min_mov < 0:
-#                            raw_traces = raw_traces - min_mov
-#                        
-#                    if trace_type == 'corrected':
-#                        traces = raw_traces
-#                    elif trace_type == 'dff':
-#                        #% # Convert raw + offset traces to df/F traces
-#                        stim_on_frame = self.data.labels['stim_on_frame'].unique()[0]
-#                        tmp_df = []
-#                        for k, g in self.data.labels.groupby(['trial']):
-#                            tmat = raw_traces.loc[g.index]
-#                            bas_mean = np.nanmean(tmat[0:stim_on_frame], axis=0)
-#                            tmat_df = (tmat - bas_mean) / bas_mean
-#                            tmp_df.append(tmat_df)
-#                        traces = pd.concat(tmp_df, axis=0)    
-                    # ---------------------------------------------------------
+
                     if make_equal:
                         #print("... making equal")
                         traces, self.data.labels = check_counts_per_condition(traces, self.data.labels)
@@ -1165,32 +1129,36 @@ class Experiment(object):
             self.traceid = traceid_name
             print("updated analysis id:", traceid_name)
 
-            #print(glob.glob(os.path.join(fov_dir, '*%s*' % 'retino', 'retino_analysis', 'analysis*', 'traces', '*.h5'))) #, 'retino_analysis', 'anaylsis*')))
             all_runs = glob.glob(os.path.join(fov_dir, '*%s*' % 'retino', 'retino_analysis', 'analysis*', 'traces', '*.h5'))
             trace_extraction = 'retino_analysis'
+
         else:
-            all_runs = glob.glob(os.path.join(fov_dir, '*%s_*' % self.name, 'traces', 'traces*', 'data_arrays', '*.npz'))
+            all_runs = glob.glob(os.path.join(fov_dir, '*%s_*' % self.name, 'traces', 'traces*', 'data_arrays', 'np_subtracted*.npz'))
             trace_extraction = 'traces'
+
         #print("FOUND RUNS:", all_runs)    
         if len(all_runs) == 0:
             print("... No extracted traces: %s" % self.name) #(self.animalid, self.session, self.fov, self.name))
             return None
         
         all_runs = [s.split('/%s' % trace_extraction)[0] for s in all_runs]
-        combined_runs = [r for r in all_runs if 'combined' in r]
+        combined_runs = np.unique([r for r in all_runs if 'combined' in r])
+        print(combined_runs)
         single_runs = []
         for crun in combined_runs:
             stim_type = re.search('combined_(.+?)_static', os.path.split(crun)[-1]).group(1)
             #print stim_type
             single_runs.extend(glob.glob(os.path.join(fov_dir, '%s_run*' % stim_type)))
         run_list = list(set([r for r in all_runs if r not in single_runs and 'compare' not in r]))
-        #print run_list
-        
+        print run_list
+
+              
         data_fpaths = []
         for run_dir in run_list:
             run_name = os.path.split(run_dir)[-1]
             #print("... ... %s" % run_name)
             try:
+                print("... run: %s" % run_name)
                 if 'retino' in run_name:
                     # Select analysis ID that corresponds to current ROI set:
                     extraction_name = 'retino_analysis'
@@ -1216,7 +1184,6 @@ class Experiment(object):
                 if self.name != corresp_run_name:
                     #print("... renaming experiment to run name: %s" % corresp_run_name)
                     self.name = corresp_run_name
-
 
         return data_fpath
 
