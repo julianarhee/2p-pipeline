@@ -1010,7 +1010,7 @@ class Experiment(object):
     def get_stimuli(self, rootdir='/n/coxfs01/2p-data'):
         print("Getting stimulus info for: %s" % self.name)
         dset_path = glob.glob(os.path.join(rootdir, self.animalid, self.session,
-                                           self.fov, self.name, 'traces/traces*', 'data_arrays', 'datasets.npz'))[0]
+                                           self.fov, self.name, 'traces/traces*', 'data_arrays', 'labels.npz'))[0]
         dset = np.load(dset_path)
         sdf = pd.DataFrame(dset['sconfigs'][()]).T
         
@@ -1030,7 +1030,7 @@ class Experiment(object):
             try:
                 if self.source.endswith('npz'):
                     basename = os.path.splitext(os.path.split(self.source)[-1])[0]
-                    if 'np_subtraced' not in basename:
+                    if 'np_subtraced' != basename:
                         soma_fpath = self.source.replace(basename, 'np_subtracted')
                     print(soma_fpath)
                     if create_new is True or not os.path.exists(soma_fpath):
@@ -1200,7 +1200,7 @@ class Experiment(object):
                 else:
                     extraction_name = 'traces'
                     fpath = glob.glob(os.path.join(run_dir, 'traces', '%s*' % self.traceid, \
-                                                   'data_arrays', 'datasets.npz'))[0]
+                                                   'data_arrays', 'np_subtracted.npz'))[0] #'datasets.npz'))[0]
                 data_fpaths.append(fpath)
             except IndexError:
                 print("... no data arrays found: %s" % run_name)
