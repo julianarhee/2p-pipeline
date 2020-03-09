@@ -206,6 +206,7 @@ def load_AID(run_dir, traceid):
         tracedict = json.load(f)
 
     if 'traces' in traceid:
+        fovdir = os.path.split(run_dir)[0]
         tmp_tdictpath = glob.glob(os.path.join(fovdir, '*run*', 'traces', 'traceids*.json'))[0]
         with open(tmp_tdictpath, 'r') as f:
             tmptids = json.load(f)

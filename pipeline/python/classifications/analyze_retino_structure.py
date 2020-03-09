@@ -454,9 +454,9 @@ def do_regr_on_fov(bootdata, bootcis, posdf, cond='azimuth', ci=.95, xaxis_lim=N
     deviants = []
     bad_fits = []
     for roi,lo,up,(regL, regU), med in zip(roi_list, x0_lower.iloc[roi_ixs], x0_upper.iloc[roi_ixs], regr_cis[roi_ixs], yvals):
-        if (lo <= med <= up):
-            if (lo < med < up) and ((regL > lo and regL > up) or (regU < lo and regU < up)):
-                #print(lo, med, up)
+        if (lo <= med <= up): # Is measured value within lower/upper CIs?
+            if ((regL > lo and regL > up) or (regU < lo and regU < up)): 
+                # CI bounds are outside of regression CI -- these are deviants
                 xv = posdf['%s_fov' % axname][roi]
                 yv = posdf['%s_rf' % axname][roi]
                 ax.plot(xv, yv, marker='o', markersize=5, color='magenta', alpha=0.8)
@@ -927,28 +927,45 @@ def evaluate_rfs(estats, rfdir='/tmp', response_type='dff', n_bootstrap_iters=10
 
 #%%
 
-def compare_regr_to_boot_params(bootresults, fovinfo, 
+def compare_regr_to_boot_params(bootresults, fovinfo, evaldir='/tmp',
                                 statsdir='/tmp', data_identifier='METADATA'):
 
+    '''
+    deviants:  cells w/ good RF fits (boostrapped, measured lies within some CI), but
+               even CI lies outside of estimated regression CI
+    bad_fits:  cells w/ measured RF locations that do not fall within the CI from bootstrapping
+    
+    To get all "pass" rois, include all returned ROIs with fits that are NOT in bad_fits.
+    '''
     bootdata = bootresults['data']
     bootcis = bootresults['cis']
-    
+    fit_rois = [int(k) for k, g in bootdata.groupby(['cell'])]    
+ 
     posdf = fovinfo['positions']
     xlim, ylim = fovinfo['xlim'], fovinfo['ylim']
 
     #% # Plot bootstrapped param CIs + regression CI
     xaxis_lim = max([xlim, ylim])
-    regresults={}
+    regresults = {}
+    evalresults = {}
     for cond in ['azimuth', 'elevation']:
         fig, regci, deviants, bad_fits = do_regr_on_fov(bootdata, bootcis, posdf, cond=cond, xaxis_lim=xaxis_lim)
         
         #regresults[cond] = {'cis': regci, 'outliers': outliers}
         regresults[cond] = {'cis': regci, 'deviants': deviants, 'bad_fits': bad_fits}
+        pass_rois = [i for i in fit_rois if i not in bad_fits]
+        evalresults[cond] = {'deviants': deviants, 'bad_fits': bad_fits, 'pass_rois': pass_rois}
 
         label_figure(fig, data_identifier)
-        pl.savefig(os.path.join(statsdir, 'receptive_fields', 'fit-regr_bootstrap-params_%s.svg' % cond))
+        pl.savefig(os.path.join(evaldir, 'fit-regr_bootstrap-params_%s.svg' % cond))
+        pl.savefig(os.path.join(statsdir, 'RFs__fit-regr-bootstrap-params_%s.svg' % cond)) 
+        #pl.savefig(os.path.join(statsdir, 'receptive_fields', 'fit-regr_bootstrap-params_%s.svg' % cond))
         pl.close()
-    
+
+    with open(os.path.join(evaldir, 'good_bad_weird_rois.json'), 'w') as f:
+        json.dump(evalres, f, indent=4)    
+    print("--- saved roi info after evaluation.")
+  
     return regresults
 
 
@@ -961,8 +978,10 @@ def identify_deviants(regresults, bootresults, posdf, ci=0.95, rfdir='/tmp'):
     label_deviants = True
     deviants = {}
     conditions = regresults.keys() 
-    bad_rois = intersection(regresults['azimuth']['outliers'], regresults['elevation']['outliers']) # these are cells whose mean value does not lie within the 95% CI 
-    
+    #bad_rois = intersection(regresults['azimuth']['outliers'], regresults['elevation']['outliers']) # these are cells whose mean value does not lie within the 95% CI 
+    bad_rois = intersection(regresults['azimuth']['bad_fits'], regresults['elevation']['bad_fits']) # these are cells whose mean value does not lie within the 95% CI 
+
+    within={}
     for cond in conditions:
         print("%s:  checking for deviants..." % cond)
         param = 'x0' if cond=='azimuth' else 'y0'
@@ -972,23 +991,25 @@ def identify_deviants(regresults, bootresults, posdf, ci=0.95, rfdir='/tmp'):
         paramcis = [(c1, c2) for c1, c2 in zip(bootcis['%s_lower' % param], bootcis['%s_upper' % param])]
         roi_list = bootcis.index.tolist()
         
-        within=[]
+        #within=[]
         for roi, pci, rci in zip(roi_list, paramcis, regcis):
             if roi in bad_rois:
                 continue
             if (rci[0] <= pci[0] <= rci[1]) or (rci[0] <= pci[1] <= rci[1]):
-                within.append(roi)
+                within[cond].append(roi)
             elif (pci[0] <= rci[0] <= pci[1]) or (pci[0] <= rci[1] <= pci[1]):
-                within.append(roi)
+                within[cond].append(roi)
         print("... %i out of %i cells' bootstrapped param distNs lie within %i%% CI of regression fit" % (len(within), len(roi_list), int(ci*100)))
-        trudeviants = [r for r in roi_list if r not in within and r not in regresults[cond]['outliers']]
+        #trudeviants = [r for r in roi_list if r not in within and r not in regresults[cond]['outliers']]
+        trudeviants = [r for r in roi_list if r not in within[cond] and r not in regresults[cond]['bad_fits']]
+
         print("... There are %i true deviants!" % len(trudeviants))
         
         fig, ax = pl.subplots(figsize=(15,10))
         ax = plot_regr_and_cis(bootresults, posdf, cond=cond, ax=ax)
         deviant_fpos = posdf['%s_fov' % axname][trudeviants]
         deviant_rpos = posdf['%s_rf' % axname][trudeviants]
-        ax.scatter(deviant_fpos, deviant_rpos, marker='*', c='royalblue', s=20, alpha=0.7)
+        ax.scatter(deviant_fpos, deviant_rpos, marker='*', c='cornflowerblue', s=30, alpha=0.8)
         avg_interval = np.diff(ax.get_yticks()).mean()
         if label_deviants:
             deviant_ixs = [roi_list.index(d) for d in trudeviants]
@@ -1011,10 +1032,12 @@ def identify_deviants(regresults, bootresults, posdf, ci=0.95, rfdir='/tmp'):
     #%
     deviant_both = sorted(intersection(deviants['azimuth'], deviants['elevation']))
     print deviant_both
-    
-    deviants['bad_rois'] = bad_rois
-    deviants['pass_rois'] = within
-    
+    within_both = sorted(intersection(within['azimuth'], within['elevation']))
+   
+    deviants['bad'] = bad_rois
+    deviants['pass'] = within_both
+    deviants['deviant'] = deviant_both
+ 
     return deviants
     
 
@@ -1136,7 +1159,7 @@ def do_rf_fits_and_evaluation(animalid, session, fov, rfname=None, traceid='trac
     pl.close()
     
     # Compare regression fit to bootstrapped params
-    regresults = compare_regr_to_boot_params(bootresults, estats.fovinfo, 
+    regresults = compare_regr_to_boot_params(bootresults, estats.fovinfo, evaldir=bootstrapdir,
                                     statsdir=statsdir, data_identifier=data_identifier)
     
     # Identify deviants

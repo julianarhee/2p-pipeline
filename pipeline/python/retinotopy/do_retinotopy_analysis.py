@@ -19,7 +19,7 @@ import glob
 from pipeline.python.paradigm import process_mw_files as mw
 
 from pipeline.python.utils import natural_keys, replace_root
-from pipeline.python.retinotopy.visualize_rois import roi_retinotopy
+#from pipeline.python.retinotopy.visualize_rois import roi_retinotopy
 from pipeline.python.traces import get_traces as traces
 from pipeline.python.traces import remake_neuropil_masks as rmasks
 
@@ -367,7 +367,7 @@ def analyze_tiff(tiff_path_full,tiff_fn,stack_info, RETINOID,file_dir,tiff_fig_d
         tiffs_r = np.reshape(tiff_stack, (tiff_d1*tiff_d2, nframes))
  
         #  TRACES outfile:  Save processed roi trace
-        print(traces_outfile.keys())
+        #print(traces_outfile.keys())
         if 'masks' in traces_outfile[file_str].keys():
             mset = traces_outfile['%s/masks' % file_str]
         else:
@@ -391,12 +391,21 @@ def analyze_tiff(tiff_path_full,tiff_fn,stack_info, RETINOID,file_dir,tiff_fig_d
         print "... applied masks. roi_trace shape: %s" % str(roi_trace.shape)
 
         #  TRACES outfile:  Save extracted traces
-        rset = traces_outfile.create_dataset('/'.join([file_str, 'raw']), soma_trace.shape, soma_trace.dtype)
+        if 'raw' in traces_outfile[file_str].keys():
+            rset = traces_outfile['%s/raw' % file_str]
+        else:
+            rset = traces_outfile.create_dataset('/'.join([file_str, 'raw']), soma_trace.shape, soma_trace.dtype)
         rset[...] = soma_trace 
-        nset = traces_outfile.create_dataset('/'.join([file_str, 'neuropil']), np_trace.shape, np_trace.dtype)
+        if 'neuropil' in traces_outfile[file_str].keys():
+            nset = traces_outfile['%s/neuropil' % file_str]
+        else:
+            nset = traces_outfile.create_dataset('/'.join([file_str, 'neuropil']), np_trace.shape, np_trace.dtype)
         nset[...] = np_trace 
         #nset.attrs['correction_factor'] = np_cfactor
-        tset = traces_outfile.create_dataset('/'.join([file_str, 'np_subtracted']), roi_trace.shape, roi_trace.dtype)
+        if 'np_subtracted' in traces_outfile[file_str].keys():
+            tset = traces_outfile['%s/np_subtracted' % file_str]
+        else:
+            tset = traces_outfile.create_dataset('/'.join([file_str, 'np_subtracted']), roi_trace.shape, roi_trace.dtype)
         tset[...] = roi_trace 
         tset.attrs['correction_factor'] = np_cfactor
 
@@ -404,7 +413,10 @@ def analyze_tiff(tiff_path_full,tiff_fn,stack_info, RETINOID,file_dir,tiff_fig_d
         roi_trace = process_array(roi_trace, RETINOID, stack_info)
     
     #  TRACES outfile:  Save processed roi trace
-    pset = traces_outfile.create_dataset('/'.join([file_str, 'processed']), roi_trace.shape, roi_trace.dtype)
+    if 'processed' in traces_outfile[file_str].keys():
+        pset = traces_outfile['%s/processed' % file_str]
+    else:
+        pset = traces_outfile.create_dataset('/'.join([file_str, 'processed']), roi_trace.shape, roi_trace.dtype)
     pset[...] = roi_trace 
     pset.attrs['source'] = tiff_path_full
     pset.attrs['dims'] = szx, szy, nframes
@@ -471,31 +483,43 @@ def analyze_tiff(tiff_path_full,tiff_fn,stack_info, RETINOID,file_dir,tiff_fig_d
     #save data values to structure
     if 'mag_array' not in file_grp.keys():
         magset = file_grp.create_dataset('mag_array',mag_array.shape, mag_array.dtype)
-        magset[...] = mag_array
+    else:
+        magset = file_grp['mag_array']
+    magset[...] = mag_array
     if 'phase_array' not in file_grp.keys():
         phaseset = file_grp.create_dataset('phase_array',phase_array.shape, phase_array.dtype)
-        phaseset[...] = phase_array
+    else:
+        phaseset = file_grp['phase_array']
+    phaseset[...] = phase_array
     if 'mag_ratio_array' not in file_grp.keys():
         ratioset = file_grp.create_dataset('mag_ratio_array',mag_ratio_array.shape, mag_ratio_array.dtype)
-        ratioset[...] = mag_ratio_array
+    else:
+        ratioset = filegrp['mag_ratio_array']
+    ratioset[...] = mag_ratio_array
     if 'beta_array' not in file_grp.keys():
         betaset = file_grp.create_dataset('beta_array',beta_array.shape, beta_array.dtype)
-        betaset[...] = beta_array
+    else:
+        betaset = file_grp['beta_array']
+    betaset[...] = beta_array
     if 'var_exp_array' not in file_grp.keys():
         varset = file_grp.create_dataset('var_exp_array',varexp_array.shape, varexp_array.dtype)
-        varset[...] = varexp_array
+    else:
+        varset = file_grp['var_exp_array']
+    varset[...] = varexp_array
    
     # Add fit signal to retino output:
     if 'signal_fit' not in file_grp.keys():
         fitset = file_grp.create_dataset('signal_fit', signal_fit.shape, signal_fit.dtype)
-        fitset[...] = signal_fit
-
-
+    else:
+        fitset = file_grp['signal_fit']
+    fitset[...] = signal_fit
         
     if RETINOID['PARAMS']['roi_type'] != 'pixels':
         if 'masks' not in file_grp.keys():
             mset = file_grp.create_dataset('masks',masks.shape, masks.dtype)
-            mset[...] = masks
+        else:
+            mset = file_grp['masks']
+        mset[...] = masks
     file_grp.close()
 
 
@@ -1075,7 +1099,8 @@ def do_analysis(options):
 
     if RETINOID['PARAMS']['roi_type'] != 'pixels':
         masks_file.close()
-        
+        from pipeline.python.retinotopy.visualize_rois import roi_retinotopy
+       
         visualize_opts = ['-D', rootdir, '-i', animalid, '-S', session, '-A', acquisition,
                             '-R', run, '-t', analysis_id]
 
