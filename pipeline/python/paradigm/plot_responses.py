@@ -90,7 +90,7 @@ def extract_options(options):
 #                          default=False, help='Set to correct df/f offset after drift correction')      
      
     parser.add_option('-f', '--filetype', action='store', dest='filetype',
-                          default='png', help='File type for images [default: png]')
+                          default='svg', help='File type for images [default: svg]')
     parser.add_option('--scale', action='store_true', dest='scale_y',
                           default=False, help='Set to scale y-axis across roi images')
     parser.add_option('-y', '--ymax', action='store', dest='dfmax',
@@ -142,30 +142,48 @@ def get_data_id_from_tracedir(traceid_dir, rootdir='/n/coxfs01/2p-data/'):
     return data_identifier
     
 def load_traces_and_configs(traceid_dir, inputdata='corrected'):
-    data_fpath = os.path.join(traceid_dir, 'data_arrays', 'datasets.npz')
-    print "Loaded data from: %s" % data_fpath #traceid_dir
-    dset = np.load(data_fpath)
+    
+    soma_fpath = os.path.join(traceid_dir, 'data_arrays', 'np_subtracted.npz') #'datasets.npz')
+    print "Loaded data from: %s" % soma_fpath #traceid_dir
+    dset = np.load(soma_fpath)
     
     #assert inputdata in dataset.keys(), "Specified data type (%s) not found! Choose from: %s" % (inputdata, str(dataset.keys()))
     labels = pd.DataFrame(data=dset['labels_data'], columns=dset['labels_columns'])
     sdf = pd.DataFrame(dset['sconfigs'][()]).T
-    
+ 
     #% Add baseline offset back into raw traces:
     if inputdata in ['corrected', 'dff']:
-        F0 = np.nanmean(dset['corrected'][:] / dset['dff'][:] )
-        print("offset: %.2f" % F0)
-        raw_traces = pd.DataFrame(dset['corrected']) + F0
+        xdata_df = pd.DataFrame(dset['data'][:])
+        F0 = pd.DataFrame(dset['f0'][:]).mean().mean()
+        # add baseline offset
+        neuropil_fpath = soma_fpath.replace('np_subtracted', 'neuropil')
+        npdata = np.load(neuropil_fpath)
+        neuropil_f0 = np.nanmean(np.nanmean(pd.DataFrame(npdata['f0'][:])))
+        neuropil_df = pd.DataFrame(npdata['data'][:])
+        xdata = xdata_df + list(np.nanmean(neuropil_df, axis=0)) + F0
         if inputdata == 'dff':
             stim_on_frame = labels['stim_on_frame'].unique()[0]
             tmp_df = []
             for k, g in labels.groupby(['trial']):
-                tmat = raw_traces.loc[g.index]
+                tmat = xdata.loc[g.index]
                 bas_mean = np.nanmean(tmat[0:stim_on_frame], axis=0)
-                tmat_df = (tmat - bas_mean) / bas_mean
-                tmp_df.append(tmat_df)
+                tdf = (tmat - bas_mean) / bas_mean
+                tmp_df.append(tdf)
             xdata = pd.concat(tmp_df, axis=0)
-        else:
-            xdata = raw_traces.copy()
+#        F0 = np.nanmean(dset['corrected'][:] / dset['dff'][:] )
+#        print("offset: %.2f" % F0)
+#        raw_traces = pd.DataFrame(dset['corrected']) + F0
+#        if inputdata == 'dff':
+#            stim_on_frame = labels['stim_on_frame'].unique()[0]
+#            tmp_df = []
+#            for k, g in labels.groupby(['trial']):
+#                tmat = raw_traces.loc[g.index]
+#                bas_mean = np.nanmean(tmat[0:stim_on_frame], axis=0)
+#                tmat_df = (tmat - bas_mean) / bas_mean
+#                tmp_df.append(tmat_df)
+#            xdata = pd.concat(tmp_df, axis=0)
+#        else:
+#            xdata = raw_traces.copy()
     else:
         xdata = pd.DataFrame(dset[inputdata])
 
