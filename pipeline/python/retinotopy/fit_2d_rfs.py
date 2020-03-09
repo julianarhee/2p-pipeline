@@ -1284,6 +1284,9 @@ def extract_options(options):
                       help="Response metric to use for creating RF maps (default: dff)")
     parser.add_option('--plot', action='store_true', dest='plot_rois', default=False, \
                       help="Flag to make pretty plots for roi fits")
+    parser.add_option('--new', action='store_true', dest='create_new', default=False, \
+                      help="Flag to refit all rois")
+
 
     (options, args) = parser.parse_args(options)
 
@@ -1667,12 +1670,13 @@ def main(options):
     response_type = optsE.response_type
     response_thr = optsE.response_thr
     plot_rois = optsE.plot_rois
-    
+    create_new= optsE.create_new
+
     fit_thr = 0.50 
     rfresults, fovinfo = fit_2d_receptive_fields(animalid, session, fov, run, traceid, 
                                 trace_type=trace_type, visual_area=visual_area, select_rois=select_rois,
                                 #response_type=response_type, response_thr=response_thr, 
-                                make_pretty_plots=plot_rois)
+                                make_pretty_plots=plot_rois, create_new=create_new)
 
     print("--- fit %i rois (R2 thr > %.2f) ---" % (len(rfresults['fit_results'].keys()), fit_thr))
 
