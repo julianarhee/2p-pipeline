@@ -208,6 +208,7 @@ def get_anatomical(animalid, session, fov, channel_num=2, rootdir='/n/coxfs01/2p
 # #############################################################################
 
 def reformat_morph_values(sdf):
+    print(sdf.head())
     control_ixs = sdf[sdf['morphlevel']==-1].index.tolist()
     sizevals = np.array([round(s, 1) for s in sdf['size'].unique() if s not in ['None', None] and not np.isnan(s)])
     sdf.loc[sdf.morphlevel==-1, 'size'] = pd.Series(sizevals, index=control_ixs)
@@ -1020,7 +1021,8 @@ class Experiment(object):
                                            self.fov, self.name, 'traces/traces*', 'data_arrays', 'labels.npz'))[0]
         dset = np.load(dset_path)
         sdf = pd.DataFrame(dset['sconfigs'][()]).T
-        sdf = reformat_morph_values(sdf)
+        if 'blobs' in self.name:
+            sdf = reformat_morph_values(sdf)
      
         return sdf
     
@@ -1056,7 +1058,10 @@ class Experiment(object):
                     sdf = pd.DataFrame(dset['sconfigs'][()]).T
                     #round_sz = [int(round(s)) if s is not None else s for s in sdf['size']]
                     #sdf['size'] = round_sz
-                    self.data.sdf = reformat_morph_values(sdf)
+                    if 'blobs' in self.experiment_type:
+                        self.data.sdf = reformat_morph_values(sdf)
+                    else:
+                        self.data.sdf = sdf
                     self.data.info = dset['run_info'][()]
                     
                     # Traces
