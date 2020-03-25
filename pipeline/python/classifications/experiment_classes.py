@@ -208,7 +208,7 @@ def get_anatomical(animalid, session, fov, channel_num=2, rootdir='/n/coxfs01/2p
 # #############################################################################
 
 def reformat_morph_values(sdf):
-    print(sdf.head())
+    #print(sdf.head())
     control_ixs = sdf[sdf['morphlevel']==-1].index.tolist()
     sizevals = np.array([round(s, 1) for s in sdf['size'].unique() if s not in ['None', None] and not np.isnan(s)])
     sdf.loc[sdf.morphlevel==-1, 'size'] = pd.Series(sizevals, index=control_ixs)
@@ -521,7 +521,7 @@ def get_responsive_cells(animalid, session, fov, run=None, traceid='traces001',
     stats_fpath = glob.glob(os.path.join(stats_dir, '*results*.pkl'))
 
     print("-- stats: %s" % run)
-    print(stats_fpath)
+    #print(stats_fpath)
     if len(stats_fpath)==0:
         return None, None
 
@@ -533,10 +533,7 @@ def get_responsive_cells(animalid, session, fov, run=None, traceid='traces001',
         except Exception as e:
             print("JK ERROR")
             print(e)
-
     try:
-        #traceid_dir =  glob.glob(os.path.join(rootdir, animalid, session, fov, run, 'traces', '%s*' % traceid))[0]        
-        #stats_dir = os.path.join(traceid_dir, 'summary_stats', responsive_test)
         stats_fpath = glob.glob(os.path.join(stats_dir, '*results*.pkl'))
         assert len(stats_fpath) > 0, "No stats results found for: %s" % stats_dir
         with open(stats_fpath[0], 'rb') as f:
@@ -560,23 +557,14 @@ def get_roi_stats(animalid, session, fov, exp_name=None, traceid='traces001',
     rstats = None
     roi_list = None
     nrois_total = None
-    # Load list of "visually responsive" cells
-    
+
+    # Load list of "visually responsive" cells    
     print("... loading ROI stats: %s" % responsive_test)
     curr_traceid_dir = glob.glob(os.path.join(rootdir, animalid, session, fov, \
                                               exp_name, 'traces', '%s*' % traceid))[0]
-#    stats_dir, stats_desc = create_stats_dir(animalid, session, fov, traceid=traceid, 
-#                     trace_type=trace_type, response_type=response_type, 
-#                     responsive_test=responsive_test, responsive_thr=responsive_thr, 
-#                     rootdir=rootdir)
-#    stats_fpath = glob.glob(os.path.join(stats_dir, '*stats*.pkl'))
-
-    #print("...", curr_traceid_dir)
-    #exp.source.split('/data_arrays/')[0]
     try:
         curr_stats_dir = os.path.join(curr_traceid_dir, 'summary_stats', responsive_test)
         stats_fpath = glob.glob(os.path.join(curr_stats_dir, '*results*.pkl'))
-#        assert len(stats_fpath) > 0, "No stats results found for: %s" % stats_dir
         with open(stats_fpath[0], 'rb') as f:
             rstats = pkl.load(f)
         roi_list, nrois_total = get_responsive_cells(animalid, session, fov, run=exp_name, traceid=traceid,
@@ -754,7 +742,7 @@ class Session():
                                                        responsive_test=responsive_test, 
                                                        responsive_thr=responsive_thr)
             elif 'blobs' in e:
-                print(traceid)
+                #print(traceid)
                 exp = Objects(self.animalid, self.session, self.fov, traceid=traceid)
                 roi_list, _ = exp.get_responsive_cells(response_type=response_type,
                                                        responsive_test=responsive_test, 
@@ -993,7 +981,7 @@ class Experiment(object):
             extraction_type = 'retino_analysis'
             try:
                 #print(self.name)
-                print(glob.glob(os.path.join(rootdir, self.animalid, self.session, self.fov, '*%s*' % 'retino', 'retino_analysis', '*.json')))
+                #print(glob.glob(os.path.join(rootdir, self.animalid, self.session, self.fov, '*%s*' % 'retino', 'retino_analysis', '*.json')))
                 retinoid_info_fpath = glob.glob(os.path.join(rootdir, self.animalid, self.session, self.fov, '*%s*' % 'retino', \
                                                      '%s' % extraction_type, '*.json'))[0] # % traceid, ))
                 with open(retinoid_info_fpath, 'r') as f:
@@ -1044,7 +1032,7 @@ class Experiment(object):
                     basename = os.path.splitext(os.path.split(self.source)[-1])[0]
                     if 'np_subtraced' != basename:
                         soma_fpath = self.source.replace(basename, 'np_subtracted')
-                    print(soma_fpath)
+                    #print(soma_fpath)
                     if create_new is True or not os.path.exists(soma_fpath):
                         # Realign traces
                         print("*****corrected offset unfound, running now*****")
@@ -1084,7 +1072,7 @@ class Experiment(object):
 
                     if trace_type == 'corrected':
                         traces = raw_traces
-                    elif trace_type == 'dff':
+                    elif trace_type in ['dff', 'df']:
                         #min_mov = raw_traces.min().min()
                         #if min_mov < 0:
                         #    raw_traces = raw_traces - min_mov
@@ -1094,7 +1082,10 @@ class Experiment(object):
                         for k, g in self.data.labels.groupby(['trial']):
                             tmat = raw_traces.loc[g.index]
                             bas_mean = np.nanmean(tmat[0:stim_on_frame], axis=0)
-                            tmat_df = (tmat - bas_mean) / bas_mean
+                            if trace_type == 'dff':
+                                tmat_df = (tmat - bas_mean) / bas_mean
+                            elif trace_type == 'df':
+                                tmat_df = (tmat - bas_mean)
                             tmp_df.append(tmat_df)
                         traces = pd.concat(tmp_df, axis=0)
                         del tmp_df
@@ -1158,7 +1149,7 @@ class Experiment(object):
         
         all_runs = [s.split('/%s' % trace_extraction)[0] for s in all_runs]
         combined_runs = np.unique([r for r in all_runs if 'combined' in r])
-        print(combined_runs)
+        #print(combined_runs)
         single_runs = []
         for crun in combined_runs:
             stim_type = re.search('combined_(.+?)_static', os.path.split(crun)[-1]).group(1)
