@@ -107,7 +107,10 @@ def extract_options(options):
     # Set specific session/run for current animal:
     parser.add_option('-E', '--experiment', action='store', dest='experiment', default='', 
                       help="experiment name (e.g,. gratings, rfs, rfs10, or blobs)") #: FOV1_zoom2p0x)")
-    
+
+    parser.add_option('-e', '--epoch', action='store', dest='epoch', default='stimulus', 
+                      help="trial epoch (default: stimulus)")
+ 
     parser.add_option('-t', '--traceid', action='store', dest='traceid', default='traces001', 
                       help="traceid (default: traces001)")
     parser.add_option('--test', action='store', dest='responsive_test', default='ROC', 
@@ -137,7 +140,7 @@ def extract_options(options):
 # experiment = 'blobs'
 #always_exclude = ['20190426_JC078']
 
-def aggregate_and_save(experiment, traceid='traces001', response_type='dff', 
+def aggregate_and_save(experiment, traceid='traces001', response_type='dff', epoch='stimulus',
                        responsive_test='ROC', responsive_thr=0.05, n_stds=0.0, create_new=False,
                        always_exclude=['20190426_JC078'],
                        aggregate_dir='/n/coxfs01/julianarhee/aggregate-visual-areas'):
@@ -147,7 +150,7 @@ def aggregate_and_save(experiment, traceid='traces001', response_type='dff',
     sdata = get_aggregate_info(traceid=traceid)
     #### Get DATA
     load_data = False
-    data_desc = '%s_%s-%s_%s-thr-%.2f' % (experiment, traceid, response_type, responsive_test, responsive_thr)
+    data_desc = '%s_%s-%s_%s-thr-%.2f_%s' % (experiment, traceid, response_type, responsive_test, responsive_thr, epoch)
     data_outfile = os.path.join(data_dir, '%s.pkl' % data_desc)
 
     if not os.path.exists(data_outfile):
@@ -197,8 +200,9 @@ def main(options):
     responsive_thr = float(opts.responsive_thr)
     n_stds = float(opts.nstds_above)
     create_new = opts.create_new
+    epoch = opts.epoch
     
-    data_outfile = aggregate_and_save(experiment, traceid=traceid, response_type=response_type, 
+    data_outfile = aggregate_and_save(experiment, traceid=traceid, response_type=response_type, epoch=epoch,
                                        responsive_test=responsive_test, n_stds=n_stds,
                                        responsive_thr=responsive_thr, create_new=create_new)
     
