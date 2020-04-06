@@ -425,6 +425,7 @@ def do_regr_on_fov(bootdata, bootcis, posdf, cond='azimuth', ci=.95, xaxis_lim=N
     
     # Get rois sorted by position:
     x0_meds = np.array([g[parname].mean() for k, g in bootdata.groupby(['cell'])])
+    #print(bootdata['cell'].unique())
     x0_lower = bootcis['%s_lower' % parname][roi_list]
     x0_upper = bootcis['%s_upper' % parname][roi_list]
 
@@ -435,6 +436,11 @@ def do_regr_on_fov(bootdata, bootcis, posdf, cond='azimuth', ci=.95, xaxis_lim=N
     roi_ixs = np.array([roi_list.index(i) for i in rlist])
     roi_list = np.array([i for i in roi_list if i not in weird])
     #print(regr_cis[roi_ixs])
+
+    if len(roi_ixs)==0:
+        deviants = []
+        bad_fits = []
+        return fig, regr_cis, deviants, bad_fits
 
     xvals = posdf['%s_fov' % axname][roi_list].values
     yvals = posdf['%s_rf' % axname][roi_list].values
@@ -1143,6 +1149,8 @@ def do_rf_fits_and_evaluation(animalid, session, fov, rfname=None, traceid='trac
     pl.close()
     
     # Compare regression fit to bootstrapped params
+    if 'data' not in bootresults:
+        return None
     regresults = compare_regr_to_boot_params(bootresults, estats.fovinfo, evaldir=bootstrapdir,
                                     statsdir=statsdir, data_identifier=data_identifier)
     
