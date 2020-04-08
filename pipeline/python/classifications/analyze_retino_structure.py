@@ -431,13 +431,14 @@ def do_regr_on_fov(bootdata, bootcis, posdf, cond='azimuth', ci=.95, xaxis_lim=N
 
     ci_intervals = bootcis['x0_upper'] - bootcis['x0_lower']
     weird = [i for i in ci_intervals.index.tolist() if ci_intervals[i] > 10]
-    print('weird', len(weird))
+    print('weird: %i rois' % len(weird))
     rlist = [i for i in roi_list if i not in weird]
     roi_ixs = np.array([roi_list.index(i) for i in rlist])
     roi_list = np.array([i for i in roi_list if i not in weird])
     #print(regr_cis[roi_ixs])
 
     if len(roi_ixs)==0:
+        print("no good cells, returning")
         deviants = []
         bad_fits = []
         return fig, regr_cis, deviants, bad_fits
@@ -515,7 +516,10 @@ def plot_regr_and_cis(bootresults, posdf, cond='azimuth', ci=.95, xaxis_lim=1200
     rlist = [i for i in roi_list if i not in weird]
     roi_ixs = np.array([roi_list.index(i) for i in rlist])
     roi_list = np.array([i for i in roi_list if i not in weird])
-    
+   
+    if len(roi_ixs)==0:
+        return ax
+
     # Plot bootstrap results
     xvals = posdf['%s_fov' % axname][roi_list].values
     yvals = posdf['%s_rf' % axname][roi_list].values
@@ -1017,21 +1021,23 @@ def identify_deviants(regresults, bootresults, posdf, ci=0.95, rfdir='/tmp'):
         
         fig, ax = pl.subplots(figsize=(15,10))
         ax = plot_regr_and_cis(bootresults, posdf, cond=cond, ax=ax)
-        deviant_fpos = posdf['%s_fov' % axname][trudeviants]
-        deviant_rpos = posdf['%s_rf' % axname][trudeviants]
-        ax.scatter(deviant_fpos, deviant_rpos, marker='*', c='cornflowerblue', s=30, alpha=0.8)
-        avg_interval = np.diff(ax.get_yticks()).mean()
-        if label_deviants:
-            deviant_ixs = [roi_list.index(d) for d in trudeviants]
-            for ix, roi in zip(deviant_ixs, trudeviants):
-                if deviant_rpos[roi]  > max(regcis[ix]):
-                    print roi
-                    ax.annotate(roi, (deviant_fpos[roi], deviant_rpos[roi]+avg_interval/2.), fontsize=6)
-                else:
-                    ax.annotate(roi, (deviant_fpos[roi], deviant_rpos[roi]-avg_interval/2.), fontsize=6)        
-        ax.set_ylim([-10, 40])
-        ax.set_xlim([0, 800])
-        
+        if len(trudeviants) > 0:
+            deviant_fpos = posdf['%s_fov' % axname][trudeviants]
+            deviant_rpos = posdf['%s_rf' % axname][trudeviants]
+            ax.scatter(deviant_fpos, deviant_rpos, marker='*', c='cornflowerblue', s=30, alpha=0.8)
+
+            avg_interval = np.diff(ax.get_yticks()).mean()
+            if label_deviants:
+                deviant_ixs = [roi_list.index(d) for d in trudeviants]
+                for ix, roi in zip(deviant_ixs, trudeviants):
+                    if deviant_rpos[roi]  > max(regcis[ix]):
+                        print roi
+                        ax.annotate(roi, (deviant_fpos[roi], deviant_rpos[roi]+avg_interval/2.), fontsize=6)
+                    else:
+                        ax.annotate(roi, (deviant_fpos[roi], deviant_rpos[roi]-avg_interval/2.), fontsize=6)        
+            ax.set_ylim([-10, 40])
+            ax.set_xlim([0, 800])
+            
         sns.despine( trim=True, ax=ax)
       
         pl.savefig(os.path.join(rfdir, 'evaluation', 'regr-with-deviants_%s-test.svg' % cond))
@@ -1161,7 +1167,7 @@ def do_rf_fits_and_evaluation(animalid, session, fov, rfname=None, traceid='trac
         json.dump(deviants, f, indent=4)
 
 
-    return deviants
+    return regresults #deviants
 
 
 #%%
