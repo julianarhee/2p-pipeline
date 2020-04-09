@@ -27,7 +27,7 @@ from pipeline.python.classifications import experiment_classes as util
 from pipeline.python.classifications import test_responsivity as resp
 from pipeline.python.utils import label_figure, natural_keys, convert_range
 from pipeline.python.classifications import responsivity_stats as respstats
-from pipeline.python.classifications.analyze_retino_structure import do_rf_fits_and_evaluation
+from pipeline.python.classifications.evaluate_receptivefield_fits import do_rf_fits_and_evaluation
 
 
 from pipeline.python.retinotopy import fit_2d_rfs as fitrf

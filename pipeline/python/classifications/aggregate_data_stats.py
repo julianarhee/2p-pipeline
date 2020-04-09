@@ -70,28 +70,21 @@ def traces_to_trials(traces, labels, epoch='stimulus'):
     return mean_responses
 
 
-def get_aggregate_info(traceid='traces001'):
+def get_aggregate_info(traceid='traces001', fov_type='zoom2p0x', state='awake',
+                         aggregate_dir='/n/coxfs01/julianarhee/aggregate-visual-areas',
+                         rootdir='/n/coxfs01/2p-data'):
+                       
     from pipeline.python.classifications import get_dataset_stats as gd
-    options = ['-t', traceid]
-    optsE = gd.extract_options(options)
-
-    rootdir = optsE.rootdir
-    aggregate_dir = optsE.aggregate_dir
-    fov_type = optsE.fov_type
-    traceid = optsE.traceid
-    response_type = 'dff'
-    print aggregate_dir
 
     sdata_fpath = os.path.join(aggregate_dir, 'dataset_info.pkl')
     if os.path.exists(sdata_fpath):
         with open(sdata_fpath, 'rb') as f:
             sdata = pkl.load(f)
     else:
-        sdata = gd.aggregate_session_info(traceid=optsE.traceid, trace_type=optsE.trace_type, 
-                                           state=optsE.state, fov_type=optsE.fov_type, 
-                                           visual_areas=optsE.visual_areas,
-                                           blacklist=optsE.blacklist, 
-                                           rootdir=optsE.rootdir)
+        sdata = gd.aggregate_session_info(traceid=traceid, 
+                                           state=state, fov_type=fov_type, 
+                                           visual_areas=visual_areas,
+                                           rootdir=rootdir)
         with open(sdata_fpath, 'wb') as f:
             pkl.dump(sdata, f, protocol=pkl.HIGHEST_PROTOCOL)
             
