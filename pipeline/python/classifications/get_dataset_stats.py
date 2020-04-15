@@ -166,7 +166,7 @@ def aggregate_session_info(traceid='traces001', trace_type='corrected',
         # Get session data paths, if exist:
         for visual_area in visual_areas:
             curr_session_list = [str(k) for k, v in sessionmeta.items()\
-                                 if v['state'] == state and v['visual_area'] == visual_area]
+                                 if v['state'] == state and v['visual_area'].lower() == visual_area.lower]
             
             if len(curr_session_list) > 0:
                 for s in curr_session_list:
