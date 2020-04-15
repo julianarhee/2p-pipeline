@@ -70,14 +70,15 @@ def traces_to_trials(traces, labels, epoch='stimulus'):
     return mean_responses
 
 
-def get_aggregate_info(traceid='traces001', fov_type='zoom2p0x', state='awake',
+def get_aggregate_info(traceid='traces001', fov_type='zoom2p0x', state='awake', create_new=False,
+                       visual_areas=['V1', 'Lm', 'Li'],
                          aggregate_dir='/n/coxfs01/julianarhee/aggregate-visual-areas',
                          rootdir='/n/coxfs01/2p-data'):
                        
     from pipeline.python.classifications import get_dataset_stats as gd
 
     sdata_fpath = os.path.join(aggregate_dir, 'dataset_info.pkl')
-    if os.path.exists(sdata_fpath):
+    if os.path.exists(sdata_fpath) and create_new is False:
         with open(sdata_fpath, 'rb') as f:
             sdata = pkl.load(f)
     else:
@@ -85,6 +86,7 @@ def get_aggregate_info(traceid='traces001', fov_type='zoom2p0x', state='awake',
                                            state=state, fov_type=fov_type, 
                                            visual_areas=visual_areas,
                                            rootdir=rootdir)
+        sdata['fovnum'] = [int(re.findall(r'FOV(\d+)_', x)[0]) for x in sdata['fov']]
         with open(sdata_fpath, 'wb') as f:
             pkl.dump(sdata, f, protocol=pkl.HIGHEST_PROTOCOL)
             
