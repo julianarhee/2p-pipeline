@@ -80,6 +80,9 @@ def create_deviant_dataframe(dsets, traceid='traces001', n_processes=1,
 
         datakey = '%s_%s_fov%i' % (session, animalid, fovnum)
         fov = 'FOV%i_zoom2p0x' % fovnum
+        
+        if animalid=='JC110' and session=='20191004' and fov=='FOV1_zoom2p0x':
+            continue
 
         rfnames = [r for r in g['experiment'].values if 'rf' in r]
         for rfname in rfnames:
@@ -135,6 +138,7 @@ def create_deviant_dataframe(dsets, traceid='traces001', n_processes=1,
                 ns = len(deviant_rois)
 
                 cond_df = pd.DataFrame({'deviants': deviant_rois,
+                                        'visual_area': [visual_area for _ in np.arange(0, ns)],
                                         'cond': [cond for _ in np.arange(0, ns)],
                                         'n_rois': [len(rois_rfs) for _ in np.arange(0, ns)],
                                         'n_rois_pass': [len(pass_rois_rfs) for _ in np.arange(0, ns)],
@@ -143,8 +147,8 @@ def create_deviant_dataframe(dsets, traceid='traces001', n_processes=1,
                 devdf.append(cond_df)
             
     devdf = pd.concat(devdf, axis=0).reset_index(drop=True)
-        
-    return devdf
+     
+    return devdf, stats_load_errors, bad_fit_results
    
 
 def get_deviant_data(traceid='traces001', fov_type='zoom2p0x', state='awake', n_processes=1,
@@ -176,7 +180,7 @@ def get_deviant_data(traceid='traces001', fov_type='zoom2p0x', state='awake', n_
             devdf = pkl.load(f)
     else:
         print("Creating deviant df")
-        devdf = create_deviant_dataframe(dsets, traceid=traceid, 
+        devdf, nostats, nofits = create_deviant_dataframe(dsets, traceid=traceid, 
                                         response_type=response_type, fit_thr=fit_thr,
                                         n_processes=n_processes, ci=ci, 
                                         n_bootstrap_iters=n_bootstrap_iters, n_resamples=n_resamples,
@@ -184,10 +188,21 @@ def get_deviant_data(traceid='traces001', fov_type='zoom2p0x', state='awake', n_
                                         plot_boot_distns=plot_boot_distns, plot_all_cis=plot_all_cis,
                                         deviant_color=deviant_color)
 
-
         with open(deviants_dfile, 'wb') as f:
             pkl.dump(devdf, f, protocol=pkl.HIGHEST_PROTOCOL)
-        
+ 
+        # Save error info 
+        error_logfile = os.path.join(outdir, 'errorlog.json')
+        error_info = {'stats_load': nostats,
+                      'bad_fits': nofits}
+
+        with open(error_logfile, 'w') as f:
+            json.dump(error_info, f, indent=4)
+
+
+
+
+       
 
 def extract_options(options):
     

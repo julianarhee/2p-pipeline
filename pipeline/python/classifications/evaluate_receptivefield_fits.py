@@ -347,7 +347,7 @@ def do_regr_on_fov(bootdata, bootcis, posdf, cond='azimuth', ci=.95, xaxis_lim=N
     ax, plotter = regplot('%s_fov' % axname, '%s_rf' % axname, data=posdf.loc[roi_list], ci=ci*100, 
                           color='k', marker='x',
                           scatter_kws=dict(s=15, alpha=1.0), ax=ax, 
-                          label='measured (regr: %i%% CI)' % int(ci*100) )
+                          label='measured' )
 
     # Get CIs from regression fit to "good data"
     grid, yhat, err_bands = plotter.fit_regression(grid=plotter.x)
@@ -394,7 +394,6 @@ def do_regr_on_fov(bootdata, bootcis, posdf, cond='azimuth', ci=.95, xaxis_lim=N
         
     #ax.set_ylim([-10, 40])
     sns.despine(offset=4, trim=True, ax=ax)
-    ax.legend()
 
     # Check that values make sense and mark deviants
     deviants = []
@@ -414,11 +413,12 @@ def do_regr_on_fov(bootdata, bootcis, posdf, cond='azimuth', ci=.95, xaxis_lim=N
         yerrs = np.array(zip(x0_meds[dev_ixs]-x0_lower.iloc[dev_ixs], x0_upper.iloc[dev_ixs]-x0_meds[dev_ixs])).T
         
         ax.scatter(xv, yv, c=deviant_color, marker='o', alpha=1.0, 
-                           label='bootstrapped (%i%% CI)' % int(ci*100) )
-        ax.scatter(xv, x0_meds[dev_ixs], c=deviant_color, marker='_', alpha=1.0, 
-                           label='bootstrap med')
+                    label='sig. scattered (%i%% CI)' % int(ci*100) )
+        ax.scatter(xv, x0_meds[dev_ixs], c=deviant_color, marker='_', alpha=1.0) 
         ax.errorbar(xv, x0_meds[dev_ixs], yerr=yerrs, 
                         fmt='none', color=deviant_color, alpha=0.7, lw=1)
+
+    ax.legend()
 
     bad_fits = [roi for rix, roi, lo, up, (regL, regU), med \
                 in zip(roi_ixs, rlist, roi_lower, roi_upper, regr_cis[roi_ixs], yvals)\
@@ -975,7 +975,7 @@ def identify_deviants(regresults, bootresults, posdf, ci=0.95, rfdir='/tmp'):
         if len(trudeviants) > 0:
             deviant_fpos = posdf['%s_fov' % axname][trudeviants]
             deviant_rpos = posdf['%s_rf' % axname][trudeviants]
-            ax.scatter(deviant_fpos, deviant_rpos, marker='*', c='red', s=30, alpha=0.8)
+            ax.scatter(deviant_fpos, deviant_rpos, marker='*', c='dodgerblue', s=30, alpha=0.8)
 
             avg_interval = np.diff(ax.get_yticks()).mean()
             if label_deviants:
@@ -986,8 +986,8 @@ def identify_deviants(regresults, bootresults, posdf, ci=0.95, rfdir='/tmp'):
                         ax.annotate(roi, (deviant_fpos[roi], deviant_rpos[roi]+avg_interval/2.), fontsize=6)
                     else:
                         ax.annotate(roi, (deviant_fpos[roi], deviant_rpos[roi]-avg_interval/2.), fontsize=6)        
-            ax.set_ylim([-10, 40])
-            ax.set_xlim([0, 800])
+            #ax.set_ylim([-10, 40])
+            #ax.set_xlim([0, 800])
             
         sns.despine( trim=True, ax=ax)
       
@@ -1106,7 +1106,7 @@ def do_rf_fits_and_evaluation(animalid, session, fov, rfname=None, traceid='trac
                                     deviant_color=deviant_color)
     
     # Identify deviants
-#   deviants = identify_deviants(regresults, bootresults, estats.fovinfo['positions'], ci=ci, rfdir=rfdir)
+    deviants = identify_deviants(regresults, bootresults, estats.fovinfo['positions'], ci=ci, rfdir=rfdir)
     
 #    with open(os.path.join(rfdir, 'evaluation', 'deviants_bothconds.json'), 'w') as f:
 #        json.dump(deviants, f, indent=4)
