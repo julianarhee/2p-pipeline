@@ -420,8 +420,8 @@ def do_regr_on_fov(bootdata, bootcis, posdf, cond='azimuth', ci=.95, xaxis_lim=N
 
     ax.legend()
 
-    bad_fits = [roi for rix, roi, lo, up, (regL, regU), med \
-                in zip(roi_ixs, rlist, roi_lower, roi_upper, regr_cis[roi_ixs], yvals)\
+    bad_fits = [roi for rix, roi, lo, up, med \
+                in zip(roi_ixs, rlist, roi_lower, roi_upper, yvals)\
                 if not (lo <= med <= up) ]
 
 #    for roi, lo, up, (regL, regU), med in zip(roi_list, roi_lower, roi_upper, regr_cis[roi_ixs], yvals):
@@ -679,74 +679,7 @@ def spatially_sort_compare_position(fovinfo, transform=True):
     
     return fig
     
-# 
-#def get_rf_to_fov_info(masks, rfdf, zimg, rfdir='/tmp', rfname='rfs',
-#                       plot_spatial=False, transform_fov=True):    
-#    '''
-#    Get FOV info relating cortical position to RF position of all cells.
-#    Info is saved in: rfdir/fov_info.pkl
-#    
-#    Returns:
-#        fovinfo (dict)
-#            'positions': 
-#                dataframe of azimuth (xpos) and elevation (ypos) for cell's 
-#                cortical position and cell's RF position (i.e., 'posdf')
-#            'zimg': 
-#                (array) z-projected image 
-#            'roi_contours': 
-#                (list) roi contours created from classifications.convert_coords.contours_from_masks()
-#            'xlim' and 'ylim': 
-#                (float) FOV limits (in pixels or um) for azimuth and elevation axes
-#    '''
-#    
-#    get_fovinfo =False
-#    fovinfo_fpath = os.path.join(rfdir, 'fov_info.pkl')
-#    if os.path.exists(fovinfo_fpath):
-#        print("... loading fov info")
-#        try:
-#            with open(fovinfo_fpath, 'rb') as f:
-#                fovinfo = pkl.load(f)
-#            assert 'zimg' in fovinfo.keys(), "Redoing rf-to-fov conversion"
-#        except Exception as e:
-#            get_fovinfo = True
-#    else:
-#        get_fovinfo = True
-#            
-#    if get_fovinfo:
-#        print("... getting fov info")
-#        # Get masks
-#        npix_y, npix_x, nrois_total = masks.shape
-#        
-#        # Create contours from maskL
-#        roi_contours = coor.contours_from_masks(masks)
-#        
-#        # Convert to brain coords
-#        fov_x, rf_x, xlim, fov_y, rf_y, ylim = coor.get_roi_position_um(rfdf, roi_contours, 
-#                                                                         rf_exp_name=rfname,
-#                                                                         convert_um=True,
-#                                                                         npix_y=npix_y,
-#                                                                         npix_x=npix_x)
-#        posdf = pd.DataFrame({'xpos_fov': fov_y,
-#                               'xpos_rf': rf_x,
-#                               'ypos_fov': fov_x,
-#                               'ypos_rf': rf_y}, index=rfdf.index)
-#    
-#        # Save fov info
-#        fovinfo = {'zimg': zimg,
-#                    'roi_contours': roi_contours,
-#                    'positions': posdf,
-#                    'xlim': xlim,
-#                    'ylim': ylim}
 #
-#        with open(fovinfo_fpath, 'wb') as f:
-#            pkl.dump(fovinfo, f, protocol=pkl.HIGHEST_PROTOCOL)
-#
-#        
-#    return fovinfo   
-
-# In[2]:
-
-
 def extract_options(options):
     
     parser = optparse.OptionParser()
@@ -1156,10 +1089,7 @@ if __name__ == '__main__':
     from pipeline.python.classifications import experiment_classes as util
 
     main(sys.argv[1:])
-    
-            
-            
-            
+           
     #%%
     
     options = ['-i', 'JC084', '-S', '20190525', '-A', 'FOV1_zoom2p0x', '-R', 'rfs']

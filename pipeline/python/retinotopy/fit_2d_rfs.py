@@ -47,13 +47,17 @@ from pipeline.python.traces.trial_alignment import aggregate_experiment_runs
 
 
 
-def rfits_to_df(rffits, row_vals=[], col_vals=[], roi_list=None):
+def rfits_to_df(rffits, row_vals=[], col_vals=[], roi_list=None,
+                scale_size=False, sigma_scale=2.35):
     '''
     Takes each roi's RF fit results, converts to screen units, and return as dataframe.
+    Scale to make size FWFM if scale_size is True.
     '''
     if roi_list is None:
         roi_list = sorted(rffits.keys())
-        
+       
+    scale_ = sigma_scale if scale_size else 1.0
+
     rf_fits_df = pd.DataFrame({'x0': [rffits[r]['x0'] for r in roi_list],
                                'y0': [rffits[r]['y0'] for r in roi_list],
                                'sigma_x': [rffits[r]['sigma_x'] for r in roi_list],
@@ -65,8 +69,8 @@ def rfits_to_df(rffits, row_vals=[], col_vals=[], roi_list=None):
     x0, y0, sigma_x, sigma_y = convert_fit_to_coords(rf_fits_df, row_vals, col_vals)
     rf_fits_df['x0'] = x0
     rf_fits_df['y0'] = y0
-    rf_fits_df['sigma_x'] = sigma_x
-    rf_fits_df['sigma_y'] = sigma_y
+    rf_fits_df['sigma_x'] = sigma_x * scale_
+    rf_fits_df['sigma_y'] = sigma_y * scale_ 
     
     return rf_fits_df
 
@@ -1310,7 +1314,7 @@ def create_rf_dir(animalid, session, fov, run_name,
     fit_desc = get_fit_desc(response_type=response_type)
 
     fov_dir = os.path.join(rootdir, animalid, session, fov)
-    traceid_dirs = glob.glob(os.path.join(fov_dir, run_name, 'traces', '%s*' % traceid))
+    traceid_dirs = [t for t in glob.glob(os.path.join(fov_dir, '*%s*' % run_name, 'traces', '%s*' % traceid)) if 'combined' in t]
     if len(traceid_dirs) > 1:
         print "More than 1 trace ID found:"
         for ti, traceid_dir in enumerate(traceid_dirs):
