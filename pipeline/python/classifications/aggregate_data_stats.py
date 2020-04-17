@@ -82,11 +82,13 @@ def get_aggregate_info(traceid='traces001', fov_type='zoom2p0x', state='awake', 
         with open(sdata_fpath, 'rb') as f:
             sdata = pkl.load(f)
     else:
-        sdata = gd.aggregate_session_info(traceid=traceid, 
+        tmpdata = gd.aggregate_session_info(traceid=traceid, 
                                            state=state, fov_type=fov_type, 
                                            visual_areas=visual_areas,
                                            rootdir=rootdir)
-        sdata['fovnum'] = [int(re.findall(r'FOV(\d+)_', x)[0]) for x in sdata['fov']]
+        tmpdata['fovnum'] = [int(re.findall(r'FOV(\d+)_', x)[0]) for x in tmpdata['fov']]
+        sdata = tmpdata.copy().drop_duplicates().reset_index(drop=True)
+
         with open(sdata_fpath, 'wb') as f:
             pkl.dump(sdata, f, protocol=pkl.HIGHEST_PROTOCOL)
             
