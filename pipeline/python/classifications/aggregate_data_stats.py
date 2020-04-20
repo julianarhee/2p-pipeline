@@ -5,7 +5,9 @@ import json
 import re
 import sys
 import optparse
+import itertools
 
+import statsmodels as sm
 import scipy.stats as spstats
 import pandas as pd
 import numpy as np
