@@ -35,13 +35,28 @@ def get_excluded_datasets(filter_by='drop_repeats', excluded_sessions=[]):
 
     if filter_by=='drop_repeats':
         # Sessions with repeat FOVs
-        lm_repeats = ['20190513_JC078', '20190504_JC078', '20190509_JC078', '20190506_JC080', 
-                      '20190512_JC083', '20190517_JC083']
-        
-        li_repeats = ['20190609_JC099', '20190606_JC091', '20190607_JC091', '20191108_JC113']
+        v1_repeats = ['20190501_JC076', 
+                      '20190507_JC083', '20190510_JC083', #'20190511_JC083']
+                      '20190615_JC097',
+                      '20191004_JC110']
+ 
+        lm_repeats = ['20190426_JC078', '20190504_JC078', '20190430_JC078', 
+                      '20190506_JC080', 
+                      '20190508_JC083', '20190512_JC083', #'20190517_JC083']
+                      '20190615_JC097',
+                      '20191108_JC113']
+       
+        li_repeats = ['20190422_JC076',
+                      '20190602_JC091',  
+                      '20190606_JC091', 
+                      #'20190527_JC092',
+                      '20190609_JC099',
+                      '20191012_JC113_fov1',
+                      '20191012_JC113_fov2', '20191017_JC113',
+                      '20191104_JC117_fov1',
+                      '20191106_JC120_fov1']
 
-        v1_repeats = ['20190501_JC076', '20190510_JC083', '20190511_JC083']
-        
+       
         also_exclude = [v1_repeats, lm_repeats, li_repeats]
 
     for excl in also_exclude:
@@ -61,8 +76,10 @@ def get_metadata(traceid='traces001', fov_type='zoom2p0x', state='awake',
 
     # Filter excluded datasets
     excluded_sessions = get_excluded_datasets(filter_by=filter_by)
+
     dsets = pd.concat([g for v, g in sdata.groupby(['visual_area', 'animalid', 'session', 'fovnum']) \
-            if '%s_%s' % (v[2], v[1]) not in excluded_sessions])
+            if '%s_%s' % (v[2], v[1]) not in excluded_sessions \
+            and '%s_%s_fov%i' % (v[2], v[1], v[3]) not in excluded_sessions])
 
     return dsets
 

@@ -16,6 +16,102 @@ import cPickle as pkl
 from pipeline.python.classifications import experiment_classes as util
 from pipeline.python.utils import label_figure, natural_keys
 
+
+def get_excluded_datasets(filter_by='drop_repeats', excluded_sessions=[]):
+
+    fov_keys = {'JC076': {'V1': [('20190420_fov1', '20190501_fov1')],
+                          'Lm': [('20190423_fov1')],
+                          'Li': [('20190422_fov1', '20190502_fov1')]},
+
+                'JC078': {'Lm': [('20190426', '20190504', '20190509'),
+                                 ('20190430', '20190513')]},
+
+                'JC080': {'Lm': [('20190506', '20190603'), 
+                                 ('20190602_fov2')],
+                          'Li': [('20190602_fov1')]},
+
+                'JC083': {'V1': [('20190507', '20190510', '2010511')],
+                          'Lm': [('20190508', '201905012', '20190517')]},
+
+                'JC084': {'V1': [('20190522')],
+                          'Lm': [('20190525')]},
+
+                'JC085': {'V1': [('20190622')]},
+
+                'JC089': {'Li': [('20190522')]},
+
+                'JC090': {'Li': [('20190605')]},
+
+                'JC091': {'Lm': [('20190627')],
+                          'Li': [('20190602', '20190607'),
+                                 ('20190606', '20190614'),
+                                 ('20191007', '20191008')]},
+
+                'JC092': {'Li': [('20190527_fov2'),
+                                 ('20190527_fov3'),
+                                 ('20190528')]},
+
+                'JC097': {'V1': [('20190613'),
+                                 ('20190615_fov1', '20190617'),
+                                 ('20190615_fov2', '20190616')],
+                          'Lm': [('20190615_fov3'),
+                                 ('20190618')]},
+
+                'JC099': {'Li': [('20190609', '20190612'),
+                                 ('20190617')]},
+
+                'JC110': {'V1': [('20191004_fov2', '20191006')],
+                          'Lm': [('20191004_fov3'), ('20191004_fov4')]},
+
+                'JC111': {'Li': [('20191003')]},
+
+                'JC113': {'Lm': [('20191012_fov3')],
+                          'Li': [('20191012_fov2', '20191017', '20191018')]},
+
+                'JC117': {'V1': [('20191111_fov1')],
+                          'Lm': [('20191104_fov2'), ('20191111_fov2')],
+                          'Li': [('20191104_fov1', '20191105')]},
+
+                'JC120': {'V1': [('20191106_fov3')],
+                          'Lm': [('20191106_fov4')],
+                          'Li': [('20191106_fov1', '20191111')]}
+                }
+
+    return fov_keys
+
+def do_mannwhitney(mdf, metric='I_rs', multi_comp_test='holm'):
+    visual_areas = ['V1', 'Lm', 'Li']
+    mpairs = list(itertools.combinations(visual_areas, 2))
+
+    pvalues = []
+    for mp in mpairs:
+        d1 = mdf[mdf['visual_area']==mp[0]][metric]
+        d2 = mdf[mdf['visual_area']==mp[1]][metric]
+
+        # compare samples
+        stat, p = spstats.mannwhitneyu(d1, d2)
+        print('Statistics=%.3f, p=%.3f' % (stat, p))
+        # interpret
+        alpha = 0.05
+        if p > alpha:
+            print('Same distribution (fail to reject H0)')
+        else:
+            print('Different distribution (reject H0)')
+        pvalues.append(p)
+
+    reject, pvals_corrected, _, _ = sm.stats.multitest.multipletests(pvalues, 
+                                                                     alpha=0.05, 
+                                                                     method=multi_comp_test)
+    results = []
+    for mp, rej, pv in zip(mpairs, reject, pvals_corrected):
+        results.append((mp, rej, pv))
+    
+    return results
+
+
+
+
+
 def load_traces(animalid, session, fovnum, curr_exp, traceid='traces001',
                responsive_test='ROC', responsive_thr=0.05, response_type='dff', n_stds=2.5):
     
@@ -93,6 +189,7 @@ def get_aggregate_info(traceid='traces001', fov_type='zoom2p0x', state='awake', 
             pkl.dump(sdata, f, protocol=pkl.HIGHEST_PROTOCOL)
             
     return sdata
+
 
 def extract_options(options):
     parser = optparse.OptionParser()
