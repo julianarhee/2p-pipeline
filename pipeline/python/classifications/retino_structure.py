@@ -33,7 +33,12 @@ def get_excluded_datasets(filter_by='drop_repeats', excluded_sessions=[]):
     # Blobs runs w/ incorrect stuff
     always_exclude = ['20190426_JC078']
 
-    if filter_by=='drop_repeats':
+    if filter_by is None:
+        v1_repeats = []
+        lm_repeats = []
+        li_repeats = []
+    
+    elif filter_by=='drop_repeats':
         # Sessions with repeat FOVs
         v1_repeats = ['20190501_JC076', 
                       '20190507_JC083', '20190510_JC083', #'20190511_JC083']
@@ -57,7 +62,7 @@ def get_excluded_datasets(filter_by='drop_repeats', excluded_sessions=[]):
                       '20191106_JC120_fov1']
 
        
-        also_exclude = [v1_repeats, lm_repeats, li_repeats]
+    also_exclude = [v1_repeats, lm_repeats, li_repeats]
 
     for excl in also_exclude:
         excluded_sessions.extend(excl)
