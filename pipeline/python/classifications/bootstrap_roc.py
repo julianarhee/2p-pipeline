@@ -52,7 +52,7 @@ def get_hits_and_fas(resp_stim, resp_bas):
     return p_hits, p_fas, crit_vals
 
 
-def load_data(experiment_name, animalid, session, fov, traceid, trace_type='corrected', rootdir='/n/coxfs01/2p-data'):
+def load_experiment_data(experiment_name, animalid, session, fov, traceid, trace_type='corrected', rootdir='/n/coxfs01/2p-data'):
     from pipeline.python.classifications import experiment_classes as util #utils as util
 
     if 'gratings' in experiment_name:
@@ -268,13 +268,9 @@ def main(options):
 def bootstrap_roc_func(animalid, session, fov, traceid, experiment, trace_type='corrected', rootdir='/n/coxfs01/2p-data',
                         n_processes=1, plot_rois=True, n_iters=1000):
  
-#    exp, gdf = load_data(opts.experiment, opts.animalid, opts.session, opts.fov, opts.traceid, 
-#                         trace_type=opts.trace_type, rootdir=opts.rootdir)
-#    
-#    data_identifier = '|'.join([opts.animalid, opts.session, opts.fov, opts.traceid, opts.experiment, opts.trace_type])
 
     print(".... starting boot.")#
-    exp, gdf = load_data(experiment, animalid, session, fov, traceid, 
+    exp, gdf = get_experiment_data(experiment, animalid, session, fov, traceid, 
                          trace_type=trace_type, rootdir=rootdir)
     
     data_identifier = '|'.join([animalid, session, fov, traceid, experiment, trace_type])

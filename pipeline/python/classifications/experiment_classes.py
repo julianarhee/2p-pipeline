@@ -68,7 +68,8 @@ from pipeline.python.classifications import test_responsivity as resp
 
 #from pipeline.python.classifications import bootstrap_fit_tuning_curves as osi
 from pipeline.python.classifications import bootstrap_osi as osi
-from pipeline.python.utils import label_figure, natural_keys, get_frame_info, check_counts_per_condition
+from pipeline.python.utils import label_figure, natural_keys#, get_frame_info, check_counts_per_condition
+from pipeline.python import utils as util
 from pipeline.python.classifications.bootstrap_roc import bootstrap_roc_func
 
 import glob
@@ -207,14 +208,6 @@ def get_anatomical(animalid, session, fov, channel_num=2, rootdir='/n/coxfs01/2p
 # Data processing and formatting
 # #############################################################################
 
-def reformat_morph_values(sdf):
-    #print(sdf.head())
-    control_ixs = sdf[sdf['morphlevel']==-1].index.tolist()
-    sizevals = np.array([round(s, 1) for s in sdf['size'].unique() if s not in ['None', None] and not np.isnan(s)])
-    sdf.loc[sdf.morphlevel==-1, 'size'] = pd.Series(sizevals, index=control_ixs)
-    sdf['size'] = [round(s, 1) for s in sdf['size'].values]
-    return sdf
-
 def process_traces(raw_traces, labels, response_type='dff', nframes_post_onset=None):
 
 #    stim_on_frame = labels['stim_on_frame'].unique()[0]
@@ -305,7 +298,7 @@ def group_trial_values_by_cond(trialstats, labels):
         resp_by_cond[cfg] = trialstats.iloc[trial_ixs]  # For each config, array of size ntrials x nrois
 
     trialstats_by_cond = pd.DataFrame([resp_by_cond[cfg].mean(axis=0) \
-                                            for cfg in sorted(resp_by_cond.keys(), key=natural_keys)]) # nconfigs x nrois
+                                            for cfg in sorted(resp_by_cond.keys(), key=util.natural_keys)]) # nconfigs x nrois
          
     return trialstats_by_cond
 
@@ -325,10 +318,10 @@ def get_retino_analysis(animalid, session, fov, run='retino_run1', rois=None, ro
         
     # Find analysis id using roi type specified:
     if rois == 'pixels':
-        found_ids = sorted([a for a, info in ainfo.items() if info['PARAMS']['roi_type']==rois], key=natural_keys)
+        found_ids = sorted([a for a, info in ainfo.items() if info['PARAMS']['roi_type']==rois], key=util.natural_keys)
     else:
         found_ids = sorted([a for a, info in ainfo.items() if 'roi_id' in info['PARAMS'].keys()\
-                            and info['PARAMS']['roi_id'] == rois], key=natural_keys)
+                            and info['PARAMS']['roi_id'] == rois], key=util.natural_keys)
     assert len(found_ids) > 0, "No analysis ids found of type: %s (run dir:\n%s)" % (rois, run_dir)
     if len(found_ids) > 1:
         for fi, fr in enumerate(found_ids):
@@ -788,7 +781,7 @@ class Session():
                             rootdir='/n/coxfs01/2p-data'):
 
         fov_dir = os.path.join(rootdir, self.animalid, self.session, self.fov)
-        run_list = sorted(glob.glob(os.path.join(fov_dir, '*_run[0-9]')), key=natural_keys)
+        run_list = sorted(glob.glob(os.path.join(fov_dir, '*_run[0-9]')), key=util.natural_keys)
         experiment_list = list(set([os.path.split(f)[-1].split('_run')[0] for f in run_list]))
         
         if int(self.session) < 20190511 and 'gratings' in experiment_list:
@@ -1012,7 +1005,7 @@ class Experiment(object):
         dset = np.load(dset_path)
         sdf = pd.DataFrame(dset['sconfigs'][()]).T
         if 'blobs' in self.name:
-            sdf = reformat_morph_values(sdf)
+            sdf = util.reformat_morph_values(sdf)
      
         return sdf
     
@@ -1041,59 +1034,14 @@ class Experiment(object):
                         aggregate_experiment_runs(self.animalid, self.session, self.fov, self.experiment_type, 
                                                   traceid=self.traceid)
                         print("*****corrected offsets!*****")
-                    dset = np.load(soma_fpath)
-                    
+
+                    traces, labels, sdf, run_info = util.load_dataset(soma_fpath)
+                   
                     # Stimulus / condition info
-                    self.data.labels = pd.DataFrame(data=dset['labels_data'], columns=dset['labels_columns'])
-                    sdf = pd.DataFrame(dset['sconfigs'][()]).T
-                    #round_sz = [int(round(s)) if s is not None else s for s in sdf['size']]
-                    #sdf['size'] = round_sz
-                    if 'blobs' in self.experiment_type:
-                        self.data.sdf = reformat_morph_values(sdf)
-                    else:
-                        self.data.sdf = sdf
-                    self.data.info = dset['run_info'][()]
+                    self.data.labels = labels 
+                    self.data.sdf = sdf
+                    self.data.info = run_info 
                     
-                    # Traces
-                    xdata_df = pd.DataFrame(dset['data'][:]) # neuropil-subtracted & detrended
-                    F0 = pd.DataFrame(dset['f0'][:]).mean().mean() # detrended offset
-                    print("NP_subtracted offset was: %.2f" % F0)
-                    if add_offset:
-                        #% Add baseline offset back into raw traces:
-                        neuropil_fpath = soma_fpath.replace('np_subtracted', 'neuropil')
-                        npdata = np.load(neuropil_fpath)
-                        neuropil_f0 = np.nanmean(np.nanmean(pd.DataFrame(npdata['f0'][:])))
-                        neuropil_df = pd.DataFrame(npdata['data'][:]) #+ pd.DataFrame(npdata['f0'][:]).mean().mean()
-                        print("adding NP offset... (NP baseline offset: %.2f)" % neuropil_f0)
-                        print(xdata_df.shape, neuropil_df.mean(axis=0).shape, F0.shape)
-                        raw_traces = xdata_df + list(np.nanmean(neuropil_df, axis=0)) + F0 #.T + F0
-                    else:
-                        raw_traces = xdata_df + F0
-
-                    if trace_type == 'corrected':
-                        traces = raw_traces
-                    elif trace_type in ['dff', 'df']:
-                        #min_mov = raw_traces.min().min()
-                        #if min_mov < 0:
-                        #    raw_traces = raw_traces - min_mov
-                        #% # Convert raw + offset traces to df/F traces
-                        stim_on_frame = self.data.labels['stim_on_frame'].unique()[0]
-                        tmp_df = []
-                        for k, g in self.data.labels.groupby(['trial']):
-                            tmat = raw_traces.loc[g.index]
-                            bas_mean = np.nanmean(tmat[0:stim_on_frame], axis=0)
-                            if trace_type == 'dff':
-                                tmat_df = (tmat - bas_mean) / bas_mean
-                            elif trace_type == 'df':
-                                tmat_df = (tmat - bas_mean)
-                            tmp_df.append(tmat_df)
-                        traces = pd.concat(tmp_df, axis=0)
-                        del tmp_df
-
-                    if make_equal:
-                        #print("... making equal")
-                        traces, self.data.labels = check_counts_per_condition(traces, self.data.labels)
-
                 elif self.source.endswith('h5'):
                     #dfile = h5py.File(self.source, 'r')
                     # TODO: formatt retino data in sensible way with rutils
@@ -1418,7 +1366,7 @@ class Gratings(Experiment):
             for stimpara, bootr in bootresults[roi].items():
                 #  ['fits', 'stimulus_configs', 'data', 'results']
                 fig, stimkey = osi.plot_tuning_bootresults(roi, bootr, raw_traces, self.data.labels, sdf, trace_type=fitparams['response_type'])
-                label_figure(fig, data_identifier)
+                util.label_figure(fig, data_identifier)
                 pl.savefig(os.path.join(osidir, 'roi-fits', 'roi%05d__%s.png' % (int(roi+1), stimkey)))
                 pl.close()
                     
@@ -1900,7 +1848,7 @@ def get_mean_cond_traces(ridx, Xdata, ylabels, tsecs, nframes_per_trial):
     '''For each ROI, get average trace for each condition.
     '''
     if isinstance(ylabels[0], str):
-        conditions = sorted(list(set(ylabels)), key=natural_keys)
+        conditions = sorted(list(set(ylabels)), key=util.natural_keys)
     else:
         conditions = sorted(list(set(ylabels)))
 
@@ -1933,7 +1881,7 @@ def get_xcond_dfs(roi_list, X, y, tsecs, run_info):
     nconds = len(run_info['condition_list'])
     averages_list = []
     normed_list = []
-    for ridx, roi in enumerate(sorted(roi_list, key=natural_keys)):
+    for ridx, roi in enumerate(sorted(roi_list, key=util.natural_keys)):
         mean_cond_traces, mean_tsecs = get_mean_cond_traces(ridx, X, y, tsecs, run_info['nframes_per_trial']) #get_mean_cond_traces(ridx, X, y)
         xcond_mean = np.mean(mean_cond_traces, axis=0)
         normed = mean_cond_traces - xcond_mean

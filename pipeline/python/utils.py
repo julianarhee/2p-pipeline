@@ -9,6 +9,8 @@ import scipy
 import h5py
 import time
 import cv2
+import traceback
+
 import numpy as np
 import tifffile as tf
 from skimage import exposure
@@ -96,66 +98,137 @@ def check_counts_per_condition(raw_traces, labels):
 
     else:
         return raw_traces, labels
-    
-def load_data(data_fpath, add_offset=True, make_equal=False):
+   
 
-    from pipeline.python.classifications import test_responsivity as resp
+def reformat_morph_values(sdf):
+    #print(sdf.head())
+    control_ixs = sdf[sdf['morphlevel']==-1].index.tolist()
+    sizevals = np.array([round(s, 1) for s in sdf['size'].unique() if s not in ['None', None] and not np.isnan(s)])
+    sdf.loc[sdf.morphlevel==-1, 'size'] = pd.Series(sizevals, index=control_ixs)
+    sdf['size'] = [round(s, 1) for s in sdf['size'].values]
+    return sdf
 
 
-    #from pipeline.python.classifications import experiment_classes as util
-    soma_fpath = data_fpath.replace('datasets', 'np_subtracted')
-    print soma_fpath
-    dset = np.load(soma_fpath)
-    
-    xdata_df = pd.DataFrame(dset['data'][:]) # neuropil-subtracted & detrended
-    F0 = pd.DataFrame(dset['f0'][:]).mean().mean() # detrended offset
-    # paradigm.utils.get_rolling_baseline() - does/doesn't add mean offset of baseline back in after subtracting time-points of baseline from orig, so don't need to add this back in.
-    
-    # Need to add original data offset back to np-subtracted traces
-    if add_offset:
-#        raw_fpath = soma_fpath.replace('np_subtracted', 'raw')
-#        rawdata = np.load(raw_fpath)
-#        raw_offset = pd.DataFrame(rawdata['f0'][:]).mean().mean() #+ pd.DataFrame(npdata['f0'][:])
-#        print("adding offset...", raw_offset)
-#        raw_traces = xdata_df + raw_offset #neuropil_df.mean(axis=0) #;+ F0 #neuropil_F0 + F0
+def load_dataset(soma_fpath, trace_type='dff', add_offset=True, make_equal=False):
+    print("[loading dataset]: %s" % soma_fpath)
+    traces=None
+    labels=None
+    sdf=None
+    run_info=None
+    try:
+        dset = np.load(soma_fpath)
+        
+        # Stimulus / condition info
+        labels = pd.DataFrame(data=dset['labels_data'], columns=dset['labels_columns'])
+        sdf = pd.DataFrame(dset['sconfigs'][()]).T
+        if 'blobs' in soma_fpath: #self.experiment_type:
+            sdf = reformat_morph_values(sdf)
+        else:
+            sdf = sdf
+        run_info = dset['run_info'][()]
+        
+        # Traces
+        xdata_df = pd.DataFrame(dset['data'][:]) # neuropil-subtracted & detrended
+        F0 = pd.DataFrame(dset['f0'][:]).mean().mean() # detrended offset
+        print("NP_subtracted offset was: %.2f" % F0)
+        if add_offset:
+            #% Add baseline offset back into raw traces:
+            neuropil_fpath = soma_fpath.replace('np_subtracted', 'neuropil')
+            npdata = np.load(neuropil_fpath)
+            neuropil_f0 = np.nanmean(np.nanmean(pd.DataFrame(npdata['f0'][:])))
+            neuropil_df = pd.DataFrame(npdata['data'][:]) #+ pd.DataFrame(npdata['f0'][:]).mean().mean()
+            print("adding NP offset... (NP baseline offset: %.2f)" % neuropil_f0)
+            print(xdata_df.shape, neuropil_df.mean(axis=0).shape, F0.shape)
+            raw_traces = xdata_df + list(np.nanmean(neuropil_df, axis=0)) + F0 #.T + F0
+        else:
+            raw_traces = xdata_df + F0
 
-        #% Add baseline offset back into raw traces:
-        neuropil_fpath = soma_fpath.replace('np_subtracted', 'neuropil')
-        npdata = np.load(neuropil_fpath)
-        neuropil_df = pd.DataFrame(npdata['data'][:]) #+ pd.DataFrame(npdata['f0'][:])
-        print("adding NP offset...")
-        raw_traces = xdata_df + neuropil_df.mean(axis=0) + F0 #neuropil_F0 + F0
-    else:
-        raw_traces = xdata_df.copy() #+ F0
+        if trace_type == 'corrected':
+            traces = raw_traces
+        elif trace_type in ['dff', 'df']:
+            stim_on_frame = labels['stim_on_frame'].unique()[0]
+            tmp_df = []
+            for k, g in labels.groupby(['trial']):
+                tmat = raw_traces.loc[g.index]
+                bas_mean = np.nanmean(tmat[0:stim_on_frame], axis=0)
+                if trace_type == 'dff':
+                    tmat_df = (tmat - bas_mean) / bas_mean
+                elif trace_type == 'df':
+                    tmat_df = (tmat - bas_mean)
+                tmp_df.append(tmat_df)
+            traces = pd.concat(tmp_df, axis=0)
+            del tmp_df
 
-    labels = pd.DataFrame(data=dset['labels_data'], columns=dset['labels_columns'])
-    
-    if make_equal:
-        raw_traces, labels = check_counts_per_condition(raw_traces, labels)
+        if make_equal:
+            #print("... making equal")
+            traces, labels = check_counts_per_condition(traces, labels)           
+            
+    except Exception as e:
+        traceback.print_exc()
+        print("ERROR LOADING DATA")
 
-    sdf = pd.DataFrame(dset['sconfigs'][()]).T
-    
-    gdf = resp.group_roidata_stimresponse(raw_traces.values, labels, return_grouped=True) # Each group is roi's trials x metrics
-    
-    #% # Convert raw + offset traces to df/F traces
-    #min_mov = raw_traces.min().min()
-    #if min_mov < 0:
-    #    raw_traces = raw_traces - min_mov
-    
-    return raw_traces, labels, gdf, sdf
+    return traces, labels, sdf, run_info
 
-def get_dff_traces(raw_traces, labels):
-    stim_on_frame = labels['stim_on_frame'].unique()[0]
-    tmp_df = []
-    for k, g in labels.groupby(['trial']):
-        tmat = raw_traces.loc[g.index]
-        bas_mean = np.nanmean(tmat[0:stim_on_frame], axis=0)
-        tmat_df = (tmat - bas_mean) / bas_mean
-        tmp_df.append(tmat_df)
-    df_traces = pd.concat(tmp_df, axis=0)
-    del tmp_df
-    return df_traces
 
+#def load_data(data_fpath, add_offset=True, make_equal=False):
+#
+#    from pipeline.python.classifications import test_responsivity as resp
+#
+#
+#    #from pipeline.python.classifications import experiment_classes as util
+#    soma_fpath = data_fpath.replace('datasets', 'np_subtracted')
+#    print soma_fpath
+#    dset = np.load(soma_fpath)
+#    
+#    xdata_df = pd.DataFrame(dset['data'][:]) # neuropil-subtracted & detrended
+#    F0 = pd.DataFrame(dset['f0'][:]).mean().mean() # detrended offset
+#    # paradigm.utils.get_rolling_baseline() - does/doesn't add mean offset of baseline back in after subtracting time-points of baseline from orig, so don't need to add this back in.
+#    
+#    # Need to add original data offset back to np-subtracted traces
+#    if add_offset:
+##        raw_fpath = soma_fpath.replace('np_subtracted', 'raw')
+##        rawdata = np.load(raw_fpath)
+##        raw_offset = pd.DataFrame(rawdata['f0'][:]).mean().mean() #+ pd.DataFrame(npdata['f0'][:])
+##        print("adding offset...", raw_offset)
+##        raw_traces = xdata_df + raw_offset #neuropil_df.mean(axis=0) #;+ F0 #neuropil_F0 + F0
+#
+#        #% Add baseline offset back into raw traces:
+#        neuropil_fpath = soma_fpath.replace('np_subtracted', 'neuropil')
+#        npdata = np.load(neuropil_fpath)
+#        neuropil_df = pd.DataFrame(npdata['data'][:]) #+ pd.DataFrame(npdata['f0'][:])
+#        print("adding NP offset...")
+#        raw_traces = xdata_df + neuropil_df.mean(axis=0) + F0 #neuropil_F0 + F0
+#    else:
+#        raw_traces = xdata_df.copy() #+ F0
+#
+#    labels = pd.DataFrame(data=dset['labels_data'], columns=dset['labels_columns'])
+#    
+#    if make_equal:
+#        raw_traces, labels = check_counts_per_condition(raw_traces, labels)
+#
+#    sdf = pd.DataFrame(dset['sconfigs'][()]).T
+#    
+#    gdf = resp.group_roidata_stimresponse(raw_traces.values, labels, return_grouped=True) # Each group is roi's trials x metrics
+#    
+#    #% # Convert raw + offset traces to df/F traces
+#    #min_mov = raw_traces.min().min()
+#    #if min_mov < 0:
+#    #    raw_traces = raw_traces - min_mov
+#    
+#    return raw_traces, labels, gdf, sdf
+#
+#def get_dff_traces(raw_traces, labels):
+#    stim_on_frame = labels['stim_on_frame'].unique()[0]
+#    tmp_df = []
+#    for k, g in labels.groupby(['trial']):
+#        tmat = raw_traces.loc[g.index]
+#        bas_mean = np.nanmean(tmat[0:stim_on_frame], axis=0)
+#        tmat_df = (tmat - bas_mean) / bas_mean
+#        tmp_df.append(tmat_df)
+#    df_traces = pd.concat(tmp_df, axis=0)
+#    del tmp_df
+#    return df_traces
+#
 
 def get_frame_info(run_dir):
     si_info = {}
@@ -183,8 +256,6 @@ def get_frame_info(run_dir):
     nvolumes = runinfo['nvolumes']
     nslices = int(len(runinfo['slices']))
     nchannels = runinfo['nchannels']
-
-
     nslices_full = int(round(runinfo['frame_rate']/runinfo['volume_rate']))
     nframes_per_file = nslices_full * nvolumes
 
@@ -211,8 +282,11 @@ def get_frame_info(run_dir):
     si_info['nslices'] = nslices
     si_info['nchannels'] = nchannels
     si_info['ntiffs'] = ntiffs
-    si_info['frames_tsec'] = runinfo['frame_tstamps_sec']
     si_info['nvolumes'] = nvolumes
+    all_frames_tsecs = runinfo['frame_tstamps_sec']
+    if nchannels==2:
+        all_frames_tsecs = np.array(all_frames_tsecs[0::2])
+    si_info['frames_tsec'] = all_frames_tsecs #runinfo['frame_tstamps_sec']
 
     return si_info
 

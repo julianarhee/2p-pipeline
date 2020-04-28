@@ -130,77 +130,12 @@ def convert_uint16(tracemat):
     arr[:] = tracemat + offset
     return arr
 
-def load_data(data_fpath, add_offset=True, make_equal=False):
+def get_experiment_data(data_fpath, add_offset=True, make_equal=False):
     from pipeline.python.classifications import experiment_classes as util
     soma_fpath = data_fpath.replace('datasets', 'np_subtracted')
     print soma_fpath
-    dset = np.load(soma_fpath)
-    
-    xdata_df = pd.DataFrame(dset['data'][:]) # neuropil-subtracted & detrended
-    F0 = pd.DataFrame(dset['f0'][:]).mean().mean() # detrended offset
-    #neuropil_df = pd.concat(dfs['neuropil-detrended'], axis=0).reset_index(drop=True) #drop=True)
-    #neuropil_F0 = pd.concat(dfs['np_subtracted-F0'], axis=0).reset_index(drop=True).mean() #drop=True)
 
-    if add_offset:
-        #% Add baseline offset back into raw traces:
-        neuropil_fpath = soma_fpath.replace('np_subtracted', 'neuropil')
-        npdata = np.load(neuropil_fpath)
-        neuropil_df = pd.DataFrame(npdata['data'][:]) #+ pd.DataFrame(npdata['f0'][:])
-        print("adding NP offset...")
-        raw_traces = xdata_df + neuropil_df.mean(axis=0) + F0 #neuropil_F0 + F0
-    else:
-        raw_traces = xdata_df + F0
-
-    labels = pd.DataFrame(data=dset['labels_data'], columns=dset['labels_columns'])
-    
-    if make_equal:
-        raw_traces, labels = util.check_counts_per_condition(raw_traces, labels)
-
-    sdf = pd.DataFrame(dset['sconfigs'][()]).T
-    
-    gdf = resp.group_roidata_stimresponse(raw_traces.values, labels, return_grouped=True) # Each group is roi's trials x metrics
-    
-    #% # Convert raw + offset traces to df/F traces
-    #min_mov = raw_traces.min().min()
-    #if min_mov < 0:
-    #    raw_traces = raw_traces - min_mov
-
-    stim_on_frame = labels['stim_on_frame'].unique()[0]
-    tmp_df = []
-    for k, g in labels.groupby(['trial']):
-        tmat = raw_traces.loc[g.index]
-        bas_mean = np.nanmean(tmat[0:stim_on_frame], axis=0)
-        tmat_df = (tmat - bas_mean) / bas_mean
-        tmp_df.append(tmat_df)
-    df_traces = pd.concat(tmp_df, axis=0)
-    del tmp_df
-
-    return df_traces, labels, gdf, sdf
-
-
-def load_gratings_data(data_fpath, add_offset=True, make_equal=False):
-    from pipeline.python.classifications import experiment_classes as util
-
-    dset = np.load(data_fpath)
-    
-    if add_offset:
-        #% Add baseline offset back into raw traces:
-        F0 = np.nanmean(dset['corrected'][:] / dset['dff'][:] )
-        print("offset: %.2f" % F0)
-        raw_traces = pd.DataFrame(dset['corrected']) + F0
-    else:
-        raw_traces = pd.DataFrame(dset['corrected']) 
-        minval = raw_traces.min().min()
-        if minval < 0:
-            raw_traces = raw_traces - minval
-
-    labels = pd.DataFrame(data=dset['labels_data'], columns=dset['labels_columns'])
-    
-    if make_equal:
-        raw_traces, labels = util.check_counts_per_condition(raw_traces, labels)
-
-    sdf = pd.DataFrame(dset['sconfigs'][()]).T
-    
+    raw_traces, labels, sdf, run_info = util.load_dataset(soma_fpath)
     gdf = resp.group_roidata_stimresponse(raw_traces.values, labels, return_grouped=True) # Each group is roi's trials x metrics
     
     #% # Convert raw + offset traces to df/F traces
@@ -1056,7 +991,7 @@ def get_tuning(animalid, session, fov, run_name, return_iters=False,
     # Do fits
     if do_fits:
         print("Loading data and doing fits")
-        df_traces, labels, gdf, sdf = load_data(data_fpath, add_offset=True, make_equal=False)
+        df_traces, labels, gdf, sdf = get_experiment_data(data_fpath, add_offset=True, make_equal=False)
         
         if roi_list is None:
             roi_list = np.arange(0, len(gdf.groups))
