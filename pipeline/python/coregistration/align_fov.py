@@ -71,8 +71,10 @@ def transform2p_to_macro(avg, zoom_factor, acquisition_dir, channel_ix=0, plot=F
     '''
     # Scale:
     d1, d2 = avg.shape
-    scaled = cv2.resize(avg, dsize=(d1, int(d2*zoom_factor)), interpolation=cv2.INTER_CUBIC)  #, dtype=avg.dtype)
-     
+    print("Input img shape: (%i, %i)" % (d1, d2))
+    #scaled = cv2.resize(avg, dsize=(d1, int(d2*zoom_factor)), interpolation=cv2.INTER_CUBIC)  #, dtype=avg.dtype)
+    scaled = cv2.resize(avg, dsize=(int(d1*zoom_factor), d2), interpolation=cv2.INTER_CUBIC)  #, dtype=avg.dtype)
+    
     # Rotate leftward:
     rotated = rotate_image(scaled, 90)
     
@@ -377,8 +379,12 @@ class Animal():
                     print i, mpath
                 select = input("Select IDX: ")
                 path_to_macro = macro_paths[select]
-                
-        reference = tf.imread(path_to_macro)
+               
+        if path_to_macro.endswith('png'):
+            reference = cv2.imread(path_to_macro, cv2.IMREAD_GRAYSCALE)
+        else: 
+            reference = tf.imread(path_to_macro)
+        print "REF:",  reference.shape
         self.reference = reference
         self.reference_fpath = path_to_macro
         

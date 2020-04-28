@@ -31,20 +31,25 @@ from pipeline.python.paradigm import plot_responses as psth
 #
 def process_run_data(animalid, session, acquisition, run_list, traceid_list, 
                          rootdir='/n/coxfs01/2p-data',
-                         stimtype='', data_type='corrected', metric='zscore',
-                         make_equal=True, create_new=False, nproc=2):
+                         stimtype='', data_type='corrected', 
+                         response_metric='zscore', metric='zscore',
+                         make_equal=True, create_new=False, nproc=2,
+                         pval_selective=0.05, pval_visual=0.05,
+                         visual_test_type='RManova1'):
 
     acquisition_dir = os.path.join(rootdir, animalid, session, acquisition)
     if stimtype == '':
         stimtype = run_list[0].split('_')[0:-1]
       
     print "STIM: %s" % stimtype
-    is_gratings = 'grating' in stimtype
+    is_gratings = any(r in stimtype for r in ['grating', 'rfs'])
  
     # Combine runs: 
     traceid_dir = ss.get_traceid_dir_from_lists(acquisition_dir, run_list, traceid_list, stimtype=stimtype, make_equal=make_equal, create_new=create_new)
 
     # Load combined dataset, and make trial nums equal for stats, etc.: 
+    print "---> Loading dataset: %s" % traceid_dir
+
     data_fpath = glob.glob(os.path.join(traceid_dir, 'data_arrays', '*.npz'))[0]
     dataset = np.load(data_fpath)
     
@@ -60,7 +65,11 @@ def process_run_data(animalid, session, acquisition, run_list, traceid_list,
     
     # Get stats for responsivity and selectivity:
     roistats = ss.get_roi_stats(rootdir, animalid, session, acquisition, 
-                                   run, traceid, create_new=create_new, nproc=nproc) #blobs_traceid.split('_')[0])
+                                   run, traceid, create_new=create_new, 
+                                   nproc=nproc, metric=response_metric,
+                                   pval_selective=pval_selective, 
+                                   pval_visual=pval_visual,
+                                   visual_test_type=visual_test_type)
     # Group data by ROIs:
     roidata, labels_df, sconfigs = ss.get_data_and_labels(dataset, data_type=data_type)
     df_by_rois = resp.group_roidata_stimresponse(roidata, labels_df)
@@ -128,6 +137,12 @@ def extract_options(options):
     parser.add_option('-c', '--cols', action='store', dest='psth_cols', default=None, help='PSTH: transform to plot on COLS of grid')
     parser.add_option('-H', '--hues', action='store', dest='psth_hues', default=None, help='PSTH: transform to plot for HUES of each subplot')
 
+    parser.add_option('--pvis', action='store', dest='pval_visual', default=0.5, help='P-value for visual responsivity test (SP anova/ RM anova) [default=0.05]')
+    parser.add_option('--psel', action='store', dest='pval_selective', default=0.5, help='P-value for selectivity test (KW) [default=0.05]')
+    parser.add_option('-M','--resp-metric', action='store', dest='response_metric', default='zscore', help='Response value to use for calculating stats [default: zscore (alt: meanstim)]')
+    parser.add_option('-v','--visual-test', action='store', dest='visual_test_type', default='RManova1', help='Test to use for visual responsivity [default: RManova1 (alt: SPanova2)]')
+
+
 
     (options, args) = parser.parse_args(options)
     if options.slurm is True and '/n/coxfs01' not in options.rootdir:
@@ -161,16 +176,40 @@ def main(options):
             
         optsE.run_list = [os.path.split(found_run)[-1] for found_run in found_runs] 
         optsE.traceid_list = [optsE.traceid for _ in range(len(optsE.run_list))]
+        # Make sure traceids exist:
+        run_list = copy.copy(optsE.run_list)
+        traceid_list = copy.copy(optsE.traceid_list)
+        exclude_runs = []
+        for ri, (r, t) in enumerate(zip(sorted(optsE.run_list, key=natural_keys), optsE.traceid_list)):
+            found_dfile = glob.glob(os.path.join(acquisition_dir, r, 'traces', '%s*' % t, 'data_arrays', '*.npz'))
+            if len(found_dfile) == 0:
+                exclude_runs.append(ri)
+        print("*** Excluding: %s" % str(exclude_runs))
+
+        optsE.run_list = [r for ri, r in enumerate(sorted(run_list, key=natural_keys)) if ri not in exclude_runs]
+        optsE.traceid_list = [t for ti, t in enumerate(traceid_list) if ti not in exclude_runs]
+    else:
+
+        if (len(optsE.run_list) > len(optsE.traceid_list)):
+            if len(optsE.traceid_list)==1:
+                common_traceid = optsE.traceid_list[0]
+            elif optsE.traceid is not None:
+                common_traceid = optsE.traceid
+        optsE.traceid_list = [common_traceid for _ in range(len(optsE.run_list))]
 
     print "******************************************"
     print "Processing runs [traceids]:"
+    print optsE.run_list 
+    print optsE.traceid_list
+
     for run, traceid in zip(optsE.run_list, optsE.traceid_list):
         print run, traceid
     print "******************************************"
-    
+   
+
     processed_run_fpath = process_run_data(optsE.animalid, optsE.session, optsE.acquisition, optsE.run_list, optsE.traceid_list, rootdir=optsE.rootdir,
                                            stimtype=optsE.stimtype, data_type=optsE.data_type, metric=optsE.metric,
-                                           make_equal=optsE.make_equal, create_new=optsE.create_new, nproc=int(optsE.nprocesses))
+                                           make_equal=optsE.make_equal, create_new=optsE.create_new, nproc=int(optsE.nprocesses), pval_selective=optsE.pval_selective, pval_visual=optsE.pval_visual, visual_test_type=optsE.visual_test_type, response_metric=optsE.response_metric)
 
     print "Finished processing data!"
     print "Saved processed run to:\n--> %s" % processed_run_fpath

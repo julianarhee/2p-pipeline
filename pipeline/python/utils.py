@@ -30,6 +30,12 @@ def label_figure(fig, data_identifier):
     fig.text(0, 1,data_identifier, ha='left', va='top', fontsize=8)
 
 
+def convert_range(oldval, newmin=None, newmax=None, oldmax=None, oldmin=None):
+    oldrange = (oldmax - oldmin)
+    newrange = (newmax - newmin)
+    newval = (((oldval - oldmin) * newrange) / oldrange) + newmin
+    return newval
+
 # -----------------------------------------------------------------------------
 # Commonly used, generic methods:
 # -----------------------------------------------------------------------------
@@ -55,6 +61,162 @@ def print_elapsed_time(t_start):
 # -----------------------------------------------------------------------------
 # Data-saving and -formatting methods:
 # -----------------------------------------------------------------------------
+import random
+import pandas as pd
+
+def check_counts_per_condition(raw_traces, labels):
+    # Check trial counts / condn:
+    #print("Checking counts / condition...")
+    min_n = labels.groupby(['config'])['trial'].unique().apply(len).min()
+    conds_to_downsample = np.where( labels.groupby(['config'])['trial'].unique().apply(len) != min_n)[0]
+    if len(conds_to_downsample) > 0:
+        print("... adjusting for equal reps / condn...")
+        d_cfgs = [sorted(labels.groupby(['config']).groups.keys())[i]\
+                  for i in conds_to_downsample]
+        trials_kept = []
+        for cfg in labels['config'].unique():
+            c_trialnames = labels[labels['config']==cfg]['trial'].unique()
+            if cfg in d_cfgs:
+                #ntrials_remove = len(c_trialnames) - min_n
+                #print("... removing %i trials" % ntrials_remove)
+    
+                # In-place shuffle
+                random.shuffle(c_trialnames)
+    
+                # Take the first 2 elements of the now randomized array
+                trials_kept.extend(c_trialnames[0:min_n])
+            else:
+                trials_kept.extend(c_trialnames)
+    
+        ixs_kept = labels[labels['trial'].isin(trials_kept)].index.tolist()
+        
+        tmp_traces = raw_traces.loc[ixs_kept].reset_index(drop=True)
+        tmp_labels = labels[labels['trial'].isin(trials_kept)].reset_index(drop=True)
+        return tmp_traces, tmp_labels
+
+    else:
+        return raw_traces, labels
+    
+def load_data(data_fpath, add_offset=True, make_equal=False):
+
+    from pipeline.python.classifications import test_responsivity as resp
+
+
+    #from pipeline.python.classifications import experiment_classes as util
+    soma_fpath = data_fpath.replace('datasets', 'np_subtracted')
+    print soma_fpath
+    dset = np.load(soma_fpath)
+    
+    xdata_df = pd.DataFrame(dset['data'][:]) # neuropil-subtracted & detrended
+    F0 = pd.DataFrame(dset['f0'][:]).mean().mean() # detrended offset
+    # paradigm.utils.get_rolling_baseline() - does/doesn't add mean offset of baseline back in after subtracting time-points of baseline from orig, so don't need to add this back in.
+    
+    # Need to add original data offset back to np-subtracted traces
+    if add_offset:
+#        raw_fpath = soma_fpath.replace('np_subtracted', 'raw')
+#        rawdata = np.load(raw_fpath)
+#        raw_offset = pd.DataFrame(rawdata['f0'][:]).mean().mean() #+ pd.DataFrame(npdata['f0'][:])
+#        print("adding offset...", raw_offset)
+#        raw_traces = xdata_df + raw_offset #neuropil_df.mean(axis=0) #;+ F0 #neuropil_F0 + F0
+
+        #% Add baseline offset back into raw traces:
+        neuropil_fpath = soma_fpath.replace('np_subtracted', 'neuropil')
+        npdata = np.load(neuropil_fpath)
+        neuropil_df = pd.DataFrame(npdata['data'][:]) #+ pd.DataFrame(npdata['f0'][:])
+        print("adding NP offset...")
+        raw_traces = xdata_df + neuropil_df.mean(axis=0) + F0 #neuropil_F0 + F0
+    else:
+        raw_traces = xdata_df.copy() #+ F0
+
+    labels = pd.DataFrame(data=dset['labels_data'], columns=dset['labels_columns'])
+    
+    if make_equal:
+        raw_traces, labels = check_counts_per_condition(raw_traces, labels)
+
+    sdf = pd.DataFrame(dset['sconfigs'][()]).T
+    
+    gdf = resp.group_roidata_stimresponse(raw_traces.values, labels, return_grouped=True) # Each group is roi's trials x metrics
+    
+    #% # Convert raw + offset traces to df/F traces
+    #min_mov = raw_traces.min().min()
+    #if min_mov < 0:
+    #    raw_traces = raw_traces - min_mov
+    
+    return raw_traces, labels, gdf, sdf
+
+def get_dff_traces(raw_traces, labels):
+    stim_on_frame = labels['stim_on_frame'].unique()[0]
+    tmp_df = []
+    for k, g in labels.groupby(['trial']):
+        tmat = raw_traces.loc[g.index]
+        bas_mean = np.nanmean(tmat[0:stim_on_frame], axis=0)
+        tmat_df = (tmat - bas_mean) / bas_mean
+        tmp_df.append(tmat_df)
+    df_traces = pd.concat(tmp_df, axis=0)
+    del tmp_df
+    return df_traces
+
+
+def get_frame_info(run_dir):
+    si_info = {}
+
+    run = os.path.split(run_dir)[-1]
+    runinfo_path = os.path.join(run_dir, '%s.json' % run)
+    with open(runinfo_path, 'r') as fr:
+        runinfo = json.load(fr)
+    nfiles = runinfo['ntiffs']
+    file_names = sorted(['File%03d' % int(f+1) for f in range(nfiles)], key=natural_keys)
+
+    # Get frame_idxs -- these are FRAME indices in the current .tif file, i.e.,
+    # removed flyback frames and discard frames at the top and bottom of the
+    # volume should not be included in the indices...
+    frame_idxs = runinfo['frame_idxs']
+    if len(frame_idxs) > 0:
+        print "Found %i frames from flyback correction." % len(frame_idxs)
+    else:
+        frame_idxs = np.arange(0, runinfo['nvolumes'] * len(runinfo['slices']))
+
+    ntiffs = runinfo['ntiffs']
+    file_names = sorted(['File%03d' % int(f+1) for f in range(ntiffs)], key=natural_keys)
+    volumerate = runinfo['volume_rate']
+    framerate = runinfo['frame_rate']
+    nvolumes = runinfo['nvolumes']
+    nslices = int(len(runinfo['slices']))
+    nchannels = runinfo['nchannels']
+
+
+    nslices_full = int(round(runinfo['frame_rate']/runinfo['volume_rate']))
+    nframes_per_file = nslices_full * nvolumes
+
+    # =============================================================================
+    # Get VOLUME indices to assign frame numbers to volumes:
+    # =============================================================================
+    vol_idxs_file = np.empty((nvolumes*nslices_full,))
+    vcounter = 0
+    for v in range(nvolumes):
+        vol_idxs_file[vcounter:vcounter+nslices_full] = np.ones((nslices_full, )) * v
+        vcounter += nslices_full
+    vol_idxs_file = [int(v) for v in vol_idxs_file]
+
+
+    vol_idxs = []
+    vol_idxs.extend(np.array(vol_idxs_file) + nvolumes*tiffnum for tiffnum in range(nfiles))
+    vol_idxs = np.array(sorted(np.concatenate(vol_idxs).ravel()))
+
+    si_info['nslices_full'] = nslices_full
+    si_info['nframes_per_file'] = nframes_per_file
+    si_info['vol_idxs'] = vol_idxs
+    si_info['volumerate'] = volumerate
+    si_info['framerate'] = framerate
+    si_info['nslices'] = nslices
+    si_info['nchannels'] = nchannels
+    si_info['ntiffs'] = ntiffs
+    si_info['frames_tsec'] = runinfo['frame_tstamps_sec']
+    si_info['nvolumes'] = nvolumes
+
+    return si_info
+
+
 def jsonify_array(curropts):
     jsontypes = (list, tuple, str, int, float, bool, unicode, long)
     for pkey in curropts.keys():

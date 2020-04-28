@@ -12,6 +12,7 @@ import sys
 import optparse
 import json
 import re
+import logging
 import scipy.io
 import numpy as np
 import matplotlib as mpl
@@ -20,13 +21,79 @@ mpl.use('TKAgg')
 from checksumdir import dirhash
 import copy
 from pipeline.python.set_pid_params import get_default_pid, write_hash_readonly, append_hash_to_paths
-from pipeline.python.utils import write_dict_to_json, isreadonly
+from pipeline.python.utils import write_dict_to_json, isreadonly# , get_image_description_SI
 
 from stat import S_IREAD, S_IRGRP, S_IROTH, S_IWRITE, S_IWGRP, S_IWOTH
-from caiman.utils import utils
+#from caiman.utils import utils
+from tifffile import TiffFile
 from os.path import expanduser
 home = expanduser("~")
 from memory_profiler import profile
+
+# FUNCTIONS FROM CAIMAN ##############################################################
+# https://github.com/flatironinstitute/CaImAn
+
+def si_parse(imd):
+    """parse image_description field embedded by scanimage from get image description
+     Args:
+         imd: image description
+    Returns:
+        imd: the parsed description
+    """
+
+    imddata = imd.split('\n')
+    imddata = [i for i in imddata if '=' in i]
+    imddata = [i.split('=') for i in imddata]
+    imddata = [[ii.strip(' \r') for ii in i] for i in imddata]
+    imddata = {i[0]: val_parse(i[1]) for i in imddata}
+    return imddata
+
+def get_image_description_SI(fname):
+    """Given a tif file acquired with Scanimage it returns a dictionary containing the information in the image description field
+     Args:
+         fname: name of the file
+     Returns:
+        image_description: information of the image
+    """
+
+    image_descriptions = []
+
+    tf = TiffFile(fname)
+
+    for idx, pag in enumerate(tf.pages):
+        if idx % 1000 == 0:
+            logging.debug(idx) # progress report to the user
+        field = pag.tags['image_description'].value
+
+        image_descriptions.append(si_parse(field))
+
+    return image_descriptions
+
+def val_parse(v):
+    """parse values from si tags into python objects if possible from si parse
+     Args:
+         v: si tags
+     Returns:
+        v: python object
+    """
+
+    try:
+        return eval(v)
+    except:
+        if v == 'true':
+            return True
+        elif v == 'false':
+            return False
+        elif v == 'NaN':
+            return np.nan
+        elif v == 'inf' or v == 'Inf':
+            return np.inf
+        else:
+            return v
+
+
+
+# #################################################################################3
 
 def atoi(text):
     return int(text) if text.isdigit() else text
@@ -261,11 +328,29 @@ def get_meta(options):
                         t = t.setdefault(part, {})
 
             # Get img descriptions for each frame:
-            imgdescr = utils.get_image_description_SI(currtiffpath)
+            imgdescr = get_image_description_SI(currtiffpath)
 
             scanimage_metadata['filenames'].append(rawtiff)
-            scanimage_metadata[curr_file]['SI'] = SI_struct['SI']
+            if 'SI' not in SI_struct.keys():
+                scanimage_metadata[curr_file]['SI'] = None   
+            else: 
+                scanimage_metadata[curr_file]['SI'] = SI_struct['SI']
             scanimage_metadata[curr_file]['imgdescr'] = imgdescr
+
+        file_keys = [f for f in scanimage_metadata.keys() if 'File0' in f]
+        print "SI files:", file_keys
+        complete_si_meta = sorted([f for f in file_keys if scanimage_metadata[f]['SI'] is not None], key=natural_keys)
+        print "Completed SI:", complete_si_meta
+          
+        missing_si = [f for f in file_keys if f not in complete_si_meta]
+        if len(missing_si) > 0:
+            for curr_file in missing_si:
+                print "Warning [%s]: Replacing missing SI info with: %s" % (curr_file, complete_si_meta[0])
+                # Use SI info from another file (same file structure)
+                scanimage_metadata[curr_file]['SI'] = scanimage_metadata[complete_si_meta[0]]['SI']
+                scanimage_metadata[curr_file]['imgdescr'] = scanimage_metadata[complete_si_meta[0]]['imgdescr']
+
+        
 
         # Save SIMETA info:
         if os.path.isfile(os.path.join(rawtiff_dir, raw_simeta_json)):
