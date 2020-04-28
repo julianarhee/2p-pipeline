@@ -20,34 +20,13 @@ import numpy as np
 import pandas as pd
 import pylab as pl
 from scipy import stats
-from pipeline.python.paradigm import utils as util
+#from pipeline.python.classifications import experiment_classes as util
 
 from pipeline.python.paradigm import align_acquisition_events as acq
 #from pipeline.python.traces.utils import get_frame_info
 from pipeline.python.utils import label_figure, get_frame_info
+from pipeline.python import utils as util
 
-#rootdir = '/mnt/odyssey'
-#animalid = 'CE077'
-#session = '20180521'
-#acquisition = 'FOV2_zoom1x'
-#run = 'gratings_run1'
-#traceid = 'traces001'
-#run_dir = os.path.join(rootdir, animalid, session, acquisition, run)
-#iti_pre = 1.0
-
-
-#options = ['-D', '/mnt/odyssey', '-i', 'CE077', '-S', '20180523', '-A', 'FOV1_zoom1x',
-#           '-T', 'np_subtracted',
-#           '-R', 'blobs_run2', '-t', 'traces001', '-d', 'dff']
-
-#options = ['-D', '/mnt/odyssey', '-i', 'CE077', '-S', '20180602', '-A', 'FOV1_zoom1x',
-#           '-T', 'np_subtracted',
-#           '-R', 'blobs_dynamic_run7', '-t', 'traces001', '-d', 'dff']
-
-#options = ['-D', '/mnt/odyssey', '-i', 'CE077', '-S', '20180612', '-A', 'FOV1_zoom1x',
-#           '-T', 'np_subtracted',
-#           '-R', 'blobs_run1', '-t', 'traces001', '-d', 'dff', 
-#           '-r', 'yrot', '-c', 'xpos', '-H', 'morphlevel']
 
 def extract_options(options):
 
@@ -72,22 +51,13 @@ def extract_options(options):
                           default='', help='session dir (format: YYYMMDD_ANIMALID')
     parser.add_option('-A', '--acq', action='store', dest='acquisition',
                           default='FOV1', help="acquisition folder (ex: 'FOV1_zoom3x') [default: FOV1]")
-#    parser.add_option('-T', '--trace-type', action='store', dest='trace_type',
-#                          default='raw', help="trace type [default: 'raw']")
-#    parser.add_option('-R', '--run', dest='run_list', default=[], nargs=1,
-#                          action='append',
-#                          help="run ID in order of runs")
-#    parser.add_option('-t', '--traceid', dest='traceid_list', default=[], nargs=1,
-#                          action='append',
-#                          help="trace ID in order of runs")
+
     parser.add_option('-R', '--run', dest='run', default='', action='store', help="run name")
     parser.add_option('-t', '--traceid', dest='traceid', default=None, action='store', help="datestr YYYYMMDD_HH_mm_SS")
 
     # Set specific session/run for current animal:
     parser.add_option('-d', '--datatype', action='store', dest='datatype',
                           default='corrected', help='Traces to plot (must be in dataset.npz [default: corrected]')
-#    parser.add_option('--offset', action='store_true', dest='correct_offset',
-#                          default=False, help='Set to correct df/f offset after drift correction')      
      
     parser.add_option('-f', '--filetype', action='store', dest='filetype',
                           default='svg', help='File type for images [default: svg]')
@@ -109,10 +79,8 @@ def extract_options(options):
                           default=None, help='Transform to plot by HUE within each subplot')
     parser.add_option('--filter', action='store_true', dest='filter_noise',
                           default=False, help='Set to filter our noisy spikes') 
-    parser.add_option('--calc-dff', action='store_true', dest='calculate_dff',
-                          default=False, help='Set to use baseline mean to calculate dff') 
-    parser.add_option('--offset', action='store_true', dest='add_offset',
-                          default=False, help='Set to add offsets to data') 
+    parser.add_option('--no-offset', action='store_false', dest='add_offset',
+                          default=True, help='Set to do offset old way') 
    
     (options, args) = parser.parse_args(options)
     if options.slurm:
@@ -140,100 +108,116 @@ def get_data_id_from_tracedir(traceid_dir, rootdir='/n/coxfs01/2p-data/'):
     trace_info = traceid_dir.split(rootdir)[-1]
     data_identifier = trace_info.replace('/', '|')
     return data_identifier
+#    
+def get_mean_and_sem_timecourse(rdata, sdf, plot_params, trace_type='dff'):
     
-def load_traces_and_configs(traceid_dir, inputdata='corrected'):
+    if trace_type not in rdata.columns:
+        print("Requested %s -- not found" % (trace_type))
+        trace_type = [c for c in rdata.columns if c not in labels_c.columns][0]
+        print("-- averaging %s" % trace_type)
+
+    meandfs = []
+    for k, g in rdata.groupby(['config']):
+        nreps = len(g['trial'].unique())
+        mean_trace = g.groupby(['trial'])[trace_type].apply(np.array).mean(axis=0)
+        mean_tsec = g.groupby(['trial'])['tsec'].apply(np.array).mean(axis=0)
+        sem_trace = stats.sem(np.vstack(g.groupby(['trial'])[trace_type].apply(np.array)), axis=0)
+        mdf = pd.DataFrame({'%s' % trace_type: mean_trace,
+                            'tsec': mean_tsec,
+                            'sem': sem_trace,
+                            'fill_minus': mean_trace - sem_trace,
+                            'fill_plus': mean_trace + sem_trace,
+                            'config': [k for _ in range(len(mean_trace))],
+                            'nreps': [nreps for _ in range(len(mean_trace))]
+
+                           })
+        for p in plot_params.values():
+            mdf[p] = [round(sdf[p][cfg], 1) if isinstance(sdf[p][cfg], (float)) else sdf[p][cfg] for cfg in mdf['config']]
+        meandfs.append(mdf)
+    meandfs = pd.concat(meandfs, axis=0)
     
-    soma_fpath = os.path.join(traceid_dir, 'data_arrays', 'np_subtracted.npz') #'datasets.npz')
-    print "Loaded data from: %s" % soma_fpath #traceid_dir
-    dset = np.load(soma_fpath)
-    
-    #assert inputdata in dataset.keys(), "Specified data type (%s) not found! Choose from: %s" % (inputdata, str(dataset.keys()))
-    labels = pd.DataFrame(data=dset['labels_data'], columns=dset['labels_columns'])
-    sdf = pd.DataFrame(dset['sconfigs'][()]).T
- 
-    #% Add baseline offset back into raw traces:
-    if inputdata in ['corrected', 'dff']:
-        xdata_df = pd.DataFrame(dset['data'][:])
-        F0 = pd.DataFrame(dset['f0'][:]).mean().mean()
-        # add baseline offset
-        neuropil_fpath = soma_fpath.replace('np_subtracted', 'neuropil')
-        npdata = np.load(neuropil_fpath)
-        neuropil_f0 = np.nanmean(np.nanmean(pd.DataFrame(npdata['f0'][:])))
-        neuropil_df = pd.DataFrame(npdata['data'][:])
-        xdata = xdata_df + list(np.nanmean(neuropil_df, axis=0)) + F0
-        if inputdata == 'dff':
-            stim_on_frame = labels['stim_on_frame'].unique()[0]
-            tmp_df = []
-            for k, g in labels.groupby(['trial']):
-                tmat = xdata.loc[g.index]
-                bas_mean = np.nanmean(tmat[0:stim_on_frame], axis=0)
-                tdf = (tmat - bas_mean) / bas_mean
-                tmp_df.append(tdf)
-            xdata = pd.concat(tmp_df, axis=0)
-#        F0 = np.nanmean(dset['corrected'][:] / dset['dff'][:] )
-#        print("offset: %.2f" % F0)
-#        raw_traces = pd.DataFrame(dset['corrected']) + F0
-#        if inputdata == 'dff':
-#            stim_on_frame = labels['stim_on_frame'].unique()[0]
-#            tmp_df = []
-#            for k, g in labels.groupby(['trial']):
-#                tmat = raw_traces.loc[g.index]
-#                bas_mean = np.nanmean(tmat[0:stim_on_frame], axis=0)
-#                tmat_df = (tmat - bas_mean) / bas_mean
-#                tmp_df.append(tmat_df)
-#            xdata = pd.concat(tmp_df, axis=0)
-#        else:
-#            xdata = raw_traces.copy()
+    return meandfs
+
+def add_text(x, huep, **kwargs):
+    ax = pl.gca()
+    if huep.unique() == 0.1:
+        ax.text(0, 1, 'n=%i' % x.unique(), ha='left', va='top',  transform=ax.transAxes, **kwargs)
     else:
-        xdata = pd.DataFrame(dset[inputdata])
-
-    return xdata, labels, sdf
-                          
-def load_data(traceid_dir, inputdata='dff', add_offset=True, ):
-    soma_fpath = os.path.join(traceid_dir, 'data_arrays', 'np_subtracted.npz')
-    print "Loaded data from: %s" % soma_fpath #traceid_dir
-    dset = np.load(soma_fpath)
-    
-    #assert inputdata in dataset.keys(), "Specified data type (%s) not found! Choose from: %s" % (inputdata, str(dataset.keys()))
-    labels = pd.DataFrame(data=dset['labels_data'], columns=dset['labels_columns'])
-    sdf = pd.DataFrame(dset['sconfigs'][()]).T
-
-    # Traces
-    xdata_df = pd.DataFrame(dset['data'][:]) # neuropil-subtracted & detrended
-    F0 = pd.DataFrame(dset['f0'][:]).mean().mean() # detrended offset
-    if inputdata in ['corrected', 'dff'] and add_offset:
-        #% Add baseline offset back into raw traces:
-        neuropil_fpath = soma_fpath.replace('np_subtracted', 'neuropil')
-        npdata = np.load(neuropil_fpath)
-        neuropil_df = pd.DataFrame(npdata['data'][:]) 
-        neuropil_f0 = pd.DataFrame(npdata['f0'][:]).mean().mean()
-        print("adding NP offset...")
-        xdata_df = xdata_df + neuropil_df.mean(axis=0) + F0 #+ neuropil_f0 #neuropil_F0 + F0
-    else:
-        xdata_df = xdata_df + F0
-
-    if inputdata == 'corrected':
-        xdata = xdata_df
-    elif inputdata in ['dff', 'neuropil-dff']:
-        #min_mov = xdata_df.min().min()
-        #if min_mov < 0:
-        #    xdata_df = xdata_df - min_mov
-        #% # Convert raw + offset traces to df/F traces
-        stim_on_frame = labels['stim_on_frame'].unique()[0]
-        tmp_df = []
-        for k, g in labels.groupby(['trial']):
-            tmat = xdata_df.loc[g.index]
-            bas_mean = np.nanmean(tmat[0:stim_on_frame], axis=0)
-            if any(bas_mean) < 0:
-                print "-- neg:", bas_mean[bas_mean<0]
-            tmat_df = (tmat - bas_mean) / bas_mean
-            tmp_df.append(tmat_df)
-        xdata = pd.concat(tmp_df, axis=0)
-        del tmp_df
+        ax.text(0, 0.95, 'n=%i' % x.unique(), ha='left', va='top',  transform=ax.transAxes, **kwargs)
         
-                       
-    return xdata, labels, sdf
+def add_stimulus_bar(x, start_val=0, end_val=1, color='k', alpha=0.5, **kwargs):
+    ax = pl.gca()
+    ymin, ymax = ax.get_ylim()
+    ax.add_patch(patches.Rectangle((start_val, ymin), end_val, (ymax-ymin), linewidth=0, 
+                                  fill=True, color=color, alpha=alpha))
 
+    #ax.tick_params(axis='x', size=0)
+    
+    
+def fix_grid_labels(p, trace_type='trace_type'):
+    '''
+    p is output of sns.FacetGrid
+    '''
+    for ri in np.arange(0, p.axes.shape[0]):
+        for ci in np.arange(0, p.axes.shape[1]):
+            if ci==0:
+                p.axes[ri, ci].set_ylabel(trace_type)
+            else:
+                p.axes[ri, ci].set_ylabel('')
+            if ri == p.axes.shape[0]-1:
+                p.axes[ri, ci].set_xlabel('time (s)')
+            else:
+                p.axes[ri, ci].set_xlabel('')
+
+
+def plot_psth_grid(meandfs, plot_params, trace_type='trace_type', palette='colorblind', 
+                       stim_start_tsec=0, stim_end_tsec=1):
+    
+    p = sns.FacetGrid(meandfs, col=plot_params['cols'], row=plot_params['rows'], hue=plot_params['hue'],\
+                      sharex=True, sharey=True, palette=palette)
+
+
+    if len(meandfs[plot_params['rows']].unique()) == 1:
+        p.fig.set_figheight(3)
+        p.fig.set_figwidth(20)
+
+    if plot_params['hue'] is None:
+        p = p.map(pl.fill_between, "tsec", "fill_minus", "fill_plus", alpha=0.5, color='k')
+        p = p.map(pl.plot, "tsec", trace_type, lw=1, alpha=1, color='k')
+    else:
+        p = p.map(pl.fill_between, "tsec", "fill_minus", "fill_plus", alpha=0.5)
+        p = (p.map(pl.plot, "tsec", trace_type, lw=1, alpha=1).add_legend())
+
+    p = p.set_titles(col_template="{col_name}", size=12)   
+    p.map(add_stimulus_bar, 'ntrials',  start_val=stim_start_tsec, end_val=stim_end_tsec, color='k', alpha=0.1)
+    p.map(add_text, 'ntrials', plot_params['hue'])
+    pl.subplots_adjust(top=0.9, right=0.9, wspace=0.1, hspace=0.4)
+    sns.despine(trim=True) #, bottom=True) 
+    fix_grid_labels(p, trace_type=trace_type)
+
+    if 'xpos' in plot_params.values() and 'ypos' in plot_params.values(): 
+        pl.subplots_adjust(wspace=0.05, hspace=0.3, top=0.85, bottom=0.1, left=0.05) 
+    else:
+        pl.subplots_adjust(wspace=0.1, hspace=0.4, top=0.9, right=0.9)
+
+    return p
+    
+
+def plot_psth_and_save(rid, meandfs, plot_params, trace_type='trace_type', palette='colorblind', 
+                       stim_start_tsec=0, stim_end_tsec=1, fig_id='figureID', dst_dir='/tmp', filetype='svg'):
+    
+    p = plot_psth_grid(meandfs, plot_params, trace_type=trace_type, palette=palette, 
+                       stim_start_tsec=stim_start_tsec, stim_end_tsec=stim_end_tsec)
+    
+    p.fig.suptitle('roi %i' % int(rid+1))
+    label_figure(p.fig, fig_id)
+
+    figname = 'roi%05d_%s' % (int(rid+1), trace_type)
+    pl.savefig(os.path.join(dst_dir, '%s.%s' % (figname, filetype)))
+    #print(figname)
+    pl.close()
+    
+    
       #%%                    
 def make_clean_psths(options):
     #%%
@@ -244,11 +228,11 @@ def make_clean_psths(options):
     traceid = optsE.traceid #traceid_list[0]
 
     inputdata = optsE.datatype
-    correct_offset = optsE.correct_offset
     filetype = optsE.filetype
         
     filter_noise = optsE.filter_noise
-    calculate_dff = optsE.calculate_dff
+
+    trace_type = optsE.datatype
 
     acquisition_dir = os.path.join(optsE.rootdir, optsE.animalid, optsE.session, optsE.acquisition)
     if 'cnmf' in traceid:
@@ -267,8 +251,8 @@ def make_clean_psths(options):
             traceid_dirs = [traceid_dirs[int(sel)]]
         else:
             traceid_dirs = [traceid_dirs[0]  ]          
-
     add_offset = optsE.add_offset
+
     
     #%%   
     subplot_hue = optsE.subplot_hue.split(',') if optsE.subplot_hue not in [None, 'None'] else [None]
@@ -289,10 +273,16 @@ def make_clean_psths(options):
     #if compare_runs:
     xdata_list=[]; labels_list=[]; sdf_list=[]; data_ids=[];
     for traceid_dir in traceid_dirs:
-        if add_offset:
-            xdata, labels, sdf = load_data(traceid_dir, inputdata=optsE.datatype, add_offset=True)
-        else:
-            xdata, labels, sdf = load_traces_and_configs(traceid_dir, inputdata=optsE.datatype)
+        dataset_name = 'np_subtracted' if trace_type in ['dff', 'df', 'corrected'] else trace_type
+
+        soma_fpath = os.path.join(traceid_dir, 'data_arrays', '%s.npz' % dataset_name)
+        xdata, labels, sdf, run_info = util.load_dataset(soma_fpath, trace_type=trace_type)
+#        if add_offset:
+#            xdata, labels, sdf = load_data(traceid_dir, inputdata=optsE.datatype, add_offset=True)
+#        else:
+#            xdata, labels, sdf = load_traces_and_configs(traceid_dir, inputdata=optsE.datatype)
+        sdf = sdf.assign(ix=[int(i.split('config')[-1]) for i in sdf.index]).sort_values('ix')
+        
         data_identifier = get_data_id_from_tracedir(traceid_dir)
         xdata_list.append(xdata)
         labels_list.append(labels)
@@ -341,7 +331,8 @@ def make_clean_psths(options):
     labels_c = pd.concat(labels_list, axis=0).reset_index(drop=True) # Get rid of config labels        
     stim_on = labels_c['stim_on_frame'].unique()[0]
     nframes_on = labels_c['nframes_on'].unique()[0]
-    
+    mean_tsecs = labels_c.groupby(['trial'])['tsec'].apply(np.array).mean(axis=0)
+
     for pparam in plot_params.values():
         if isinstance(pparam, list):
             for pp in pparam:
@@ -367,10 +358,8 @@ def make_clean_psths(options):
     
     #%%
     
-
     # Plotting options:
     filetype = optsE.filetype
-    #dfmax = optsE.dfmax
     scale_y = optsE.scale_y
     
     
@@ -387,13 +376,11 @@ def make_clean_psths(options):
         transform_dict['stim_dur'] = transform_dict['duration']
         transform_dict.pop('duration')
 
-            
     if 'position' in plot_params.values() and 'position' not in sdf_c.columns.tolist():
         posvals = list(set(zip(sdf_c['xpos'].values, sdf_c['ypos'].values)))
         print "Found %i unique positions." % len(posvals)
         transform_dict['position'] = posvals
         sdf['position'] = list(zip(sdf_c['xpos'], sdf_c['ypos']))
-
 
 
     if isinstance(plot_params['rows'], list) and len(plot_params['rows']) > 1:
@@ -417,107 +404,17 @@ def make_clean_psths(options):
     #print transform_dict
     print sdf_c.head()    
    
-   
+  
     # -------------------------------------------------------------------------
     # Create PSTH plot grid:
     # -------------------------------------------------------------------------
-    # 1.  No rows or columns, i.e., SINGLE transform (e.g., orientation):
-#    if len(trans_types) == 1 and rows is None and columns is None:
-#        stim_grid = (transform_dict[trans_types[0]],)
-#        #sgroups = sdf.groupby(sorted(trans_types))
-#        ncols = len(stim_grid[0])
-#        columns = trans_types[0]
-#        col_order = sorted(stim_grid[0])
-#        nrows = 1; rows = None; row_order=None
-#        unspecified_trans_types = []
-#    elif rows is None or columns is None:
-#        assert len(trans_types) > 1, "No transforms found!  what to plot??"
-#        if rows is None and cols is None:
-#            rows = trans_types[0] 
-#            cols = trans_types[1]
-#        elif rows is None:
-#            rows = [t for t in trans_types if t != cols]
-#        elif cols is None:
-#            cols = [t for t in trans_types if t != rows]
-#        if subplot_hue is None:
-#            subplot_hue = None if len(trans_types)==2 else trans_types[2]
-#    else:
-    
-#    row_vals=None; col_vals=None; hue_vals=None;
-#    if isinstance(plot_params['rows'], list) and len(plot_params['rows']) > 1:
-#        
-#        value_pairs = [sdf_c[p].unique().tolist() for p in sorted(plot_params['rows'])]
-#
-#        row_vals = list(itertools.product(value_pairs[0], value_pairs[1]))
-#        sdf
-#        
-#        
-#        nrows = len(np.array([transform_dict[r] for r in plot_params['rows']]).flatten())
-#        row_vals = dict((p, sdf_c[p].unique()) for p in plot_params['rows'])
-#    else:
-#        nrows = len(transform_dict[plot_params['rows']])
-#        row_vals = sorted(sdf_c[plot_params['rows']].unique())
-#        
-#    if isinstance(plot_params['cols'], list) and len(plot_params['cols']) > 1:
-#        ncols = len(np.array([transform_dict[c] for c in plot_params['cols']]).flatten())
-#        col_vals = dict((p, sdf_c[p].unique()) for p in plot_params['cols'])
-#
-#    else:
-#        ncols = len(transform_dict[plot_params['cols']])        
-#        col_vals = sorted(sdf_c[plot_params['cols']].unique())
-#            
-#
-#    if isinstance(plot_params['hue'], list) and len(plot_params['hue']) > 1:
-#        ncolors = len(np.array([transform_dict[c] for c in plot_params['hue']]).flatten())
-#        hue_vals = dict((p, sdf_c[p].unique()) for p in plot_params['hue'])
-#
-#    else:
-#        ncolors = len(transform_dict[plot_params['hue']])        
-#        hue_vals = sorted(sdf_c[plot_params['hue']].unique())
-            
-        #stim_grid = (transform_dict[rows], transform_dict[columns])
-        #sgroups = sdf.groupby([rows, columns])
-
-#    
-#    # Update plot_params:    
-#    plot_params = {'hue': subplot_hue,
-#                   'rows': rows,
-#                   'cols': columns}
-
     all_plot_params = []
     for k, v in plot_params.items():
         if isinstance(v, list):
             all_plot_params.extend(v)
         else:
             all_plot_params.append(v)
-                
     unspecified_trans_types = [t for t in trans_types if t not in all_plot_params]
-    
-    
-#    if len(sgroups.groups) == 3:
-#        nrows = 1; ncols=3;
-#
-#    print "N stimulus combinations:", len(stim_grid)
-#    if len(stim_grid)==1:
-#        grid_pairs = sorted([x for x in stim_grid[0]])
-#    else:
-#        grid_pairs = sorted(list(itertools.product(stim_grid[0], stim_grid[1])), key=lambda x: (x[0], x[1]))
-#    #print grid_pairs
-
-    
-    #row_vals = None if plot_params['rows'] is None else sorted(sdf_c[plot_params['rows']].unique())
-    #col_vals = None if plot_params['cols'] is None else sorted(sdf_c[plot_params['cols']].unique())
-    #hue_vals = None if plot_params['hue'] is None else sorted(sdf_c[plot_params['hue']].unique())
-
-
-    #%%
-
-    if optsE.datatype in ['corrected', 'smoothedX']:
-        ylabel = 'intensity'
-    elif optsE.datatype in ['dff', 'smoothedDF']:
-        ylabel = 'df/f'
-    elif optsE.datatype == 'spikes':
-        ylabel = 'inferred'
 
     #%
     # Filter out noisy spikes:
@@ -530,56 +427,22 @@ def make_clean_psths(options):
     
     
     # Set output dir for nice(r) psth:
-    if optsE.plot_trials:
-        plot_type = 'trials'
-    else:
-        plot_type = 'shade'
+    plot_type = 'trials' if optsE.plot_trials else 'shade' 
     psth_dir = os.path.join(output_figdir, 'psth_%s_%s%s' % (optsE.datatype, plot_type, figdir_append))
     if optsE.filetype == 'pdf':
         psth_dir = '%s_hq' % psth_dir
         
-        
-    if calculate_dff:
-        psth_dir = '%s_dff' % psth_dir
-        
+       
     if not os.path.exists(psth_dir):
         os.makedirs(psth_dir)
     print "Saving PSTHs to: %s" % psth_dir
-    
-#    if optsE.dfmax is None:
-#        dfmax = xdata.max()
-#    else:
-#        dfmax = float(dfmax)
-#    
-    #%%
+
     # Set COLORS for subplots:
     print "Trans Types:", trans_types
     if len(trans_types)<=2 and plot_params['hue'] is None:
         print "PLOTTING 1 color"
         trace_colors = ['k']
         trace_labels = ['']
-        
-#    elif len(trans_types) > 2 and len(unspecified_trans_types) > 0:
-#        # Use different color gradients for each object to plot the unspecified transform, too:
-#        # X and Y already specified, so color-gradient will be the unspecified.
-#        if len(unspecified_trans_types) > 1:
-#            print "--- WARNING --- More than 1 unspecified trans: %s" % str(unspecified_trans_types)
-#        colorbank = ['Purples', 'Greens', 'Blues', 'Reds']
-#        if plot_params['hue'] in sdf_c.columns:
-#            hue_labels = sorted(sdf_c[plot_params['hue']].unique())
-#        else:
-#            hue_labels = object_transformations[rows]
-#        
-#        unspec_trans_type = unspecified_trans_types[0]
-#        unspec_trans_values = sorted(sdf_c[unspec_trans_type].unique())
-#        n_unspec_trans_levels = len(unspec_trans_values)
-#        
-#        trace_colors = dict((hue_base, dict((gvalue, sns.color_palette(colorbank[hi], n_unspec_trans_levels)[glevel]) \
-#                                            for glevel, gvalue in enumerate(unspec_trans_values)) ) \
-#                                            for hi, hue_base in enumerate(hue_labels))
-#        trace_labels = dict((hue_base, dict((translevel, '_'.join([str(hue_base), str(translevel)])) for translevel in unspec_trans_values) ) \
-#                                             for hue_base in hue_labels)
-        
     else:
 #        
         print "Subplot hue: %s" % plot_params['hue']
@@ -588,16 +451,6 @@ def make_clean_psths(options):
             trace_labels = ['%s %s' % (plot_params['hue'], str(v)) for v in sorted(sdf_c[plot_params['hue']].unique())]
         else:
             trace_labels = []
-#        else:
-#            hues = object_transformations[rows]
-#            trace_labels = hues
-            
-#        if plot_params['hue'] is not None and len(plot_params['hue']) <= 2:
-#            trace_colors = ['g', 'b']
-#        else:
-#            trace_colors = sns.color_palette('hls', len(plot_params['hue']))
-
-        
 #%%
     print trace_labels #rows, object_transformations[rows] #trace_labels
 
@@ -606,6 +459,10 @@ def make_clean_psths(options):
     palette = 'colorblind' #sns.xkcd_palette(colors) 
     #sns.set()
     #palette = sns.color_palette('colorblind')
+    
+    trial_counts = labels_c[['config', 'trial']].drop_duplicates().groupby(['config']).count()
+    stim_start_tsec = 0.0
+    stim_end_tsec = mean_tsecs[stim_on + int(round(nframes_on))]
 
     for ridx in range(xdata.shape[-1]):
         #%%
@@ -618,251 +475,22 @@ def make_clean_psths(options):
         if 'size' in rdata.columns:
             rdata = rdata.round({'size': 0})
             rdata['size'] = rdata.astype({'size': int})
-        rdata[ylabel] = xdata_c[ridx]
-                        
+        rdata[trace_type] = xdata_c[ridx]
+        
         if optsE.plot_trials:
-            p = sns.FacetGrid(rdata, col=plot_params['cols'], row=plot_params['rows'], hue=plot_params['hue'], sharex=True, sharey=True, palette=palette)
-            p.map(pl.plot, "tsec", ylabel, lw=0.5, alpha=0.5)
+            p = sns.FacetGrid(rdata, col=plot_params['cols'], 
+                              row=plot_params['rows'], hue=plot_params['hue'], 
+                              sharex=True, sharey=True, palette=palette)
+            p.map(pl.plot, "tsec", trace_type, lw=0.5, alpha=0.5)
         else:
-            for k, g in rdata.groupby(['config']):
-                mean_trace = np.array(g.groupby(['trial'])[ylabel].groups.values()).mean(axis=0) # Get mean trace across trials
-                mean_tsec = np.array(g.groupby(['trial'])['tsec'].groups.values()).mean(axis=0)
-                sem_trace = stats.sem(np.array(g.groupby(['trial'])[ylabel].groups.values()), axis=0)
-                
-            meandfs = []
-            for k, g in rdata.groupby(['config']):
-                nreps = len(g['trial'].unique())
-                mean_trace = g.groupby(['trial'])[ylabel].apply(np.array).mean(axis=0) # Get mean trace across trials
-                mean_tsec = g.groupby(['trial'])['tsec'].apply(np.array).mean(axis=0)
-                sem_trace = stats.sem(np.vstack(g.groupby(['trial'])[ylabel].apply(np.array)), axis=0)
-                mdf = pd.DataFrame({'%s' % ylabel: mean_trace,
-                                      'tsec': mean_tsec,
-                                      'sem': sem_trace,
-                                      'fill_minus': mean_trace - sem_trace,
-                                      'fill_plus': mean_trace + sem_trace,
-                                      'config': [k for _ in range(len(mean_trace))],
-                                      'nreps': [nreps for _ in range(len(mean_trace))]
-                                      })
-                for p in all_plot_params: #plot_params.values():
-                    if p not in sdf_c.columns:
-                        continue
-                    
-                    mdf[p] = [round(sdf_c[p][cfg], 1) if isinstance(sdf_c[p][cfg], (float)) else sdf_c[p][cfg] for cfg in mdf['config']]
-                    
-                meandfs.append(mdf)
-            meandfs = pd.concat(meandfs, axis=0)
-        
-    #        ylim = meandfs['data'].max()
-    #        meandfs['annot_x'] = [-0.999 for _ in range(meandfs.shape[0])]
-    #        meandfs['annot_y'] = [ylim*0.9 for _ in range(meandfs.shape[0])]
-    #        meandfs['annot_str'] = ['n=%i' % i for i in meandfs['nreps']]
-            p = sns.FacetGrid(meandfs, col=plot_params['cols'], row=plot_params['rows'], hue=plot_params['hue'], size=2, legend_out=True, palette=palette)
-
-            if len(meandfs[plot_params['rows']].unique()) == 1:
-                p.fig.set_figheight(3)
-                p.fig.set_figwidth(20)
-
-            if plot_params['hue'] is None:
-                p = p.map(pl.fill_between, "tsec", "fill_minus", "fill_plus", alpha=0.5, color='k')
-                p = p.map(pl.plot, "tsec", ylabel, lw=1, alpha=1, color='k')
-            else:
-                p = p.map(pl.fill_between, "tsec", "fill_minus", "fill_plus", alpha=0.5)
-                p = (p.map(pl.plot, "tsec", ylabel, lw=1, alpha=1).add_legend())
-            p = p.set_titles(col_template="{col_name}", size=5)
-            #pl.legend() #bbox_to_anchor=(0, -0.0), loc=2, borderaxespad=0.1) #, labels=trace_labels, fontsize=8)
+            meandfs = get_mean_and_sem_timecourse(rdata, sdf_c, plot_params, trace_type=trace_type)
+            meandfs['ntrials'] = [trial_counts.loc[cfg]['trial'] for cfg in meandfs['config']]
             
-            #pl.legend(bbox_to_anchor=(0, -0.0), loc=2, borderaxespad=0.1, labels=trace_labels, fontsize=8)
+            plot_psth_and_save(ridx, meandfs, plot_params, trace_type=trace_type, palette='colorblind', 
+                                   stim_start_tsec=stim_start_tsec, stim_end_tsec=stim_end_tsec, 
+                                   fig_id=data_identifier, dst_dir=psth_dir, filetype=filetype)
 
-#        for xi in range(p.axes.shape[0]):
-#            for yi in range(p.axes.shape[1]):
-#                p.axes[xi, yi].text(-0.999, ylim*0.9, 'n=%i' % nreps)
-           
-            if 'xpos' in plot_params.values() and 'ypos' in plot_params.values(): 
-                pl.subplots_adjust(wspace=0.05, hspace=0.3, top=0.85, bottom=0.1, left=0.05) #right=0.95)
-            else:
-                pl.subplots_adjust(wspace=0.8, hspace=0.8, top=0.8, bottom=0.1, left=0.1, right=0.9)
-            
-        ymin = meandfs[ylabel].min()
-        ymax = meandfs[ylabel].max()
-        start_val = 0.0
-        end_val = mdf['tsec'][stim_on + int(round(nframes_on))]
-        for ri in range(p.axes.shape[0]):
-            for ci in range(p.axes.shape[1]):
-                #print ri, ci
-                p.axes[ri, ci].add_patch(patches.Rectangle((start_val, ymin), end_val, ymax, linewidth=0, fill=True, color='k', alpha=0.2))
-                p.axes[ri, ci].text(-1.3, ymax+(ymax*0.1), 'n=%i' % nreps, fontsize=4)
-                if len(meandfs[plot_params['cols']].unique()) > 10:
-                    p.axes[ri, ci].set_title('')
-                    
-                if ri == 0 and ci == 0:
-                    p.axes[ri, ci].yaxis.set_major_locator(pl.MaxNLocator(2))
-                    p.axes[ri, ci].set_xticks(())
-                    sns.despine(trim=True, offset=4, bottom=True, left=False, ax=p.axes[ri, ci])
-                    p.axes[ri, ci].set_xlabel('time (s)', fontsize=8)
-                    p.axes[ri, ci].set_ylabel('%s' % ylabel, fontsize=8)
-                else:
-                    sns.despine(trim=True, offset=4, bottom=True, left=True, ax=p.axes[ri, ci])
-                    p.axes[ri, ci].tick_params(
-                                            axis='both',          # changes apply to the x-axis
-                                            which='both',      # both major and minor ticks are affected
-                                            bottom='off',      # ticks along the bottom edge are off
-                                            left='off',
-                                            top='off',         # ticks along the top edge are off
-                                            labelbottom='off',
-                                            labelleft='off') # labels along the bottom edge are off)
-                    p.axes[ri, ci].set_xlabel('')
-                    p.axes[ri, ci].set_ylabel('')
 
-        #pl.legend(bbox_to_anchor=(0, -0.0), loc=2, borderaxespad=0.1, labels=trace_labels, fontsize=8)
-
-        label_figure(p.fig, data_identifier)
-        
-        p.fig.suptitle('roi %i' % (int(ridx+1)))
-        #%%
-        figname = '%s_psth_%s.%s' % (roi_id, optsE.datatype, filetype)
-        p.savefig(os.path.join(psth_dir, figname))
-        pl.close()
-        
-        #%%
-#        #%%
-#        traces_list = []
-#        skipped_axes = []
-#        pi = 0
-#        
-#        #for k,g in sgroups:
-#        for k, g in sgroups: #in grid_pairs:
-##            if k not in sgroups.groups.keys(): 
-##                axesf[pi].axis('off')
-##                skipped_axes.append(pi)
-##                pi += 1
-##                continue
-#            #print k
-#            #g = sgroups.get_group(k)
-#            if subplot_hue is not None:
-#                curr_configs = g.sort_values(subplot_hue).index.tolist()
-#            else:
-#                curr_configs = sorted(g.index.tolist())
-#                
-#            for cf_idx, curr_config in enumerate(curr_configs):
-#                sub_df = rdata[rdata['config']==str(curr_config)]
-#                tracemat = np.vstack(sub_df.groupby('trial')['data'].apply(np.array))
-#                tpoints = np.mean(sub_df.groupby('trial')['tsec'].apply(np.array), axis=0)
-#                assert len(list(set(sub_df['nframes_on']))) == 1, "More than 1 stimdur parsed for current config..."
-#                
-#                nframes_on = list(set(sub_df['nframes_on']))[0]
-#                if optsE.correct_offset:
-#                    bas_grand_mean = np.mean([np.mean(vals[0:stim_on]) for vals in rdata.groupby('trial')['data'].apply(np.array)])
-#                    subdata = tracemat - bas_grand_mean
-#                else:
-#                    subdata = tracemat
-#
-#                if optsE.plot_median:
-#                    trace_mean = np.median(subdata, axis=0)
-#                else:    
-#                    trace_mean = np.mean(subdata, axis=0) #- bas_grand_mean[ridx]
-#                trace_sem = stats.sem(subdata, axis=0) #stats.sem(subdata, axis=0)
-#                
-#                
-#                if isinstance(trace_colors, list):
-#                    curr_color = trace_colors[cf_idx]
-#                    curr_label = trace_labels[cf_idx]
-#                else:
-#                    # There is an additional axis (plotted as GRADIENT) -- unspecified_tra
-#                    # Identify which is the corresponding object for subplot_hue:
-#                    hue_key = sdf.loc[curr_config][subplot_hue]
-#                    unspec_key = sdf.loc[curr_config][unspec_trans_type]
-#                    curr_color = trace_colors[hue_key][unspec_key]
-#                    curr_label = trace_labels[hue_key][unspec_key]
-#                    
-#                    
-#                axesf[pi].plot(tpoints, trace_mean, color=curr_color, linewidth=2, 
-#                             label=curr_label, alpha=1.0)
-#                
-#                if optsE.plot_trials:
-#                    for ti in range(subdata.shape[0]):
-#                        if len(np.where(np.isnan(subdata[ti, :]))[0]) > 0:
-#                            print "-- NaN: Trial %i, %i" % (ti+1, len(np.where(np.isnan(subdata[ti, :]))[0]))
-#                            continue
-#                        axesf[pi].plot(tpoints, subdata[ti,:], color=curr_color, linewidth=0.2, alpha=0.5)
-#                else:
-#                    # fill between with sem:
-#                    axesf[pi].fill_between(tpoints, trace_mean-trace_sem, trace_mean+trace_sem, color=curr_color, alpha=0.5)
-#                
-#                
-#                
-#                # Set x-axis to only show stimulus ON bar:
-#                start_val = tpoints[stim_on]
-#                end_val = tpoints[stim_on + int(round(nframes_on))]
-#                if pi==len(axes)-1:
-#                    axesf[pi].set_xticks((start_val, 1.0)) 
-#                else:
-#                    axesf[pi].set_xticks((0, 0))
-#                axesf[pi].set_xticklabels(())
-#                axesf[pi].tick_params(axis='x', which='both',length=0)
-#                if isinstance(k, int):
-#                    axesf[pi].set_title('(%.1f)' % (k), fontsize=10)
-#                else:
-#                    if isinstance(k[0], (int, float)) or k[0].isdigit():
-#                        k0 = float(k[0])
-#                        k0_str = '%.1f' % k0
-#                    else:
-#                        k0_str = str(k[0])
-#                    if isinstance(k[1], (int, float)) or k[1].isdigit():
-#                        k1 = float(k[1])
-#                        k1_str = '%.1f' % k1
-#                    else:
-#                        k1_str = str(k[1])
-#                    axesf[pi].set_title('(%s, %s)' % (k0_str, k1_str), fontsize=10)
-#
-#
-#            # Set y-axis to be the same, if specified:
-#            if scale_y:
-#                axesf[pi].set_ylim([0, dfmax])
-#            if 'df' in optsE.inputdata:
-#                axesf[pi].set_yticks((0, 1))
-#            sns.despine(offset=4, trim=True, ax=axesf[pi])
-#          
-#            # Add annotation for n trials in stim config:    
-#            axesf[pi].text(-0.999, axesf[pi].get_ylim()[-1]*0.9, 'n=%i' % subdata.shape[0])   
-#
-#            
-#            #pl.legend(loc=9, bbox_to_anchor=(-0.5, -0.1), ncol=len(trace_labels))
-#
-#            if pi==0:
-#                axesf[pi].set_ylabel(ylabel)
-#            pi += 1
-#
-#        #sns.despine(offset=4, trim=True)
-#        #loop over the non-left axes:
-#        for ai,ax in enumerate(axes.flat):
-#            if ai in skipped_axes:
-#                continue
-#            ymin = min([ax.get_ylim()[0], ax.get_yticks()[0]])
-#            ymax = max([ax.get_ylim()[-1], ax.get_yticks()[-1]])
-#            stimpatch = patches.Rectangle((start_val, ymin), end_val, ymax, linewidth=0, fill=True, color='k', alpha=0.2)
-#            ax.add_patch(stimpatch)
-#            if 'df' in inputdata:
-#                ax.set_yticks((0, 1))
-#            sns.despine(offset=4, trim=True, ax=ax)
-#
-#
-##        for ax in axes.flat[1:]:
-##            # get the yticklabels from the axis and set visibility to False
-##            for label in ax.get_yticklabels():
-##                label.set_visible(False)
-##            ax.yaxis.offsetText.set_visible(False)
-##            ax.yaxis.set_visible(False)
-##                
-#    
-#        pl.subplots_adjust(bottom=0.12, top=0.95)
-#        pl.suptitle("%s" % (roi_id))
-#        pl.legend(loc=9, bbox_to_anchor=(0, 0), ncol=len(trace_labels))
-#        label_figure(fig, data_identifier)
-#        
-#        #%%
-#        figname = '%s_psth_%s.%s' % (roi_id, inputdata, filetype)
-#        pl.savefig(os.path.join(psth_dir, figname))
-#        pl.close()
 #    
     return psth_dir
 
