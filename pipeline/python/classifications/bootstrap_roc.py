@@ -13,6 +13,7 @@ import h5py
 import optparse
 import sys
 import math
+import time
 import cPickle as pkl
 import json
 
@@ -280,11 +281,14 @@ def bootstrap_roc_func(animalid, session, fov, traceid, experiment, trace_type='
 
     print("... data id: %s" % data_identifier)
 
+    print("STARTING BOOTSTRAP ANALYSIS.")
+    start_t = time.time()
     results, roc_dir = do_roc_bootstrap_mp(exp, gdf, n_iters=n_iters, 
                                   n_processes=n_processes, plot_rois=plot_rois,
-                                  data_identifier=data_identifier)
-    
+                                  data_identifier=data_identifier) 
     print("FINISHED CALCULATING ROC BOOTSTRAP ANALYSIS.")
+    end_t = time.time() - start_t
+    print("--> Elapsed time: {0:.2f}sec".format(end_t))
 
     fmts = ['pkl', 'json']
     for fmt in fmts:

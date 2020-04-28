@@ -320,14 +320,6 @@ def main(options):
         for (visual_area, animalid, session, fov), g in sessiondata.groupby(['visual_area', 'animalid', 'session', 'fov']):
             skey = '%s_%s' % (visual_area, '-'.join([animalid, session, fov]))
             #print skey
-
-                
-        #for animalid in sessiondata['animalid'].unique():
-        #    session_list = sessions_by_animal[animalid].index.tolist()
-        #    for session in session_list:
-        #        fovs = sessions_by_animal[animalid][session]
-
-        #       for fov in fovs:
             nostats = respstats.visualize_session_stats(animalid, session, fov, 
                                                      create_new=create_new, altdir=aggregate_stats_dir, 
                                                      traceid=traceid, trace_type=trace_type,
@@ -383,19 +375,9 @@ def main(options):
         for (visual_area, animalid, session, fov), g in dsets.groupby(['visual_area', 'animalid', 'session', 'fov']):
             skey = '%s_%s' % (visual_area, '-'.join([animalid, session, fov]))
             if stats=='gratings':
+                n_resamples = 20
+                plot_rois = True
                 exp = util.Gratings(animalid, session, fov, traceid=traceid, rootdir=rootdir)
-                
-#                        fitdf, fitparams, fitdata = exp.get_tuning(create_new=create_new, n_processes=n_processes,
-#                                                                   responsive_test=responsive_test, responsive_thr=responsive_thr,
-#                                                                   n_stds=n_stds,
-#                                                                   n_bootstrap_iters=n_bootstrap_iters, n_resamples=n_resamples,
-#                                                                   n_intervals_interp=n_intervals_interp, plot_rois=plot_rois)
-#                        fitdf, goodfits = exp.evaluate_fits(fitdf, fitparams, fitdata, goodness_thr=goodness_thr)
-#                        tuning_counts[skey] = goodfits
-#                        del fitdf
-#                        del fitparams
-#                        del fitdata
-#                        del exp
                 bootresults, fitparams = exp.get_tuning(create_new=create_new, n_processes=n_processes,
                                                            responsive_test=responsive_test, responsive_thr=responsive_thr,
                                                            n_stds=n_stds, min_cfgs_above=min_cfgs_above,
@@ -411,7 +393,9 @@ def main(options):
                 del rmetrics
                 
             elif stats == 'rfs':
-                fit_thr = float(optsE.rf_fit_thr)
+                n_resamples = 10
+                fit_thr = 0.05
+                # fit_thr = float(optsE.rf_fit_thr)
                 rfnames = g['experiment'].unique()
                 print("Found %i rf experiments." % len(rfnames))
                 for rfname in rfnames: 
@@ -429,7 +413,6 @@ def main(options):
             fit_desc = osi.get_fit_desc(response_type=response_type, responsive_test=responsive_test, n_stds=n_stds,
                                     responsive_thr=responsive_thr, n_bootstrap_iters=n_bootstrap_iters,
                                     n_resamples=n_resamples)
-
             aggregate_stats_dir = os.path.join(aggregate_dir, 'orientation-tuning', '%s-%s' % (traceid, fit_desc))
         elif stats == 'rfs':
             fit_desc = fitrf.get_fit_desc(response_type=response_type)
