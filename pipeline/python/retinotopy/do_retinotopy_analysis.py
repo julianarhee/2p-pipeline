@@ -873,6 +873,7 @@ def do_analysis(options):
     session = options.session
     acquisition = options.acquisition
     analysis_id = options.analysis_id
+    print("--- ANALYSIS ID requested: %s" % analysis_id)
     run = options.run
 
     np_niters = int(options.np_niters)
@@ -888,12 +889,15 @@ def do_analysis(options):
     # Load specified analysis-ID parameter set:
     # =============================================================================
     run_dir = os.path.join(rootdir, animalid, session, acquisition, run)
+    print(run_dir)
     analysis_dir = os.path.join(run_dir, 'retino_analysis')
     tmp_retinoid_dir = os.path.join(analysis_dir, 'tmp_retinoids')
 
     if 'traces' in analysis_id:
+        print("---getting corresponding analysis id for %s" % analysis_id)
         traceid = analysis_id
         trace_dir = os.path.join(run_dir, 'retino_analysis')
+        print("---run: %s" % run)
         tracedict_path = os.path.join(trace_dir, 'analysisids_%s.json' % run)
         with open(tracedict_path, 'r') as f:
             tracedict = json.load(f)

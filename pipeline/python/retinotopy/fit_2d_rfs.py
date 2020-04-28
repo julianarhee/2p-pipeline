@@ -1410,7 +1410,13 @@ def fit_2d_receptive_fields(animalid, session, fov, run, traceid, create_new=Fal
     # -----------------------------------------------------------------------------
     # rfdir = os.path.join(traceid_dir, 'figures', 'receptive_fields')
     # rf_param_str = 'fit-2dgaus_%s-no-cutoff' % (response_type) #, response_thr) #, cutoff_type, set_to_min_str)
-    rfdir, fit_desc = create_rf_dir(animalid, session, fov, run, traceid=traceid,
+    print(animalid, session, fov, run, response_type)
+    if 'combined' in run:
+        run_name = run.split('_')[1]
+    else:
+        run_name = run
+
+    rfdir, fit_desc = create_rf_dir(animalid, session, fov, 'combined_%s_static' % run_name, traceid=traceid,
                                     response_type=response_type, fit_thr=fit_thr)
 
     traceid_dir = rfdir.split('/receptive_fields/')[0]
@@ -1421,10 +1427,6 @@ def fit_2d_receptive_fields(animalid, session, fov, run, traceid, create_new=Fal
         # Realign traces
         print("*****corrected offset unfound, running now*****")
         print("%s | %s | %s | %s | %s" % (animalid, session, fov, run, traceid))
-        if 'combined' in run:
-            run_name = run.split('_')[1]
-        else:
-            run_name = run
         aggregate_experiment_runs(animalid, session, fov, run_name, traceid=traceid)
         print("*****corrected offsets!*****")
                         
