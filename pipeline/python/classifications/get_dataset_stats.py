@@ -27,7 +27,7 @@ from pipeline.python.classifications import experiment_classes as util
 from pipeline.python.classifications import test_responsivity as resp
 from pipeline.python.utils import label_figure, natural_keys, convert_range
 from pipeline.python.classifications import responsivity_stats as respstats
-from pipeline.python.classifications.analyze_retino_structure import do_rf_fits_and_evaluation
+from pipeline.python.classifications.evaluate_receptivefield_fits import do_rf_fits_and_evaluation
 
 
 from pipeline.python.retinotopy import fit_2d_rfs as fitrf
@@ -156,8 +156,7 @@ def aggregate_session_info(traceid='traces001', trace_type='corrected',
     
     sessiondata = []
     dcounter = 0
-    for animalid in all_rats:
-    
+    for animalid in all_rats: 
             
         # Get metadata for this rat's sessions:
         with open(os.path.join(rootdir, animalid, 'sessionmeta.json'), 'r') as f:
@@ -166,8 +165,8 @@ def aggregate_session_info(traceid='traces001', trace_type='corrected',
         # Get session data paths, if exist:
         for visual_area in visual_areas:
             curr_session_list = [str(k) for k, v in sessionmeta.items()\
-                                 if v['state'] == state and v['visual_area'] == visual_area]
-            
+                                 if v['state'] == state and v['visual_area'].lower() == visual_area.lower()]
+            #print([(v['visual_area'].lower(), visual_area.lower()) for k, v in sessionmeta.items()]) 
             if len(curr_session_list) > 0:
                 for s in curr_session_list:
     
@@ -178,12 +177,6 @@ def aggregate_session_info(traceid='traces001', trace_type='corrected',
                         
                     found_fovs = glob.glob(os.path.join(rootdir, animalid, session_str, '%s*' % fov_str))
                     for fov_dir in found_fovs:
-#                        session_fpath = os.path.join(fov_dir, 'summaries', 'sessiondata.pkl')    
-#    
-#                        if os.path.exists(session_fpath):
-#                            with open(session_fpath, 'rb') as f:
-#                                S = pkl.load(f)
-#                        else:
                         print("Creating new session object...") #% (animalid, session_name))
                         S = util.Session(animalid, session_str, '%s_%s' % (fov_str, fov_type), 
                                          visual_area=visual_area, state=state,
