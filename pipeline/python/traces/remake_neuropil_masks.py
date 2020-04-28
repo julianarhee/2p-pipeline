@@ -140,9 +140,9 @@ def create_masks_for_all_runs(animalid, session, fov, traceid='traces001', np_ni
 
         #filetraces_dir = apply_masks_for_run(run_dir, maskdict_path, traceid=traceid, np_correction_factor=np_correction_factor)
 
-        print("... finished %i of %i" % (ri, len(all_rundirs)))
+        print("... finished %i of %i" % (int(ri+1), len(all_rundirs)))
 
-    print("FINISHED.")
+    print("~~~~~~~ FINISHED CREATING MASKS ~~~~~~~~~~~~.")
 
     return 
 
@@ -153,7 +153,7 @@ def apply_masks_for_all_runs(animalid, session, fov, traceid='traces001', np_cor
     # Get runs to extract
     session_dir = os.path.join(rootdir, animalid, session)
     all_rundirs = [r for r in sorted(glob.glob(os.path.join(session_dir, fov, '*_run*')), key=natural_keys)\
-                   if 'retino' not in r] 
+                   if 'retino' not in r and 'compare' not in r] 
 
     for ri, run_dir in enumerate(all_rundirs): 
         # Get trace extraction info
@@ -168,9 +168,9 @@ def apply_masks_for_all_runs(animalid, session, fov, traceid='traces001', np_cor
 
         filetraces_dir = apply_masks_for_run(filetraces_dir, maskdict_path, np_correction_factor=np_correction_factor, rootdir=rootdir)
 
-        print("... finished %i of %i" % (ri, len(all_rundirs)))
+        print("... finished %i of %i" % (int(ri+1), len(all_rundirs)))
 
-    print("FINISHED.")
+    print("~~~~~~~~~~~~~~ FINISHED APPLYING MASKS ~~~~~~~~~~~~~~~.")
     
     return filetraces_dir
 
