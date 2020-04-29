@@ -179,7 +179,7 @@ def caiman_params(fnames, kwargs=None):
     return opts
 
 def save_mc_results(results_dir, prefix='Yr'):
-    np.savez(os.path.join(results_dir, '%s_mc-rigid.npz' % prefix),
+    np.savez(os.path.join(results_dir, '%s_mc_rigid.npz' % prefix),
             mc=mc,
             fname=mc.fname, max_shifts=mc.max_shifts, min_mov=mc.min_mov,
             border_nan=mc.border_nan,
@@ -189,11 +189,11 @@ def save_mc_results(results_dir, prefix='Yr'):
             shifts_rig=mc.shifts_rig,
             mmap_file=mc.mmap_file,
             border_to_0=mc.border_to_0)
-    print("--- saved MC results: %s" % os.path.join(results_dir, '%s_mc-rigid.npz' % prefix))
+    print("--- saved MC results: %s" % os.path.join(results_dir, '%s_mc_rigid.npz' % prefix))
  
 def load_mc_results(results_dir, prefix='Yr'):
     try:
-        mc_results = np.load(os.path.join(results_dir, '%s_mc-rigid.npz' % prefix))
+        mc_results = np.load(os.path.join(results_dir, '%s_mc_rigid.npz' % prefix))
         mc = mc_results[mc] 
 #            fname=mc.fname, max_shifts=mc.max_shifts, min_mov=mc.min_mov,
 #            border_nan=mc.border_nan,
@@ -210,7 +210,7 @@ def load_mc_results(results_dir, prefix='Yr'):
 
 def get_file_paths(results_dir, mm_prefix='Yr'):
     try:
-        mparams_fpath = os.path.join(results_dir, '%s_memmap-params.json' % mm_prefix)
+        mparams_fpath = os.path.join(results_dir, '%s_memmap_params.json' % mm_prefix)
         print("Loading memmap params...")
         with open(mparams_fpath, 'r') as f:
             mparams = json.load(f)
@@ -422,7 +422,7 @@ def run_cnmf_seeded(animalid, session, fov, experiment='', roiid=None,
     quantileMin = 10 # 8
     frames_window_sec = 30.
     if 'downsample' in mm_prefix:
-        ds_factor = float(mm_prefix.split('downsample_')[-1].split('-')[0]) #opts.init['tsub']
+        ds_factor = float(mm_prefix.split('downsample_')[-1].split('_')[0]) #opts.init['tsub']
     else:
         ds_factor = float(opts.init['tsub'])
     fr = float(opts.data['fr'])
@@ -554,7 +554,7 @@ def run_cnmf_patches(animalid, session, fov, experiment='',
     cnm.estimates.evaluate_components(images, cnm.params, dview=dview)
     end_t = time.time() - start_t
     print("--> evaluation - Elapsed time: {0:.2f}sec".format(end_t))
-    print("Discarding %i of %i initially selected components." % (len(cnm.estimates.idx_components), cnm.estimates.A.shape[-1]))
+    print("Discarding %i of %i initially selected components." % (len(cnm.estimates.idx_components_bad), cnm.estimates.A.shape[-1]))
     #cnm.estimates.select_components(use_object=True)
 
     #%% Extract DF/F values
@@ -563,7 +563,7 @@ def run_cnmf_patches(animalid, session, fov, experiment='',
     quantileMin = 10 # 8
     frames_window_sec = 30.
     if 'downsample' in mm_prefix:
-        ds_factor = float(mm_prefix.split('downsample_')[-1].split('-')[0]) #opts.init['tsub']
+        ds_factor = float(mm_prefix.split('downsample_')[-1].split('_')[0]) #opts.init['tsub']
         #ds_factor = float(mm_prefix.split('downsample-')[-1]) #opts.init['tsub']
     else:
         ds_factor = float(opts.init['tsub'])
@@ -604,11 +604,11 @@ def main(options):
     session = opts.session #'20190525' #'20190505_JC083'
     fov = opts.fov
     experiment = opts.experiment
-    ds_factor = int(opts.ds_factor)
-    destdir = opts.destdir
-    use_raw = opts.use_raw
+    #ds_factor = int(opts.ds_factor)
+    #destdir = opts.destdir
+    #use_raw = opts.use_raw
     n_processes = int(opts.n_processes) 
-    create_new = opts.create_new
+    #create_new = opts.create_new
     mm_prefix = opts.mmap_prefix
     prefix = opts.save_prefix
     seed_source = opts.seed_source
@@ -634,13 +634,13 @@ def main(options):
                                                     traceid=seed_source)
         else:
             roiid = seed_source
-        prefix = '%s_%s' % (roiid, run_type)
+        prefix = '%s_%s' % (roiid, experiment)
 
         run_cnmf_seeded(animalid, session, fov, experiment=experiment, roiid=roiid, mm_prefix=mm_prefix,
                         rootdir=rootdir, prefix=prefix, n_processes=n_processes, opts_kws=c_args)
     else:
         if prefix in [None, 'None']:
-            prefix = run_type
+            prefix = experiment
         run_cnmf_patches(animalid, session, fov, experiment=experiment, mm_prefix=mm_prefix,
                          rootdir=rootdir, prefix=prefix, n_processes=n_processes, opts_kws=c_args)
 
