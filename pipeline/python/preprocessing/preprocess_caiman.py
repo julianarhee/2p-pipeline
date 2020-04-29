@@ -210,7 +210,7 @@ def save_memmap_params(results_dir, resize_fact=(), add_to_movie=None, border_to
      
 
 def save_mc_results(mc, results_dir, prefix='Yr'):
-    np.savez(os.path.join(results_dir, '%s_mc-rigid.npz' % prefix),
+    np.savez(os.path.join(results_dir, '%s_mc_rigid.npz' % prefix),
             #mc=mc,
             fname=mc.fname, 
             max_shifts=mc.max_shifts, 
@@ -224,11 +224,11 @@ def save_mc_results(mc, results_dir, prefix='Yr'):
             border_to_0=mc.border_to_0,
             gSig_filt=mc.gSig_filt)
 
-    print("--- saved MC results: %s" % os.path.join(results_dir, '%s_mc-rigid.npz' % prefix))
+    print("--- saved MC results: %s" % os.path.join(results_dir, '%s_mc_rigid.npz' % prefix))
     
     # Also save params as json 
     if 'downsample' in prefix:
-        ds_fact = int(prefix.split('downsample-')[-1])
+        ds_fact = int(prefix.split('downsample_')[-1])
         resize_fact = (1, 1, 1./ds_fact)
     else:
         resize_fact = (1, 1, 1)
@@ -239,7 +239,7 @@ def save_mc_results(mc, results_dir, prefix='Yr'):
 
 def load_mc_results(results_dir, mc, prefix='Yr'):
     try:
-        res = np.load(os.path.join(results_dir, '%s_mc-rigid.npz' % prefix), allow_pickle=True)
+        res = np.load(os.path.join(results_dir, '%s_mc_rigid.npz' % prefix), allow_pickle=True)
         #mc = mc_results[mc] 
         print(list(res.keys()))
         mc.fname = res['fname']
@@ -309,7 +309,7 @@ def do_memmap_no_mc(animalid, session, fov, run_label='res', base_name='Yr', res
 
     # Also save params as json 
     if 'downsample' in prefix:
-        ds_fact = int(prefix.split('downsample-')[-1])
+        ds_fact = int(prefix.split('downsample_')[-1])
         resize_fact = (1, 1, 1./ds_fact)
     else:
         resize_fact = (1, 1, 1)
@@ -322,7 +322,7 @@ def do_memmap_no_mc(animalid, session, fov, run_label='res', base_name='Yr', res
 
 def do_motion_correction(animalid, session, fov, run_label='res', srcdir=None, rootdir='/n/coxfs01/2p-data', n_processes=None, prefix=None, save_total=True, opts_kws=None):
 
-    source_key = '-'.join([animalid, session, fov, run_label]) #, prefix])
+    source_key = '_'.join([animalid, session, fov, run_label]) #, prefix])
     data_identifier = '|'.join([animalid, session, fov, run_label])
     print("*** Dataset: %s ***" % data_identifier)
     
@@ -338,7 +338,7 @@ def do_motion_correction(animalid, session, fov, run_label='res', srcdir=None, r
     if prefix is None:
         prefix = 'Yr'
     #if prefix not in source_key:
-    prefix = '%s-%s' % (source_key, prefix)
+    prefix = '%s_%s' % (source_key, prefix)
     print("***PROCESSING: %s ***" % prefix)
 
     print("SOURCE for mc is: ", srcdir)
