@@ -22,12 +22,15 @@ source activate /n/coxfs01/2p-pipeline/envs/caiman
 #echo "File: ${FILENAME}"
 
 # run processing on raw data
-if [ -z "$7" ]; then   
-    python /n/coxfs01/2p-pipeline/repos/2p-pipeline/pipeline/python/traces/extract_caiman.py -i ${1} -S ${2} -A ${3} -E ${4} -n 8 --prefix=${5} --mmap=${6} 
+python /n/coxfs01/2p-pipeline/repos/2p-pipeline/pipeline/python/traces/extract_caiman.py -i ${1} -S ${2} -A ${3} -E ${4} -n 8
 
-else
-    python /n/coxfs01/2p-pipeline/repos/2p-pipeline/pipeline/python/traces/extract_caiman.py -i ${1} -S ${2} -A ${3} -E ${4} -n 8 --prefix=${5} --mmap=${6} ${7}
 
-fi
+#if [ -z "$7" ]; then   
+#    python /n/coxfs01/2p-pipeline/repos/2p-pipeline/pipeline/python/traces/extract_caiman.py -i ${1} -S ${2} -A ${3} -E ${4} -n 8 --prefix=${5} --mmap=${6} 
+#
+#else
+#    python /n/coxfs01/2p-pipeline/repos/2p-pipeline/pipeline/python/traces/extract_caiman.py -i ${1} -S ${2} -A ${3} -E ${4} -n 8 --prefix=${5} --mmap=${6} ${7}
+#
+#fi
 
 
