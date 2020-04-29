@@ -285,44 +285,6 @@ def get_full_memmap_path(results_dir, framestr='order_C_frames', prefix='Yr'):
     return fname_new, mm_prefix
 
 
-def get_roiid_from_traceid(animalid, session, fov, run_type=None, traceid='traces001', rootdir='/n/coxfs01/2p-data'):
-   
-    if 'trace' in traceid: 
-        if run_type is not None:
-            if int(session) < 20190511 and run_type == 'gratings':
-                a_traceid_dict = glob.glob(os.path.join(rootdir, animalid, session, fov, '*run*', 'traces', 'traceids*.json'))[0]
-            else:
-                a_traceid_dict = glob.glob(os.path.join(rootdir, animalid, session, fov, '*%s*' % run_type, 'traces', 'traceids*.json'))[0]
-        else:
-            a_traceid_dict = glob.glob(os.path.join(rootdir, animalid, session, fov, '*run*', 'traces', 'traceids*.json'))[0]
-    else: # is retino
-        a_traceid_dict = glob.glob(os.path.join(rootdir, animalid, session, fov, '%s*' % run_type, 'retino_analysis', 'analysisids*.json'))[0]
-        
-    with open(a_traceid_dict, 'r') as f:
-        tracedict = json.load(f)
-
-    tid = tracedict[traceid]
-   
-    if tid['PARAMS']['roi_type'] != 'manual2D_circle':
-        try:
-            print("**** warning: specified traceid <%s> is not a manual ROI." % traceid)
-            print("... finding traceid extracted with manual ROIs...")
-            tmp_ids = sorted([k for k, v in tracedict.items() if v['PARAMS']['roi_type']=='manual2D_circle'], key=natural_keys)
-            assert len(tmp_ids) > 0, "NO MANUAL ROIS FOUND."
-            for ti, tname in enumerate(sorted(tmp_ids, key=natural_keys)):
-                print(ti, tname)
-            print("Selecting: %s" % tmp_ids[0])
-            traceid = tmp_ids[0]
-            tid = tracedict[traceid] 
-        except Exception as e:
-            print(e)
-            return None
-
-    roiid = tid['PARAMS']['roi_id']
-    
-    return roiid
-
-
 def load_roi_masks(animalid, session, fov, rois=None, rootdir='/n/coxfs01/2p-data'):
     masks=None; zimg=None;
     mask_fpath = glob.glob(os.path.join(rootdir, animalid, session, 'ROIs', '%s*' % rois, 'masks.hdf5'))[0]
@@ -364,13 +326,11 @@ def reshape_and_binarize_masks(masks):
     return Ain
 
 
-def run_cnmf_seeded(animalid, session, fov, experiment='', roiid=None, traceid='traces001', rootdir='/n/coxfs01/2p-data', mm_prefix='Yr', prefix=None, n_processes=1, opts_kws=None):
+def run_cnmf_seeded(animalid, session, fov, experiment='', roiid=None, 
+                    mm_prefix='Yr', prefix=None, n_processes=1, 
+                    rootdir='/n/coxfs01/2p-data', opts_kws=None):
 
     # Load manual ROIs and format
-    if roiid is None:
-        roiid = get_roiid_from_traceid(animalid, session, fov, run_type=experiment, traceid=traceid)
-    assert roiid is not None, "NO ROIS FOUND."
-
     print("Getting seeds from ROI set: %s..." % roiid)
     masks, zimg = load_roi_masks(animalid, session, fov, rois=roiid)
     uimg = zimg.T
@@ -379,7 +339,6 @@ def run_cnmf_seeded(animalid, session, fov, experiment='', roiid=None, traceid='
     # Load memmapped file(s)
     fovdir = glob.glob(os.path.join(rootdir, animalid, session, fov))[0]
     results_dir = os.path.join(fovdir, 'caiman_results', experiment)
-
     fname_tot, mm_prefix = get_full_memmap_path(results_dir, prefix=mm_prefix)
     print("Extracting CNMF from: %s" % fname_tot)
 
@@ -392,15 +351,12 @@ def run_cnmf_seeded(animalid, session, fov, experiment='', roiid=None, traceid='
     print("Preparing for CNMF extraction...") 
     fnames = get_file_paths(results_dir, mm_prefix=mm_prefix) 
     print("--> got %i files for extraction" % len(fnames))
-    
-#    if 'fov' in fnames[0]:
-#        fnames = sorted(glob.glob(os.path.join(rootdir, animalid, session, fov, '*%s*' % experiment,
-#                                'raw*', '*.tif')))
-        
+           
     opts = caiman_params(fnames, opts_kws)
     if prefix is None:
-         prefix = mm_prefix
+         prefix = '%s_%s' % (roiid, experiment) #mm_prefix
     prefix = 'seeded_%s' % prefix
+    print("***** seeding with prefix: %s *******" % prefix)
 
     #%% start a cluster for parallel processing 
     #(if a cluster already exists it will be closed and a new session will be opened)
@@ -425,6 +381,7 @@ def run_cnmf_seeded(animalid, session, fov, experiment='', roiid=None, traceid='
                 'rf': rf,
                 'only_init': only_init,
                 'merge_thr': 0.85,
+                'gnb': 2,
                 'n_pixels_per_process': 2000}
 
     opts.change_params(opts_dict)
@@ -474,7 +431,7 @@ def run_cnmf_seeded(animalid, session, fov, experiment='', roiid=None, traceid='
     quantileMin = 10 # 8
     frames_window_sec = 30.
     if 'downsample' in mm_prefix:
-        ds_factor = float(mm_prefix.split('downsample-')[-1].split('-')[0]) #opts.init['tsub']
+        ds_factor = float(mm_prefix.split('downsample_')[-1].split('-')[0]) #opts.init['tsub']
     else:
         ds_factor = float(opts.init['tsub'])
     fr = float(opts.data['fr'])
@@ -486,7 +443,7 @@ def run_cnmf_seeded(animalid, session, fov, experiment='', roiid=None, traceid='
                   'frames_window': frames_window,
                   'source': fname_tot}
 
-    with open(os.path.join(results_dir, '%s_processing-params.json' % prefix), 'w') as f:
+    with open(os.path.join(results_dir, '%s_processing_params.json' % prefix), 'w') as f:
         json.dump(dff_params, f, indent=4)
 
     start_t = time.time()
@@ -508,7 +465,9 @@ def run_cnmf_seeded(animalid, session, fov, experiment='', roiid=None, traceid='
 
     print("******DONE!**********")
 
-def run_cnmf_patches(animalid, session, fov, experiment='', traceid='traces001', rootdir='/n/coxfs01/2p-data', mm_prefix='Yr', prefix=None, n_processes=1, opts_kws=None):
+def run_cnmf_patches(animalid, session, fov, experiment='', 
+                        mm_prefix='Yr', prefix=None, n_processes=1, 
+                        rootdir='/n/coxfs01/2p-data', opts_kws=None):
 
     # Load memmapped file(s)
     fovdir = glob.glob(os.path.join(rootdir, animalid, session, fov))[0]
@@ -533,7 +492,7 @@ def run_cnmf_patches(animalid, session, fov, experiment='', traceid='traces001',
     opts = caiman_params(fnames, opts_kws)
                   
     if prefix is None:
-         prefix = mm_prefix
+         prefix = experiment #mm_prefix
     prefix = 'patches_%s' % prefix
 
     #%% start a cluster for parallel processing 
@@ -555,6 +514,7 @@ def run_cnmf_patches(animalid, session, fov, experiment='', traceid='traces001',
     start_t = time.time() 
     cnm = cnmf.CNMF(n_processes, params=opts, dview=dview)
     cnm.params.change_params({'p': 0,
+                              'gnb': 2, 
                               'only_init': True,
                               'rolling_sum': True,
                               'method_init': 'greedy_roi'})
@@ -612,7 +572,7 @@ def run_cnmf_patches(animalid, session, fov, experiment='', traceid='traces001',
     quantileMin = 10 # 8
     frames_window_sec = 30.
     if 'downsample' in mm_prefix:
-        ds_factor = float(mm_prefix.split('downsample-')[-1].split('-')[0]) #opts.init['tsub']
+        ds_factor = float(mm_prefix.split('downsample_')[-1].split('-')[0]) #opts.init['tsub']
         #ds_factor = float(mm_prefix.split('downsample-')[-1]) #opts.init['tsub']
     else:
         ds_factor = float(opts.init['tsub'])
@@ -625,7 +585,7 @@ def run_cnmf_patches(animalid, session, fov, experiment='', traceid='traces001',
                   'frames_window': frames_window,
                   'source': fname_tot}
 
-    with open(os.path.join(results_dir, '%s_processing-params.json' % prefix), 'w') as f:
+    with open(os.path.join(results_dir, '%s_processing_params.json' % prefix), 'w') as f:
         json.dump(dff_params, f, indent=4)
     cnm.estimates.detrend_df_f(quantileMin=quantileMin, frames_window=frames_window)
     end_t = time.time() - start_t
@@ -676,10 +636,18 @@ def main(options):
 
 
     if seed_rois:
-        run_cnmf_seeded(animalid, session, fov, experiment=experiment, traceid=traceid, mm_prefix=mm_prefix,
+        if 'rois' not in seed_source:
+            assert 'analysis' in seed_source or 'traces' in seed_source, "Unidentified seed source: %s" % str(seed_source)
+            roiid = util.get_roiid_from_traceid(animalid, session, fov, run_type=experiment, 
+                                                    traceid=seed_source)
+        else:
+            roiid = seed_source
+        prefix = '%s_%s' % (roiid, run_type)
+        run_cnmf_seeded(animalid, session, fov, experiment=experiment, roiid=roiid, mm_prefix=mm_prefix,
                         rootdir=rootdir, prefix=prefix, n_processes=n_processes, opts_kws=c_args)
     else:
-        run_cnmf_patches(animalid, session, fov, experiment=experiment, traceid=traceid, mm_prefix=mm_prefix,
+        prefix = run_type
+        run_cnmf_patches(animalid, session, fov, experiment=experiment, mm_prefix=mm_prefix,
                          rootdir=rootdir, prefix=prefix, n_processes=n_processes, opts_kws=c_args)
 
 
