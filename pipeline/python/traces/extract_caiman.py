@@ -76,20 +76,11 @@ def extract_options(options):
     parser.add_option('-S', '--session', action='store', dest='session', default='', help='session dir (format: YYYMMDD_ANIMALID')
     parser.add_option('-A', '--acq', action='store', dest='fov', default='FOV1_zoom2p0x', help="acquisition folder (ex: 'FOV1_zoom2p0x') [default: FOV1_zoom2p0x]")
     parser.add_option('-E', '--exp', action='store', dest='experiment', default='', help="Name of experiment (stimulus type), e.g., rfs")
-    parser.add_option('-t', '--traceid', action='store', dest='traceid', default='traces001', help="Traceid from which to get seeded rois (default: traces001)")
+    parser.add_option('-s', '--source', action='store', dest='seed_source', default='rois001', help="Roi ID to seed with (default: rois001)")
 
 
     parser.add_option('-n', '--nproc', action="store",
-                      dest="n_processes", default=2, help="N processes [default: 1]")
-    parser.add_option('-d', '--downsample', action="store",
-                      dest="ds_factor", default=5, help="Downsample factor (int, default: 5)")
-
-    parser.add_option('--destdir', action="store",
-                      dest="destdir", default='/n/scratchlfs/cox_lab/julianarhee/downsampled', help="output dir for movie files [default: /n/scratchlfs/cox_lab/julianarhee/downsampled]")
-    parser.add_option('--plot', action='store_true', dest='plot_rois', default=False, help="set to plot results of each roi's analysis")
-    parser.add_option('--processed', action='store_false', dest='use_raw', default=True, help="set to downsample on non-raw source")
-
-    parser.add_option('--new', action='store_true', dest='create_new', default=False, help="Set to downsample and motion correct anew")
+                      dest="n_processes", default=1, help="N processes [default: 1]")
     parser.add_option('--mmap', action='store', dest='mmap_prefix', default='Yr', help="Prefix for sourced memmap/mc files (default: Yr)")
     parser.add_option('--prefix', action='store', dest='save_prefix', default=None, help="Prefix for saveing caiman results (default: 'seeded-/patch-Yr')")
 
@@ -620,7 +611,7 @@ def main(options):
     create_new = opts.create_new
     mm_prefix = opts.mmap_prefix
     prefix = opts.save_prefix
-    traceid=opts.traceid
+    seed_source = opts.seed_source
     seed_rois = opts.seed_rois
 
     cparams = [a for a in options if 'c_' in a]
@@ -633,7 +624,8 @@ def main(options):
 
     print(c_args)
 
-
+    if mm_prefix in [None, 'None']:
+        mm_prefix = 'Yr'
 
     if seed_rois:
         if 'rois' not in seed_source:
@@ -643,10 +635,12 @@ def main(options):
         else:
             roiid = seed_source
         prefix = '%s_%s' % (roiid, run_type)
+
         run_cnmf_seeded(animalid, session, fov, experiment=experiment, roiid=roiid, mm_prefix=mm_prefix,
                         rootdir=rootdir, prefix=prefix, n_processes=n_processes, opts_kws=c_args)
     else:
-        prefix = run_type
+        if prefix in [None, 'None']:
+            prefix = run_type
         run_cnmf_patches(animalid, session, fov, experiment=experiment, mm_prefix=mm_prefix,
                          rootdir=rootdir, prefix=prefix, n_processes=n_processes, opts_kws=c_args)
 
