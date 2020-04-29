@@ -373,6 +373,9 @@ def get_roiid_from_traceid(animalid, session, fov, run_type=None, traceid='trace
     if run_type is not None:
         if int(session) < 20190511 and run_type == 'gratings':
             a_traceid_dict = glob.glob(os.path.join(rootdir, animalid, session, fov, '*run*', 'traces', 'traceids*.json'))[0]
+        elif 'retino' in run_type:
+            # Load any traceid dict to identify which roiid corresponds to give traceid
+            a_traceid_dict = glob.glob(os.path.join(rootdir, animalid, session, fov, '*run*', 'traces', 'traceids*.json'))[0] 
         else:
             a_traceid_dict = glob.glob(os.path.join(rootdir, animalid, session, fov, '*%s*' % run_type, 'traces', 'traceids*.json'))[0]
     else:
