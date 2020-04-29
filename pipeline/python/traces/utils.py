@@ -369,21 +369,43 @@ def frames_to_trials(curr_rundir, trials_in_block, file_ix, frame_shift=0,
 
 
 def get_roiid_from_traceid(animalid, session, fov, run_type=None, traceid='traces001', rootdir='/n/coxfs01/2p-data'):
-    
-    if run_type is not None:
-        if int(session) < 20190511 and run_type == 'gratings':
-            a_traceid_dict = glob.glob(os.path.join(rootdir, animalid, session, fov, '*run*', 'traces', 'traceids*.json'))[0]
-        elif 'retino' in run_type:
-            # Load any traceid dict to identify which roiid corresponds to give traceid
-            a_traceid_dict = glob.glob(os.path.join(rootdir, animalid, session, fov, '*run*', 'traces', 'traceids*.json'))[0] 
+   
+    if 'trace' in traceid: 
+        if run_type is not None:
+            if int(session) < 20190511 and run_type == 'gratings':
+                a_traceid_dict = glob.glob(os.path.join(rootdir, animalid, session, fov, '*run*', 'traces', 'traceids*.json'))[0]
+            elif 'retino' in run_type:
+                # Load any traceid dict to identify which roiid corresponds to give traceid
+                a_traceid_dict = glob.glob(os.path.join(rootdir, animalid, session, fov, '*run*', 'traces', 'traceids*.json'))[0] 
+            else:
+                a_traceid_dict = glob.glob(os.path.join(rootdir, animalid, session, fov, '*%s*' % run_type, 'traces', 'traceids*.json'))[0]
         else:
-            a_traceid_dict = glob.glob(os.path.join(rootdir, animalid, session, fov, '*%s*' % run_type, 'traces', 'traceids*.json'))[0]
-    else:
-        a_traceid_dict = glob.glob(os.path.join(rootdir, animalid, session, fov, '*run*', 'traces', 'traceids*.json'))[0]
+            a_traceid_dict = glob.glob(os.path.join(rootdir, animalid, session, fov, '*run*', 'traces', 'traceids*.json'))[0]
+    else: # is retino
+        a_traceid_dict = glob.glob(os.path.join(rootdir, animalid, session, fov, '%s*' % run_type, 'retino_analysis', 'analysisids*.json'))[0]
+        
     with open(a_traceid_dict, 'r') as f:
         tracedict = json.load(f)
-    
+
     tid = tracedict[traceid]
+   
+    if tid['PARAMS']['roi_type'] != 'manual2D_circle':
+        try:
+            print("**** warning: specified traceid <%s> is not a manual ROI." % traceid)
+            print("... finding traceid extracted with manual ROIs...")
+            tmp_ids = sorted([k for k, v in tracedict.items() if v['PARAMS']['roi_type']=='manual2D_circle'], key=natural_keys)
+            assert len(tmp_ids) > 0, "NO MANUAL ROIS FOUND."
+            for ti, tname in enumerate(sorted(tmp_ids, key=natural_keys)):
+                print(ti, tname)
+            print("Selecting: %s" % tmp_ids[0])
+            traceid = tmp_ids[0]
+            tid = tracedict[traceid] 
+        except Exception as e:
+            print(e)
+            return None
+
     roiid = tid['PARAMS']['roi_id']
     
     return roiid
+
+
