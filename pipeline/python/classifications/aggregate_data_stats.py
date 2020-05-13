@@ -19,8 +19,11 @@ from pipeline.python.classifications import experiment_classes as util
 from pipeline.python.utils import label_figure, natural_keys
 
 
-def get_excluded_datasets(filter_by='drop_repeats', excluded_sessions=[]):
-
+def get_sorted_fovs(filter_by='drop_repeats', excluded_sessions=[]):
+    '''
+    For each animal, dict of visual areas and list of tuples (each tuple is roughly similar fov)
+    Use this to filter out repeated FOVs.
+    '''
     fov_keys = {'JC076': {'V1': [('20190420_fov1', '20190501_fov1')],
                           'Lm': [('20190423_fov1')],
                           'Li': [('20190422_fov1', '20190502_fov1')]},

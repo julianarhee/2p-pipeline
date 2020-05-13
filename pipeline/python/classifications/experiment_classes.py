@@ -1035,7 +1035,8 @@ class Experiment(object):
                                                   traceid=self.traceid)
                         print("*****corrected offsets!*****")
 
-                    traces, labels, sdf, run_info = util.load_dataset(soma_fpath)
+                    traces, labels, sdf, run_info = util.load_dataset(soma_fpath, trace_type=trace_type, 
+                                                                      add_offset=add_offset, make_equal=make_equal)
                    
                     # Stimulus / condition info
                     self.data.labels = labels 

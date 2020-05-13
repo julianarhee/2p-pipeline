@@ -30,7 +30,7 @@ import scipy.optimize as opt
 from matplotlib.patches import Ellipse, Rectangle
 
 from mpl_toolkits.axes_grid1 import AxesGrid
-from pipeline.python.utils import natural_keys, label_figure, load_data
+from pipeline.python.utils import natural_keys, label_figure, load_dataset #load_data
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 from scipy.signal import argrelextrema
 from scipy.interpolate import splrep, sproot, splev, interp1d
@@ -1469,8 +1469,9 @@ def fit_2d_receptive_fields(animalid, session, fov, run, traceid, create_new=Fal
     
     if do_fits or make_pretty_plots:
         
-        raw_traces, labels, gdf, sdf = load_data(data_fpath, add_offset=True, make_equal=False)
-
+        #raw_traces, labels, gdf, sdf = load_data(data_fpath, add_offset=True, make_equal=False)
+        raw_traces, labels, sdf, run_info = load_dataset(data_fpath, add_offset=True, make_equal=False)
+        
         print("--- [%s|%s|%s|%s]: fitting receptive fields." % (animalid, session, fov, run))        #%%
         # Load parsed data:
         #F0 = np.nanmean(dset['corrected'][:] / dset['dff'][:] )
