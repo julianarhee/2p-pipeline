@@ -3,7 +3,7 @@ import sys
 import os
 import glob
 # option to import from github folder
-sys.path.insert(0, '/n/coxfs01/cechavarria/repos/suite2p')
+#sys.path.insert(0, '/n/coxfs01/cechavarria/repos/suite2p')
 import suite2p
 from suite2p.run_s2p import run_s2p
 import shutil
@@ -13,9 +13,9 @@ import shutil
 rootdir = '/n/coxfs01/2p-data'
 
 
-animalid = 'JC085'
-session = '20190624'
-acquisition = 'FOV1_zoom4p0x'
+animalid = 'JC084' #'JC085'
+session = '20190522' #'20190624'
+acquisition = 'FOV1_zoom2p0x'
 run = 'all_combined'
 scratch_root = '/scratch/tmp'
 

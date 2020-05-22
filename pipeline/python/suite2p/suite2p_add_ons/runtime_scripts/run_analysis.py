@@ -3,7 +3,7 @@ import sys
 import os
 import glob
 # option to import from github folder
-sys.path.insert(0, '/n/coxfs01/cechavarria/repos/suite2p')
+#sys.path.insert(0, '/n/coxfs01/cechavarria/repos/suite2p')
 import suite2p
 from suite2p.run_s2p import run_s2p
 import shutil
@@ -50,7 +50,7 @@ def run_analysis(options):
 
 
 	#loading set parameters
-	data = np.load(os.path.join(analysis_dir,'suite2p','ops0.npz'))
+	data = np.load(os.path.join(analysis_dir,'suite2p','ops0.npz'), allow_pickle=True)
 
 	ops = data['ops'].item()
 	db = data['db'].item()

@@ -42,9 +42,7 @@ def reduce_and_save_tif(fpath, dst_dir='/scratch'):
  
     #i0 = findOccurrences(fn,'/')[-1]
     #i1 = findOccurrences(fn,'_')[-1]
-
-    print("reducing, save to %s" % dst_dir)
-
+    
     fname = os.path.split(fpath)[-1]
     tif_num = re.findall(r'_\d{5}', fname)[0][1:]
 
@@ -56,18 +54,23 @@ def reduce_and_save_tif(fpath, dst_dir='/scratch'):
     new_fn = '%s_%s_%s' % (fov, run, tif_num) #fn[i1+1:])
     print(new_fn)
 
-    # Read tif stack
-    stack0 = imread(fpath)
+    if os.path.exists(os.path.join(dst_dir, new_fn)):
+        print("file exists, skipping")
+    else:  
+        print("reducing, save to %s" % dst_dir)
 
-    # Black reduce spatially
-    stack1 = block_mean_stack(stack0, (2,2))
-    print(stack1.shape)
+        # Read tif stack
+        stack0 = imread(fpath)
 
-    # Save
-    imsave(os.path.join(dst_dir, new_fn), stack1)
+        # Black reduce spatially
+        stack1 = block_mean_stack(stack0, (2,2))
+        print(stack1.shape)
 
-    print("--saved: %s" % new_fn)
+        # Save
+        imsave(os.path.join(dst_dir, new_fn), stack1)
+        print("--saved: %s" % new_fn)
 
+    return
 
 #provide some info
 parser = argparse.ArgumentParser()
@@ -112,8 +115,8 @@ for run_dir in run_dirs:
     fpaths = glob.glob(os.path.join(run_dir, 'raw*', '*.tif'))
 
     for fpath in fpaths:      
-        print(fpath)
-        #reduce_and_save_tif(fpath, dst_dir=dst_dir)
+        #print(fpath)
+        reduce_and_save_tif(fpath, dst_dir=dst_dir)
 
 
 
