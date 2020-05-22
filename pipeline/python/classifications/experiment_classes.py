@@ -271,13 +271,15 @@ def get_trial_metrics(raw_traces, labels, response_type='mean', nframes_post_ons
         # Also get zscore (single value) for each trial:
         stim_mean = curr_traces.iloc[stim_on_frame:stim_on_frame+nframes_post_onset].mean(axis=0)
         if response_type == 'zscore':
-            stats_list.append((stim_mean-bas_mean)/bas_std)
+            #stats_list.append((stim_mean-bas_mean)/bas_std)
+            stats_list.append((stim_mean)/bas_std)
         elif response_type == 'snr':
             stats_list.append(stim_mean/bas_mean)
         elif response_type == 'mean':
             stats_list.append(stim_mean)
         elif response_type == 'dff':
-            stats_list.append((stim_mean-bas_mean) / bas_mean)
+            #stats_list.append((stim_mean-bas_mean) / bas_mean)
+            stats_list.append((stim_mean) / bas_mean)
                 
     trialstats =  pd.concat(stats_list, axis=1).T # cols=rois, rows = trials
     
@@ -499,7 +501,7 @@ def get_receptive_field_fits(animalid, session, fov, response_type='dff', #recep
 # Generic "event"-based experiments
 # #############################################################################
 def get_responsive_cells(animalid, session, fov, run=None, traceid='traces001',
-                         response_type='dff',
+                         #response_type='dff',
                          responsive_test='ROC', responsive_thr=0.05, n_stds=2.5,
                          rootdir='/n/coxfs01/2p-data'):
         
@@ -514,6 +516,7 @@ def get_responsive_cells(animalid, session, fov, run=None, traceid='traces001',
     stats_fpath = glob.glob(os.path.join(stats_dir, '*results*.pkl'))
 
     print("-- stats: %s" % run)
+    print(stats_fpath)
     #print(stats_fpath)
     if len(stats_fpath)==0:
         return None, None
@@ -527,10 +530,12 @@ def get_responsive_cells(animalid, session, fov, run=None, traceid='traces001',
             print("JK ERROR")
             print(e)
     try:
-        stats_fpath = glob.glob(os.path.join(stats_dir, '*results*.pkl'))
+        #stats_fpath = glob.glob(os.path.join(stats_dir, '*results*.pkl'))
         assert len(stats_fpath) > 0, "No stats results found for: %s" % stats_dir
         with open(stats_fpath[0], 'rb') as f:
+            print("...loading stats")
             rstats = pkl.load(f)
+        print("loaded")        
         if responsive_test == 'ROC':
             roi_list = [r for r, res in rstats.items() if res['pval'] < responsive_thr]
             nrois_total = len(rstats.keys())
@@ -539,6 +544,7 @@ def get_responsive_cells(animalid, session, fov, run=None, traceid='traces001',
             roi_list = [r for r in rstats['nframes_above'].columns if any(rstats['nframes_above'][r] > responsive_thr)]
             nrois_total = rstats['nframes_above'].shape[-1]
     except Exception as e:
+        print(e)
         traceback.print_exc()
     
     return roi_list, nrois_total
