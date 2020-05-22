@@ -137,9 +137,17 @@ def load_dataset(soma_fpath, trace_type='dff', add_offset=True, make_equal=False
             npdata = np.load(neuropil_fpath)
             neuropil_f0 = np.nanmean(np.nanmean(pd.DataFrame(npdata['f0'][:])))
             neuropil_df = pd.DataFrame(npdata['data'][:]) #+ pd.DataFrame(npdata['f0'][:]).mean().mean()
-            print("adding NP offset... (NP baseline offset: %.2f)" % neuropil_f0)
+            print("adding NP offset... (NP f0 offset: %.2f)" % neuropil_f0)
             print(xdata_df.shape, neuropil_df.mean(axis=0).shape, F0.shape)
-            raw_traces = xdata_df + list(np.nanmean(neuropil_df, axis=0)) + F0 #.T + F0
+            
+            # # Also add raw 
+            raw_fpath = soma_fpath.replace('np_subtracted', 'raw')
+            rawdata = np.load(raw_fpath)
+            raw_f0 = np.nanmean(np.nanmean(pd.DataFrame(rawdata['f0'][:])))
+            raw_df = pd.DataFrame(rawdata['data'][:]) #+ pd.DataFrame(npdata['f0'][:]).mean().mean()
+            print("adding raw offset... (raw f0 offset: %.2f)" % raw_f0)
+
+            raw_traces = xdata_df + list(np.nanmean(neuropil_df, axis=0)) + F0 + neuropil_f0 + raw_f0 # list(np.nanmean(raw_df, axis=0)) #.T + F0
         else:
             raw_traces = xdata_df + F0
 
