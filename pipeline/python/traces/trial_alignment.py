@@ -300,6 +300,7 @@ def aggregate_experiment_runs(animalid, session, fov, experiment, traceid='trace
 
     dfs = {}
     frame_times=[]; trial_ids=[]; config_ids=[]; sdf_list=[]; run_ids=[]; file_ids=[];
+    frame_indices = []
     for total_ix, (run_ix, file_ix, fpath) in enumerate(rawfns):
         print("**** File %i of %i *****" % (int(total_ix+1), len(rawfns)))
         try:
@@ -457,6 +458,8 @@ def aggregate_experiment_runs(animalid, session, fov, experiment, traceid='trace
                 currf0 = F0_df.loc[frames_in_trials]
                 currf0['ix'] = [total_ix for _ in range(currdf.shape[0])]
                 dfs['%s-F0' % trace_type].append(currf0)
+            
+            frame_indices.append(frames_in_trials) # added 2019-05-21
         
             frame_times.append(relative_tsecs)
             trial_ids.append(trial_labels)
@@ -521,13 +524,14 @@ def aggregate_experiment_runs(animalid, session, fov, experiment, traceid='trace
     
     # Also collate relevant frame info (i.e., labels):
     tstamps = np.hstack(frame_times)
-    
+    f_indices = np.hstack(frame_indices) 
     #%
     # Turn paradigm info into dataframe: 
     xdata_df = pd.concat(dfs[dfs.keys()[0]], axis=0).reset_index(drop=True) #drop=True)
     print "XDATA concatenated: %s" % str(xdata_df.shape)
     
     labels_df = pd.DataFrame({'tsec': tstamps, 
+                              'frame': f_indices,
                               'config': configs,
                               'trial': trials,
                               'stim_dur': stim_durs #np.tile(stim_dur, trials.shape)
@@ -584,8 +588,8 @@ def aggregate_experiment_runs(animalid, session, fov, experiment, traceid='trace
     # Save all the dtypes
     for trace_type in trace_types:
         print trace_type
-        xdata_df = pd.concat(dfs['%s-detrended' % trace_type], axis=0).reset_index(drop=True) #drop=True)
-        f0_df = pd.concat(dfs['%s-F0' % trace_type], axis=0).reset_index(drop=True) #drop=True)
+        xdata_df = pd.concat(dfs['%s-detrended' % trace_type], axis=0).reset_index() #drop=True) #drop=True)
+        f0_df = pd.concat(dfs['%s-F0' % trace_type], axis=0).reset_index() #drop=True) #drop=True)
         
         roidata = [c for c in xdata_df.columns if c != 'ix']
         
