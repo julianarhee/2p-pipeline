@@ -16,7 +16,7 @@ import seaborn as sns
 import cPickle as pkl
 
 from pipeline.python.classifications import experiment_classes as util
-from pipeline.python.utils import label_figure, natural_keys
+from pipeline.python.utils import label_figure, natural_keys, reformat_morph_values
 
 
 def get_sorted_fovs(filter_by='drop_repeats', excluded_sessions=[]):
@@ -115,8 +115,6 @@ def do_mannwhitney(mdf, metric='I_rs', multi_comp_test='holm'):
 
 
 
-
-
 def load_traces(animalid, session, fovnum, curr_exp, traceid='traces001',
                responsive_test='ROC', responsive_thr=0.05, response_type='dff', n_stds=2.5):
     
@@ -134,7 +132,7 @@ def load_traces(animalid, session, fovnum, curr_exp, traceid='traces001',
     # Get stimulus config info
     sdf = exp.data.sdf
     if curr_exp == 'blobs':
-        sdf = util.reformat_morph_values(sdf)
+        sdf = reformat_morph_values(sdf)
     n_conditions = len(sdf['size'].unique())
 
     # Get responsive cells
@@ -146,7 +144,7 @@ def load_traces(animalid, session, fovnum, curr_exp, traceid='traces001',
     return traces, labels, sdf
 
 
-def traces_to_trials(traces, labels, epoch='stimulus'):
+def traces_to_trials(traces, labels, epoch='stimulus', metric='mean'):
     '''
     Returns dataframe w/ columns = roi ids, rows = mean response to stim ON per trial
     Last column is config on given trial.
@@ -160,6 +158,12 @@ def traces_to_trials(traces, labels, epoch='stimulus'):
         mean_responses = pd.DataFrame(np.vstack([np.nanmean(traces.iloc[g.index[s_on:s_on+n_on]], axis=0)\
                                             for trial, g in labels.groupby(['trial'])]),
                                              columns=roi_list, index=trial_list)
+        if metric=='zscore':
+            std_baseline = pd.DataFrame(np.vstack([np.nanstd(traces.iloc[g.index[0:s_on]], axis=0)\
+                                            for trial, g in labels.groupby(['trial'])]),
+                                             columns=roi_list, index=trial_list)
+            tmp = mean_responses.divide(std_baseline)
+            mean_responses = tmp.copy()
     elif epoch == 'baseline':
         mean_responses = pd.DataFrame(np.vstack([np.nanmean(traces.iloc[g.index[0:s_on]], axis=0)\
                                             for trial, g in labels.groupby(['trial'])]),
@@ -239,6 +243,34 @@ def extract_options(options):
 # experiment = 'blobs'
 #always_exclude = ['20190426_JC078']
 
+def get_aggregate_data_filepath(experiment, traceid='traces001', response_type='dff', epoch='stimulus',
+                       responsive_test='ROC', responsive_thr=0.05, n_stds=0.0,
+                       aggregate_dir='/n/coxfs01/julianarhee/aggregate-visual-areas'):
+    
+    data_dir = os.path.join(aggregate_dir, 'data-stats')
+    sdata = get_aggregate_info(traceid=traceid)
+    #### Get DATA
+    load_data = False
+    data_desc = '%s_%s-%s_%s-thr-%.2f_%s' % (experiment, traceid, response_type, responsive_test, responsive_thr, epoch)
+    data_outfile = os.path.join(data_dir, '%s.pkl' % data_desc)
+
+    return data_outfile #print(data_desc)
+    
+
+def load_aggregate_data(experiment, traceid='traces001', response_type='dff', epoch='stimulus',
+                       responsive_test='ROC', responsive_thr=0.05, n_stds=0.0,
+                       aggregate_dir='/n/coxfs01/julianarhee/aggregate-visual-areas'):
+    
+    data_outfile = get_aggregate_data_filepath(experiment, traceid=traceid, response_type=response_type, epoch=epoch,
+                       responsive_test=responsive_test, responsive_thr=responsive_thr, n_stds=n_stds,
+                       aggregate_dir=aggregate_dir)
+    print("...loading: %s" % data_outfile)
+    with open(data_outfile, 'rb') as f:
+        DATA = pkl.load(f)
+
+    return DATA
+
+
 def aggregate_and_save(experiment, traceid='traces001', response_type='dff', epoch='stimulus',
                        responsive_test='ROC', responsive_thr=0.05, n_stds=0.0, create_new=False,
                        always_exclude=['20190426_JC078'],
@@ -247,10 +279,15 @@ def aggregate_and_save(experiment, traceid='traces001', response_type='dff', epo
     #### Load mean trial info for responsive cells
     data_dir = os.path.join(aggregate_dir, 'data-stats')
     sdata = get_aggregate_info(traceid=traceid)
+    
     #### Get DATA
     load_data = False
-    data_desc = '%s_%s-%s_%s-thr-%.2f_%s' % (experiment, traceid, response_type, responsive_test, responsive_thr, epoch)
-    data_outfile = os.path.join(data_dir, '%s.pkl' % data_desc)
+    
+    #data_desc = '%s_%s-%s_%s-thr-%.2f_%s' % (experiment, traceid, response_type, responsive_test, responsive_thr, epoch)
+    data_outfile = get_aggregate_data_filepath(experiment, traceid=traceid, response_type=response_type, epoch=epoch,
+                       responsive_test=responsive_test, responsive_thr=responsive_thr, n_stds=n_stds,
+                       aggregate_dir=aggregate_dir)
+    data_desc = os.path.splitext(os.path.split(data_outfile)[-1])[0]
 
     if not os.path.exists(data_outfile):
         load_data = True
@@ -273,12 +310,14 @@ def aggregate_and_save(experiment, traceid='traces001', response_type='dff', epo
                 continue
                 
             # Load traces
+            trace_type = 'df' if response_type=='zscore' else response_type
             traces, labels, sdf = load_traces(animalid, session, fovnum, experiment, 
-                                              traceid=traceid, response_type=response_type,
+                                              traceid=traceid, response_type=trace_type,
                                               responsive_test=responsive_test, 
                                               responsive_thr=responsive_thr, n_stds=n_stds)
             # Calculate mean trial metric
-            mean_responses = traces_to_trials(traces, labels)
+            metric = 'zscore' if response_type=='zscore' else 'mean'
+            mean_responses = traces_to_trials(traces, labels, epoch=epoch, metric=response_type)
 
             DATA['%s' % datakey] = {'data': mean_responses,
                                     'sdf': sdf}

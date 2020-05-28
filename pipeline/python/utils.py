@@ -130,7 +130,7 @@ def load_dataset(soma_fpath, trace_type='dff', add_offset=True, make_equal=False
         # Traces
         xdata_df = pd.DataFrame(dset['data'][:]) # neuropil-subtracted & detrended
         F0 = pd.DataFrame(dset['f0'][:]).mean().mean() # detrended offset
-        print("NP_subtracted offset was: %.2f" % F0)
+        print("NP_subtracted f0 offset was: %.2f" % F0)
         if add_offset:
             #% Add baseline offset back into raw traces:
             neuropil_fpath = soma_fpath.replace('np_subtracted', 'neuropil')
