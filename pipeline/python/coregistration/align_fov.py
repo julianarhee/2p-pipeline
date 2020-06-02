@@ -367,7 +367,7 @@ class Animal():
     def get_reference(self, path_to_macro=None):
         if path_to_macro is None:
             try:
-                macro_paths = glob.glob(os.path.join(self.rootdir, self.animalid, 'macro_maps', '16bitSurf.tif'))
+                macro_paths = glob.glob(os.path.join(self.rootdir, self.animalid, 'macro_maps', '20*', '*urf.png'))
                 assert len(macro_paths) == 1, "Not sure which image to use as reference..."
                 path_to_macro = macro_paths[0]
             except Exception as e:
@@ -547,9 +547,9 @@ def extract_options(options):
     parser = optparse.OptionParser()
 
     parser.add_option('-D', '--root', action='store', dest='rootdir',
-                          default='/nas/volume1/2photon/data',
+                          default='/n/coxfs01/2p-data',
                           help='data root dir (dir w/ all animalids) [default: /nas/volume1/2photon/data, /n/coxfs01/2pdata if --slurm]')
-    parser.add_option('--slurm', action='store_true', dest='slurm', default=False, help="set if running as SLURM job on Odyssey")
+    # parser.add_option('--slurm', action='store_true', dest='slurm', default=False, help="set if running as SLURM job on Odyssey")
 
     parser.add_option('-i', '--animalid', action='store', dest='animalid',
                           default='', help='Animal ID')
@@ -558,15 +558,13 @@ def extract_options(options):
     parser.add_option('-S', '--session', action='store', dest='session',
                           default='', help='session dir (format: YYYMMDD_ANIMALID')
     parser.add_option('-A', '--acq', action='store', dest='acquisition',
-                          default='FOV1', help="acquisition folder (ex: 'FOV1_zoom3x') [default: FOV1]")
+                          default='FOV1_zoom2p0x', help="acquisition folder (ex: 'FOV1_zoom3x') [default: FOV1]")
     parser.add_option('-M', '--macro-path', action='store', dest='macro_path',
                           default=None, help="Full path to image to use as reference (macro image) [default: /path/to/macro_maps/16bitSurf.tiff]")
     
     
     (options, args) = parser.parse_args(options)
-    if options.slurm is True and '/n/coxfs01' not in options.rootdir:
-        options.rootdir = '/n/coxfs01/2p-data'
-        
+       
     return options
 
 
