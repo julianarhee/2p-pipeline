@@ -62,7 +62,8 @@ def rotate_image(mat, angle):
     return rotated_mat
 
 
-def transform2p_to_macro(avg, zoom_factor, acquisition_dir, channel_ix=0, plot=False):
+def transform2p_to_macro(avg, zoom_factor, acquisition_dir, channel_ix=0, plot=False,
+                        xaxis_conversion=2.312, yaxis_conversion=1.904):
     '''
     Does standard Fiji steps:
         1. Scale slow-angle (if needed)
@@ -70,11 +71,16 @@ def transform2p_to_macro(avg, zoom_factor, acquisition_dir, channel_ix=0, plot=F
         3. Convert to 8-bit and adjust contrast
     '''
     # Scale:
-    d1, d2 = avg.shape
+    d1, d2 = avg.shape # (img height, img width)
     print("Input img shape: (%i, %i)" % (d1, d2))
     #scaled = cv2.resize(avg, dsize=(d1, int(d2*zoom_factor)), interpolation=cv2.INTER_CUBIC)  #, dtype=avg.dtype)
-    scaled = cv2.resize(avg, dsize=(int(d1*zoom_factor), d2), interpolation=cv2.INTER_CUBIC)  #, dtype=avg.dtype)
+    #new_d1 = d1*xaxis_conversion
+    #new_d2 = d2*yaxis_conversion
+    #scaled_pix = cv2.resize(avg, (new_d1, new_d2))
     
+    # dsize: (v1, v2) -- v1 specifies COLS, v2 specifies ROWS (i.e., img_w, img_h)
+    scaled = cv2.resize(avg, dsize=(int(d1*zoom_factor), d2), interpolation=cv2.INTER_CUBIC)  #, dtype=avg.dtype)
+     
     # Rotate leftward:
     rotated = rotate_image(scaled, 90)
     
@@ -407,7 +413,7 @@ class Animal():
                 return
         
         # Get anatomical image if this is  a new or re-do FOV:
-        self.session_list[curr_fov].get_transformed_image()
+        self.session_list[curr_fov].get_transformed_image(create_new=optsE.create_new)
         
     def align_fov(self, curr_fov):
         
@@ -468,7 +474,8 @@ class FOV():
         self.coreg_dir = os.path.join(optsE.rootdir, optsE.animalid, 'coreg', '%s_%s' % (self.session, self.acquisition))
         if not os.path.exists(self.coreg_dir): os.makedirs(self.coreg_dir)
         
-    def get_transformed_image(self):
+    def get_transformed_image(self, create_new=False, 
+                                    xaxis_conversion=2.312, yaxis_conversion=1.888): #1.904):
         acquisition_dir = os.path.join(self.rootdir, self.animalid, self.session, self.acquisition)
         
         # Get transformed, 8bit anatomical image to align to macro map:
@@ -476,28 +483,53 @@ class FOV():
         if len(image_paths) == 0:
             print "No anatomical transformed images found. Creating now."
             image_paths = self.transform_anatomicals()
-        
-        if len(image_paths) > 1:
+       
+        # check if scaled for pixels
+        scaled_paths = sorted(glob.glob(os.path.join(acquisition_dir, 'anatomical', 'anatomical_Channel*_transformed_scaled.tif')), key=natural_keys)
+        if len(scaled_paths)==0:
+            scaled_paths = self.scale_anatomicals(image_paths, 
+                                                  xaxis_conversion=xaxis_conversion,
+                                                  yaxis_conversion=yaxis_conversion)
+
+        if len(scaled_paths) > 1:
             print "More than 1 channel img found:"
-            ch1 = tf.imread([f for f in image_paths if 'Channel01' in f][0])
-            ch2 = tf.imread([f for f in image_paths if 'Channel02' in f][0])
+            ch1 = tf.imread([f for f in scaled_paths if 'Channel01' in f][0])
+            ch2 = tf.imread([f for f in scaled_paths if 'Channel02' in f][0])
             fig = pl.figure(figsize=(10,4))
             pl.subplot(1,2,1); pl.imshow(ch1, cmap='gray'); pl.title('Channel01'); pl.axis('off')
             pl.subplot(1,2,2); pl.imshow(ch2, cmap='gray'); pl.title('Channel02'); pl.axis('off')
             pl.tight_layout()
             pl.show(block=False)
             
-            for i, img_path in enumerate(image_paths):
+            for i, img_path in enumerate(scaled_paths):
                 print i, img_path
             select = input("Choose IDX of channel to use: ")
-            self.image_path = image_paths[select]
+            self.image_path = scaled_paths[select]
             pl.close(fig)
         else:
-            self.image_path = image_paths[0]
+            self.image_path = scaled_paths[0]
             
         self.image = tf.imread(self.image_path)
         
+       
+    def scale_anatomicals(self, image_paths, xaxis_conversion=2.312, yaxis_conversion=1.904):
         
+        print("... scaling pixels")
+        
+        new_paths = []
+        for impath in image_paths:
+            img_outpath = '%s_scaled.tif' % (os.path.splitext(impath)[0])
+            im = tf.imread(impath)
+            d1, d2 = im.shape # d1=HEIGHT, d2=WIDTH
+            new_d1 = int(round(d1*xaxis_conversion,1)) # yaxis corresponds to M-L axis (now along )
+            new_d2 = int(round(d2*yaxis_conversion,1)) # xaxis corresopnds to A-P axis (d2 is iamge width) 
+            im_r = cv2.resize(im, (new_d2, new_d1))
+            tf.imsave(img_outpath, im_r)
+            print(img_outpath)
+            new_paths.append(img_outpath)
+
+        return new_paths
+
     def transform_anatomicals(self):
         acquisition_dir = os.path.join(self.rootdir, self.animalid, self.session, self.acquisition)
 
@@ -567,6 +599,8 @@ def extract_options(options):
     parser.add_option('-M', '--macro-path', action='store', dest='macro_path',
                           default=None, help="Full path to image to use as reference (macro image) [default: /path/to/macro_maps/16bitSurf.tiff]")
     
+    parser.add_option('--new', action='store_true', dest='create_new',
+                          default=False, help="flag to remake fov images")
     
     (options, args) = parser.parse_args(options)
        
