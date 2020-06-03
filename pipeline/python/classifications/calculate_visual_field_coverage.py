@@ -192,7 +192,7 @@ def hist_rf_dist(rf_dist_from_center, ax=None):
 
 
 def scatter_fovpos_rfpos(fovinfo, rffits, ax=None, axis='azimuth', 
-                         xlim=58.78, ylim=33.66, units='um'):
+                         xlim=59.78, ylim=33.66, units='um'):
     if ax is None:
         fig, ax = pl.subplots()
         
