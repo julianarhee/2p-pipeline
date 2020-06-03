@@ -168,6 +168,7 @@ def transformation_from_points(points1, points2):
 
 
 def warp_im(im, M, dshape):
+    print("warping...", im.min(), im.max())
     output_im = np.zeros(dshape, dtype=im.dtype)
     cv2.warpAffine(im,
                    M[:2],
@@ -248,7 +249,6 @@ def align_to_reference(sample, reference, outdir, sample_name='sample'):
 
 
     #% GET corresponding reference points:
-
     refPt = []
     image = copy.copy(reference)
     ref_pts_img, reference_pts = get_registration_points(reference)
@@ -267,10 +267,14 @@ def align_to_reference(sample, reference, outdir, sample_name='sample'):
     # Use SAMPLTE and TEST points to align:
     sample_mat = np.matrix([i for i in sample_pts])
     reference_mat = np.matrix([i for i in reference_pts])
+    print("ref:", reference_mat.dtype)
+    print("sample:", sample_mat.dtype)
     M = transformation_from_points(reference_mat, sample_mat)
 
     #Re-read sample image as grayscale for warping:
-    out = warp_im(sample, M, reference.shape)
+    out = warp_im(sample.astype(float), M, reference.shape)
+    print('output:', out.min(), out.max())
+    print('wrap matrix:', M.min(), M.max())
 
     coreg_info = dict()
     coreg_info['reference_points_x'] = tuple(p[0] for p in reference_pts)
@@ -426,6 +430,7 @@ class Animal():
 
         pl.figure()
         pl.imshow(self.reference, cmap='gray')
+        print(aligned.min(), aligned.max())
         pl.imshow(a, alpha=0.5)
         pl.axis('off')
         pl.title(curr_fov)
