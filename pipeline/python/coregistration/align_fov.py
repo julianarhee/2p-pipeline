@@ -62,8 +62,8 @@ def rotate_image(mat, angle):
     return rotated_mat
 
 
-def transform2p_to_macro(avg, zoom_factor, acquisition_dir, channel_ix=0, plot=False,
-                        xaxis_conversion=2.312, yaxis_conversion=1.904):
+def transform2p_to_macro(avg, zoom_factor, acquisition_dir, channel_ix=0, plot=False): #,
+                        #xaxis_conversion=2.312, yaxis_conversion=1.904):
     '''
     Does standard Fiji steps:
         1. Scale slow-angle (if needed)
@@ -368,6 +368,7 @@ class Animal():
         self.get_reference(path_to_macro=optsE.macro_path)
         
     def save_me(self):
+        print("...saving")
         out_fpath = os.path.join(self.coreg_dir, 'FOVs.pkl')
         f = open(out_fpath, 'wb')
         #with open(out_fpath, 'wb') as f:
@@ -410,10 +411,12 @@ class Animal():
                 print "Re-adding FOV to list."
                 self.session_list.update({curr_fov: FOV(optsE)})
             else:
-                return
-        
+                return -1
+       
         # Get anatomical image if this is  a new or re-do FOV:
         self.session_list[curr_fov].get_transformed_image(create_new=optsE.create_new)
+       
+        return None
         
     def align_fov(self, curr_fov):
         
@@ -470,12 +473,12 @@ class FOV():
         self.acquisition = optsE.acquisition
         self.image_fpath = None
         self.image = None
+        self.pixel_size = (2.312, 1.888) # um per pixel
         self.meta = {'nchannels': None, 'zoom_factor': None}
         self.coreg_dir = os.path.join(optsE.rootdir, optsE.animalid, 'coreg', '%s_%s' % (self.session, self.acquisition))
         if not os.path.exists(self.coreg_dir): os.makedirs(self.coreg_dir)
         
-    def get_transformed_image(self, create_new=False, 
-                                    xaxis_conversion=2.312, yaxis_conversion=1.888): #1.904):
+    def get_transformed_image(self, create_new=False): #1.904):
         acquisition_dir = os.path.join(self.rootdir, self.animalid, self.session, self.acquisition)
         
         # Get transformed, 8bit anatomical image to align to macro map:
@@ -485,11 +488,12 @@ class FOV():
             image_paths = self.transform_anatomicals()
        
         # check if scaled for pixels
+        xaxis_conversion, yaxis_conversion = self.pixel_size
         scaled_paths = sorted(glob.glob(os.path.join(acquisition_dir, 'anatomical', 'anatomical_Channel*_transformed_scaled.tif')), key=natural_keys)
         if len(scaled_paths)==0:
-            scaled_paths = self.scale_anatomicals(image_paths, 
-                                                  xaxis_conversion=xaxis_conversion,
-                                                  yaxis_conversion=yaxis_conversion)
+            scaled_paths = self.scale_anatomicals(image_paths) 
+                                                  #xaxis_conversion=xaxis_conversion,
+                                                  #yaxis_conversion=yaxis_conversion)
 
         if len(scaled_paths) > 1:
             print "More than 1 channel img found:"
@@ -511,11 +515,12 @@ class FOV():
             
         self.image = tf.imread(self.image_path)
         
-       
-    def scale_anatomicals(self, image_paths, xaxis_conversion=2.312, yaxis_conversion=1.904):
+        return
+
+    def scale_anatomicals(self, image_paths): #, xaxis_conversion=2.312, yaxis_conversion=1.904):
         
         print("... scaling pixels")
-        
+        xaxis_conversion, yaxis_conversion = self.pixel_size 
         new_paths = []
         for impath in image_paths:
             img_outpath = '%s_scaled.tif' % (os.path.splitext(impath)[0])
@@ -626,18 +631,30 @@ def main(options):
         A.save_me()
     else:
         with open(animal_fpath, 'rb') as f: A = pkl.load(f)
-        
-        
-    A.add_fov(optsE)
-    curr_fov = '%s_%s' % (optsE.session, optsE.acquisition)
-    A.align_fov(curr_fov)
-    A.plot_alignment(curr_fov)
-    reselect_points = A.check_alignment(curr_fov)
-    while reselect_points:
-        #pl.close(fig)
+       
+#        for fkey, currfv in A.session_list.items():
+#            if not hasattr(currfv, 'pixel_size'):
+#                fv_ = FOV(optsE) #setattr(xx, vv, 'test')
+#                print('%s - adding px' % fkey)
+#                for vv in dir(currfv):
+#                    if _ in vv:
+#                        continue
+##                    if callable(getattr(currfv, vv)):
+##                        continue
+##                    setattr(fv_, vv, getattr(currfv, vv))
+#                A.session_list[fkey] = fv_
+#
+    state = A.add_fov(optsE)
+    if state is None:
+        curr_fov = '%s_%s' % (optsE.session, optsE.acquisition)
         A.align_fov(curr_fov)
         A.plot_alignment(curr_fov)
         reselect_points = A.check_alignment(curr_fov)
+        while reselect_points:
+            #pl.close(fig)
+            A.align_fov(curr_fov)
+            A.plot_alignment(curr_fov)
+            reselect_points = A.check_alignment(curr_fov)
 
     A.save_me()
     print A.session_list
