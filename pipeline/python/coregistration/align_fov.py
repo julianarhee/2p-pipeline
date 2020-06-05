@@ -62,7 +62,7 @@ def rotate_image(mat, angle):
     return rotated_mat
 
 
-def transform2p_to_macro(avg, zoom_factor, acquisition_dir, channel_ix=0, plot=False): #,
+def transform2p_to_macro(avg, zoom_factor, acquisition_dir='/tmp', channel_ix=0, plot=False, save=True): #,
                         #xaxis_conversion=2.312, yaxis_conversion=1.904):
     '''
     Does standard Fiji steps:
@@ -106,13 +106,26 @@ def transform2p_to_macro(avg, zoom_factor, acquisition_dir, channel_ix=0, plot=F
         pl.subplot(2,2,4); pl.title('equalize'); pl.imshow(eq)
         pl.savefig(os.path.join(acquisition_dir, 'anatomical', 'transform_steps_Ch%i.png' % int(channel_ix+1)))
         pl.close()
-        
-    transformed_img_path = os.path.join(acquisition_dir, 'anatomical', 'anatomical_Channel%02d_transformed.tif' % int(channel_ix+1))
-    tf.imsave(transformed_img_path, eq)
     
-    return transformed_img_path
+    if save:
+        transformed_img_path = os.path.join(acquisition_dir, 'anatomical', 'anatomical_Channel%02d_transformed.tif' % int(channel_ix+1))
+        tf.imsave(transformed_img_path, eq)
+        return transformed_img_path
+    else:
+        return img8 #eq #transformed_img_path
     
+ 
+def scale_2p_fov(transformed_image, pixel_size=(2.312, 1.888)):
+    xaxis_conversion, yaxis_conversion = pixel_size 
 
+    d1, d2 = transformed_image.shape # d1=HEIGHT, d2=WIDTH
+    new_d1 = int(round(d1*xaxis_conversion,1)) # yaxis corresponds to M-L axis (now along )
+    new_d2 = int(round(d2*yaxis_conversion,1)) # xaxis corresopnds to A-P axis (d2 is iamge width) 
+    im_r = cv2.resize(transformed_image, (new_d2, new_d1))
+
+    return im_r
+
+    
 def transform_anatomicals(acquisition_dir):
     image_paths = []
     anatomical_fpath = glob.glob(os.path.join(acquisition_dir, 'anatomical', 'processed', 'processed*', 'mcorrected*', '*.tif'))
@@ -460,7 +473,7 @@ class Animal():
             
         return reselect_points  
     
-        
+   
         
         
 #%%
@@ -525,10 +538,12 @@ class FOV():
         for impath in image_paths:
             img_outpath = '%s_scaled.tif' % (os.path.splitext(impath)[0])
             im = tf.imread(impath)
-            d1, d2 = im.shape # d1=HEIGHT, d2=WIDTH
-            new_d1 = int(round(d1*xaxis_conversion,1)) # yaxis corresponds to M-L axis (now along )
-            new_d2 = int(round(d2*yaxis_conversion,1)) # xaxis corresopnds to A-P axis (d2 is iamge width) 
-            im_r = cv2.resize(im, (new_d2, new_d1))
+#            d1, d2 = im.shape # d1=HEIGHT, d2=WIDTH
+#            new_d1 = int(round(d1*xaxis_conversion,1)) # yaxis corresponds to M-L axis (now along )
+#            new_d2 = int(round(d2*yaxis_conversion,1)) # xaxis corresopnds to A-P axis (d2 is iamge width 
+#            im_r = cv2.resize(im, (new_d2, new_d1))
+
+            im_r = scale_2p_fov(im, pixel_size=self.pixel_size)
             tf.imsave(img_outpath, im_r)
             print(img_outpath)
             new_paths.append(img_outpath)
