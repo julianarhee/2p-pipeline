@@ -207,9 +207,10 @@ def warp_rois(coreg_d, roi_masks, roi_zproj, clip_lim=2.0, tile=5):
     return rois_d, zproj_d#, roi_zproj_eq
 
 
-def plot_transformations(coreg_d, rois_d, cmap='jet'):
+def plot_transformations(coreg_d, rois_d, zproj_d, cmap='jet'):
 
     roi_zproj_eq = zproj_d.equalized.copy()
+    transf_zproj = zproj_d.transformed.copy()
 
     coreg_fov2p_warped = coreg_d['BV_warped'].copy()
     fov2p_aligned_overlay = np.ma.masked_where(coreg_fov2p_warped==0, coreg_fov2p_warped)
@@ -279,7 +280,7 @@ def do_fov_alignment(animalid, session, roiid=None, traceid='traces001', verbose
 
  
     if plot:
-        fig = plot_transformations(coreg_d, rois_d, cmap=cmap)
+        fig = plot_transformations(coreg_d, rois_d, zproj_d, cmap=cmap)
         putils.label_figure(fig, data_id)
         pl.subplots_adjust(left=0.01, right=0.99, hspace=0.2)
         pl.savefig(os.path.join(outdir, '%s.png' % data_id))
