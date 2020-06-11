@@ -1031,8 +1031,9 @@ class Experiment(object):
                     basename = os.path.splitext(os.path.split(self.source)[-1])[0]
                     if 'np_subtraced' != basename:
                         soma_fpath = self.source.replace(basename, 'np_subtracted')
+                        raw_fpath = self.source.replace(basename, 'raw')
                     #print(soma_fpath)
-                    if create_new is True or not os.path.exists(soma_fpath):
+                    if create_new is True or not os.path.exists(soma_fpath) or not os.path.exists(raw_fpath):
                         # Realign traces
                         print("*****corrected offset unfound, running now*****")
                         print("%s | %s | %s | %s | %s" % (self.animalid, self.session, self.fov, self.experiment_type, self.traceid))
