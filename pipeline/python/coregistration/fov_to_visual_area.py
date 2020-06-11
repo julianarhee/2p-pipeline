@@ -238,7 +238,7 @@ def plot_transformations(coreg_d, rois_d, zproj_d, cmap='jet'):
     ax.set_title('Warped to WF')
 
     ax = fig.add_subplot(gs[0:, 1:])
-    ax.imshow(vasculature, cmap='gray')
+    ax.imshow(coreg_d['vasculature'], cmap='gray')
     ax.imshow( fov2p_aligned_overlay, cmap='Greens', alpha=0.2)
     ax.imshow( rois_warped_overlay, cmap=cmap, alpha=1.0,  vmin=0, vmax=nrois)
     ax.axis('off')
