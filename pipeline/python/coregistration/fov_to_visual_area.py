@@ -5,7 +5,8 @@ Created on Thu Jun 01 17:51:27 2020
 
 @author: julianarhee
 """
-
+import matplotlib as mpl
+mpl.use('agg')
 import os
 import cv2
 import sys
@@ -196,12 +197,12 @@ def warp_rois(coreg_d, roi_masks, roi_zproj, clip_lim=2.0, tile=5):
     zproj_d.original = roi_zproj
     zproj_d.transformed = transf_zproj
     zproj_d.warped = warped_zproj
+    zproj.equalized = roi_zproj_eq
 
     rois_d = struct()
     rois_d.original = roi_masks
     rois_d.transformed = transf_rois
     rois_d.warped = warped_rois
-    rois_d.equalized = roi_zproj_eq
 
     return rois_d, zproj_d#, roi_zproj_eq
 
