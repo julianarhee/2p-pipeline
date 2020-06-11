@@ -189,7 +189,7 @@ def warp_rois(coreg_d, roi_masks, roi_zproj, clip_lim=2.0, tile=5):
     # Apply warp to EACH roi
     d1, d2, nrois = roi_masks.shape  
     transf_rois = np.dstack([transform_2p_fov(roi_masks[:, :, i].astype(float), coreg_d['pixel_size'])                for i in np.arange(0, nrois)])
-    warped_rois = np.dstack([warp_im(transf_rois[:, :, i], transform_mat, vasculature.shape)\
+    warped_rois = np.dstack([warp_im(transf_rois[:, :, i], transform_mat, coreg_d['vasculature'].shape)\
                             for i in np.arange(0, nrois)])
        
     zproj_d = struct() #
@@ -251,6 +251,44 @@ def save_results(outfile, coreg_d=dict(), zproj_d=None, rois_d=None):
     with open(outfile, 'wb') as f:
         pkl.dump(D, f, protocol=pkl.HIGHEST_PROTOCOL)
  
+
+def do_fov_alignment(animalid, session, roiid=None, traceid='traces001', verbose=False,
+                    rootdir='/n/coxfs01/2p-data', outdir='/tmp', clip_lim=2.0, cmap='jet',
+                    plot=True):
+
+    # Load coregistration results for animal
+    # --------------------------------------------------
+    coreg_d = load_and_plot_coregistration(animalid, session, verbose=verbose,
+                                            rootdir=rootdir, outdir=outdir)
+
+    # Select ROI ID to warp 
+    # --------------------------------------------------
+    fov_name = coreg_d['fov_key'].split('%s_' % session)[-1]
+    roi_masks, roi_zproj, roiid = get_rois(animalid, session, fov_name, roiid=roiid, traceid=traceid)
+    data_id = '%s_%s_%s_%s_%s' % (session, animalid, fov_name, roiid, traceid)
+    print(data_id)
+
+    # Warp 2p ROIs using transf matrix
+    # ------------------------------------------
+    rois_d, zproj_d, roi_zproj_eq = warp_rois(coreg_d, roi_masks, roi_zproj, clip_lim=clip_lim)
+
+ 
+    if plot:
+        fig = plot_transformations(coreg_d, rois_d, cmap=cmap)
+        putils.label_figure(fig, data_id)
+        pl.subplots_adjust(left=0.01, right=0.99, hspace=0.2)
+        pl.savefig(os.path.join(outdir, '%s.png' % data_id))
+        #print(outdir, data_id)
+        pl.close()
+
+    #### Save
+    outfile = os.path.join(outdir, '%s_results.pkl' % data_id)
+    save_results(outfile, coreg_d=coreg_d, zproj_d=zproj_d, rois_d=rois_d)
+    print("--- done ---\n--- saved to: ---\n%s" % outfile)
+       
+    return outfile
+
+
 
 def extract_options(options):
 
@@ -320,37 +358,8 @@ def main(options):
         os.makedirs(outdir)
     print(outdir)
 
-    # Load coregistration results for animal
-    # --------------------------------------------------
-    coreg_d = load_and_plot_coregistration(animalid, session, verbose=verbose,
-                                            rootdir=rootdir, outdir=outdir)
-
-    # Select ROI ID to warp 
-    # --------------------------------------------------
-    fov_name = coreg_d['fov_key'].split('%s_' % session)[-1]
-    roi_masks, roi_zproj, roiid = get_rois(animalid, session, fov_name, roiid=roiid, traceid=traceid)
-    data_id = '%s_%s_%s_%s_%s' % (session, animalid, fov_name, roiid, traceid)
-    print(data_id)
-
-    # Warp 2p ROIs using transf matrix
-    # ------------------------------------------
-    rois_d, zproj_d, roi_zproj_eq = warp_rois(coreg_d, roi_masks, roi_zproj, clip_lim=clip_lim)
-
- 
-    if plot:
-        fig = plot_transformations(coerg_d, rois_d, cmap=cmap)
-        putils.label_figure(fig, data_id)
-        pl.subplots_adjust(left=0.01, right=0.99, hspace=0.2)
-        pl.savefig(os.path.join(outdir, '%s.png' % data_id))
-        #print(outdir, data_id)
-        pl.close()
-
-    #### Save
-    outfile = os.path.join(outdir, '%s_results.pkl' % data_id)
-    save_results(outfile, coreg_d=coreg_d, zproj_d=zproj_d, rois_d=rois_d)
-    print("--- done ---\n--- saved to: ---\n%s" % outfile)
-
-       
+    outfile = do_fov_alignment(animalid, session, roiid=roiid, traceid=traceid,
+                                verbose=verbose, rootdir=rootdir, outdir=outdir)
 
     
 if __name__ == '__main__':
