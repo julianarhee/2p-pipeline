@@ -201,11 +201,14 @@ def warp_rois(coreg_d, roi_masks, roi_zproj, clip_lim=2.0, tile=5):
     rois_d.original = roi_masks
     rois_d.transformed = transf_rois
     rois_d.warped = warped_rois
+    rois_d.equalized = roi_zproj_eq
 
-    return rois_d, zproj_d, roi_zproj_eq
+    return rois_d, zproj_d#, roi_zproj_eq
 
 
 def plot_transformations(coreg_d, rois_d, cmap='jet'):
+
+    roi_zproj_eq = zproj_d.equalized.copy()
 
     coreg_fov2p_warped = coreg_d['BV_warped'].copy()
     fov2p_aligned_overlay = np.ma.masked_where(coreg_fov2p_warped==0, coreg_fov2p_warped)
@@ -270,7 +273,8 @@ def do_fov_alignment(animalid, session, roiid=None, traceid='traces001', verbose
 
     # Warp 2p ROIs using transf matrix
     # ------------------------------------------
-    rois_d, zproj_d, roi_zproj_eq = warp_rois(coreg_d, roi_masks, roi_zproj, clip_lim=clip_lim)
+    rois_d, zproj_d = warp_rois(coreg_d, roi_masks, roi_zproj, clip_lim=clip_lim)
+    roi_zproj_eq = zproj_d.equalized.copy()
 
  
     if plot:
