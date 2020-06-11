@@ -197,7 +197,7 @@ def warp_rois(coreg_d, roi_masks, roi_zproj, clip_lim=2.0, tile=5):
     zproj_d.original = roi_zproj
     zproj_d.transformed = transf_zproj
     zproj_d.warped = warped_zproj
-    zproj.equalized = roi_zproj_eq
+    zproj_d.equalized = roi_zproj_eq
 
     rois_d = struct()
     rois_d.original = roi_masks
