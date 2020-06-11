@@ -184,7 +184,7 @@ def warp_rois(coreg_d, roi_masks, roi_zproj, clip_lim=2.0, tile=5):
 
     # Apply BV warp from coregistration to ROI images
     transform_mat = coreg_d['warp_mat'].copy() #fov_.alignment['transform_matrix'].copy()
-    warped_zproj = warp_im(transf_zproj.astype(float), transform_mat, vasculature.shape)
+    warped_zproj = warp_im(transf_zproj.astype(float), transform_mat, coreg['vasculature'].shape)
 
     # Apply warp to EACH roi
     d1, d2, nrois = roi_masks.shape  
