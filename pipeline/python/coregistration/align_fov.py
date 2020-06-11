@@ -72,7 +72,7 @@ def transform2p_to_macro(avg, zoom_factor, acquisition_dir='/tmp', channel_ix=0,
     '''
     # Scale:
     d1, d2 = avg.shape # (img height, img width)
-    print("Input img shape: (%i, %i)" % (d1, d2))
+    #print("Input img shape: (%i, %i)" % (d1, d2))
     #scaled = cv2.resize(avg, dsize=(d1, int(d2*zoom_factor)), interpolation=cv2.INTER_CUBIC)  #, dtype=avg.dtype)
     #new_d1 = d1*xaxis_conversion
     #new_d2 = d2*yaxis_conversion
@@ -187,7 +187,7 @@ def transformation_from_points(points1, points2):
 
 
 def warp_im(im, M, dshape):
-    print("warping...", im.min(), im.max())
+    #print("warping...", im.min(), im.max())
     output_im = np.zeros(dshape, dtype=im.dtype)
     cv2.warpAffine(im,
                    M[:2],
