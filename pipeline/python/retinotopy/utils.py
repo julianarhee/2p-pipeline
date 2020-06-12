@@ -49,8 +49,89 @@ from pipeline.python.retinotopy import do_retinotopy_analysis as ra
 # Data processing funcs 
 # -----------------------------------------------------------------------------
 
+# preprocessing ---------------
 
-def get_retino_traces(RID, retinoid_dir, mwinfo, runinfo, tiff_fpaths, create_new=False):
+def load_retino_traces(retino_dpath, scaninfo, trace_type='corrected', temporal_ds=None, frame_rate=44.65):
+    '''
+    Loads ./traces/extracted_traces.h5 (contains data for each tif file).
+    Pre-processes raw extracted traces by adding back in neuropil offsets and F0 offset from drift correction.
+    Averages traces for each condition. Downsamples final array.
+    '''
+    frame_rate = scaninfo['stimulus']['frame_rate']
+    stim_freq = scaninfo['stimulus']['stim_freq']
+    trials_by_cond = scaninfo['trials']
+
+    traces = {}
+    try:
+        tfile = h5py.File(retino_dpath, 'r')
+        for condition, trialnums in trials_by_cond.items():
+            print("... loading cond: %s" % condition)
+            dlist = tuple([process_data(tfile, trialnum, trace_type=trace_type, frame_rate=frame_rate, stim_freq=stim_freq) for trialnum in trialnums])
+            dfcat = pd.concat(dlist)
+            df_rowix = dfcat.groupby(dfcat.index)
+            meandf = df_rowix.mean()
+            if temporal_ds is not None:
+                meandf = downsample_array(meandf, temporal_ds=temporal_ds)
+            traces[condition] = meandf
+    except Exception as e:
+        traceback.print_exc()
+    finally:
+        tfile.close()
+        
+    return traces
+
+def process_data(tfile, trialnum, trace_type='corrected', add_offset=True,
+                frame_rate=44.65, stim_freq=0.13):
+    #print(tfile['File001'].keys())
+    if trace_type != 'neuropil' and add_offset:
+        # Get raw soma traces and raw neuropil -- add neuropil offset to soma traces
+        soma = pd.DataFrame(tfile['File%03d' % int(trialnum)][trace_type][:].T)
+        neuropil = pd.DataFrame(tfile['File%03d' % int(trialnum)]['neuropil'][:].T)
+        np_offset = neuropil.mean(axis=0) #neuropil.mean().mean()
+        xd = soma.subtract(neuropil) + np_offset
+        del neuropil
+        del soma
+    else:
+        xd = pd.DataFrame(tfile['File%03d' % int(trialnum)][trace_type][:].T)
+    
+    f0 = xd.mean().mean()
+    drift_corrected = detrend_array(xd, frame_rate=frame_rate, stim_freq=stim_freq)
+    xdata = drift_corrected + f0
+    #if temporal_ds is not None:
+    #    xdata = downsample_array(xdata, temporal_ds=temporal_ds)
+    
+    return xdata
+
+def subtract_rolling_mean(trace, windowsz):
+    #print(trace.shape)
+    tmp1 = np.concatenate((np.ones(windowsz)*trace.values[0], trace, np.ones(windowsz)*trace.values[-1]),0)
+    rolling_mean = np.convolve(tmp1, np.ones(windowsz)/windowsz, 'same')
+    rolling_mean=rolling_mean[windowsz:-windowsz]
+    return np.subtract(trace, rolling_mean)
+
+def detrend_array(roi_trace, frame_rate=44.65, stim_freq=0.24):
+    #print('Removing rolling mean from traces...')
+    windowsz = int(np.ceil((np.true_divide(1,stim_freq)*3)*frame_rate))
+    detrend_roi_trace = roi_trace.apply(subtract_rolling_mean, args=(windowsz,), axis=0)
+    return detrend_roi_trace #pd.DataFrame(detrend_roi_trace)
+        
+def temporal_downsample(trace, windowsz):
+    tmp1=np.concatenate((np.ones(windowsz)*trace.values[0], trace, np.ones(windowsz)*trace.values[-1]),0)
+    tmp2=np.convolve(tmp1, np.ones(windowsz)/windowsz, 'same')
+    tmp2=tmp2[windowsz:-windowsz]
+    return tmp2
+
+        
+def downsample_array(roi_trace, temporal_ds=5):
+    print('Performing temporal smoothing on traces...')
+    windowsz = int(temporal_ds)
+    smooth_roi_trace = roi_trace.apply(temporal_downsample, args=(windowsz,), axis=0)
+    return smooth_roi_trace
+    
+
+# averaging -------------------
+
+def get_condition_averaged_traces(RID, retinoid_dir, mwinfo, runinfo, tiff_fpaths, create_new=False):
 
     # Set output dir:
     output_dir = os.path.join(retinoid_dir,'traces')
@@ -157,7 +238,30 @@ def average_retino_traces(RID, mwinfo, runinfo, tiff_fpaths, masks, output_dir='
 
 
 
+# Masks
+def load_retinoanalysis(run_dir, traceid):
+    run = os.path.split(run_dir)[-1]
+    trace_dir = os.path.join(run_dir, 'retino_analysis')
+    tracedict_path = os.path.join(trace_dir, 'analysisids_%s.json' % run)
+    with open(tracedict_path, 'r') as f:
+        tracedict = json.load(f)
 
+    if 'traces' in traceid:
+        fovdir = os.path.split(run_dir)[0]
+        tmp_tdictpath = glob.glob(os.path.join(fovdir, '*run*', 'traces', 'traceids*.json'))[0]
+        with open(tmp_tdictpath, 'r') as f:
+            tmptids = json.load(f)
+        roi_id = tmptids[traceid]['PARAMS']['roi_id']
+        analysis_id = [t for t, v in tracedict.items() if v['PARAMS']['roi_type']=='manual2D_circle' and v['PARAMS']['roi_id'] == roi_id][0]
+        print("Corresponding ANALYSIS ID (for %s with %s) is: %s" % (traceid, roi_id, analysis_id))
+
+    else:
+        analysis_id = traceid 
+    TID = tracedict[analysis_id]
+    pp.pprint(TID)
+    return TID
+
+ 
 def load_roi_masks(session_dir, RID):
     assert RID['PARAMS']['roi_type'] != 'pixels', "ROI type for analysis should not be pixels. This is: %s" % RID['PARAMS']['roi_type']
     print 'Getting masks'
@@ -247,7 +351,34 @@ def select_rois(mean_magratios, mag_thr=0.02, mag_thr_stat='max'):
 
     return top_rois
 
+def do_fft_analysis(avg_traces, sorted_idxs, stim_freq_idx):
+    n_frames = avg_traces.shape[0]
 
+    fft_results = np.fft.fft(avg_traces, axis=0) #avg_traces.apply(np.fft.fft, axis=1)
+
+    # get phase and magnitude
+    mag_data = abs(fft_results)
+    phase_data = np.angle(fft_results)
+
+    # sort mag and phase by freq idx:
+    mag_data = mag_data[sorted_idxs]
+    phase_data = phase_data[sorted_idxs]
+
+    # exclude DC offset from data
+    mag_data = mag_data[int(np.round(n_frames/2.))+1:, :]
+    phase_data = phase_data[int(np.round(n_frames/2.))+1:, :]
+
+    #unpack values from frequency analysis
+    mag_array = mag_data[stim_freq_idx, :]
+    phase_array = phase_data[stim_freq_idx, :]
+
+    #get magnitude ratio
+    tmp = np.copy(mag_data)
+    #tmp = np.delete(tmp,freq_idx,0)
+    nontarget_mag_array=np.sum(tmp,0)
+    magratio_array=mag_array/nontarget_mag_array
+
+    return magratio_array, phase_array
 #%%
 
 # -----------------------------------------------------------------------------
@@ -441,14 +572,22 @@ def get_protocol_info(animalid, session, fov, run='retino_run1', rootdir='/n/cox
     n_frames_per_cycle = int(np.floor(stimperiod * fr))
     cycle_starts = np.round(np.arange(0, n_frames_per_cycle * n_cycles, n_frames_per_cycle)).astype('int')
 
+    # Get frequency info
+    freqs = np.fft.fftfreq(n_frames, float(1./fr))
+    sorted_idxs = np.argsort(freqs)
+    freqs = freqs[sorted_idxs] # sorted
+    freqs = freqs[int(np.round(n_frames/2.))+1:] # exclude DC offset from data
+    stim_freq_idx = np.argmin(np.absolute(freqs - stimfreq)) # Index of stimulation frequency
 
-    stiminfo = {'stimfreq': stimfreq,
+    stiminfo = {'stim_freq': stimfreq,
                'frame_rate': fr,
                'n_reps': len(trials_by_cond[curr_cond]),
-               'nframes': n_frames,
+               'n_frames': n_frames,
                'n_cycles': n_cycles,
                'n_frames_per_cycle': n_frames_per_cycle,
                'cycle_start_ixs': cycle_starts,
+               'stim_freq_idx': stim_freq_idx,
+               'freqs': freqs
                 }
     
     scaninfo.update({'stimulus': stiminfo})
@@ -478,14 +617,21 @@ def get_retino_stimulus_info(mwinfo, runinfo):
         n_frames_per_cycle = int(np.floor(stimperiod * fr))
         cycle_starts = np.round(np.arange(0, n_frames_per_cycle * n_cycles, n_frames_per_cycle)).astype('int')
 
-        stiminfo[curr_cond] = {'stimfreq': stimfreq,
+        freqs = np.fft.fftfreq(n_frames, float(1./fr))
+        sorted_idxs = np.argsort(freqs)
+        freqs = freqs[sorted_idxs] # sorted
+        freqs = freqs[int(np.round(n_frames/2.))+1:] # exclude DC offset from data
+        stim_freq_idx = np.argmin(np.absolute(freqs - stimfreq)) # Index of stimulation frequency
+        
+        stiminfo[curr_cond] = {'stim_freq': stimfreq,
                                'frame_rate': fr,
                                'n_reps': len(trials_by_cond[curr_cond]),
-                               'nframes': n_frames,
+                               'n_frames': n_frames,
                                'n_cycles': n_cycles,
                                'n_frames_per_cycle': n_frames_per_cycle,
                                'cycle_start_ixs': cycle_starts,
                                #'trials_by_cond': trials_by_cond,
+                                'stim_freq_idx': stim_freq_idx,
                                'frame_tstamps': runinfo['frame_tstamps_sec']
                               }
 

@@ -20,6 +20,15 @@ import numpy as np
 from stat import S_IREAD, S_IRGRP, S_IROTH, S_IWRITE, S_IWGRP, S_IWOTH
 from scipy import ndimage
 
+
+def get_pixel_size():
+    # Use measured pixel size from PSF (20191005, most recent)
+    # ------------------------------------------------------------------
+    xaxis_conversion = 2.31  # size of x-axis pixel, goes with A-P axis
+    yaxis_conversion = 1.89  # size of y-axis pixels, goes with M-L axis
+    return (xaxis_conversion, yaxis_conversion)
+
+
 def uint16_to_RGB(img):
     im = img.astype(np.float64)/img.max()
     im = 255 * im
