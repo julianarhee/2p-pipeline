@@ -62,7 +62,7 @@ def rotate_image(mat, angle):
     return rotated_mat
 
 
-def transform2p_to_macro(avg, zoom_factor, acquisition_dir='/tmp', channel_ix=0, plot=False, save=True): #,
+def transform2p_to_macro(avg, zoom_factor, acquisition_dir='/tmp', channel_ix=0, plot=False, save=True, normalize=True): #,
                         #xaxis_conversion=2.312, yaxis_conversion=1.904):
     '''
     Does standard Fiji steps:
@@ -88,31 +88,38 @@ def transform2p_to_macro(avg, zoom_factor, acquisition_dir='/tmp', channel_ix=0,
     transformed = np.fliplr(rotated)
     
     # Cut off super low vals, Convert range from 0, 255
-    transformed[transformed<-50] = 0 
-    normed = cv2.normalize(transformed, None, 0, 255, cv2.NORM_MINMAX)
-    
-    # Convert to 8-bit
-    img8 = cv2.convertScaleAbs(normed)
-    
-    # Equalize hist:
-    clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(10,10))
-    eq = clahe.apply(img8)
-    
-    if plot:
-        pl.figure()
-        pl.subplot(2,2,1); pl.title('orig'); pl.imshow(rotated)
-        pl.subplot(2,2,2); pl.title('normalized'); pl.imshow(normed)
-        pl.subplot(2,2,3); pl.title('8 bit'); pl.imshow(img8)
-        pl.subplot(2,2,4); pl.title('equalize'); pl.imshow(eq)
-        pl.savefig(os.path.join(acquisition_dir, 'anatomical', 'transform_steps_Ch%i.png' % int(channel_ix+1)))
-        pl.close()
-    
+    if normalize:
+        transformed[transformed<-50] = 0 
+        normed = cv2.normalize(transformed, None, 0, 255, cv2.NORM_MINMAX)
+        
+        # Convert to 8-bit
+        img8 = cv2.convertScaleAbs(normed)
+        
+        # Equalize hist:
+        clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(10,10))
+        eq = clahe.apply(img8)
+            
+        if plot:
+            pl.figure()
+            pl.subplot(2,2,1); pl.title('orig'); pl.imshow(rotated)
+            pl.subplot(2,2,2); pl.title('normalized'); pl.imshow(normed)
+            pl.subplot(2,2,3); pl.title('8 bit'); pl.imshow(img8)
+            pl.subplot(2,2,4); pl.title('equalize'); pl.imshow(eq)
+            pl.savefig(os.path.join(acquisition_dir, 'anatomical', 'transform_steps_Ch%i.png' % int(channel_ix+1)))
+            pl.close()
+       
+    else:
+        eq = transformed.copy()
+
     if save:
         transformed_img_path = os.path.join(acquisition_dir, 'anatomical', 'anatomical_Channel%02d_transformed.tif' % int(channel_ix+1))
         tf.imsave(transformed_img_path, eq)
         return transformed_img_path
     else:
-        return img8 #eq #transformed_img_path
+        if normalize:
+            return img8 #eq #transformed_img_path
+        else:
+            return eq
     
  
 def scale_2p_fov(transformed_image, pixel_size=(2.312, 1.888)):

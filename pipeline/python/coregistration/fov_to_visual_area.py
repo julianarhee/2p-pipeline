@@ -64,12 +64,12 @@ def plot_roi_overlay(roi_img, roi_zproj, ax=None, cmap='jet', vmin=None, vmax=No
     
     return 
 
-def transform_2p_fov(img, pixel_size, zoom_factor=1.):
+def transform_2p_fov(img, pixel_size, zoom_factor=1., normalize=True):
     '''
     First, left/right reflection and rotation of 2p image to match orientation of widefield view.
     Then, scale image to pixel size as measured by PSF.
     '''
-    transf_ = transform2p_to_macro(img, zoom_factor=zoom_factor, save=False)
+    transf_ = transform2p_to_macro(img, zoom_factor=zoom_factor, save=False, normalize=normalize)
     scaled_ = scale_2p_fov(transf_, pixel_size=pixel_size)
     return scaled_
 
@@ -189,7 +189,7 @@ def warp_rois(coreg_d, roi_masks, roi_zproj, clip_lim=2.0, tile=5):
 
     # Apply warp to EACH roi
     d1, d2, nrois = roi_masks.shape  
-    transf_rois = np.dstack([transform_2p_fov(roi_masks[:, :, i].astype(float), coreg_d['pixel_size'])                for i in np.arange(0, nrois)])
+    transf_rois = np.dstack([transform_2p_fov(roi_masks[:, :, i].astype(float), coreg_d['pixel_size'], normalize=False)                for i in np.arange(0, nrois)])
     warped_rois = np.dstack([warp_im(transf_rois[:, :, i], transform_mat, coreg_d['vasculature'].shape)\
                             for i in np.arange(0, nrois)])
        
