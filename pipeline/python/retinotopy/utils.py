@@ -20,7 +20,7 @@ import pprint
 import copy
 
 import cPickle as pkl
-#import tifffile as tf
+import tifffile as tf
 import pylab as pl
 import numpy as np
 #from scipy import ndimage
@@ -35,7 +35,7 @@ import scipy as sp
 import pandas as pd
 
 
-from pipeline.python.utils import natural_keys, label_figure, replace_root
+from pipeline.python.utils import natural_keys, label_figure, replace_root, convert_range, get_screen_dims
 #from matplotlib.patches import Ellipse, Rectangle
 
 pp = pprint.PrettyPrinter(indent=4)
@@ -43,6 +43,14 @@ pp = pprint.PrettyPrinter(indent=4)
 
 from pipeline.python.retinotopy import do_retinotopy_analysis as ra
 
+
+from scipy import ndimage
+import cv2
+from scipy import misc,interpolate,stats,signal
+from matplotlib.colors import LinearSegmentedColormap
+
+import matplotlib.colors as mcolors
+import cPickle as pkl
 #%%
 
 # -----------------------------------------------------------------------------
@@ -129,7 +137,64 @@ def downsample_array(roi_trace, temporal_ds=5):
     return smooth_roi_trace
     
 
+# smoothing ------------------
+def smooth_neuropil(azim_r, smooth_fwhm=21):
+    V=azim_r.copy()
+    V[np.isnan(azim_r)]=0
+    VV=ndimage.gaussian_filter(V,sigma=smooth_fwhm)
+
+    W=0*azim_r.copy()+1
+    W[np.isnan(azim_r)]=0
+    WW=ndimage.gaussian_filter(W,sigma=smooth_fwhm)
+
+    azim_smoothed = VV/WW
+    return azim_smoothed
+
+def smooth_phase_nans(inputArray, sigma, sz):
+    
+    V=inputArray.copy()
+    V[np.isnan(inputArray)]=0
+    VV=smooth_phase_array(V,sigma,sz)
+
+    W=0*inputArray.copy()+1
+    W[np.isnan(inputArray)]=0
+    WW=smooth_phase_array(W,sigma,sz)
+
+    Z=VV/WW
+
+    return Z
+
+
+       
+def smooth_phase_array(theta,sigma,sz):
+    #build 2D Gaussian Kernel
+    kernelX = cv2.getGaussianKernel(sz, sigma); 
+    kernelY = cv2.getGaussianKernel(sz, sigma); 
+    kernelXY = kernelX * kernelY.transpose(); 
+    kernelXY_norm=np.true_divide(kernelXY,np.max(kernelXY.flatten()))
+    
+    #get x and y components of unit-length vector
+    componentX=np.cos(theta)
+    componentY=np.sin(theta)
+    
+    #convolce
+    componentX_smooth=signal.convolve2d(componentX,kernelXY_norm,mode='same',boundary='symm')
+    componentY_smooth=signal.convolve2d(componentY,kernelXY_norm,mode='same',boundary='symm')
+
+    theta_smooth=np.arctan2(componentY_smooth,componentX_smooth)
+    return theta_smooth
+
+
+
 # averaging -------------------
+def block_mean(ar, fact):
+    assert isinstance(fact, int), type(fact)
+    sx, sy = ar.shape
+    X, Y = np.ogrid[0:sx, 0:sy]
+    regions = sy/fact * (X/fact) + Y/fact
+    res = ndimage.mean(ar, labels=regions, index=np.arange(regions.max() + 1))
+    res.shape = (sx/fact, sy/fact)
+    return res
 
 def get_condition_averaged_traces(RID, retinoid_dir, mwinfo, runinfo, tiff_fpaths, create_new=False):
 
@@ -783,7 +848,97 @@ def get_screen_info(animalid, session, fov=None, interactive=True, rootdir='/n/c
 # -----------------------------------------------------------------------------
 # plotting
 # -----------------------------------------------------------------------------
+def load_fov_image(RETID):
+    
+    ds_factor = int(RETID['PARAMS']['downsample_factor'])
 
+    # Load reference image
+    imgs = glob.glob(os.path.join('%s*' % RETID['SRC'], 'std_images.tif'))[0]
+    #imgs = glob.glob(os.path.join(rootdir, animalid, session, fov, retinorun, 'processed',\
+    #                      'processed001*', 'mcorrected_*', 'std_images.tif'))[0]
+    zimg = tf.imread(imgs)
+    zimg = zimg.mean(axis=0)
+
+    if ds_factor is not None:
+        zimg = block_mean(zimg, int(ds_factor))
+
+    print("FOV size: %s (downsample factor=%i)" % (str(zimg.shape), ds_factor))
+    
+    return zimg
+
+def create_legend(screen, zero_center=False):
+    screen_x = screen['azimuth_deg']
+    screen_y = screen['altitude_deg']
+
+    x = np.linspace(0, 2*np.pi, int(round(screen_x)))
+    y = np.linspace(0, 2*np.pi, int(round(screen_y)) )
+    xv, yv = np.meshgrid(x, y)
+
+    az_legend = (2*np.pi) - xv
+    el_legend = yv
+
+    newmin = -0.5*screen_x if zero_center else 0
+    newmax = 0.5*screen_x if zero_center else screen_x
+    
+    az_screen = convert_range(az_legend, newmin=newmin, newmax=newmax, oldmin=0, oldmax=2*np.pi)
+    el_screen = convert_range(el_legend, newmin=newmin, newmax=newmax, oldmin=0, oldmax=2*np.pi)
+
+    return az_screen, el_screen
+
+
+def save_legend(az_screen, cmap, cmap_name='cmap_name', cond='cond', outdir='/tmp'):
+    screen_min = int(round(az_screen.min()))
+    screen_max = int(round(az_screen.max()))
+    print("min/max:", screen_min, screen_max)
+    
+    fig, ax = pl.subplots()
+    im = ax.imshow(az_screen, cmap=cmap)
+    #ax.invert_xaxis()
+    
+    if cond=='azimuth':
+        max_x = screen_max*2.0 if screen_min < 0 else screen_max
+        
+        #print(ax.get_xlim())
+        ax.set_xticks(np.linspace(0, max_x, 5))
+        ax.set_xticklabels([int(round(i)) for i in np.linspace(screen_min, screen_max, 5)][::-1])
+
+        ax.set_yticks([])
+        ax.set_yticklabels([])
+        ax.tick_params(axis='x', length=0)
+        ax.set_xlim(ax.get_xlim()[::-1])
+    
+    else:
+        max_y = screen_max*2.0 if screen_min < 0 else screen_max
+        print(az_screen.shape)
+        ax.set_yticks(np.linspace(0, min(az_screen.shape), 5))
+        ax.set_yticklabels([int(round(i)) for i in np.linspace(screen_min, screen_max, 5)][::-1])
+
+        ax.set_xticks([])
+        ax.set_xticklabels([])
+        ax.tick_params(axis='y', length=0)
+        ax.set_ylim(ax.get_ylim()[::-1])
+        ax.set_frame_on(False)
+
+    pl.colorbar(im)
+
+    figname = '%s_pos_%s_LEGEND_abs' % (cond, cmap_name)
+    pl.savefig(os.path.join(outdir, '%s.svg' % figname))
+
+    print(outdir, figname)
+    return
+
+def make_legends(cmap='nipy_spectral', cmap_name='nipy_spectral', zero_center=False,
+                 outdir='/n/coxfs01/julianarhee/aggregate-data/retinotopy'):
+
+    screen = get_screen_dims()
+    azi_legend, alt_legend = create_legend(screen, zero_center=zero_center)
+    
+    save_legend(azi_legend, cmap=cmap, cmap_name=cmap_name, cond='azimuth', outdir=outdir)
+    save_legend(alt_legend, cmap=cmap, cmap_name=cmap_name, cond='elevation', outdir=outdir)
+    
+    screen.update({'azi_legend': azi_legend,
+                   'alt_legend': alt_legend})
+    return screen
 
 def plot_roi_traces_by_cond(roi_traces, stiminfo):
         

@@ -29,6 +29,43 @@ def get_pixel_size():
     return (xaxis_conversion, yaxis_conversion)
 
 
+
+def get_screen_dims():
+    # # adjust elevation limit to show only monitor extent
+    # screeninfo_fpath = glob.glob(os.path.join(rootdir, animalid, 'epi_maps', '*.json'))[0]
+    # with open(screeninfo_fpath, 'r') as f:
+    #     screen = json.load(f)
+
+    # screen_width = screen['screen_params']['screen_size_x_degrees']
+    # screen_height = screen['screen_params']['screen_size_t_degrees']
+
+    # screen_left = -1*screen_width/2.
+    # screen_right = screen_width/2.
+    # screen_top = screen_height/2.
+    # screen_bottom = -1*screen_height/2.
+
+    # elev_cutoff = screen_top / screen_right
+    # print("[AZ]: screen bounds: (%.2f, %.2f)" % (screen_left, screen_right))
+    # print("[EL]: screen bounds: (%.2f, %.2f)" % (screen_top, screen_bottom))
+
+
+    screen_x = 59.7782*2 #119.5564
+    screen_y =  33.6615*2. #67.323
+    resolution = [1920, 1080] #[1024, 768]
+
+    deg_per_pixel_x = screen_x / float(resolution[0])
+    deg_per_pixel_y = screen_y / float(resolution[1])
+    deg_per_pixel = np.mean([deg_per_pixel_x, deg_per_pixel_y])
+    print("Screen size (deg): %.2f, %.2f (~%.2f deg/pix)" % (screen_x, screen_y, deg_per_pixel))
+
+    screen = {'azimuth_deg': screen_x,
+              'altitude_deg': screen_y,
+              'resolution': resolution,
+              'deg_per_pixel': (deg_per_pixel_x, deg_per_pixel_y)}
+
+    return screen
+
+
 def uint16_to_RGB(img):
     im = img.astype(np.float64)/img.max()
     im = 255 * im
