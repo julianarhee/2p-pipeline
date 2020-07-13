@@ -13,7 +13,8 @@ Created on Thu May 17 12:31:35 2018
 
 @author: juliana
 """
-
+import warnings
+warnings.filterwarnings("ignore")
 import matplotlib as mpl
 mpl.use('agg')
 import h5py
@@ -501,7 +502,7 @@ def get_receptive_field_fits(animalid, session, fov, response_type='dff', #recep
 # Generic "event"-based experiments
 # #############################################################################
 def get_responsive_cells(animalid, session, fov, run=None, traceid='traces001',
-                         #response_type='dff',
+                         response_type='dff',
                          responsive_test='ROC', responsive_thr=0.05, n_stds=2.5,
                          rootdir='/n/coxfs01/2p-data'):
         
@@ -515,8 +516,8 @@ def get_responsive_cells(animalid, session, fov, run=None, traceid='traces001',
     stats_dir = os.path.join(traceid_dir, 'summary_stats', responsive_test)
     stats_fpath = glob.glob(os.path.join(stats_dir, '*results*.pkl'))
 
-    print("-- stats: %s" % run)
-    print(stats_fpath)
+    #print("-- stats: %s" % run)
+    #print(stats_fpath)
     #print(stats_fpath)
     if len(stats_fpath)==0:
         return None, None
@@ -533,9 +534,9 @@ def get_responsive_cells(animalid, session, fov, run=None, traceid='traces001',
         #stats_fpath = glob.glob(os.path.join(stats_dir, '*results*.pkl'))
         assert len(stats_fpath) > 0, "No stats results found for: %s" % stats_dir
         with open(stats_fpath[0], 'rb') as f:
-            print("...loading stats")
+            print("... loading stats")
             rstats = pkl.load(f)
-        print("loaded")        
+        # print("...loaded")        
         if responsive_test == 'ROC':
             roi_list = [r for r, res in rstats.items() if res['pval'] < responsive_thr]
             nrois_total = len(rstats.keys())
@@ -920,7 +921,7 @@ class Session():
 class Experiment(object):
     def __init__(self, experiment_type, animalid, session, fov, \
                  traceid='traces001', rootdir='/n/coxfs01/2p-data'):
-        print("... [%s|%s|%s] creating %s object" % (animalid, session, fov, experiment_type))
+        print("[%s|%s|%s] creating %s object" % (animalid, session, fov, experiment_type))
         self.name = experiment_type
         self.animalid = animalid
         self.session = session
@@ -1077,10 +1078,10 @@ class Experiment(object):
     
             
     def get_data_paths(self, rootdir='/n/coxfs01/2p-data'):
-        print("... getting data paths - name: %s" % self.name)
+        # print("... getting data paths - name: %s" % self.name)
         fov_dir = os.path.join(rootdir, self.animalid, self.session, self.fov)
         if 'retino' in self.name:
-            print("retino traceid:", self.traceid)
+            print("...retino traceid:", self.traceid)
             # Check that this is ROI:
             roi_info_fp = glob.glob(os.path.join(fov_dir, 'retino*', 'retino_analysis', 'analysis*.json'))[0]
             with open(roi_info_fp, 'r') as f:
@@ -1089,7 +1090,7 @@ class Experiment(object):
             if rids[traceid_name]['PARAMS']['roi_type'] != 'manual2D_circle':
                 traceid_name = [r for r, k in rids.items() if k['PARAMS']['roi_type']=='manual2D_circle'][0]
             self.traceid = traceid_name
-            print("updated analysis id:", traceid_name)
+            print("...updated analysis id:", traceid_name)
 
             all_runs = glob.glob(os.path.join(fov_dir, '*%s*' % 'retino', 'retino_analysis', 'analysis*', 'traces', '*.h5'))
             trace_extraction = 'retino_analysis'
@@ -1100,7 +1101,7 @@ class Experiment(object):
 
         #print("FOUND RUNS:", all_runs)    
         if len(all_runs) == 0:
-            print("... No extracted traces: %s" % self.name) #(self.animalid, self.session, self.fov, self.name))
+            print("[ERROR]: No extracted traces: %s" % self.name) #(self.animalid, self.session, self.fov, self.name))
             return None
         
         all_runs = [s.split('/%s' % trace_extraction)[0] for s in all_runs]
@@ -1112,15 +1113,14 @@ class Experiment(object):
             #print stim_type
             single_runs.extend(glob.glob(os.path.join(fov_dir, '%s_run*' % stim_type)))
         run_list = list(set([r for r in all_runs if r not in single_runs and 'compare' not in r]))
-        print run_list
-
-              
+        #print run_list
+      
         data_fpaths = []
         for run_dir in run_list:
             run_name = os.path.split(run_dir)[-1]
             #print("... ... %s" % run_name)
             try:
-                print("... run: %s" % run_name)
+                #print("... run: %s" % run_name)
                 if 'retino' in run_name:
                     # Select analysis ID that corresponds to current ROI set:
                     extraction_name = 'retino_analysis'
@@ -1296,7 +1296,7 @@ class Gratings(Experiment):
                                           responsive_test=responsive_test, responsive_thr=responsive_thr, n_stds=n_stds,
                                           n_bootstrap_iters=n_bootstrap_iters, n_resamples=n_resamples, 
                                           rootdir=rootdir)
-        print("...getting OSI results: %s" % fit_desc)
+        print("... getting OSI results: %s" % fit_desc)
         
         # tmp:
         if not os.path.exists(os.path.join(os.path.split(self.source)[0], 'np_subtracted.npz')):
@@ -1633,7 +1633,7 @@ class ReceptiveFields(Experiment):
         if create_new:
                     
             #print("... [%s] Loading roi stats and cell list..." % self.name)
-            rfits, roi_list, nrois_total = self.get_rf_fits(response_type=response_type, 
+            rfits, roi_list, nrois_total = self.get_rf_fits(response_type=response_type,  
                                                             fit_thr=fit_thr,
                                                             pretty_plots=pretty_plots,
                                                             create_new=create_new)

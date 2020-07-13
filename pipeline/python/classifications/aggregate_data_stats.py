@@ -84,6 +84,193 @@ def get_sorted_fovs(filter_by='drop_repeats', excluded_sessions=[]):
 
     return fov_keys
 
+def all_datasets_by_area(visual_area=[]):
+    if len(visual_areas)==0:
+        visual_areas = ['V1', 'Lm', 'Li']
+        
+    fkeys = get_sorted_fovs()
+    
+    ddict = dict((v, []) for v in visual_areas)
+    for animalid, sinfo in fkeys.items():
+        for visual_area, slist in sinfo.items():
+            for sublist in slist:
+                if isinstance(sublist, tuple):
+                    sessions_ = ['%s_%s_%s' % (s.split('_')[0], animalid, s.split('_')[-1]) \
+                                 if len(s.split('_'))>1 else '%s_%s' % (s, animalid) for s in sublist]
+                else:
+                    sessions_ = ['%s_%s_%s' % (sublist.split('_')[0], animalid, sublist.split('_')[-1]) \
+                             if len(sublist.split('_'))>1 else '%s_%s' % (sublist, animalid)]
+
+            ddict[visual_area].extend(sessions_)
+
+    return ddict
+
+
+def get_metadata(traceid='traces001', filter_by='most_cells', stimulus=None, stimulus_only=False,
+                 fov_type='zoom2p0x', state='awake', excluded_sessions=[],
+                 aggregate_dir='/n/coxfs01/julianarhee/aggregate-visual-areas'):
+       
+    # Get all datasets
+    sdata = get_aggregate_info(traceid=traceid, fov_type=fov_type, state=state,
+                             aggregate_dir=aggregate_dir)
+
+    if stimulus == 'gratings':
+        included_sessions = get_gratings_datasets(filter_by=filter_by, excluded_sessions=excluded_sessions,
+                                                 as_dict=False)
+        
+    elif stimulus == 'rfs':
+        included_sessions = get_rf_datasets(filter_by=filter_by, excluded_sessions=excluded_sessions,
+                                           as_dict=False)
+        
+    else:
+        print("Unknow stimulus <%s>. Select from: gratings, rfs, blobs, or all" % str(stimulus))
+        return None
+    
+    dsets = pd.concat([g for v, g in sdata.groupby(['visual_area', 'animalid', 'session', 'fovnum']) \
+                       if '%s_%s' % (v[2], v[1]) in included_sessions \
+                       or '%s_%s_fov%i' % (v[2], v[1], v[3]) in included_sessions])
+        
+    if stimulus_only:
+        if stimulus == 'rfs':
+            return dsets[dsets['experiment'].isin(['rfs', 'rfs10'])]
+        else:
+            return dsets[dsets['experiment'].isin([stimulus])]
+        
+    return dsets
+
+def get_gratings_datasets(filter_by='most_cells', excluded_sessions=[], as_dict=True):
+
+    included_sessions = []
+    
+    # Blobs runs w/ incorrect stuff
+    always_exclude = ['20190426_JC078']
+    excluded_sessions.extend(always_exclude)
+    
+
+    if filter_by is None:
+        v1_repeats = []
+        lm_repeats = []
+        li_repeats = []
+    
+    elif filter_by=='most_cells':
+        # Only sessions > 20190511 should have regular gratings
+        v1_include = ['20190511_JC083', 
+                      '20190522_JC084',
+                      '20190622_JC085',
+                      '20190613_JC097', '20190616_JC097', '20190617_JC097',
+                      '20191006_JC110']
+ 
+        lm_include = ['20190513_JC078', 
+                      '20190603_JC080', 
+                      '20190512_JC083', # 20190517_JC083 slightly worse?
+                      '20190525_JC084',
+                      '20190627_JC091',
+                      '20190618_JC097']
+       
+        li_include = ['20190605_JC090',
+                      '20190602_JC091', # 20190607_JC091 also good
+                      '20190614_JC091', # 20190606_JC091 also good 
+                      '20191008_JC091',
+                      '20190612_JC099', # 20190609_JC099 also good
+                      '20190617_JC099',
+                      '20191018_JC113',
+                      '20191105_JC117',
+                      '20191111_JC120']
+    else:
+        print("Filter <%s> UNKNOWN." % str(filter_by))
+        return None
+       
+    included_ = [v1_include, lm_include, li_include]
+
+    for incl in included_:
+        included_sessions.extend(incl)
+    included_sessions = [i for i in list(set(included_sessions)) if i not in excluded_sessions]
+
+    if as_dict:
+        return {'V1': v1_include, 'Lm': lm_include, 'Li': li_include}
+    
+    return included_sessions
+
+
+def get_rf_datasets(filter_by='drop_repeats', excluded_sessions=[], as_dict=True, return_excluded=False):
+    #TODO:  fix this to return INCLUDED dsets -- this is for RFs
+    '''From classifications/retino_structure.py -- 
+    
+    '''
+    
+    ddict = all_datasets_by_area()
+    
+    # Blobs runs w/ incorrect stuff
+    always_exclude = ['20190426_JC078']
+    excluded_sessions.extend(always_exclude)
+    
+    if filter_by is None:
+        v1_repeats = []
+        lm_repeats = []
+        li_repeats = []
+    
+    elif filter_by=='drop_repeats':
+        # Sessions with repeat FOVs
+        v1_repeats = ['20190501_JC076', 
+                      '20190507_JC083', '20190510_JC083', #'20190511_JC083']
+                      '20190615_JC097',
+                      '20191004_JC110']
+ 
+        lm_repeats = ['20190426_JC078', '20190504_JC078', '20190430_JC078', 
+                      '20190506_JC080', 
+                      '20190508_JC083', '20190512_JC083', #'20190517_JC083']
+                      '20190615_JC097',
+                      '20191108_JC113']
+       
+        li_repeats = ['20190422_JC076',
+                      '20190602_JC091',  
+                      '20190606_JC091', 
+                      #'20190527_JC092',
+                      '20190609_JC099',
+                      '20191012_JC113_fov1',
+                      '20191012_JC113_fov2', '20191017_JC113',
+                      '20191104_JC117_fov1',
+                      '20191106_JC120_fov1']
+    else:
+        print("Filter <%s> UNKNOWN." % str(filter_by))
+        return None
+       
+    also_exclude = [v1_repeats, lm_repeats, li_repeats]
+
+    for excl in also_exclude:
+        excluded_sessions.extend(excl)
+    excluded_sessions = list(set(excluded_sessions))
+
+    if return_excluded:
+        return excluded_sessions
+    
+    session_dict = {}
+    included_sessions = []
+    for k, v in ddict:
+        included = [vv for vv in v if vv not in excluded_sessions]
+        session_dict[k] = included
+        included_sessions.extend(included)
+        
+    if as_dict:
+        return session_dict
+    
+    return included_sessions
+    
+def plot_mannwhitney(mdf, metric='I_rs', multi_comp_test='holm', ax=None):
+    if ax is None:
+        fig, ax = pl.subplots()
+
+    print("********* [%s] Mann-Whitney U test(mc=%s) **********" % (metric, multi_comp_test))
+    statresults = do_mannwhitney(mdf, metric=metric, multi_comp_test=multi_comp_test)
+    #print(statresults)
+    
+    # stats significance
+    ax = annotate_stats_areas(statresults, ax)
+    print("****************************")
+    
+    return statresults, ax
+
+
 def do_mannwhitney(mdf, metric='I_rs', multi_comp_test='holm'):
     visual_areas = ['V1', 'Lm', 'Li']
     mpairs = list(itertools.combinations(visual_areas, 2))
@@ -95,13 +282,14 @@ def do_mannwhitney(mdf, metric='I_rs', multi_comp_test='holm'):
 
         # compare samples
         stat, p = spstats.mannwhitneyu(d1, d2)
-        print('Statistics=%.3f, p=%.3f' % (stat, p))
         # interpret
         alpha = 0.05
         if p > alpha:
-            print('Same distribution (fail to reject H0)')
+            interp_str = '... Same distribution (fail to reject H0)'
         else:
-            print('Different distribution (reject H0)')
+            interp_str = '... Different distribution (reject H0)'
+        print('[%s] Statistics=%.3f, p=%.3f, %s' % (str(mp), stat, p, interp_str))
+
         pvalues.append(p)
 
     reject, pvals_corrected, _, _ = sm.stats.multitest.multipletests(pvalues, 
@@ -114,7 +302,24 @@ def do_mannwhitney(mdf, metric='I_rs', multi_comp_test='holm'):
     return results
 
 
+def annotate_stats_areas(statresults, ax, lw=1, color='k', 
+                         visual_areas=['V1', 'Lm', 'Li']):
+    
+    y_ht = round(ax.get_ylim()[-1], 1)*1.2
+    print(y_ht)
+    offset = y_ht*0.1
+    for ci, cpair in enumerate(statresults):
+        if cpair[1]:
+            v1, v2 = cpair[0]
+            x1 = visual_areas.index(v1)
+            x2 = visual_areas.index(v2)
+            y1 = y_ht+(ci*offset)
+            y2 = y1
+            ax.plot([x1,x1, x2, x2], [y1, y2, y2, y1], linewidth=lw, color=color)
 
+    return ax
+
+    
 def load_traces(animalid, session, fovnum, curr_exp, traceid='traces001',
                responsive_test='ROC', responsive_thr=0.05, response_type='dff', n_stds=2.5):
     
