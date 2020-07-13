@@ -1674,6 +1674,7 @@ class ReceptiveFields(Experiment):
             with open(stats_fpath, 'wb') as f:
                 pkl.dump(estats, f, protocol=pkl.HIGHEST_PROTOCOL)
 
+        print("got stats", estats.nrois)
         return estats #{experiment_id: estats}
 
 
@@ -1691,7 +1692,8 @@ class ReceptiveFields(Experiment):
                       transform_fov=True, sigma_scale=2.35, 
                       create_new=False, rootdir='/n/coxfs01/2p-data'):
         
-        from pipeline.python.classifications import analyze_retino_structure as evalrfs
+        from pipeline.python.classifications import evaluate_receptivefield_fits as evalrfs
+        # analyze_retino_structure as evalrfs
         # Get output dir for stats
         estats = self.get_stats(response_type=response_type, fit_thr=fit_thr) # estats.rois = list of all cells that pass fit-thr
     
