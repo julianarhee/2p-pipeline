@@ -43,7 +43,7 @@ def get_excluded_datasets(filter_by='drop_repeats', excluded_sessions=[]):
         v1_repeats = ['20190501_JC076', 
                       '20190507_JC083', '20190510_JC083', #'20190511_JC083']
                       '20190615_JC097',
-                      '20191004_JC110']
+                      '20191004_JC110_fov2']
  
         lm_repeats = ['20190426_JC078', '20190504_JC078', '20190430_JC078', 
                       '20190506_JC080', 
@@ -86,7 +86,7 @@ def get_metadata(traceid='traces001', fov_type='zoom2p0x', state='awake',
             if '%s_%s' % (v[2], v[1]) not in excluded_sessions \
             and '%s_%s_fov%i' % (v[2], v[1], v[3]) not in excluded_sessions])
 
-    return dsets
+    return dsets.drop_duplicates()
 
 
 def create_deviant_dataframe(dsets, traceid='traces001', n_processes=1,

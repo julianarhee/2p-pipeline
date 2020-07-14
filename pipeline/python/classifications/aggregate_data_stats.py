@@ -24,9 +24,9 @@ def get_sorted_fovs(filter_by='drop_repeats', excluded_sessions=[]):
     For each animal, dict of visual areas and list of tuples (each tuple is roughly similar fov)
     Use this to filter out repeated FOVs.
     '''
-    fov_keys = {'JC076': {'V1': [('20190420_fov1', '20190501_fov1')],
+    fov_keys = {'JC076': {'V1': [('20190420', '20190501')],
                           'Lm': [('20190423_fov1')],
-                          'Li': [('20190422_fov1', '20190502_fov1')]},
+                          'Li': [('20190422', '20190502')]},
 
                 'JC078': {'Lm': [('20190426', '20190504', '20190509'),
                                  ('20190430', '20190513')]},
@@ -35,8 +35,8 @@ def get_sorted_fovs(filter_by='drop_repeats', excluded_sessions=[]):
                                  ('20190602_fov2')],
                           'Li': [('20190602_fov1')]},
 
-                'JC083': {'V1': [('20190507', '20190510', '2010511')],
-                          'Lm': [('20190508', '201905012', '20190517')]},
+                'JC083': {'V1': [('20190507', '20190510', '20190511')],
+                          'Lm': [('20190508', '20190512', '20190517')]},
 
                 'JC084': {'V1': [('20190522')],
                           'Lm': [('20190525')]},
@@ -71,7 +71,7 @@ def get_sorted_fovs(filter_by='drop_repeats', excluded_sessions=[]):
                 'JC111': {'Li': [('20191003')]},
 
                 'JC113': {'Lm': [('20191012_fov3')],
-                          'Li': [('20191012_fov2', '20191017', '20191018')]},
+                          'Li': [('20191012_fov1'), ('20191012_fov2', '20191017', '20191018')]},
 
                 'JC117': {'V1': [('20191111_fov1')],
                           'Lm': [('20191104_fov2'), ('20191111_fov2')],
@@ -84,7 +84,7 @@ def get_sorted_fovs(filter_by='drop_repeats', excluded_sessions=[]):
 
     return fov_keys
 
-def all_datasets_by_area(visual_area=[]):
+def all_datasets_by_area(visual_areas=[]):
     if len(visual_areas)==0:
         visual_areas = ['V1', 'Lm', 'Li']
         
@@ -101,7 +101,7 @@ def all_datasets_by_area(visual_area=[]):
                     sessions_ = ['%s_%s_%s' % (sublist.split('_')[0], animalid, sublist.split('_')[-1]) \
                              if len(sublist.split('_'))>1 else '%s_%s' % (sublist, animalid)]
 
-            ddict[visual_area].extend(sessions_)
+                ddict[visual_area].extend(sessions_)
 
     return ddict
 
@@ -126,6 +126,7 @@ def get_metadata(traceid='traces001', filter_by='most_cells', stimulus=None, sti
         print("Unknow stimulus <%s>. Select from: gratings, rfs, blobs, or all" % str(stimulus))
         return None
     
+    print("Selecting %i dsets" % len(included_sessions))
     dsets = pd.concat([g for v, g in sdata.groupby(['visual_area', 'animalid', 'session', 'fovnum']) \
                        if '%s_%s' % (v[2], v[1]) in included_sessions \
                        or '%s_%s_fov%i' % (v[2], v[1], v[3]) in included_sessions])
@@ -213,8 +214,8 @@ def get_rf_datasets(filter_by='drop_repeats', excluded_sessions=[], as_dict=True
         # Sessions with repeat FOVs
         v1_repeats = ['20190501_JC076', 
                       '20190507_JC083', '20190510_JC083', #'20190511_JC083']
-                      '20190615_JC097',
-                      '20191004_JC110']
+                      '20190615_JC097_fov1', '20190615_JC097_fov2', '20190615_JC097_fov3',
+                      '20191004_JC110_fov2']
  
         lm_repeats = ['20190426_JC078', '20190504_JC078', '20190430_JC078', 
                       '20190506_JC080', 
@@ -246,7 +247,7 @@ def get_rf_datasets(filter_by='drop_repeats', excluded_sessions=[], as_dict=True
     
     session_dict = {}
     included_sessions = []
-    for k, v in ddict:
+    for k, v in ddict.items():
         included = [vv for vv in v if vv not in excluded_sessions]
         session_dict[k] = included
         included_sessions.extend(included)
