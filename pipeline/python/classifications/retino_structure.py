@@ -169,7 +169,12 @@ def create_deviant_dataframe(dsets, traceid='traces001', n_processes=1,
                 devdf.append(cond_df)
             
     devdf = pd.concat(devdf, axis=0).reset_index(drop=True)
-     
+    
+    print("!! Found %i datasets with no good fits." % len(bad_fit_results))
+    if len(bad_fit_results) > 0:
+        for f in bad_fit_results:
+            print(f)
+
     return devdf, stats_load_errors, bad_fit_results
    
 

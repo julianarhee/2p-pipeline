@@ -4,6 +4,230 @@ import cv2
 
 import numpy as np
 import pandas as pd
+import pylab as pl
+import cPickle as pkl
+
+# ------------------------------------------------------------------------------------
+# General stats
+# ------------------------------------------------------------------------------------
+
+def compare_rf_size(df, cdf=False, ax=None, alpha=1, lw=2,
+                   area_colors=None, visual_areas=['V1', 'Lm', 'Li']):
+    if area_colors is None:
+        visual_areas = ['V1', 'Lm', 'Li']
+        colors = ['magenta', 'orange', 'dodgerblue'] #sns.color_palette(palette='colorblind') #, n_colors=3)
+        area_colors = {'V1': colors[0], 'Lm': colors[1], 'Li': colors[2]}
+
+
+    if ax is None:
+        fig, ax = pl.subplots(figsize=(6,4))
+        fig.patch.set_alpha(1)
+
+    for visual_area in visual_areas:
+        nrats = len(df[df['visual_area']==visual_area]['animalid'].unique())
+        ncells_total = df[df['visual_area']==visual_area].shape[0]
+        values = df[df['visual_area']==visual_area]['avg_size'].values
+        weights = np.ones_like(values)/float(len(values))
+        ax.hist(values, 
+                cumulative=cdf,
+                label='%s (n=%i rats, %i cells)' % (visual_area, nrats, ncells_total),
+                color=area_colors[visual_area],
+                histtype='step', alpha=alpha, lw=lw,
+                normed=0, weights=weights)
+    ax.legend(bbox_to_anchor=(1.05, 1), loc=2, borderaxespad=0., fontsize=8)
+    #sns.despine(ax=ax, trim=True, offset=2)
+    ax.set_xlabel('average size (deg)')
+    if cdf:
+        ax.set_ylabel('CDF')
+    else:
+        ax.set_ylabel('fraction')
+        
+    return ax
+
+
+# ------------------------------------------------------------------------------------
+# Data loading
+# ------------------------------------------------------------------------------------
+def aggregate_rf_dataframes(filter_by, fit_desc=None, scale_sigma=True, fit_thr=0.5, traceid='traces001',
+                            fov_type='zoom2p0x', state='awake', stimulus='rfs', 
+                            excluded_sessions = ['JC110_20191004_FOV1_zoom2p0x','JC080_20190602_FOV1_zoom2p0x',
+                                                 'JC113_20191108_FOV1_zoom2p0x', 'JC113_20191108_FOV2_zoom2p0x']):
+    
+    from pipeline.python.classifications import aggregate_data_stats as aggr
+                            
+    assert fit_desc is not None, "No fit_desc provided!"
+    #### Get metadata
+    dsets = aggr.get_metadata(traceid=traceid, fov_type=fov_type, state=state, 
+                                  filter_by=filter_by, stimulus='rfs')
+    rf_dsets = dsets[dsets['experiment'].isin(['rfs', 'rfs10'])].copy()
+
+    #### Check for any datasets that need RF fits
+    rf_dpaths, _ = get_fit_dpaths(rf_dsets, traceid=traceid, fit_desc=fit_desc, 
+                                              excluded_sessions=excluded_sessions)
+
+    #### Get RF dataframe for all datasets (filter to include only good fits)
+    all_df = aggregate_rf_data(rf_dpaths, scale_size=scale_sigma, verbose=False,
+                                          fit_desc=fit_desc, traceid=traceid)
+    all_df.groupby(['visual_area', 'experiment'])['datakey'].count()
+
+    #### Filter for good fits only
+    r_df = all_df[all_df['r2'] > fit_thr].copy().reset_index(drop=True)
+    dkey_dict = dict((v, dict((dk, di) for di, dk in enumerate(vdf['datakey'].unique()))) \
+                     for v, vdf in r_df.groupby(['visual_area'])) 
+    r_df['datakey_ix'] = [dkey_dict[r_df_nof['visual_area'][i]][r_df['datakey'][i]] \
+                          for i in r_df.index.tolist()]    
+    
+    return r_df, dkey_dict
+
+def get_fit_dpaths(dsets, traceid='traces001', fit_desc=None, excluded_sessions=[],
+              rootdir='/n/coxfs01/2p-data'):
+    '''
+    rfdata: (dataframe)
+        Metadata (subset of 'sdata') of all datasets to include in current analysis
+        
+    Gets paths to fit_results.pkl, which contains all (fit-able) results for each cell.
+    Adds new column of paths to rfdata.
+    '''
+    assert fit_desc is not None, "No fit-desc specified!"
+    
+    rfdata = dsets.copy()
+    fit_these = []
+    dpaths = {}
+    unknown = []
+    for (visual_area, animalid, session, fov), g in dsets.groupby(['visual_area', 'animalid', 'session', 'fov']): #animalid in rfdata['animalid'].unique():
+        skey = '_'.join([animalid, session, fov])
+        if skey in excluded_sessions:
+            rfdata = rfdata.drop(g.index)
+            continue
+
+        rfruns = g['experiment'].unique()
+        for rfname in rfruns:
+            curr_rfname = 'gratings' if int(session) < 20190511 else rfname
+            fpath = glob.glob(os.path.join(rootdir, animalid, session, '*%s' % fov, 
+                                        'combined_%s_*' % curr_rfname, 'traces', '%s*' % traceid, 
+                                        'receptive_fields', fit_desc, 'fit_results.pkl'))
+            if len(fpath) > 0:
+                assert len(fpath)==1, "Too many paths: %s" % str(fpath)
+                dpaths['-'.join([animalid, session, fov, rfname])] = fpath[0]
+            elif len(fpath) == 0:
+                fit_these.append((animalid, session, fov, rfname))
+            else:
+                print("[%s] %s - warning: unknown file paths" % (skey, rfname))
+    print("N dpaths: %i, N unfit: %i" % (len(dpaths), len(fit_these)))
+    print("N datasets included: %i, N sessions excluded: %i" % (rfdata.shape[0], len(excluded_sessions)))
+    
+    rdata = rfdata.reset_index()
+    fillpaths = ['' for _ in range(rfdata.shape[0])]
+    for skey, fpath in dpaths.items():
+        animalid, session, fov, rfname = skey.split('-')
+        df_ix = rdata[ (rdata['animalid']==animalid) \
+                           & (rdata['session']==session) \
+                           & (rdata['fov']==fov) \
+                           & (rdata['experiment']==rfname)].index.tolist()[0]
+        fillpaths[df_ix] = fpath
+        
+    rdata['path'] = fillpaths
+    rdata = rdata.drop_duplicates().reset_index(drop=True)
+    
+    return rdata, fit_these
+
+
+def aggregate_rf_data(rf_dpaths, fit_desc=None, traceid='traces001', fit_thr=0.5, 
+                      scale_size=True, sigma_scale=2.35, verbose=False,
+                     rootdir='/n/coxfs01/2p-data'):
+    '''
+    Combines fit_results.pkl(fit from data) and evaluation_results.pkl (evaluated fits via bootstrap)
+    and gets fit results only for those cells that are good/robust fits based on bootstrap analysis.
+    '''
+    from pipeline.python.retinotopy import fit_2d_rfs as fitrf
+
+
+    df_list = []
+    for (visual_area, animalid, session, fovnum, experiment), g in rf_dpaths.groupby(['visual_area', 'animalid', 'session', 'fovnum', 'experiment']):
+        datakey = '%s_%s_fov%i' % (session, animalid, fovnum) #'-'.join([animalid, session, fovnum])
+
+        #### Load evaluation results (bootstrap analysis of each fit paramater)
+        curr_rfname = experiment if int(session)>=20190511 else 'gratings'
+        eval_dpaths = glob.glob(os.path.join(rootdir, animalid, session, 'FOV%i_zoom2p0x' % fovnum, 
+                                             '*%s_*' % curr_rfname, 'traces', '%s*' % traceid, 
+                                             'receptive_fields', fit_desc, 'evaluation', 'evaluation_results.pkl'))
+        assert len(eval_dpaths)==1, "%s: Evaluation not found: %s" % (datakey, str(eval_dpaths))
+        eval_dpath = eval_dpaths[0]
+        with open(eval_dpath, 'rb') as f:
+            eval_results = pkl.load(f)
+        if eval_results is None:
+            print('-- no good (%s), skipping' % datakey)
+            continue
+
+        #### Load fit results from measured
+        fpath = g['path'].values[0]
+        with open(fpath,'rb') as f:
+            fit_results = pkl.load(f)
+        fit_rois = sorted(eval_results['data']['cell'].unique())
+        rfit_df = fitrf.rfits_to_df(fit_results['fit_results'], scale_size=True,
+                                    row_vals=fit_results['row_vals'], 
+                                    col_vals=fit_results['col_vals'], roi_list=fit_rois)
+        
+        #### Identify cells with measured params within 95% CI of bootstrap distN
+        param_list = [param for param in rfit_df.columns if param != 'r2']
+        pass_rois = get_good_fits(rfit_df, eval_results, param_list=param_list)
+        if verbose:
+            print("[%s] %s: %i of %i fit rois pass for all params" % (visual_area, datakey, len(pass_rois), len(fit_rois)))
+            
+        #### Create dataframe with params only for good fit cells
+        passdf = rfit_df.loc[pass_rois].copy()
+        # "un-scale" size, if flagged
+        if not scale_size:
+            sigma_x = passdf['sigma_x']/sigma_scale
+            sigma_y = passdf['sigma_y'] / sigma_scale
+            passdf['sigma_x'] = sigma_x
+            passdf['sigma_y'] = sigma_y
+            
+        tmpmeta = pd.DataFrame({'cell': pass_rois,
+                                'datakey': [datakey for _ in np.arange(0, len(pass_rois))],
+                                'animalid': [animalid for _ in np.arange(0, len(pass_rois))],
+                                'session': [session for _ in np.arange(0, len(pass_rois))],
+                                'fovnum': [fovnum for _ in np.arange(0, len(pass_rois))],
+                                'visual_area': [visual_area for _ in np.arange(0, len(pass_rois))],
+                                'experiment': [experiment for _ in np.arange(0, len(pass_rois))]}, index=passdf.index)
+
+        fitdf = pd.concat([passdf, tmpmeta], axis=1).reset_index(drop=True)
+        df_list.append(fitdf)
+    rfdf = pd.concat(df_list, axis=0) #.reset_index(drop=True)
+    
+    # Include average RF size (average of minor/major axes of fit ellipse)
+    rfdf['avg_size'] = rfdf[['sigma_x', 'sigma_y']].mean(axis=1)
+
+    return rfdf
+
+
+def get_good_fits(rfit_df, eval_results, param_list=[]):
+    '''
+    Returns only those ROIs that pass bootstrap test (measured value within 95% of CI).
+    Params tested given by parma_list, otherwise, all params.
+    
+    rfit_df: (dataframe)
+        This is fit_results['fit_results'] dict combined into dataframe (sigma should be scaled).
+    
+    eval_results: (dict)
+        These are the CIs, data, boot params for doing RF fit evaluation.
+        
+    param_list: (list)
+        Subset of fitted params to check that they are within the 95% CI of bootstrapped distn. 
+        (default is all params)
+    '''
+    if len(param_list)==0:
+        param_list = [param for param in rfit_df.columns if param != 'r2']
+
+    fit_rois = sorted(rfit_df.index.tolist())
+    pass_by_param = [[rid for rid in fit_rois if \
+                     eval_results['cis']['%s_lower' % fparam][rid] <= rfit_df[fparam][rid] <= eval_results['cis']['%s_upper' % fparam][rid]] \
+                    for fparam in param_list]
+
+    pass_rois = list(set.intersection(*map(set, pass_by_param)))
+    
+    return pass_rois
+
 
 # ------------------------------------------------------------------------------------
 # RF luminance calculations
@@ -158,6 +382,7 @@ def create_color_bar(fig, hue_colors, hue_values, hue_param='label', #cmap='cube
     cbar.ax.set_xlabel(hue_param, fontsize=12)
 
     return cbar
+
 # ------------------------------------------------------------------------------------
 # Generic screen/stimuli functions
 # ------------------------------------------------------------------------------------

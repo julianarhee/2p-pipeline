@@ -929,16 +929,25 @@ class Experiment(object):
         self.get_roi_id(traceid=traceid, rootdir=rootdir)
             
         paths = self.get_data_paths(rootdir=rootdir)
+        assert paths is not None, "[ERROR] no paths found!"
         self.source = paths
         self.trace_type = None #trace_type
         self.data = None #Struct() #self.load()
         
-        
+        print("SRC:", self.source)
+        self.experiment_type = experiment_type
+        if isinstance(self.source, list) and 'datasets' in os.path.split(self.source[0])[-1]:
+            self.load()
+        elif 'datasets' in os.path.split(self.source)[-1]:
+            self.load()
+
+       
         if 'gratings' in self.name and int(self.session) < 20190511:
             self.experiment_type = 'rfs'
         else:
             self.experiment_type = self.name
-    
+        
+   
     def get_roi_masks(self, rois='', rootdir='/n/coxfs01/2p-data'):
         if rois == '':
             rois = self.rois
@@ -1096,7 +1105,12 @@ class Experiment(object):
             trace_extraction = 'retino_analysis'
 
         else:
-            all_runs = glob.glob(os.path.join(fov_dir, '*%s_*' % self.name, 'traces', 'traces*', 'data_arrays', 'np_subtracted*.npz'))
+            try:
+                all_runs = glob.glob(os.path.join(fov_dir, '*%s_*' % self.name, 'traces', 'traces*', 'data_arrays', 'np_subtracted*.npz'))
+                assert len(all_runs) > 0, "np_subtracted not found!"
+            except Exception as e:
+                all_runs = glob.glob(os.path.join(fov_dir, '*%s_*' % self.name, 'traces', 'traces*', 'data_arrays', 'datasets.npz'))
+                
             trace_extraction = 'traces'
 
         #print("FOUND RUNS:", all_runs)    
@@ -1129,8 +1143,13 @@ class Experiment(object):
                     
                 else:
                     extraction_name = 'traces'
-                    fpath = glob.glob(os.path.join(run_dir, 'traces', '%s*' % self.traceid, \
+                    try:
+                        fpath = glob.glob(os.path.join(run_dir, 'traces', '%s*' % self.traceid, \
                                                    'data_arrays', 'np_subtracted.npz'))[0] #'datasets.npz'))[0]
+                    except Exception as e:
+                        fpath = glob.glob(os.path.join(run_dir, 'traces', '%s*' % self.traceid, \
+                                                   'data_arrays', 'datasets.npz'))[0] #
+
                 data_fpaths.append(fpath)
             except IndexError:
                 print("... no data arrays found: %s" % run_name)
@@ -1472,6 +1491,8 @@ class Gratings(Experiment):
 
     def get_nonori_params(self, paramnames=['size', 'speed', 'sf'], response_type='dff',
                           responsive_test='nstds', responsive_thr=10, n_stds=2.5, add_offset=True):
+        '''Returns average response to each NON-ori config (averaged over oris)
+        '''
         estats = self.get_stats(responsive_test=responsive_test, responsive_thr=responsive_thr, n_stds=n_stds,add_offset=add_offset)                
         sdf = self.get_stimuli()
                 

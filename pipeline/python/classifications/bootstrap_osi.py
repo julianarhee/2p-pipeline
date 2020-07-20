@@ -1651,7 +1651,7 @@ def plot_psth_roi(roi, raw_traces, labels, curr_cfgs, sdf,  trace_type='dff', fi
     nframes_on = labels['nframes_on'].unique()[0]
     
     ymin = np.nanmin((mean_traces - std_traces )) #.min()
-    ymax = np.nanmin((mean_traces + std_traces )) .max()
+    ymax = np.nanmax((mean_traces + std_traces )) #.max()
     for icfg in range(len(curr_cfgs)):
         ax = pl.subplot2grid((nr, nc), (s_row, icfg), colspan=colspan)
         ax.plot(tpoints, mean_traces[icfg, :], color='k')

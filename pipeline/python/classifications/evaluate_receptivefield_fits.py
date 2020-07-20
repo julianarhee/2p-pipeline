@@ -915,7 +915,7 @@ def identify_deviants(regresults, bootresults, posdf, ci=0.95, rfdir='/tmp'):
                 deviant_ixs = [roi_list.index(d) for d in trudeviants]
                 for ix, roi in zip(deviant_ixs, trudeviants):
                     if deviant_rpos[roi]  > max(regcis[ix]):
-                        print roi
+                        #print roi
                         ax.annotate(roi, (deviant_fpos[roi], deviant_rpos[roi]+avg_interval/2.), fontsize=6)
                     else:
                         ax.annotate(roi, (deviant_fpos[roi], deviant_rpos[roi]-avg_interval/2.), fontsize=6)        

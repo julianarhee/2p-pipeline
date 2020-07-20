@@ -278,7 +278,7 @@ def aggregate_experiment_runs(animalid, session, fov, experiment, traceid='trace
         experiment = 'gratings'
 
     rawfns = sorted(glob.glob(os.path.join(fovdir, '*%s_*' % experiment, 'traces', '%s*' % traceid, 'files', '*.hdf5')), key=natural_keys)
-    print("Found %i raw file arrays." % len(rawfns))
+    print("[%s]: Found %i raw file arrays." % (experiment, len(rawfns)))
     
     #%
     runpaths = sorted(glob.glob(os.path.join(rootdir, animalid, session, fov, '*%s_*' % experiment,

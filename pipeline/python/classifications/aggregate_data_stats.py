@@ -18,6 +18,9 @@ import cPickle as pkl
 from pipeline.python.classifications import experiment_classes as util
 from pipeline.python.utils import label_figure, natural_keys, reformat_morph_values
 
+# ===============================================================
+# Dataset selection
+# ===============================================================
 
 def get_sorted_fovs(filter_by='drop_repeats', excluded_sessions=[]):
     '''
@@ -257,6 +260,19 @@ def get_rf_datasets(filter_by='drop_repeats', excluded_sessions=[], as_dict=True
     
     return included_sessions
     
+# ===============================================================
+# Plotting
+# ===============================================================
+from matplotlib.lines import Line2D
+
+def annotateBars(row, ax, fontsize=12): 
+    for p in ax.patches:
+        ax.annotate("%.2f" % p.get_height(), (p.get_x() + p.get_width() / 2., 0.), #p.get_height()),
+                    ha='center', va='center', fontsize=fontsize, color='k', 
+                    rotation=0, xytext=(0, 20),
+             textcoords='offset points')
+        
+
 def plot_mannwhitney(mdf, metric='I_rs', multi_comp_test='holm', ax=None):
     if ax is None:
         fig, ax = pl.subplots()
@@ -320,7 +336,35 @@ def annotate_stats_areas(statresults, ax, lw=1, color='k',
 
     return ax
 
+def get_counts_for_legend(df, area_colors=None, markersize=10, marker='_',
+              visual_areas=['V1', 'Lm', 'Li']):
+    from matplotlib.lines import Line2D
+
+    if area_colors is None:
+        colors = ['magenta', 'orange', 'dodgerblue'] #sns.color_palette(palette='colorblind') #, n_colors=3)
+        area_colors = {'V1': colors[0], 'Lm': colors[1], 'Li': colors[2]}
+
+
+    # Get counts
+    counts = df.groupby(['visual_area', 'animalid', 'datakey'])['cell'].count().reset_index()
+    counts.rename(columns={'cell': 'n_cells'}, inplace=True)
+
+    # Get counts of samples for legend
+    n_rats = dict((v, len(g['animalid'].unique())) for v, g in counts.groupby(['visual_area']))
+    n_fovs = dict((v, len(g[['datakey']].drop_duplicates())) for v, g in counts.groupby(['visual_area']))
+    n_cells = dict((v, g['n_cells'].sum()) for v, g in counts.groupby(['visual_area']))
+
+    legend_elements = [Line2D([0], [0], marker='_', markersize=10, \
+                              lw=1, color=area_colors[v], markerfacecolor=area_colors[v],
+                              label='%s (n=%i rats, %i fovs, %i cells)' % (v, n_rats[v], n_fovs[v], n_cells[v]))\
+                       for v in visual_areas]
     
+    return legend_elements
+
+# ===============================================================
+# Data loading
+# ===============================================================
+
 def load_traces(animalid, session, fovnum, curr_exp, traceid='traces001',
                responsive_test='ROC', responsive_thr=0.05, response_type='dff', n_stds=2.5):
     
@@ -404,50 +448,6 @@ def get_aggregate_info(traceid='traces001', fov_type='zoom2p0x', state='awake', 
             pkl.dump(sdata, f, protocol=pkl.HIGHEST_PROTOCOL)
             
     return sdata
-
-
-def extract_options(options):
-    parser = optparse.OptionParser()
-
-    # PATH opts:
-    parser.add_option('-D', '--root', action='store', dest='rootdir', default='/n/coxfs01/2p-data', 
-                      help='root project dir containing all animalids [default: /n/coxfs01/2pdata]')
-   
-    # Set specific session/run for current animal:
-    parser.add_option('-E', '--experiment', action='store', dest='experiment', default='', 
-                      help="experiment name (e.g,. gratings, rfs, rfs10, or blobs)") #: FOV1_zoom2p0x)")
-
-    parser.add_option('-e', '--epoch', action='store', dest='epoch', default='stimulus', 
-                      help="trial epoch (default: stimulus)")
- 
-    parser.add_option('-t', '--traceid', action='store', dest='traceid', default='traces001', 
-                      help="traceid (default: traces001)")
-    parser.add_option('--test', action='store', dest='responsive_test', default='ROC', 
-                      help="responsive test (default: ROC)")
-    parser.add_option('--thr', action='store', dest='responsive_thr', default=0.05, 
-                      help="responsive test thr (default: 0.05 for ROC)")
-    parser.add_option('-d', '--response', action='store', dest='response_type', default='dff', 
-                      help="response type (default: dff)")
-    parser.add_option('--nstds', action='store', dest='nstds_above', default=2.5, 
-                      help="only for test=nstds, N stds above (default: 2.5)")
-    parser.add_option('--new', action='store_true', dest='create_new', default=False, 
-                      help="flag to create new")
-    
-    parser.add_option('-X', '--exclude', action='store', dest='always_exclude', 
-                      default=['20190426_JC078'],
-                      help="Datasets to exclude bec incorrect or overlap")
-
-    (options, args) = parser.parse_args(options)
-
-    return options
-
-
-# Select response filters
-# responsive_test='ROC'
-# responsive_thr = 0.05
-# response_type = 'df'
-# experiment = 'blobs'
-#always_exclude = ['20190426_JC078']
 
 def get_aggregate_data_filepath(experiment, traceid='traces001', response_type='dff', epoch='stimulus',
                        responsive_test='ROC', responsive_thr=0.05, n_stds=0.0,
@@ -534,6 +534,51 @@ def aggregate_and_save(experiment, traceid='traces001', response_type='dff', epo
         print("Done!")
 
     return data_outfile
+
+def extract_options(options):
+    parser = optparse.OptionParser()
+
+    # PATH opts:
+    parser.add_option('-D', '--root', action='store', dest='rootdir', default='/n/coxfs01/2p-data', 
+                      help='root project dir containing all animalids [default: /n/coxfs01/2pdata]')
+   
+    # Set specific session/run for current animal:
+    parser.add_option('-E', '--experiment', action='store', dest='experiment', default='', 
+                      help="experiment name (e.g,. gratings, rfs, rfs10, or blobs)") #: FOV1_zoom2p0x)")
+
+    parser.add_option('-e', '--epoch', action='store', dest='epoch', default='stimulus', 
+                      help="trial epoch (default: stimulus)")
+ 
+    parser.add_option('-t', '--traceid', action='store', dest='traceid', default='traces001', 
+                      help="traceid (default: traces001)")
+    parser.add_option('--test', action='store', dest='responsive_test', default='ROC', 
+                      help="responsive test (default: ROC)")
+    parser.add_option('--thr', action='store', dest='responsive_thr', default=0.05, 
+                      help="responsive test thr (default: 0.05 for ROC)")
+    parser.add_option('-d', '--response', action='store', dest='response_type', default='dff', 
+                      help="response type (default: dff)")
+    parser.add_option('--nstds', action='store', dest='nstds_above', default=2.5, 
+                      help="only for test=nstds, N stds above (default: 2.5)")
+    parser.add_option('--new', action='store_true', dest='create_new', default=False, 
+                      help="flag to create new")
+    
+    parser.add_option('-X', '--exclude', action='store', dest='always_exclude', 
+                      default=['20190426_JC078'],
+                      help="Datasets to exclude bec incorrect or overlap")
+
+    (options, args) = parser.parse_args(options)
+
+    return options
+
+
+# Select response filters
+# responsive_test='ROC'
+# responsive_thr = 0.05
+# response_type = 'df'
+# experiment = 'blobs'
+#always_exclude = ['20190426_JC078']
+
+
 
 def main(options):
     opts = extract_options(options)
