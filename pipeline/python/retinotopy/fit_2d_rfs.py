@@ -556,7 +556,7 @@ def plot_and_fit_roi_RF(response_vector, row_vals, col_vals,
         
         divider = make_axes_locatable(ax2)
         cax2 = divider.append_axes('right', size='5%', pad=0.05)
-        fig.colorbar(im3, cax=cax2, orientation='vertical')
+        fig.colorbar(im2, cax=cax2, orientation='vertical')
         
         # Adjust subplot:
         bbox1 = ax.get_position()
@@ -1412,7 +1412,8 @@ def fit_2d_receptive_fields(animalid, session, fov, run, traceid, create_new=Fal
     # Create results outfile, or load existing:
     do_fits = False
     rf_results_fpath = os.path.join(rfdir, 'fit_results.pkl') #results_outfile = 'RESULTS_%s.pkl' % fit_desc
-    if os.path.exists(rf_results_fpath) or create_new is False:
+    do_fits = create_new
+    if os.path.exists(rf_results_fpath) and create_new is False:
         try:
             print "... checking for existing results"
             with open(rf_results_fpath, 'rb') as f:

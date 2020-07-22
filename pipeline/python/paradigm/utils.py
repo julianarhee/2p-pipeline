@@ -2028,7 +2028,7 @@ def get_transforms(stimconfigs):
                 included_objects = list(set(curr_objects[0]).intersection(*curr_objects[1:]))
         else:
             included_objects = transform_dict[trans]
-            print included_objects
+            # print included_objects
         object_transformations[trans] = included_objects
 
     return transform_dict, object_transformations
