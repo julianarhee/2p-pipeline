@@ -65,6 +65,14 @@ def get_screen_dims():
 
     return screen
 
+def isnumber(n):
+    try:
+        float(n)   # Type-casting the string to `float`.
+                   # If string is not a valid `float`, 
+                   # it'll raise `ValueError` exception
+    except ValueError:
+        return False
+    return True
 
 def uint16_to_RGB(img):
     im = img.astype(np.float64)/img.max()
