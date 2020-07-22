@@ -5,7 +5,7 @@ Created on Sun Sep  1 11:01:55 2019
 
 @author: julianarhee
 """
-
+#%%
 import h5py
 import glob
 import os
@@ -18,7 +18,7 @@ import sys
 
 import pandas as pd
 import numpy as np
-from pipeline.python.utils import natural_keys, get_frame_info
+from pipeline.python.utils import natural_keys, get_frame_info, isnumber
 
 from pipeline.python.paradigm import utils as putils
 
@@ -34,25 +34,14 @@ def get_run_summary(xdata_df, labels_df, stimconfigs, si, verbose=False):
     conditions = sorted(list(set(labels_df['config'])), key=natural_keys)
  
     # Get trun info:
-    roi_list = sorted(list(set([r for r in xdata_df.columns.tolist() if not r=='index'])))
+    roi_list = sorted(list(set([r for r in xdata_df.columns.tolist() if isnumber(r)]))) #not r=='index'])))
     ntrials_total = len(sorted(list(set(labels_df['trial'])), key=natural_keys))
     trial_counts = labels_df.groupby(['config'])['trial'].apply(set)
     ntrials_by_cond = dict((k, len(trial_counts[i])) for i,k in enumerate(trial_counts.index.tolist()))
-    #assert len(list(set(labels_df.groupby(['trial'])['tsec'].count()))) == 1, "Multiple counts found for ntframes_per_trial."
     nframes_per_trial = list(set(labels_df.groupby(['trial'])['stim_on_frame'].count())) #[0]
     nframes_on = list(set(labels_df['stim_dur']))
-    #assert len(nframes_on) == 1, "More than 1 unique stim duration found in Sdf..."
-    #nframes_on = nframes_on[0] * si_info['framerate']
     nframes_on = [int(round(si['framerate'])) * n for n in nframes_on]
-    
-    # Get stim onset index for all trials:
-#    tmat = np.reshape(labels_df['tsec'].values, (ntrials_total, nframes_per_trial))    
-#    ons = []
-#    for ts in range(tmat.shape[0]):
-#        on_idx = [t for t in tmat[ts,:]].index(0)
-#        ons.append(on_idx)
-#    assert len(list(set(ons)))==1, "More than one unique stim ON idx found!"
-#    stim_on_frame = list(set(ons))[0]
+
     try:
         ons = [int(np.where(np.array(t)==0)[0]) for t in labels_df.groupby('trial')['tsec'].apply(np.array)]
         assert len(list(set(ons))) == 1
@@ -60,7 +49,7 @@ def get_run_summary(xdata_df, labels_df, stimconfigs, si, verbose=False):
     except Exception as e: 
         all_ons = [np.where(np.array(t)==0)[0] for t in labels_df.groupby('trial')['tsec'].apply(np.array)]
         all_ons = np.concatenate(all_ons).ravel()
-        print len(all_ons)
+        print("N stim onsets:", len(all_ons))
         unique_ons = np.unique(all_ons)
         print("**** WARNING: multiple stim onset idxs found - %s" % str(list(set(unique_ons))))
         stim_on_frame = int(round( np.mean(unique_ons) ))
@@ -120,8 +109,7 @@ def frames_to_trials(parsed_frames_fpath, trials_in_block, file_ix, si, frame_sh
     vol_ixs = np.array(sorted(np.concatenate(vol_ixs).ravel()))
     
     try:
-        parsed_frames = h5py.File(parsed_frames_fpath, 'r')
-        
+        parsed_frames = h5py.File(parsed_frames_fpath, 'r') 
         trial_list = sorted(parsed_frames.keys(), key=natural_keys)
         print "There are %i total trials across all .tif files." % len(trial_list)
         
@@ -182,8 +170,7 @@ def frames_to_trials(parsed_frames_fpath, trials_in_block, file_ix, si, frame_sh
         parsed_frames.close()
             
     #%
-    # Convert frame-reference to volume-reference. Only select first frame for each volume.
-    # Only relevant for multi-plane
+    # Convert frame- to volume-reference, select 1st frame for each volume. (Only relevant for multi-plane)
     # -------------------------------------------------------
     # Don't take unique values, since stim period of trial N can be ITI of trial N-1
     actual_frames = [i for i in all_frames_in_trials if i < len(vol_ixs_tif)]
@@ -199,8 +186,6 @@ def frames_to_trials(parsed_frames_fpath, trials_in_block, file_ix, si, frame_sh
         print "... padding trial tstamps array... (should be %i)" % len(all_frames_in_trials)
         trial_tstamps = np.pad(trial_tstamps, (0, len(all_frames_in_trials)-len(trial_tstamps)), mode='constant', constant_values=np.nan)
         frames_in_trials = np.pad(frames_in_trials, (0, len(all_frames_in_trials)-len(frames_in_trials)), mode='constant', constant_values=np.nan)
-    #print "trial tstamps: size", len(trial_tstamps)
-    #print "%s - N trials in block: %i (%i frames)" % (int(file_ix+1), len(trials_in_block), len(frames_in_trials))
 
     # All trials have the same structure:
     reformat_tstamps = False
@@ -226,16 +211,14 @@ def frames_to_trials(parsed_frames_fpath, trials_in_block, file_ix, si, frame_sh
 #                                        index=trials_in_block)
     trial_frames_to_vols = pd.DataFrame(trial_frames_to_vols)
 
-
-
     return trial_frames_to_vols, relative_tsecs
 
 #%%
 
 
 rootdir = '/n/coxfs01/2p-data'
-animalid = 'JC091'
-session = '20190602'
+animalid = 'JC084'
+session = '20190522'
 fov = 'FOV1_zoom2p0x'
 
 experiment = 'rfs'
@@ -271,7 +254,7 @@ def extract_options(options):
 #%%
 
 def aggregate_experiment_runs(animalid, session, fov, experiment, traceid='traces001'):
-    
+#%%    
     fovdir = os.path.join(rootdir, animalid, session, fov)
     if int(session) < 20190511 and experiment=='rfs':
         print("This is actually a RFs, but was previously called 'gratings'")
@@ -294,17 +277,16 @@ def aggregate_experiment_runs(animalid, session, fov, experiment, traceid='trace
     rundirs = sorted([d for d in glob.glob(os.path.join(rootdir, animalid, session, fov, '%s_*' % experiment))\
               if 'combined' not in d and os.path.isdir(d)], key=natural_keys)
 
+#%%
     # #########################################################################
     #% Cycle through all tifs, detrend, then get aligned frames
     # #########################################################################
-
     dfs = {}
     frame_times=[]; trial_ids=[]; config_ids=[]; sdf_list=[]; run_ids=[]; file_ids=[];
     frame_indices = []
     for total_ix, (run_ix, file_ix, fpath) in enumerate(rawfns):
         print("**** File %i of %i *****" % (int(total_ix+1), len(rawfns)))
         try:
-                
             rfile = h5py.File(fpath, 'r')
             fdata = rfile['Slice01']
             trace_types = list(fdata['traces'].keys())
@@ -312,10 +294,8 @@ def aggregate_experiment_runs(animalid, session, fov, experiment, traceid='trace
                 if not any([trace_type in k for k in dfs.keys()]):
                     dfs['%s-detrended' % trace_type] = []
                     dfs['%s-F0' % trace_type] = []
-            frames_to_select = pd.DataFrame(fdata['frames_indices'][:])
-        
+            frames_to_select = pd.DataFrame(fdata['frames_indices'][:])        
             #%
-        
             rundir = rundirs[run_ix]
             tid_fpath = glob.glob(os.path.join(rundir, 'traces', '*.json'))[0]
             with open(tid_fpath, 'r') as f:
@@ -345,7 +325,6 @@ def aggregate_experiment_runs(animalid, session, fov, experiment, traceid='trace
             pre_iti_sec = round(mwinfo[mwinfo.keys()[0]]['iti_dur_ms']/1E3) 
             nframes_iti_full = int(round(pre_iti_sec * si['volumerate']))
             
-            print(rundir)
             with open(os.path.join(rundir, 'paradigm', 'stimulus_configs.json'), 'r') as s:
                 stimconfigs = json.load(s)
             if 'frequency' in stimconfigs[stimconfigs.keys()[0]].keys():
@@ -354,12 +333,7 @@ def aggregate_experiment_runs(animalid, session, fov, experiment, traceid='trace
                 stimtype = 'movie'
             else:
                 stimtype = 'image'
-#            for conf, params in stimconfigs.items():
-#                if 'filename' in params.keys():
-#                    print params['stimulus'], params['filename']
-#                    #params.pop('filename')
-#                stimconfigs[conf] = params
-        
+       
             # Get all trials contained in current .tif file:
             tmp_trials_in_block = sorted([t for t, mdict in mwinfo.items() if mdict['block_idx']==file_ix], key=natural_keys)
             # 20181016 BUG: ignore trials that are BLANKS:
@@ -369,12 +343,12 @@ def aggregate_experiment_runs(animalid, session, fov, experiment, traceid='trace
             parsed_frames_fpath = glob.glob(os.path.join(rundir, 'paradigm', 'parsed_frames_*.hdf5'))[0] #' in pfn][0]
             frame_ixs = np.array(frames_to_select[0].values)
             
-            
+            # Assign frames to trials 
             trial_frames_to_vols, relative_tsecs = frames_to_trials(parsed_frames_fpath, trials_in_block, file_ix,
                                                                     si, frame_shift=frame_shift, frame_ixs=frame_ixs)
         
         #%
-            # Get Stimulus info for each trial:        
+            # Get stimulus info for each trial:        
             # -----------------------------------------------------
             excluded_params = [k for k in mwinfo[trials_in_block[0]]['stimuli'].keys() if k not in stimconfigs['config001'].keys()]
             print("Excluding:", excluded_params)
@@ -471,10 +445,11 @@ def aggregate_experiment_runs(animalid, session, fov, experiment, traceid='trace
             sdf_list.append(sdf)
         except Exception as e:
             traceback.print_exc()
+            print(e)
         finally:
             rfile.close()
 
-
+#%%
     # #########################################################################
     #% Concatenate all runs into 1 giant dataframe
     # #########################################################################
@@ -488,7 +463,6 @@ def aggregate_experiment_runs(animalid, session, fov, experiment, traceid='trace
     param_names = sorted(sdf.columns.tolist())
     sdf = sdf.sort_values(by=sorted(param_names))
     sdf.index = ['config%03d' % int(ci+1) for ci in range(sdf.shape[0])]
-    
     
     # Rename each run's configs according to combined sconfigs
     new_config_ids=[]
@@ -525,11 +499,15 @@ def aggregate_experiment_runs(animalid, session, fov, experiment, traceid='trace
     # Also collate relevant frame info (i.e., labels):
     tstamps = np.hstack(frame_times)
     f_indices = np.hstack(frame_indices) 
-    #%
-    # Turn paradigm info into dataframe: 
-    xdata_df = pd.concat(dfs[dfs.keys()[0]], axis=0).reset_index(drop=True) #drop=True)
+  
+#%% 
+    #HERE.
+    # Get concatenated df for indexing meta info
+    roi_list = np.array([r for r in dfs[dfs.keys()[0]][0].columns.tolist() if isnumber(r)])
+    xdata_df = pd.concat([d[roi_list] for d in dfs[dfs.keys()[0]]], axis=0).reset_index(drop=True) #drop=True)
     print "XDATA concatenated: %s" % str(xdata_df.shape)
     
+     # Turn paradigm info into dataframe: 
     labels_df = pd.DataFrame({'tsec': tstamps, 
                               'frame': f_indices,
                               'config': configs,
@@ -557,14 +535,14 @@ def aggregate_experiment_runs(animalid, session, fov, experiment, traceid='trace
     sconfigs = sdf.T.to_dict()
     
     run_info = get_run_summary(xdata_df, labels_df, stimconfigs, si)
-        
     
-
+          
     # #########################################################################
     #% Combine all data trace types and save
     # #########################################################################
     # Get combo dir
-    existing_combined = glob.glob(os.path.join(fovdir, 'combined_%s_static' % experiment, 'traces', '*%s*' % traceid))
+    existing_combined = glob.glob(os.path.join(fovdir, 'combined_%s_static' % experiment, 
+                                               'traces', '*%s*' % traceid))
     if len(existing_combined) > 0:
         combined_dir = os.path.join(existing_combined[0], 'data_arrays')
     else:
@@ -572,7 +550,8 @@ def aggregate_experiment_runs(animalid, session, fov, experiment, traceid='trace
                                   for f in [glob.glob(os.path.join(rundir, 'traces', '%s*' % traceid))[0] \
                                             for rundir in rundirs]])
     
-        combined_dir = os.path.join(fovdir, 'combined_%s_static' % experiment, 'traces', combined_traceids, 'data_arrays')
+        combined_dir = os.path.join(fovdir, 'combined_%s_static' % experiment, 
+                                    'traces', combined_traceids, 'data_arrays')
     if not os.path.exists(combined_dir):
         os.makedirs(combined_dir)
         
@@ -588,10 +567,10 @@ def aggregate_experiment_runs(animalid, session, fov, experiment, traceid='trace
     # Save all the dtypes
     for trace_type in trace_types:
         print trace_type
-        xdata_df = pd.concat(dfs['%s-detrended' % trace_type], axis=0).reset_index() #drop=True) #drop=True)
-        f0_df = pd.concat(dfs['%s-F0' % trace_type], axis=0).reset_index() #drop=True) #drop=True)
+        xdata_df = pd.concat(dfs['%s-detrended' % trace_type], axis=0).reset_index() 
+        f0_df = pd.concat(dfs['%s-F0' % trace_type], axis=0).reset_index() 
         
-        roidata = [c for c in xdata_df.columns if c != 'ix']
+        roidata = [c for c in xdata_df.columns if isnumber(c)] #c != 'ix']
         
         data_fpath = os.path.join(combined_dir, '%s.npz' % trace_type)
         print "Saving labels data...", data_fpath
