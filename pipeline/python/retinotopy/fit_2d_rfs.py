@@ -745,25 +745,23 @@ def overlay_traces_on_rfmap(rid, avg_resp_by_cond, zscored_traces, labels, sdf,
                             nframes_per_trial=89, vmin=None, vmax=None, scaley=None,
                             response_type='response', nframes_plot=45, yunit_sec=1.0, lw=1, 
                             cmap='bone', linecolor='darkslateblue', start_frame=0, 
-                            row_vals=[], col_vals=[], fitdf=None, plot_ellipse=False,
-                            ellipse_ec='w', ellipse_fc='none', ellipse_lw=1, sigma_scale=2.35,
-                            legend_lw=2., 
-                            screen_ylim=[-33.6615, 33.6615], screen_xlim=[-59.7782, 59.7782]):
+                            row_vals=[], col_vals=[], fitdf=None, plot_ellipse=True,
+                            ellipse_ec='w', ellipse_fc='none', ellipse_lw=1, ellipse_alpha=1.0,
+                            sigma_scale=2.35, legend_lw=2.): 
+                            #screen_ylim=[-33.6615, 33.6615], screen_xlim=[-59.7782, 59.7782]):
     nr = len(row_vals)
     nc = len(col_vals)
     #nframes_on = labels['nframes_on'].unique()[0]
     #stim_on_frame = labels['stim_on_frame'].unique()[0]
     
-    fig = pl.figure(figsize=(12, 6))
-    gs = gridspec.GridSpec(nr, nc)
-    #fig, axes = pl.subplots(nr, nc, figsize=(12, 6))
-
     coordmap = np.flipud(np.reshape(avg_resp_by_cond[rid], (len(col_vals), len(row_vals))).T) # Fipud to match screen
     vmin = coordmap.min() if vmin is None else vmin
     vmax = coordmap.max() if vmax is None else vmax
     norm = mpl.colors.Normalize(vmin=vmin, vmax=vmax)
     cmapper = cm.ScalarMappable(norm=norm, cmap=cmap)
    
+    fig = pl.figure(figsize=(12, 6))
+    gs = gridspec.GridSpec(nr, nc)
     all_axes = [] 
     ymin=0; ymax=0;
     #for ri, rval in enumerate(sorted(row_vals)): # Draw plots in reverse to match screen
@@ -772,14 +770,14 @@ def overlay_traces_on_rfmap(rid, avg_resp_by_cond, zscored_traces, labels, sdf,
     #        ax = axes[nr-ri-1, nc-ci-1]
     k=0
     for ri, rval in enumerate(sorted(row_vals)): # Draw plots in reverse to match screen
-        for ci, cval in enumerate(sorted(col_vals)[::-1]):
+        for ci, cval in enumerate(sorted(col_vals)):
             #print rval, cval
-            map_ix_row = row_vals.index(rval)
+            map_ix_row = nr-ri-1 #row_vals.index(rval)
             map_ix_col = col_vals.index(cval)
             ax = fig.add_subplot(gs[map_ix_row, map_ix_col]) #nr-ri-1, nc-ci-1]) #gs[k])
             ax.clear()
             #pcolor = cmapper.to_rgba(coordmap[nr-ri-1, nc-ci-1])
-            pcolor = cmapper.to_rgba(coordmap[nr-ri-1, nc-ci-1])
+            pcolor = cmapper.to_rgba(coordmap[nr-ri-1, ci])
             ax.patch.set_color(pcolor)
             k+=1
             
@@ -808,9 +806,8 @@ def overlay_traces_on_rfmap(rid, avg_resp_by_cond, zscored_traces, labels, sdf,
             ax.set_yticks([])
             ymin = min([ymin, np.nanmin(avg_trace)-np.nanmin(sem_trace)])
             ymax = max([ymax, np.nanmax(avg_trace) + np.nanmax(sem_trace)])
-
             all_axes.append(ax)
-            
+                           
     ymin = round(ymin, 2) #if scaley is None else scaley[0] #round(min([ymin, 0]), 1)
     ymax = round(ymax, 2) #if scaley is None else scaley[1]
     for ax in all_axes: #axes.flat:
@@ -818,8 +815,13 @@ def overlay_traces_on_rfmap(rid, avg_resp_by_cond, zscored_traces, labels, sdf,
 
     # Reduce spcaing between subplots
     pl.subplots_adjust(left=0.05, right=0.8, wspace=0, hspace=0)
- 
+
     if plot_ellipse:
+        pos_ylim = (min(row_vals), max(row_vals))
+        pos_xlim = (min(col_vals), max(col_vals))
+        screen_xlim_centered = get_centered_screen_points(pos_xlim, nc)
+        screen_ylim_centered = get_centered_screen_points(pos_ylim, nr)
+                  
         # = Ellipse((x0_f, y0_f), abs(sigx_f)*sig_scale, abs(sigy_f)*sig_scale, angle=np.rad2deg(theta_f)) #theta_f)
         outergs = gridspec.GridSpec(1,1)
         outerax = fig.add_subplot(outergs[0])
@@ -829,17 +831,18 @@ def overlay_traces_on_rfmap(rid, avg_resp_by_cond, zscored_traces, labels, sdf,
         outerax.patch.set_alpha(0.1)
         #outerax.invert_yaxis()
         outerax = fig.add_subplot(outergs[0])
+        outerax.set_ylim(screen_ylim_centered) #[screen_bottom, screen_top])
+        outerax.set_xlim(screen_xlim_centered) #[screen_left, screen_right])
+ 
         ell = Ellipse((fitdf['x0'][rid], fitdf['y0'][rid]), 
                         abs(fitdf['sigma_x'][rid])*sigma_scale, abs(fitdf['sigma_y'][rid])*sigma_scale, 
                         angle=np.rad2deg(fitdf['theta'][rid]))
-        ell.set_alpha(0.9)
+        ell.set_alpha(ellipse_alpha)
         ell.set_edgecolor(ellipse_ec)
         ell.set_facecolor(ellipse_fc)
         ell.set_linewidth(ellipse_lw)
         outerax.add_patch(ell) 
-        outerax.set_ylim(screen_ylim) #[screen_bottom, screen_top])
-        outerax.set_xlim(screen_xlim) #[screen_left, screen_right])
-        outerax.invert_yaxis()
+        #outerax.invert_yaxis()
 
     #fig = pl.figure()        
     # Add colorbar for RF map
@@ -876,6 +879,17 @@ def overlay_traces_on_rfmap(rid, avg_resp_by_cond, zscored_traces, labels, sdf,
     leg.set_xlabel('%.1f s' % yunit_sec, horizontalalignment='left', x=0)
 
     return fig
+
+
+def get_centered_screen_points(screen_xlim, nc):
+    col_pts = np.linspace(screen_xlim[0], screen_xlim[1], nc+1) # n points for NC columns
+    pt_spacing = np.mean(np.diff(col_pts)) 
+    # Add half point spacing on either side of boundary points to center the column points
+    xlim_min = col_pts.min() - (pt_spacing/2.) 
+    xlim_max = col_pts.max() + (pt_spacing/2.)
+    return (xlim_min, xlim_max)
+
+
 
 #%%
 
@@ -1432,19 +1446,12 @@ def fit_2d_receptive_fields(animalid, session, fov, run, traceid, create_new=Fal
     print("do fits?", do_fits) 
     if do_fits or make_pretty_plots:
         
-        #raw_traces, labels, gdf, sdf = load_data(data_fpath, add_offset=True, make_equal=False)
+        # Load processed traces 
         raw_traces, labels, sdf, run_info = load_dataset(data_fpath, trace_type=trace_type,
-                                                         add_offset=True, make_equal=False)
-        
+                                                         add_offset=True, make_equal=False)        
         print("--- [%s|%s|%s|%s]: got traces for RF stuff." % (animalid, session, fov, run))        #%%
-        # Load parsed data:
-        #F0 = np.nanmean(dset['corrected'][:] / dset['dff'][:] )
-        #print("offset: %.2f" % F0)
-        #raw_traces = pd.DataFrame(dset['corrected']) + F0 #pd.DataFrame(dset[trace_type]) #, index=zscored_traces.index)
-        #labels = pd.DataFrame(data=dset['labels_data'], columns=dset['labels_columns'])
-    
+   
         # Format condition info:
-        #sdf = pd.DataFrame(dset['sconfigs'][()]).T
         if 'image' in sdf['stimtype']:
             aspect_ratio = sdf['aspect'].unique()[0]
             sdf['size'] = [round(sz/aspect_ratio, 1) for sz in sdf['size']]
@@ -1453,12 +1460,11 @@ def fit_2d_receptive_fields(animalid, session, fov, run, traceid, create_new=Fal
         
         # Get screen dims
         screen = rutils.get_screen_info(animalid, session, rootdir=rootdir)
-        fr = 44.65 #dset['run_info'][()]['framerate']
+        fr = run_info['framerate'] #44.65 #dset['run_info'][()]['framerate']
         nframes_per_trial = int(dset['run_info'][()]['nframes_per_trial'][0])
         nframes_on = labels['nframes_on'].unique()[0]
         stim_on_frame = labels['stim_on_frame'].unique()[0]
-        nframes_post_onset = nframes_on + int(round(1.*fr))
-       
+        nframes_post_onset = nframes_on + int(round(1.*fr))       
         #%       
         # zscore the traces:
         trials_by_cond = get_trials_by_cond(labels)
@@ -1503,10 +1509,10 @@ def fit_2d_receptive_fields(animalid, session, fov, run, traceid, create_new=Fal
         #make_pretty_plots= False
         if make_pretty_plots:
                         
-            screen_xlim = [-1*screen['azimuth']/2., screen['azimuth']/2.]
-            screen_ylim = [-1*screen['elevation']/2., screen['elevation']/2.]
+            #screen_xlim = [-1*screen['azimuth']/2., screen['azimuth']/2.]
+            #screen_ylim = [-1*screen['elevation']/2., screen['elevation']/2.]
 
-            print("... plottin' pretty")
+            print("... plottin' pretty (%s)" % response_type)
             if response_type != plot_response_type:
                 zscored_traces, zscores = process_traces(raw_traces, labels, response_type=plot_response_type,
                                                 nframes_post_onset=nframes_post_onset)
@@ -1542,7 +1548,7 @@ def fit_2d_receptive_fields(animalid, session, fov, run, traceid, create_new=Fal
                                               nframes_plot=nframes_plot, start_frame=start_frame, yunit_sec=yunit_sec,
                                               row_vals=row_vals, col_vals=col_vals, linecolor=linecolor, cmap=cmap,
                                               fitdf=fitdf, plot_ellipse=plot_ellipse,
-                                              screen_ylim=screen_ylim, screen_xlim=screen_xlim,
+                                              #screen_ylim=screen_ylim, screen_xlim=screen_xlim,
                                               ellipse_fc=ellipse_fc, ellipse_ec=ellipse_ec, ellipse_lw=ellipse_lw,
                                               legend_lw=legend_lw)
                 
@@ -1675,10 +1681,10 @@ def extract_options(options):
 #%%
 
 rootdir = '/n/coxfs01/2p-data'
-animalid = 'JC080' #'JC097' #'JC084' #'JC059'
-session = '20190602' #'20190623' #'20190522' #'20190227'
-fov = 'FOV2_zoom2p0x' #'FOV4_zoom4p0x'
-run = 'combined_rfs10_static'
+animalid = 'JC084' #'JC097' #'JC084' #'JC059'
+session = '20190522' #'20190623' #'20190522' #'20190227'
+fov = 'FOV1_zoom2p0x' #'FOV4_zoom4p0x'
+run = 'combined_rfs_static'
 traceid = 'traces001' #'traces001'
 #segment = False
 #visual_area = 'V1'
@@ -1719,7 +1725,7 @@ def main(options):
     create_new= optsE.create_new
 
     fit_thr = 0.50 
-    plot_format = 'pdf'
+    plot_format = 'svg'
 
     rfresults, fovinfo = fit_2d_receptive_fields(animalid, session, fov, run, traceid, 
                                 trace_type=trace_type, 
@@ -1742,7 +1748,6 @@ if __name__ == '__main__':
 
 
     
-
 
 
 # %%

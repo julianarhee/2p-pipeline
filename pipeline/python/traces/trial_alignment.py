@@ -569,7 +569,6 @@ def aggregate_experiment_runs(animalid, session, fov, experiment, traceid='trace
         print trace_type
         xdata_df = pd.concat(dfs['%s-detrended' % trace_type], axis=0).reset_index() 
         f0_df = pd.concat(dfs['%s-F0' % trace_type], axis=0).reset_index() 
-        
         roidata = [c for c in xdata_df.columns if isnumber(c)] #c != 'ix']
         
         data_fpath = os.path.join(combined_dir, '%s.npz' % trace_type)

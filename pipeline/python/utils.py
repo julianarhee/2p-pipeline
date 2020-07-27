@@ -20,15 +20,15 @@ import numpy as np
 from stat import S_IREAD, S_IRGRP, S_IROTH, S_IWRITE, S_IWGRP, S_IWOTH
 from scipy import ndimage
 
-
+# -----------------------------------------------------------------------------
+# Commonly used, generic methods:
+# -----------------------------------------------------------------------------
 def get_pixel_size():
     # Use measured pixel size from PSF (20191005, most recent)
     # ------------------------------------------------------------------
     xaxis_conversion = 2.31  # size of x-axis pixel, goes with A-P axis
     yaxis_conversion = 1.89  # size of y-axis pixels, goes with M-L axis
     return (xaxis_conversion, yaxis_conversion)
-
-
 
 def get_screen_dims():
     # # adjust elevation limit to show only monitor extent
@@ -47,7 +47,6 @@ def get_screen_dims():
     # elev_cutoff = screen_top / screen_right
     # print("[AZ]: screen bounds: (%.2f, %.2f)" % (screen_left, screen_right))
     # print("[EL]: screen bounds: (%.2f, %.2f)" % (screen_top, screen_bottom))
-
 
     screen_x = 59.7782*2 #119.5564
     screen_y =  33.6615*2. #67.323
@@ -81,10 +80,8 @@ def uint16_to_RGB(img):
     rgb = cv2.cvtColor(im, cv2.COLOR_GRAY2BGR)
     return rgb
 
-
 def label_figure(fig, data_identifier):
     fig.text(0, 1,data_identifier, ha='left', va='top', fontsize=8)
-
 
 def convert_range(oldval, newmin=None, newmax=None, oldmax=None, oldmin=None):
     oldrange = (oldmax - oldmin)
@@ -92,9 +89,6 @@ def convert_range(oldval, newmin=None, newmax=None, oldmax=None, oldmin=None):
     newval = (((oldval - oldmin) * newrange) / oldrange) + newmin
     return newval
 
-# -----------------------------------------------------------------------------
-# Commonly used, generic methods:
-# -----------------------------------------------------------------------------
 def atoi(text):
     return int(text) if text.isdigit() else text
 
@@ -192,8 +186,7 @@ def load_dataset(soma_fpath, trace_type='dff', add_offset=True, make_equal=False
             neuropil_f0 = np.nanmean(np.nanmean(pd.DataFrame(npdata['f0'][:])))
             neuropil_df = pd.DataFrame(npdata['data'][:]) #+ pd.DataFrame(npdata['f0'][:]).mean().mean()
             print("adding NP offset... (NP f0 offset: %.2f)" % neuropil_f0)
-            print(xdata_df.shape, neuropil_df.mean(axis=0).shape, F0.shape)
-            
+
             # # Also add raw 
             raw_fpath = soma_fpath.replace('np_subtracted', 'raw')
             rawdata = np.load(raw_fpath)
@@ -201,7 +194,7 @@ def load_dataset(soma_fpath, trace_type='dff', add_offset=True, make_equal=False
             raw_df = pd.DataFrame(rawdata['data'][:]) #+ pd.DataFrame(npdata['f0'][:]).mean().mean()
             print("adding raw offset... (raw f0 offset: %.2f)" % raw_f0)
 
-            raw_traces = xdata_df + list(np.nanmean(neuropil_df, axis=0)) + F0 + neuropil_f0 + raw_f0 # list(np.nanmean(raw_df, axis=0)) #.T + F0
+            raw_traces = xdata_df + list(np.nanmean(neuropil_df, axis=0)) + raw_f0 #+ neuropil_f0 + raw_f0 # list(np.nanmean(raw_df, axis=0)) #.T + F0
         else:
             raw_traces = xdata_df + F0
 
