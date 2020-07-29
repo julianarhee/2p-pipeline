@@ -157,6 +157,22 @@ def reformat_morph_values(sdf):
     return sdf
 
 
+def load_run_info(animalid, session, fov, run, traceid='traces001',
+                  rootdir='/n/coxfs01/2p-ddata'):
+    
+    labels_fpath = glob.glob(os.path.join(rootdir, animalid, session, fov, '*%s*' % run,
+                           'traces', '%s*' % traceid, 'data_arrays', 'labels.npz'))[0]
+    
+    dset = np.load(labels_fpath)
+    sdf = pd.DataFrame(dset['sconfigs'][()]).T
+    if 'blobs' in run: #self.experiment_type:
+        sdf = reformat_morph_values(sdf)
+    else:
+        sdf = sdf
+    run_info = dset['run_info'][()]
+
+    return run_info, sdf
+    
 def load_dataset(soma_fpath, trace_type='dff', add_offset=True, make_equal=False):
     print("[loading dataset]: %s" % soma_fpath)
     traces=None
