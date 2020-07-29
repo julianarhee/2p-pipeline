@@ -860,6 +860,7 @@ class Session():
     def get_grouped_stats(self, experiment_type, response_type='dff',
                           responsive_thr=0.01, responsive_test=None, n_stds=2.5,
                           update=True, get_grouped=True, make_equal=True,
+                          nframes_post=0.,
                           pretty_plots=False, n_processes=1, add_offset=True, 
                           traceid='traces001', trace_type='corrected',
                           rootdir='/n/coxfs01/2p-data'):
@@ -905,9 +906,14 @@ class Session():
                     continue
                 print("... %s: calculating stats" % exp_name)
                 #print("... [%s] Loading roi stats and cell list..." % exp.name)
-                tmp_estats_dict = exp.get_stats(response_type=response_type, pretty_plots=pretty_plots,
-                                                responsive_test=responsive_test, responsive_thr=responsive_thr, n_stds=n_stds,
-                                                get_grouped=get_grouped, make_equal=make_equal)
+                tmp_estats_dict = exp.get_stats(response_type=response_type, 
+                                                pretty_plots=pretty_plots,
+                                                responsive_test=responsive_test, 
+                                                responsive_thr=responsive_thr, 
+                                                n_stds=n_stds,
+                                                get_grouped=get_grouped, 
+                                                make_equal=make_equal,
+                                                nframes_post=nframes_post)
                 if tmp_estats_dict is not None:
                     estats_dict.update({exp_name: tmp_estats_dict})
                 else:
@@ -1207,8 +1213,11 @@ class Experiment(object):
             
         return roi_list, nrois_total
 
-    def get_stats(self, trace_type='corrected', response_type='dff', responsive_test=None, 
-                  responsive_thr=0.05, n_stds=2.5, n_processes=1, add_offset=True, **kwargs): #responsive_test='ROC', responsive_thr=0.05, make_equal=True, get_grouped=True):
+    def get_stats(self, trace_type='corrected', response_type='dff', 
+                    responsive_test=None, responsive_thr=0.05, n_stds=2.5, 
+                    n_processes=1, add_offset=True, 
+                    nframes_post=0, **kwargs): 
+        #responsive_test='ROC', responsive_thr=0.05, make_equal=True, get_grouped=True):
         print("... [%s] Loading roi stats and cell list..." % self.name)
         #responsive_test = kwargs.get('responsive_test', None)
         #responsive_thr = kwargs.get('responsive_thr', 0.5)
@@ -1251,9 +1260,11 @@ class Experiment(object):
         estats.rois = roi_list
         estats.nrois = self.data.traces.shape[-1]
         
-        estats.gdf = resp.group_roidata_stimresponse(self.data.traces[roi_list], self.data.labels, 
-                                                     roi_list=roi_list,
-                                                     return_grouped=get_grouped)
+        estats.gdf = esp.group_roidata_stimresponse(self.data.traces[roi_list], 
+                                                    self.data.labels, 
+                                                    roi_list=roi_list,
+                                                    return_grouped=get_grouped,
+                                                    nframes_post=nframes_post)
         estats.sdf = self.data.sdf
 
         return estats #{experiment_id: estats}
@@ -1303,8 +1314,10 @@ class Gratings(Experiment):
         super(Gratings, self).__init__('gratings', animalid, session, fov, traceid=traceid, rootdir=rootdir)
         self.experiment_type = 'gratings'
         
-    def get_tuning(self, response_type='dff', responsive_test='nstds', responsive_thr=10, n_stds=2.5,
-                   n_bootstrap_iters=1000, n_resamples=20, n_intervals_interp=3, min_cfgs_above=2,
+    def get_tuning(self, response_type='dff', responsive_test='nstds', 
+                   responsive_thr=10, n_stds=2.5,
+                   n_bootstrap_iters=1000, n_resamples=20, n_intervals_interp=3, 
+                   min_cfgs_above=2, nframes_post=0, 
                    rootdir='/n/coxfs01/2p-data', create_new=False, n_processes=1, make_plots=False):
         '''
         This method is effecively the same as osi.get_tuning(), but without 
@@ -1343,10 +1356,16 @@ class Gratings(Experiment):
 #                              'responsive_thr': responsive_thr if responsive_test is not None else None,
 #                              'n_stds': n_stds if responsive_test=='nstds' else None})
 #            osi.save_tuning_results(fitdf, fitparams, fitdata)
-            bootresults, fitparams = self.fit_tuning(n_processes=n_processes, response_type=response_type,
-                                                        responsive_test=responsive_test, responsive_thr=responsive_thr, n_stds=n_stds,
-                                                        n_resamples=n_resamples, n_bootstrap_iters=n_bootstrap_iters,
-                                                        n_intervals_interp=n_intervals_interp, min_cfgs_above=min_cfgs_above)                
+            bootresults, fitparams = self.fit_tuning(n_processes=n_processes, 
+                                                    response_type=response_type,
+                                                    responsive_test=responsive_test, 
+                                                    responsive_thr=responsive_thr, 
+                                                    n_stds=n_stds,
+                                                    n_resamples=n_resamples, 
+                                                    n_bootstrap_iters=n_bootstrap_iters,
+                                                    n_intervals_interp=n_intervals_interp,
+                                                    min_cfgs_above=min_cfgs_above,
+                                                    nframes_post=nframes_post)                
         
             fitparams['directory'] = osidir
             if create_new:
@@ -1424,7 +1443,7 @@ class Gratings(Experiment):
     def fit_tuning(self, response_type='dff',
                    n_bootstrap_iters=100, n_resamples=60, n_intervals_interp=3,
                    responsive_test=None, responsive_thr=0.05, n_stds=2.5, create_new=False,
-                   add_offset=True,
+                   add_offset=True, nframes_post=0, 
                    rootdir='/n/coxfs01/2p-data', n_processes=8, min_cfgs_above=2):
        
         print("... FIT: getting stats") 
@@ -1436,8 +1455,9 @@ class Gratings(Experiment):
         else:
             statdf = None
             
-        estats = self.get_stats(responsive_test=responsive_test, responsive_thr=responsive_thr, n_stds=n_stds,
-                                add_offset=add_offset)
+        estats = self.get_stats(responsive_test=responsive_test, 
+                                responsive_thr=responsive_thr, n_stds=n_stds,
+                                add_offset=add_offset, nframes_post=nframes_post)
        
         print("... FIT: doing bootstrap") 
 #        fitdf, fitparams, fitdata = osi.do_bootstrap_fits(estats.gdf, estats.sdf, roi_list=estats.rois, 
@@ -1490,10 +1510,14 @@ class Gratings(Experiment):
     
 
     def get_nonori_params(self, paramnames=['size', 'speed', 'sf'], response_type='dff',
-                          responsive_test='nstds', responsive_thr=10, n_stds=2.5, add_offset=True):
+                          responsive_test='nstds', responsive_thr=10, n_stds=2.5, 
+                          add_offset=True, nframes_post=0):
         '''Returns average response to each NON-ori config (averaged over oris)
         '''
-        estats = self.get_stats(responsive_test=responsive_test, responsive_thr=responsive_thr, n_stds=n_stds,add_offset=add_offset)                
+        estats = self.get_stats(responsive_test=responsive_test, 
+                                responsive_thr=responsive_thr, 
+                                n_stds=n_stds, add_offset=add_offset,
+                                nframes_post=nframes_post)                
         sdf = self.get_stimuli()
                 
         n_params = len(paramnames)        
@@ -1563,6 +1587,7 @@ class ReceptiveFields(Experiment):
         return roi_list, nrois_total
         
     def get_rf_fits(self, response_type='dff', fit_thr=0.5, pretty_plots=False,
+                    scale_sigma=True,
                     create_new=False, rootdir='/n/coxfs01/2p-data'):
         '''
         Loads or does RF 2d-gaussian fit.
@@ -1613,9 +1638,11 @@ class ReceptiveFields(Experiment):
         if do_fits:
             try:
                 print("... fitting receptive fields")
-                rfits, _ = fitrf.fit_2d_receptive_fields(self.animalid, self.session, self.fov, self.name, self.traceid, 
+                rfits, _ = fitrf.fit_2d_receptive_fields(self.animalid, self.session, self.fov, 
+                                                      self.name, self.traceid, 
                                                       make_pretty_plots=pretty_plots,
                                                       create_new=create_new,
+                                                      scale_sigma=scale_sigma,
                                                       trace_type='corrected', 
                                                       response_type=response_type,
                                                       rootdir=rootdir)
@@ -1632,38 +1659,50 @@ class ReceptiveFields(Experiment):
         return rfits, roi_list, nrois_total
 
 
-    def get_stats(self, response_type='dff', fit_thr=0.5, pretty_plots=False,
-                  create_new=False, rootdir='/n/coxfs01/2p-data', add_offset=True, **kwargs): #make_equal=True, get_grouped=True):
+    def get_stats(self, response_type='dff', fit_thr=0.5, pretty_plots=False, 
+                    scale_sigma=True, sigma_scale=2.35, nframes_post=0, 
+                    create_new=False, 
+                    rootdir='/n/coxfs01/2p-data', add_offset=True, **kwargs): #make_equal=True, get_grouped=True):
 
         make_equal = kwargs.get('make_equal', True)
         get_grouped = kwargs.get('get_grouped', True)
         
-        rfdir, fit_desc= fitrf.create_rf_dir(self.animalid, self.session, self.fov, self.name, traceid=self.traceid, 
-                                    response_type=response_type, fit_thr=fit_thr, rootdir=rootdir)
-        
+        rfdir, fit_desc= fitrf.create_rf_dir(self.animalid, self.session, self.fov, 
+                                            self.name, traceid=self.traceid, 
+                                            response_type=response_type, fit_thr=fit_thr, 
+                                            rootdir=rootdir)
+       
+        # Load fits
+        print("... [%s] Loading roi stats and cell list..." % self.name)
+        rfits, roi_list, nrois_total = self.get_rf_fits(response_type=response_type,  
+                                                    fit_thr=fit_thr,
+                                                    pretty_plots=pretty_plots,
+                                                    create_new=create_new)
+    
+        if rfits is None and roi_list is None:
+            print("--- NO STATS (%s)" % response_type)
+            return None
+
+        # Set stats struct
+        estats = Struct()
         stats_fpath = os.path.join(rfdir, 'stats.pkl')
         if create_new is False:
             print("... loading existing stats")
             try:
                 with open(stats_fpath, 'rb') as f:
                     estats = pkl.load(f)
-                    assert 'fovinfo' in dir(estats), "... old datafile, recalculating stats"
+                    assert 'fovinfo' in dir(estats), "... recalculating stats"
             except Exception as e:
                 create_new = True
-                
-        if create_new:
-                    
-            #print("... [%s] Loading roi stats and cell list..." % self.name)
-            rfits, roi_list, nrois_total = self.get_rf_fits(response_type=response_type,  
-                                                            fit_thr=fit_thr,
-                                                            pretty_plots=pretty_plots,
-                                                            create_new=create_new)
             
-            if rfits is None and roi_list is None:
-                print("--- NO STATS (%s)" % response_type)
-                return None
-
-            estats = Struct()
+        print("... got RF fits (scale_sigma=%s)" % str(scale_sigma)) 
+        estats.fits = fitrf.rfits_to_df(rfits['fit_results'], 
+                                        row_vals=rfits['row_vals'],
+                                        col_vals=rfits['col_vals'],
+                                        roi_list=sorted(roi_list), 
+                                        scale_size=scale_sigma)
+     
+        if create_new:         
             estats.experiment_id = 'rfs'
             estats.rois = roi_list
             estats.nrois = nrois_total
@@ -1672,30 +1711,37 @@ class ReceptiveFields(Experiment):
             estats.sdf = None
             
             if self.data is None or self.trace_type != 'corrected':
-                self.load(trace_type='corrected', make_equal=make_equal, add_offset=add_offset)
+                self.load(trace_type='corrected', 
+                          make_equal=make_equal, 
+                          add_offset=add_offset)
             
-            estats.gdf = resp.group_roidata_stimresponse(self.data.traces[roi_list], self.data.labels, 
-                                                             roi_list=roi_list,
-                                                             return_grouped=get_grouped)
-            estats.rfits = rfits 
-            print("got rfits...") 
+            estats.gdf = resp.group_roidata_stimresponse(self.data.traces[roi_list], 
+                                                         self.data.labels, 
+                                                         roi_list=roi_list,
+                                                         return_grouped=get_grouped,
+                                                         nframes_post=nframes_post)
+            #estats.rfits = rfits 
+            print("... got rfits") 
             estats.fits = fitrf.rfits_to_df(rfits['fit_results'], 
                                             row_vals=rfits['row_vals'],
                                             col_vals=rfits['col_vals'],
-                                            roi_list=sorted(roi_list))
+                                            roi_list=sorted(roi_list), 
+                                            scale_size=scale_sigma)
             rfits.pop('fit_results')
-            print("*** got rf fits***")
+            #print("*** got rf fits***")
                     
             estats.fitinfo = rfits
             estats.sdf = self.data.sdf
         
             # also save FOV info
             estats.fovinfo = self.get_fov_info(estats.fits, rfdir=rfdir)
-
+    
+            print("... saving")
             with open(stats_fpath, 'wb') as f:
                 pkl.dump(estats, f, protocol=pkl.HIGHEST_PROTOCOL)
 
-        print("got stats", estats.nrois)
+        
+        print("got stats (n good: %i, nrois_total: %i" % (len(estats.roi_list), estats.nrois))
         return estats #{experiment_id: estats}
 
 
@@ -1709,14 +1755,17 @@ class ReceptiveFields(Experiment):
     
     
     def evaluate_fits(self, response_type='dff', fit_thr=0.5, n_processes=1,
-                      n_bootstrap_iters=1000, n_resamples=10, ci=0.95, plot_boot_distns=True,
-                      transform_fov=True, sigma_scale=2.35, 
+                      n_bootstrap_iters=1000, n_resamples=10, ci=0.95, 
+                      plot_boot_distns=True, nframes_post=0,
+                      transform_fov=True, sigma_scale=2.35, scale_sigma=True,
                       create_new=False, rootdir='/n/coxfs01/2p-data'):
         
         from pipeline.python.classifications import evaluate_receptivefield_fits as evalrfs
         # analyze_retino_structure as evalrfs
         # Get output dir for stats
-        estats = self.get_stats(response_type=response_type, fit_thr=fit_thr) # estats.rois = list of all cells that pass fit-thr
+        estats = self.get_stats(response_type=response_type, fit_thr=fit_thr,
+                                nframes_post=nframes_post) 
+        # estats.rois = list of all cells that pass fit-thr
     
         # Get RF dir for current fit type         
         rfdir, fit_desc = fitrf.create_rf_dir(self.animalid, self.session, self.fov, self.name, traceid=self.traceid,
@@ -1771,7 +1820,8 @@ class Retinobar(Experiment):
     
 
     def get_stats(self, responsive_test='ROC', responsive_thr=0.01, make_equal=True,
-                  receptive_field_fit='zscore0.00_no_trim', get_grouped=True):
+                  receptive_field_fit='zscore0.00_no_trim', 
+                  get_grouped=True, nframes_post=0):
         print("... [%s] Loading roi stats and cell list..." % self.name)
 
         rstats, roi_list, nrois_total, trials_by_cond = self.get_responsive_cells(
@@ -1802,9 +1852,11 @@ class Retinobar(Experiment):
         
         if 'retino' not in experiment_id:
             self.load(trace_type='dff', make_equal=make_equal)
-            estats.gdf = resp.group_roidata_stimresponse(self.data.traces[roi_list], self.data.labels, 
+            estats.gdf = resp.group_roidata_stimresponse(self.data.traces[roi_list], 
+                                                         self.data.labels, 
                                                          roi_list=roi_list,
-                                                         return_grouped=get_grouped)
+                                                         return_grouped=get_grouped,
+                                                         nframes_post=nframes_post)
             if 'rf' in experiment_id:
                 estats.fits = fitrf.rfits_to_df(rstats, roi_list=sorted(roi_list))
                 rstats.pop('fits')
@@ -2155,3 +2207,5 @@ def psth_from_full_trace(roi, tracevec, mean_tsecs, nr, nc,
     if save_and_close:
         pl.savefig(os.path.join(roi_psth_dir, '%s_psth_mean.png' % roi))
         pl.close()
+
+

@@ -6,6 +6,7 @@ import numpy as np
 import pandas as pd
 import pylab as pl
 import cPickle as pkl
+import traceback
 
 # ------------------------------------------------------------------------------------
 # General stats
@@ -74,7 +75,7 @@ def aggregate_rf_dataframes(filter_by, fit_desc=None, scale_sigma=True, fit_thr=
     r_df = all_df[all_df['r2'] > fit_thr].copy().reset_index(drop=True)
     dkey_dict = dict((v, dict((dk, di) for di, dk in enumerate(vdf['datakey'].unique()))) \
                      for v, vdf in r_df.groupby(['visual_area'])) 
-    r_df['datakey_ix'] = [dkey_dict[r_df_nof['visual_area'][i]][r_df['datakey'][i]] \
+    r_df['datakey_ix'] = [dkey_dict[r_df['visual_area'][i]][r_df['datakey'][i]] \
                           for i in r_df.index.tolist()]    
     
     return r_df, dkey_dict
@@ -145,56 +146,64 @@ def aggregate_rf_data(rf_dpaths, fit_desc=None, traceid='traces001', fit_thr=0.5
     df_list = []
     for (visual_area, animalid, session, fovnum, experiment), g in rf_dpaths.groupby(['visual_area', 'animalid', 'session', 'fovnum', 'experiment']):
         datakey = '%s_%s_fov%i' % (session, animalid, fovnum) #'-'.join([animalid, session, fovnum])
+        #print(datakey)
+        try:
+            #### Load evaluation results (bootstrap analysis of each fit paramater)
+            curr_rfname = experiment if int(session)>=20190511 else 'gratings'
+            eval_dpaths = glob.glob(os.path.join(rootdir, animalid, session, 'FOV%i_zoom2p0x' % fovnum, 
+                                                 '*%s_*' % curr_rfname, 'traces', '%s*' % traceid, 
+                                                 'receptive_fields', fit_desc, 'evaluation', 'evaluation_results.pkl'))
+            assert len(eval_dpaths)==1, "%s: Evaluation not found: %s" % (datakey, str(eval_dpaths))
+            eval_dpath = eval_dpaths[0]
+            with open(eval_dpath, 'rb') as f:
+                eval_results = pkl.load(f)
+            if eval_results is None:
+                print('-- no good (%s), skipping' % datakey)
+                continue
 
-        #### Load evaluation results (bootstrap analysis of each fit paramater)
-        curr_rfname = experiment if int(session)>=20190511 else 'gratings'
-        eval_dpaths = glob.glob(os.path.join(rootdir, animalid, session, 'FOV%i_zoom2p0x' % fovnum, 
-                                             '*%s_*' % curr_rfname, 'traces', '%s*' % traceid, 
-                                             'receptive_fields', fit_desc, 'evaluation', 'evaluation_results.pkl'))
-        assert len(eval_dpaths)==1, "%s: Evaluation not found: %s" % (datakey, str(eval_dpaths))
-        eval_dpath = eval_dpaths[0]
-        with open(eval_dpath, 'rb') as f:
-            eval_results = pkl.load(f)
-        if eval_results is None:
-            print('-- no good (%s), skipping' % datakey)
+            #### Load fit results from measured
+            fpath = g['path'].values[0]
+            with open(fpath,'rb') as f:
+                fit_results = pkl.load(f)
+            #fit_rois = sorted(fit_results['fit_results'].keys())
+            fit_rois = sorted(eval_results['data']['cell'].unique())
+            rfit_df = fitrf.rfits_to_df(fit_results['fit_results'], scale_size=True,
+                                        row_vals=fit_results['row_vals'], 
+                                        col_vals=fit_results['col_vals'], roi_list=fit_rois)
+
+            #### Identify cells with measured params within 95% CI of bootstrap distN
+            param_list = [param for param in rfit_df.columns if param != 'r2']
+            pass_rois = get_good_fits(rfit_df, eval_results, param_list=param_list)
+            if verbose:
+                print("[%s] %s: %i of %i fit rois pass for all params" % (visual_area, datakey, len(pass_rois), len(fit_rois)))
+
+            #### Create dataframe with params only for good fit cells
+            passdf = rfit_df.loc[pass_rois].copy()
+            # "un-scale" size, if flagged
+            if not scale_size:
+                sigma_x = passdf['sigma_x']/sigma_scale
+                sigma_y = passdf['sigma_y'] / sigma_scale
+                passdf['sigma_x'] = sigma_x
+                passdf['sigma_y'] = sigma_y
+
+            tmpmeta = pd.DataFrame({'cell': pass_rois,
+                                    'datakey': [datakey for _ in np.arange(0, len(pass_rois))],
+                                    'animalid': [animalid for _ in np.arange(0, len(pass_rois))],
+                                    'session': [session for _ in np.arange(0, len(pass_rois))],
+                                    'fovnum': [fovnum for _ in np.arange(0, len(pass_rois))],
+                                    'visual_area': [visual_area for _ in np.arange(0, len(pass_rois))],
+                                    'experiment': [experiment for _ in np.arange(0, len(pass_rois))]}, index=passdf.index)
+
+            fitdf = pd.concat([passdf, tmpmeta], axis=1).reset_index(drop=True)
+            df_list.append(fitdf)
+
+        except Exception as e:
+            print("***ERROR: %s" % datakey)
+            traceback.print_exc()
             continue
-
-        #### Load fit results from measured
-        fpath = g['path'].values[0]
-        with open(fpath,'rb') as f:
-            fit_results = pkl.load(f)
-        fit_rois = sorted(eval_results['data']['cell'].unique())
-        rfit_df = fitrf.rfits_to_df(fit_results['fit_results'], scale_size=True,
-                                    row_vals=fit_results['row_vals'], 
-                                    col_vals=fit_results['col_vals'], roi_list=fit_rois)
-        
-        #### Identify cells with measured params within 95% CI of bootstrap distN
-        param_list = [param for param in rfit_df.columns if param != 'r2']
-        pass_rois = get_good_fits(rfit_df, eval_results, param_list=param_list)
-        if verbose:
-            print("[%s] %s: %i of %i fit rois pass for all params" % (visual_area, datakey, len(pass_rois), len(fit_rois)))
             
-        #### Create dataframe with params only for good fit cells
-        passdf = rfit_df.loc[pass_rois].copy()
-        # "un-scale" size, if flagged
-        if not scale_size:
-            sigma_x = passdf['sigma_x']/sigma_scale
-            sigma_y = passdf['sigma_y'] / sigma_scale
-            passdf['sigma_x'] = sigma_x
-            passdf['sigma_y'] = sigma_y
-            
-        tmpmeta = pd.DataFrame({'cell': pass_rois,
-                                'datakey': [datakey for _ in np.arange(0, len(pass_rois))],
-                                'animalid': [animalid for _ in np.arange(0, len(pass_rois))],
-                                'session': [session for _ in np.arange(0, len(pass_rois))],
-                                'fovnum': [fovnum for _ in np.arange(0, len(pass_rois))],
-                                'visual_area': [visual_area for _ in np.arange(0, len(pass_rois))],
-                                'experiment': [experiment for _ in np.arange(0, len(pass_rois))]}, index=passdf.index)
-
-        fitdf = pd.concat([passdf, tmpmeta], axis=1).reset_index(drop=True)
-        df_list.append(fitdf)
     rfdf = pd.concat(df_list, axis=0) #.reset_index(drop=True)
-    
+
     # Include average RF size (average of minor/major axes of fit ellipse)
     rfdf['avg_size'] = rfdf[['sigma_x', 'sigma_y']].mean(axis=1)
 

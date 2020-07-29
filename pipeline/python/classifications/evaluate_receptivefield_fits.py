@@ -5,6 +5,7 @@ Created on Fri Aug 16 11:10:13 2019
 
 @author: julianarhee
 """
+#%%
 import matplotlib as mpl
 mpl.use('agg')
 import os
@@ -17,6 +18,7 @@ import copy
 import sys
 import optparse
 import shutil
+import traceback
 
 import numpy as np
 import pandas as pd
@@ -105,15 +107,7 @@ def get_session_object(animalid, session, fov, traceid='traces001', trace_type='
     return S
 
 
-def group_configs(group, response_type):
-    '''
-    Takes each trial's reponse for specified config, and puts into dataframe
-    '''
-    config = group['config'].unique()[0]
-    group.index = np.arange(0, group.shape[0])
-
-    return pd.DataFrame(data={'%s' % config: group[response_type]})
-    
+   
 
 #%%
 
@@ -151,8 +145,140 @@ def plot_bootstrapped_position_estimates(x0, y0, true_x, true_y, ci=0.95):
     
     return fig
 
+def plot_bootstrapped_distribution(boot_values, true_x, ci=0.95, ax=None, param_name=''):
+    lower_x0, upper_x0 = get_empirical_ci(boot_values, ci=ci)
+
+    if ax is None:
+        fig, ax = pl.subplots()
+    ax.hist(boot_values, color='k', alpha=0.5)
+    ax.axvline(x=lower_x0, color='k', linestyle=':')
+    ax.axvline(x=upper_x0, color='k', linestyle=':')
+    ax.axvline(x=true_x, color='r', linestyle='-')
+    ax.set_title('%s (n=%i)' % (param_name, len(boot_values)))
+   
+    return ax
+
 #%%
 
+
+def plot_all_param_estimates(rid, meas_df, _fitr, _bootdata, ci=0.95, scale_sigma=True):
+    fig, axn = pl.subplots(2,3, figsize=(10,6))
+    ax = axn.flat[0]
+    ax = fitrf.plot_rf_map(_fitr['data'], cmap='inferno', ax=ax)
+    ax = fitrf.plot_rf_ellipse(_fitr['fit_r'], ax=ax, scale_sigma=scale_sigma)
+    params = ['sigma_x', 'sigma_y', 'theta', 'x0', 'y0']
+    ai=1
+    for param in params:
+        ax = axn.flat[ai]
+        ax = plot_bootstrapped_distribution(_bootdata[param], meas_df[param][rid], 
+                                            ci=ci, ax=ax, param_name=param)
+        
+        ai += 1
+    pl.subplots_adjust(wspace=0.7, hspace=0.5, top=0.8)
+
+    fig.suptitle('rid %i' % rid)
+
+    return fig
+
+def get_reliable_fits(fit_results, bootresults, fit_thr=0.5, 
+                      scale_sigma=True, ci=0.95, plot_boot_distn=True):
+
+    bootdata = bootresults['data']
+    cis = bootresults['cis']
+    sigma_scale = 2.35 if scale_sigma else 1.0
+
+    meas_df = fitrf.rfits_to_df(fit_results['fit_results'],
+                                row_vals=fit_results['row_vals'],
+                                col_vals=fit_results['col_vals'],
+                                scale_size=scale_sigma, sigma_scale=sigma_scale)
+    meas_df = meas_df[meas_df['r2']>fit_thr]
+    pass_rois = meas_df.index.tolist()
+
+    params = [p for p in meas_df.columns.tolist() if p!='r2']
+    pass_cis = pd.concat([pd.DataFrame(
+            [cis['%s_lower' % p][ri]<=meas_df[p][ri]<=cis['%s_upper' % p][ri] \
+            for p in params], columns=[ri], index=params) for ri in meas_df.index.tolist()], axis=1).T
+        
+    return pass_cis
+
+
+#%%
+
+#row_vals = bootparams['row_vals']
+#col_vals = bootparams['col_vals']
+
+
+    # try:
+    #     pool = mp.Pool(*args, **kwargs)
+    #     yield pool
+    #     pool.terminate()
+    #     pool.join()
+    # except KeyboardInterrupt:
+    #     pool.terminate()
+    #     sys.exit(1)
+        
+    
+def group_configs(group, response_type):
+    '''
+    Takes each trial's reponse for specified config, and puts into dataframe
+    '''
+    config = group['config'].unique()[0]
+    group.index = np.arange(0, group.shape[0])
+
+    return pd.DataFrame(data={'%s' % config: group[response_type]})
+ 
+def bootstrap_rf_params(rdf, response_type='dff',
+                        row_vals=[], col_vals=[], sigma_scale=2.35,
+                        n_resamples=10, n_bootstrap_iters=1000):
+
+    paramsdf = None
+    try:
+        if not terminating.is_set():
+            time.sleep(1)
+            
+        xres = np.unique(np.diff(row_vals))[0]
+        yres = np.unique(np.diff(col_vals))[0]
+        min_sigma=5; max_sigma=50;
+
+        grouplist = [group_configs(group, response_type) for config, group in rdf.groupby(['config'])]
+        responses_df = pd.concat(grouplist, axis=1) # indices = trial reps, columns = conditions
+
+        # Get mean response across re-sampled trials for each condition (i.e., each position)
+        # Do this n-bootstrap-iters times
+        bootdf = pd.concat([responses_df.sample(n_resamples, replace=True).mean(axis=0) for ni in range(n_bootstrap_iters)], axis=1)
+        
+        # Fit receptive field for each set of bootstrapped samples 
+        bparams = []; #x0=[]; y0=[];
+        for ii in bootdf.columns:
+            response_vector = bootdf[ii].values
+            rfmap = fitrf.get_rf_map(response_vector, len(col_vals), len(row_vals))
+            fitr, fit_y = fitrf.do_2d_fit(rfmap, nx=len(col_vals), ny=len(row_vals))
+            if fitr['success']:
+                amp_f, x0_f, y0_f, sigx_f, sigy_f, theta_f, offset_f = fitr['popt']
+                if any(s < min_sigma for s in [abs(sigx_f)*xres*sigma_scale, abs(sigy_f)*yres*sigma_scale])\
+                    or any(s > max_sigma for s in [abs(sigx_f)*xres*sigma_scale, abs(sigy_f)*yres*sigma_scale]):
+                    fitr['success'] = False
+                
+            # if the fit for current bootstrap sample is good, add it to dataframe of bootstrapped rf params
+            if fitr['success']:
+                #amp_f, x0_f, y0_f, sigx_f, sigy_f, theta_f, offset_f = fitr['popt']
+                curr_fit_results = list(fitr['popt'])
+                curr_fit_results.append(fitr['r2'])
+                bparams.append(tuple(curr_fit_results)) #(fitr['popt'])
+        #%    
+        if len(bparams)==0:
+            return None
+
+        bparams = np.array(bparams)   
+        paramsdf = pd.DataFrame(data=bparams, columns=['amp', 'x0', 'y0', 'sigma_x', 'sigma_y', 'theta', 'offset', 'r2'])
+        paramsdf['cell'] = [rdf.index[0] for _ in range(bparams.shape[0])]
+   
+    except KeyboardInterrupt:
+        print("----exiting----")
+        terminating.set()
+        print("---set terminating---")
+
+    return paramsdf
 
 from functools import partial
 from contextlib import contextmanager
@@ -163,59 +289,46 @@ def poolcontext(*args, **kwargs):
     yield pool
     pool.terminate()
 
+  
+def initializer(terminating_):
+    # This places terminating in the global namespace of the worker subprocesses.
+    # This allows the worker function to access `terminating` even though it is
+    # not passed as an argument to the function.
+    global terminating
+    terminating = terminating_
 
-def bootstrap_rf_params(rdf, response_type='dff',
-                        row_vals=[], col_vals=[], sigma_scale=2.35,
-                        n_resamples=10, n_bootstrap_iters=1000):
 
-    xres = np.unique(np.diff(row_vals))[0]
-    yres = np.unique(np.diff(col_vals))[0]
-    min_sigma=5; max_sigma=50;
-
-    grouplist = [group_configs(group, response_type) for config, group in rdf.groupby(['config'])]
-    responses_df = pd.concat(grouplist, axis=1) # indices = trial reps, columns = conditions
-
-    # Get mean response across re-sampled trials for each condition (i.e., each position)
-    # Do this n-bootstrap-iters times
-    bootdf = pd.concat([responses_df.sample(n_resamples, replace=True).mean(axis=0) for ni in range(n_bootstrap_iters)], axis=1)
+def pool_bootstrap(rdf_list, params, n_processes=1):   
+    #try:
+    results = []# None
+    terminating = mp.Event()
     
-    # Fit receptive field for each set of bootstrapped samples 
-    bparams = []; #x0=[]; y0=[];
-    for ii in bootdf.columns:
-        response_vector = bootdf[ii].values
-        rfmap = fitrf.get_rf_map(response_vector, len(col_vals), len(row_vals))
-        fitr, fit_y = fitrf.do_2d_fit(rfmap, nx=len(col_vals), ny=len(row_vals))
-        if fitr['success']:
-            amp_f, x0_f, y0_f, sigx_f, sigy_f, theta_f, offset_f = fitr['popt']
-            if any(s < min_sigma for s in [abs(sigx_f)*xres*sigma_scale, abs(sigy_f)*yres*sigma_scale])\
-                or any(s > max_sigma for s in [abs(sigx_f)*xres*sigma_scale, abs(sigy_f)*yres*sigma_scale]):
-                fitr['success'] = False
-               
-        # if the fit for current bootstrap sample is good, add it to dataframe of bootstrapped rf params
-        if fitr['success']:
-            amp_f, x0_f, y0_f, sigx_f, sigy_f, theta_f, offset_f = fitr['popt']
-            bparams.append(fitr['popt'])
-
-    #%    
-    if len(bparams)==0:
-        return None
-
-    bparams = np.array(bparams)   
-    paramsdf = pd.DataFrame(data=bparams, columns=['amp', 'x0', 'y0', 'sigma_x', 'sigma_y', 'theta', 'offset'])
-    paramsdf['cell'] = [rdf.index[0] for _ in range(bparams.shape[0])]
-    
-    return paramsdf
-
-
-def pool_bootstrap(rdf_list, params, n_processes=1):
-    
-    with poolcontext(processes=n_processes) as pool:
+    # with poolcontext(initializer=initializer, 
+    #                  initargs=(terminating, ),
+    #                  processes=n_processes) as pool:
+        
+    pool = mp.Pool(initializer=initializer, initargs=(terminating, ), processes=n_processes)
+    try:
         results = pool.map(partial(bootstrap_rf_params, 
-                                   response_type=params['response_type'],
-                                   row_vals=params['row_vals'], 
-                                   col_vals=params['col_vals'],
-                                   n_resamples=params['n_resamples'], 
-                                   n_bootstrap_iters=params['n_bootstrap_iters']), rdf_list)
+                            response_type=params['response_type'],
+                            row_vals=params['row_vals'], 
+                            col_vals=params['col_vals'],
+                            n_resamples=params['n_resamples'], 
+                            n_bootstrap_iters=params['n_bootstrap_iters']), 
+                        rdf_list)
+        pool.close()
+    except KeyboardInterrupt:
+        print("**interupt")
+        pool.terminate()
+        print("***Termiating!")
+    finally:
+        pool.join()
+
+    # except KeyboardInterrupt:
+    #     pool.terminate()
+    #     pool.join()
+    #     sys.exit(1)
+        
     return results
     
 #def merge_names(a, b, c=1, d=2):
@@ -247,8 +360,11 @@ def get_cis_for_params(bdata, ci=0.95):
 
 def bootstrap_param_fits(estats, response_type='dff',
                             n_bootstrap_iters=1000, n_resamples=10,
-                            ci=0.95, n_processes=1, sigma_scale=2.35):
-    
+                            ci=0.95, n_processes=1, 
+                            scale_sigma=True, sigma_scale=2.35):
+    bootresults = {}
+    sigma_scale = sigma_scale if scale_sigma else 1.0
+         
     print("... doing bootstrap analysis for param fits.")
     roi_list = estats.rois  # Get list of all cells that pass fit-thr
     rdf_list = [estats.gdf.get_group(roi)[['config', 'trial', response_type]] for roi in roi_list]
@@ -259,17 +375,21 @@ def bootstrap_param_fits(estats, response_type='dff',
     
     start_t = time.time()
     bootstrap_results = pool_bootstrap(rdf_list, bootparams, n_processes=n_processes)
+    #except KeyboardInterrupt:
+        #pool.terminate()
     end_t = time.time() - start_t
     print "Multiple processes: {0:.2f}sec".format(end_t)
     print "--- %i results" % len(bootstrap_results)
 
     if len(bootstrap_results)==0:
-        return None
+        return bootresults #None
 
     # Create dataframe of bootstrapped data
     bootdata = pd.concat(bootstrap_results)
     
-    xx, yy, sigx, sigy = fitrf.convert_fit_to_coords(bootdata, estats.fitinfo['row_vals'], estats.fitinfo['col_vals'])
+    xx, yy, sigx, sigy = fitrf.convert_fit_to_coords(bootdata, 
+                                                     estats.fitinfo['row_vals'], 
+                                                     estats.fitinfo['col_vals'])
     bootdata['x0'] = xx
     bootdata['y0'] = yy
     bootdata['sigma_x'] = sigx * sigma_scale
@@ -287,13 +407,11 @@ def bootstrap_param_fits(estats, response_type='dff',
     
     return bootresults
 
+        
 #%%
-
 from sklearn.linear_model import LinearRegression
 import scipy.stats as spstats
 import sklearn.metrics as skmetrics #import mean_squared_error
-
-
 
 def regplot(x, y, data=None, x_estimator=None, x_bins=None, x_ci="ci",
             scatter=True, fit_reg=True, ci=95, n_boot=1000, units=None,
@@ -319,7 +437,6 @@ def regplot(x, y, data=None, x_estimator=None, x_bins=None, x_ci="ci",
     return ax, plotter
 
 
-
 def do_regr_on_fov(bootdata, bootcis, posdf, cond='azimuth', ci=.95, xaxis_lim=None, 
                     filter_weird=False, plot_all_cis=False, deviant_color='dodgerblue'):
     
@@ -340,8 +457,9 @@ def do_regr_on_fov(bootdata, bootcis, posdf, cond='azimuth', ci=.95, xaxis_lim=N
     # Identify which cells fail bootstrap fits
     fail_rois = [r for r in posdf.index.tolist() if r not in roi_list]
     fadedf = posdf.loc[fail_rois]
-    sns.regplot('%s_fov' % axname, '%s_rf' % axname, data=fadedf, color='gray', marker='x', fit_reg=False,
-                scatter_kws=dict(s=15, alpha=0.5), ax=ax, label='no fit')
+    sns.regplot('%s_fov' % axname, '%s_rf' % axname, data=fadedf, ax=ax, label='no_fit',
+                color='gray', marker='x', fit_reg=False,
+                scatter_kws=dict(s=15, alpha=0.5))
 
     # Plot cells that fit with bootstrap and fit linear model with them 
     ax, plotter = regplot('%s_fov' % axname, '%s_rf' % axname, data=posdf.loc[roi_list], ci=ci*100, 
@@ -547,6 +665,9 @@ def fit_linear_regr(xvals, yvals, return_regr=False):
     else:
         xvals = np.array(xvals)
         yvals = np.array(yvals)
+    if any(np.isnan(xvals)) or any(np.isnan(yvals)):
+        print(np.where(np.isnan(xvals)))
+        print(np.where(np.isnan(yvals)))
     regr.fit(xvals, yvals)
     fitv = regr.predict(xvals)
     if return_regr:
@@ -565,8 +686,13 @@ def compare_fits_by_condition(posdf, rfdf):
             
         yv = posdf['%s_rf' % axname].values
         xv = posdf['%s_fov' % axname].values    
-        fitv, regr = fit_linear_regr(xv, yv, return_regr=True)
-    
+        try:
+            fitv, regr = fit_linear_regr(xv, yv, return_regr=True)
+        except Exception as e:
+            traceback.print_exc()
+            print("Error fitting: rid %i" % ri)
+            continue
+
         rmse = np.sqrt(skmetrics.mean_squared_error(yv, fitv))
         r2 = float(skmetrics.r2_score(yv, fitv))
         print("[%s] Mean squared error: %.2f" % (cond, rmse))
@@ -680,94 +806,10 @@ def spatially_sort_compare_position(fovinfo, transform=True):
     return fig
     
 #
-def extract_options(options):
-    
-    parser = optparse.OptionParser()
-
-    parser.add_option('-D', '--root', action='store', dest='rootdir', default='/n/coxfs01/2p-data',\
-                      help='data root dir (root project dir containing all animalids) [default: /n/coxfs01/2pdata]')
-    parser.add_option('-i', '--animalid', action='store', dest='animalid', default='', help='Animal ID')
-
-    # Set specific session/run for current animal:
-    parser.add_option('-S', '--session', action='store', dest='session', default='', \
-                      help='session dir (format: YYYMMDD_ANIMALID')
-    parser.add_option('-A', '--fov', action='store', dest='fov', default='FOV1_zoom2p0x', \
-                      help="acquisition folder (ex: 'FOV1_zoom3x') [default: FOV1]")
-    parser.add_option('-R', '--rfname', action='store', dest='rfname', default=None, \
-                      help="name of rfs to process (default uses rfs10, if exists, else rfs)")
-    parser.add_option('--new', action='store_true', dest='create_new', default=False, \
-                      help="flag to do RF evaluation anew")
-
-    parser.add_option('-t', '--traceid', action='store', dest='traceid', default='traces001', \
-                      help="name of traces ID [default: traces001]")
-    parser.add_option('-d', '--data-type', action='store', dest='trace_type', default='corrected', \
-                      help="Trace type to use for analysis [default: corrected]")
-
-    parser.add_option('-M', '--resp', action='store', dest='response_type', default='dff', \
-                      help="Response metric to use for creating RF maps (default: dff)")    
-    parser.add_option('-f', '--fit-thr', action='store', dest='fit_thr', default=0.5, \
-                      help="Threshold for RF fits (default: 0.5)")
-
-    parser.add_option('-b', '--n-boot', action='store', dest='n_bootstrap_iters', default=1000, \
-                      help="N bootstrap iterations for evaluating RF param fits (default: 1000)")
-    parser.add_option('-s', '--n-resamples', action='store', dest='n_resamples', default=10, \
-                      help="N trials to sample with replacement (default: 10)")
-    parser.add_option('-n', '--n-processes', action='store', dest='n_processes', default=1, \
-                      help="N processes (default: 1)")
-    
-    parser.add_option('-C', '--ci', action='store', dest='ci', default=0.95, \
-                      help="CI percentile(default: 0.95)")
-
-    parser.add_option('--no-boot-plot', action='store_false', dest='plot_boot_distns', default=True, \
-                      help="flag to not plot bootstrapped distNs of x0, y0 for each roi")
-
-    parser.add_option('--pixels', action='store_false', dest='transform_fov', default=True, \
-                      help="flag to not convert fov space into microns (keep as pixels)")
-
-    parser.add_option('--remove-weird', action='store_true', dest='filter_weird', default=False, \
-                      help="flag to remove really funky fits")
-    parser.add_option('--all-cis', action='store_true', dest='plot_all_cis', default=False, \
-                      help="flag to plot CIs for all cells (not just deviants)")
-    parser.add_option('-c', '--color', action='store', dest='deviant_color', default='dodgerblue', \
-            help="color to plot deviants to stand out (default: dodgerblue)")
-
-
-
-    parser.add_option('--sigma', action='store', dest='sigma_scale', default=2.35, \
-                      help="sigma scale factor for FWHM (default: 2.35)")
-
-
-    (options, args) = parser.parse_args(options)
-
-    return options
-
-
-#rootdir = '/n/coxfs01/2p-data'
-#animalid = 'JC084' #JC076'
-#session = '20190525' #'20190501'
-#fov = 'FOV1_zoom2p0x'
-#create_new = False
-
-# Data type
-#traceid = 'traces001'
-#trace_type = 'corrected'
-#response_type = 'dff'
-#fit_thr = 0.5
-
-# Bootstrap params
-#n_bootstrap_iters=1000
-#n_resamples = 10
-#plot_boot_distns = True
-#ci = 0.95
-#n_processes=2
-#sigma_scale = 2.35
-#transform_fov = True
-
-
 
     #%%
 def evaluate_rfs(estats, rfdir='/tmp', response_type='dff', n_bootstrap_iters=1000, n_resamples=10,
-                 ci=0.95, n_processes=1, sigma_scale=2.35, 
+                 ci=0.95, n_processes=1, sigma_scale=2.35, scale_sigma=True,
                  create_new=False, rootdir='/n/coxfs01/2p-data'):
 
     '''
@@ -792,27 +834,29 @@ def evaluate_rfs(estats, rfdir='/tmp', response_type='dff', n_bootstrap_iters=10
         os.makedirs(bootstrapdir)
     bootstrap_fpath = os.path.join(bootstrapdir, 'evaluation_results.pkl')
     
-    do_bootstrap = False
+    do_bootstrap = True
     if os.path.exists(bootstrap_fpath) and create_new is False:
         print("... loading existing evaluation results.")
         try:
             with open(bootstrap_fpath, 'rb') as f:
                 bootresults = pkl.load(f)
             assert 'data' in bootresults.keys(), "... old datafile, redoing boot analysis"
+            do_bootstrap = False
         except Exception as e:
-            do_bootstrap = True
-    else:
-        do_bootstrap = True
-        
+            print("... ERROR loading evaluation results. Doing it now.")
+       
     if do_bootstrap:
         bootresults = bootstrap_param_fits(estats, response_type=response_type,
-                                             n_bootstrap_iters=n_bootstrap_iters, n_resamples=n_resamples,
-                                             ci=ci, n_processes=n_processes, sigma_scale=sigma_scale)
-    
+                                             n_bootstrap_iters=n_bootstrap_iters, 
+                                             n_resamples=n_resamples,
+                                             ci=ci, n_processes=n_processes, 
+                                             sigma_scale=sigma_scale,
+                                             scale_sigma=scale_sigma)
+
         # Save results
-        if bootresults is not None:
-            with open(bootstrap_fpath, 'wb') as f:
-                pkl.dump(bootresults, f, protocol=pkl.HIGHEST_PROTOCOL)
+        #if bootresults is not None:
+        with open(bootstrap_fpath, 'wb') as f:
+            pkl.dump(bootresults, f, protocol=pkl.HIGHEST_PROTOCOL)
 
     return bootresults
             
@@ -949,7 +993,8 @@ def identify_deviants(regresults, bootresults, posdf, ci=0.95, rfdir='/tmp'):
 
 def do_rf_fits_and_evaluation(animalid, session, fov, rfname=None, traceid='traces001', response_type='dff',
                               fit_thr=0.5, n_resamples=10, n_bootstrap_iters=1000, ci=0.95,
-                              transform_fov=True, plot_boot_distns=True, sigma_scale=2.35,
+                              post_stimulus_sec=0.,
+                              transform_fov=True, plot_boot_distns=True, sigma_scale=2.35, scale_sigma=True,
                               n_processes=1, filter_weird=False, plot_all_cis=False, deviant_color='dodgerblue',
                               create_new=False, rootdir='/n/coxfs01/2p-data'):
 
@@ -961,7 +1006,7 @@ def do_rf_fits_and_evaluation(animalid, session, fov, rfname=None, traceid='trac
     assert 'rfs' in experiment_list or 'rfs10' in experiment_list, "NO receptive field experiments found!"
     if rfname is None:
         rfname = 'rfs10' if 'rfs10' in experiment_list else 'rfs'      
-    exp = util.ReceptiveFields(rfname, S.animalid, S.session, S.fov, 
+    exp = util.ReceptiveFields(rfname, animalid, session, fov, 
                                traceid=traceid, trace_type='corrected')
 
     # Create output dir in "summmaries" folder
@@ -969,21 +1014,28 @@ def do_rf_fits_and_evaluation(animalid, session, fov, rfname=None, traceid='trac
                                                   traceid=exp.traceid, trace_type=exp.trace_type,
                                                   response_type=response_type, 
                                                   responsive_test=None, responsive_thr=0)
-    
     if not os.path.exists(os.path.join(statsdir, 'receptive_fields')):
         os.makedirs(os.path.join(statsdir, 'receptive_fields'))
     print("Saving stats output to: %s" % statsdir)    
 
-    #%% Get RF fit stats
-    estats = exp.get_stats(response_type=response_type, fit_thr=fit_thr) 
-
     # Get RF dir for current fit type         
-    rfdir, fit_desc = fitrf.create_rf_dir(exp.animalid, exp.session, exp.fov, exp.name, traceid=exp.traceid,
-                                    response_type=response_type, fit_thr=fit_thr)
+    rfdir, fit_desc = fitrf.create_rf_dir(exp.animalid, exp.session, exp.fov, 
+                                          exp.name, traceid=exp.traceid,
+                                          response_type=response_type, fit_thr=fit_thr)
     data_identifier = '|'.join([exp.animalid, exp.session, exp.fov, \
                             exp.traceid, exp.rois, exp.trace_type, fit_desc])
     view_str = '_transformed' if transform_fov else '' 
 
+    #%% Get RF fit stats
+    nframes_post = int(round(post_stimulus_sec*44.65))
+    pretty_plots = create_new==True
+    estats = exp.get_stats(response_type=response_type, 
+                            fit_thr=fit_thr, 
+                            scale_sigma=scale_sigma,
+                            nframes_post=nframes_post,
+                            create_new=create_new,
+                            pretty_plots=pretty_plots) 
+    
     #% Plot spatially ordered rois
     if len(glob.glob(os.path.join(statsdir, 'receptive_fields', 'spatially_sorted*.svg'))) == 0: 
         print("Getting FOV info for rois.")
@@ -993,40 +1045,76 @@ def do_rf_fits_and_evaluation(animalid, session, fov, rfname=None, traceid='trac
                 'spatially_sorted_rois_%s%s.svg' % (rfname, view_str)))
         pl.close()
 
-
-    #%% Do bootstrap analysis
+    # Set directories
     bootstrapdir = os.path.join(rfdir, 'evaluation')
     roidir = os.path.join(bootstrapdir, 'rois_bootstrap-%i-iters_%i-resample' % (n_bootstrap_iters, n_resamples))
     if not os.path.exists(roidir):
         os.makedirs(roidir) 
     if os.path.exists(os.path.join(bootstrapdir, 'rois')):
         shutil.rmtree(os.path.join(bootstrapdir, 'rois'))
-        
-    bootresults = evaluate_rfs(estats, rfdir=rfdir, n_bootstrap_iters=n_bootstrap_iters, n_resamples=n_resamples,
-                               ci=ci, n_processes=n_processes, sigma_scale=sigma_scale, create_new=create_new)
+ 
+    #%% Do bootstrap analysis    
+    bootresults = evaluate_rfs(estats, rfdir=rfdir, 
+                                n_bootstrap_iters=n_bootstrap_iters, 
+                                n_resamples=n_resamples,
+                                ci=ci, n_processes=n_processes, 
+                                sigma_scale=sigma_scale, scale_sigma=scale_sigma,
+                                create_new=create_new)
   
-    if bootresults is None: # or 'data' not in bootresults:
+    if len(bootresults.keys())==0:# is None: # or 'data' not in bootresults:
         return {} #None
 
-    #%% Identify "deviants" based on spatial coordinates
-    deviants = {}
+#    if plot_boot_distns:
+#        for roi, paramsdf in bootresults['data'].groupby(['cell']):
+#            true_x = rfdf['x0'][roi]
+#            true_y = rfdf['y0'][roi]
+#            fig = plot_bootstrapped_position_estimates(paramsdf['x0'], paramsdf['y0'], true_x, true_y, ci=ci)
+#            fig.suptitle('roi %i' % int(roi+1))        
+#            pl.savefig(os.path.join(roidir, 'roi%05d' % (int(roi+1))))
+#            pl.close()
 
-    # Plot distribution of params w/ 95% CI
-    rfdf = estats.fits # N cells fit w.o evaluation
-    roi_list = rfdf.index.tolist()
+    bootdata = bootresults['data']
+    cis = bootresults['cis']
+    sigma_scale = 2.35 if scale_sigma else 1.0
+
+    rfdf = estats.fits.copy() # N cells fit w.o evaluation
+    rfdf = rfdf[rfdf['r2']>fit_thr]
+    pass_rois = rfdf.index.tolist()
+    
+    try:
+        fit_results_dpath = os.path.join(rfdir, 'fit_results.pkl')
+        with open(fit_results_dpath, 'rb') as f:
+            fit_results = pkl.load(f)
+    except Exception as e:
+        traceback.print_exc()
+        print("--- unable to load fit results from path:\n  %s" % fit_results_dpath)
+
+
+    #%% Identify reliable fits 
+    pass_cis = get_reliable_fits(fit_results, bootresults)
+    reliable_rois = [i for i in pass_cis.index.tolist() if all(pass_cis.loc[i])]
 
     if plot_boot_distns:
-        for roi, paramsdf in bootresults['data'].groupby(['cell']):
-            true_x = rfdf['x0'][roi]
-            true_y = rfdf['y0'][roi]
-            fig = plot_bootstrapped_position_estimates(paramsdf['x0'], paramsdf['y0'], true_x, true_y, ci=ci)
-            fig.suptitle('roi %i' % int(roi+1))        
-            pl.savefig(os.path.join(roidir, 'roi%05d' % (int(roi+1))))
+        print("... plotting boot distn.\n(to: %s" % roidir)
+        if len(glob.glob(os.path.join(roidir, 'roi*'))) > 0:
+            print("... removing old files")
+            for r in glob.glob(os.path.join(roidir, 'roi*')):
+                os.remove(r)
+        for rid in pass_rois:
+            _fitr = fit_results['fit_results'][rid]
+            _bootdata = bootdata[bootdata['cell']==rid]
+            fig = plot_all_param_estimates(rid, rfdf, _fitr, _bootdata, scale_sigma=scale_sigma)
+            if rid in reliable_rois:
+                fig.suptitle('rid %i**' % rid)
+            label_figure(fig, data_identifier)
+            pl.savefig(os.path.join(roidir, 'roi%05d.svg' % int(rid+1)))
             pl.close()
+    # Plot distribution of params w/ 95% CI
+    roi_list = reliable_rois #rfdf.index.tolist()
 
-    #% Fit linear regression for brain coords vs VF coords
-    print("Doing linear regression of RF position on FOV position.")
-    fig = compare_fits_by_condition( estats.fovinfo['positions'].loc[roi_list], estats.fits )
+    #% Fit linear regression for brain coords vs VF coords 
+    # print("Doing linear regression of RF position on FOV position.")
+    fig = compare_fits_by_condition( estats.fovinfo['positions'].loc[roi_list], estats.fits.loc[roi_list] )
     pl.subplots_adjust(top=0.9, bottom=0.1, hspace=0.5)
     label_figure(fig, data_identifier)
     pl.savefig(os.path.join(statsdir, 'receptive_fields', 'RF_fits-by-az-el.svg'))
@@ -1038,13 +1126,104 @@ def do_rf_fits_and_evaluation(animalid, session, fov, rfname=None, traceid='trac
                                     filter_weird=filter_weird, plot_all_cis=plot_all_cis, 
                                     deviant_color=deviant_color)
     
-    # Identify deviants
-    deviants = identify_deviants(regresults, bootresults, estats.fovinfo['positions'], ci=ci, rfdir=rfdir)
-    
+    #%% Identify "deviants" based on spatial coordinates
+    deviants = identify_deviants(regresults, bootresults, estats.fovinfo['positions'], 
+                                 ci=ci, rfdir=rfdir)    
 #    with open(os.path.join(rfdir, 'evaluation', 'deviants_bothconds.json'), 'w') as f:
 #        json.dump(deviants, f, indent=4)
 #
     return regresults #deviants
+
+
+#%%
+def extract_options(options):
+    
+    parser = optparse.OptionParser()
+
+    parser.add_option('-D', '--root', action='store', dest='rootdir', default='/n/coxfs01/2p-data',\
+                      help='data root dir (root project dir containing all animalids) [default: /n/coxfs01/2pdata]')
+    parser.add_option('-i', '--animalid', action='store', dest='animalid', default='', help='Animal ID')
+
+    # Set specific session/run for current animal:
+    parser.add_option('-S', '--session', action='store', dest='session', default='', \
+                      help='session dir (format: YYYMMDD_ANIMALID')
+    parser.add_option('-A', '--fov', action='store', dest='fov', default='FOV1_zoom2p0x', \
+                      help="acquisition folder (ex: 'FOV1_zoom3x') [default: FOV1]")
+    parser.add_option('-R', '--rfname', action='store', dest='rfname', default=None, \
+                      help="name of rfs to process (default uses rfs10, if exists, else rfs)")
+    parser.add_option('--new', action='store_true', dest='create_new', default=False, \
+                      help="flag to do RF evaluation anew")
+
+    parser.add_option('-t', '--traceid', action='store', dest='traceid', default='traces001', \
+                      help="name of traces ID [default: traces001]")
+    parser.add_option('-d', '--data-type', action='store', dest='trace_type', default='corrected', \
+                      help="Trace type to use for analysis [default: corrected]")
+
+    parser.add_option('-M', '--resp', action='store', dest='response_type', default='dff', \
+                      help="Response metric to use for creating RF maps (default: dff)")    
+    parser.add_option('-f', '--fit-thr', action='store', dest='fit_thr', default=0.5, \
+                      help="Threshold for RF fits (default: 0.5)")
+
+    parser.add_option('-b', '--n-boot', action='store', dest='n_bootstrap_iters', default=1000, \
+                      help="N bootstrap iterations for evaluating RF param fits (default: 1000)")
+    parser.add_option('-s', '--n-resamples', action='store', dest='n_resamples', default=10, \
+                      help="N trials to sample with replacement (default: 10)")
+    parser.add_option('-n', '--n-processes', action='store', dest='n_processes', default=1, \
+                      help="N processes (default: 1)")
+    
+    parser.add_option('-C', '--ci', action='store', dest='ci', default=0.95, \
+                      help="CI percentile(default: 0.95)")
+
+    parser.add_option('--no-boot-plot', action='store_false', dest='plot_boot_distns', default=True, \
+                      help="flag to not plot bootstrapped distNs of x0, y0 for each roi")
+
+    parser.add_option('--pixels', action='store_false', dest='transform_fov', default=True, \
+                      help="flag to not convert fov space into microns (keep as pixels)")
+
+    parser.add_option('--remove-weird', action='store_true', dest='filter_weird', default=False, \
+                      help="flag to remove really funky fits")
+    parser.add_option('--all-cis', action='store_true', dest='plot_all_cis', default=False, \
+                      help="flag to plot CIs for all cells (not just deviants)")
+    parser.add_option('-c', '--color', action='store', dest='deviant_color', default='dodgerblue', \
+            help="color to plot deviants to stand out (default: dodgerblue)")
+
+
+
+    parser.add_option('--sigma', action='store', dest='sigma_scale', default=2.35, \
+                      help="sigma scale factor for FWHM (default: 2.35)")
+    parser.add_option('--no-scale', action='store_false', dest='scale_sigma', default=True, \
+                      help="set to scale sigma to be true sigma, rather than FWHM")
+    parser.add_option('-p', '--post', action='store', dest='post_stimulus_sec', default=0.0, 
+                      help="N sec to include in stimulus-response calculation for maps (default:0.0)")
+
+
+    (options, args) = parser.parse_args(options)
+
+    return options
+
+#%%
+rootdir = '/n/coxfs01/2p-data'
+animalid = 'JC084' #JC076'
+session = '20190522' #'20190501'
+fov = 'FOV1_zoom2p0x'
+create_new = False
+
+# Data
+traceid = 'traces001'
+trace_type = 'corrected'
+response_type = 'dff'
+fit_thr = 0.5
+
+# Bootstrap params
+n_bootstrap_iters=1000
+n_resamples = 10
+plot_boot_distns = True
+ci = 0.95
+n_processes=1
+sigma_scale = 2.35
+transform_fov = True
+scale_sigma = True
+post_stimulus_sec=0.5
 
 
 #%%
@@ -1067,20 +1246,26 @@ def main(options):
     ci = opts.ci
     transform_fov = opts.transform_fov
     plot_boot_distns = opts.plot_boot_distns
-    sigma_scale = opts.sigma_scale
+    sigma_scale = float(opts.sigma_scale)
     rfname = opts.rfname
     filter_weird = opts.filter_weird
     plot_all_cis = opts.plot_all_cis
     deviant_color = opts.deviant_color
 
+    scale_sigma = opts.scale_sigma
+    post_stimulus_sec = float(opts.post_stimulus_sec)
+    fit_thr = float(opts.fit_thr)
+     
     from pipeline.python.classifications import experiment_classes as util
+
 
     deviants = do_rf_fits_and_evaluation(animalid, session, fov, rfname=rfname,
                               traceid=traceid, response_type=response_type, fit_thr=fit_thr,
                               n_bootstrap_iters=n_bootstrap_iters, n_resamples=n_resamples, ci=ci,
-                              transform_fov=transform_fov, plot_boot_distns=plot_boot_distns, sigma_scale=sigma_scale,
+                              transform_fov=transform_fov, plot_boot_distns=plot_boot_distns, 
+                              sigma_scale=sigma_scale, post_stimulus_sec=post_stimulus_sec, 
                               n_processes=n_processes, filter_weird=filter_weird, plot_all_cis=plot_all_cis,
-                              deviant_color=deviant_color,
+                              deviant_color=deviant_color, scale_sigma=scale_sigma,
                               create_new=create_new, rootdir=rootdir)
         
     print("***DONE!***")
@@ -1092,5 +1277,5 @@ if __name__ == '__main__':
            
     #%%
     
-    options = ['-i', 'JC084', '-S', '20190525', '-A', 'FOV1_zoom2p0x', '-R', 'rfs']
+    #options = ['-i', 'JC084', '-S', '20190525', '-A', 'FOV1_zoom2p0x', '-R', 'rfs']
     

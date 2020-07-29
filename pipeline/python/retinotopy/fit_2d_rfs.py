@@ -31,7 +31,7 @@ import scipy.optimize as opt
 from matplotlib.patches import Ellipse, Rectangle
 
 from mpl_toolkits.axes_grid1 import AxesGrid
-from pipeline.python.utils import natural_keys, convert_range, label_figure, load_dataset #load_data
+from pipeline.python.utils import natural_keys, convert_range, label_figure, load_dataset, load_run_info #ata
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 from scipy.signal import argrelextrema
 from scipy.interpolate import splrep, sproot, splev, interp1d
@@ -280,9 +280,9 @@ def twoD_Gaussian((x, y), amplitude, xo, yo, sigma_x, sigma_y, theta, offset):
 
 def twoD_gauss((x, y), b, x0, y0, sigma_x, sigma_y, theta, a):
 
-    RF = a + b * np.exp( -( ((x-x0)*np.cos(theta) + (y-y0)*np.sin(theta)) / (np.sqrt(2)*sigma_x) )**2 - ( ( -(x-x0)*np.sin(theta) + (y-y0)*np.cos(theta) ) / (np.sqrt(2)*sigma_y) )**2 )
+    res = a + b * np.exp( -( ((x-x0)*np.cos(theta) + (y-y0)*np.sin(theta)) / (np.sqrt(2)*sigma_x) )**2 - ( ( -(x-x0)*np.sin(theta) + (y-y0)*np.cos(theta) ) / (np.sqrt(2)*sigma_y) )**2 )
     
-    return RF.ravel()
+    return res.ravel()
 
 #%
 
@@ -401,9 +401,38 @@ def get_rf_map(response_vector, ncols, nrows):
     
     return coordmap_r
 
-def plot_roi_RF(response_vector, ncols, nrows, ax=None, trim=True,
-                hard_cutoff=True,
-                set_to_min=True, map_thr=2.0, perc_min=0.1):
+def plot_rf_map(rfmap, cmap='inferno', ax=None):
+    if ax is None:
+        fig, ax = pl.subplots()
+    im = ax.imshow(rfmap, cmap='inferno')
+    divider = make_axes_locatable(ax)
+    cax = divider.append_axes('right', size='5%', pad=0.05)
+    ax.figure.colorbar(im, cax=cax, orientation='vertical')
+   
+    return ax
+
+def plot_rf_ellipse(fitr, ax=None, scale_sigma=True):
+      
+    sigma_scale = 2.35 if scale_sigma else 1.0
+    
+    # Draw ellipse: #ax.contour(plot_xx, plot_yy, fitr.reshape(rfmap.shape), 3, colors='b')
+    amp_f, x0_f, y0_f, sigx_f, sigy_f, theta_f, offset_f = fitr['popt']
+    
+    if ax is None:
+        fig, ax = pl.subplots()
+        ax.set_ylim([y0_f-sigy_f*2., y0_f+sigy_f*2.])
+        ax.set_xlim([x0_f-sigx_f*2., x0_f+sigx_f*2.])
+ 
+    ell = Ellipse((x0_f, y0_f), abs(sigx_f)*sigma_scale, abs(sigy_f)*sigma_scale, 
+                    angle=np.rad2deg(theta_f), alpha=0.5, edgecolor='w') #theta_f)
+    ax.add_patch(ell)
+    ax.text(0, -1, 'r2=%.2f, theta=%.2f' % (fitr['r2'], theta_f), color='k')
+
+    return ax
+
+
+def plot_roi_RF(response_vector, ncols, nrows, ax=None, trim=False, cmap='inferno',
+                hard_cutoff=False, set_to_min=True, map_thr=2.0, perc_min=0.1):
     
     if ax is None:
         fig, ax = pl.subplots()
@@ -417,10 +446,7 @@ def plot_roi_RF(response_vector, ncols, nrows, ax=None, trim=True,
         else:
             rfmap[coordmap_r <= (coordmap_r.max()*map_thr)] = coordmap_r.min()*perc_min if set_to_min else 0
         
-    im = ax.imshow(rfmap, cmap='inferno')
-    divider = make_axes_locatable(ax)
-    cax = divider.append_axes('right', size='5%', pad=0.05)
-    ax.figure.colorbar(im, cax=cax, orientation='vertical')
+    ax = plot_rf_map(coordmap_r, cmap=cmap, ax=ax)
     
     return ax, rfmap
 
@@ -483,7 +509,7 @@ def do_2d_fit(rfmap, nx=None, ny=None, verbose=False):
 # -----------------------------------------------------------------------------
 
 def plot_and_fit_roi_RF(response_vector, row_vals, col_vals, 
-                        min_sigma=5, max_sigma=50, sigma_scale=2.35,
+                        min_sigma=5, max_sigma=50, sigma_scale=2.35, scale_sigma=True,
                         trim=False, hard_cutoff=False, map_thr=None, set_to_min=False, perc_min=None):
     '''
     Fits RFs and returns a dict with fit info if success.
@@ -543,12 +569,13 @@ def plot_and_fit_roi_RF(response_vector, row_vals, col_vals,
 
     if fitr['success']:    
         # Draw ellipse: #ax.contour(plot_xx, plot_yy, fitr.reshape(rfmap.shape), 3, colors='b')
-        amp_f, x0_f, y0_f, sigx_f, sigy_f, theta_f, offset_f = fitr['popt']
-        ell = Ellipse((x0_f, y0_f), abs(sigx_f)*sigma_scale, abs(sigy_f)*sigma_scale, 
-                      angle=np.rad2deg(theta_f), alpha=0.5, edgecolor='w') #theta_f)
-        ax.add_patch(ell)
-        ax.text(0, -1, 'r2=%.2f, theta=%.2f' % (fitr['r2'], theta_f), color='k')
-        
+#        amp_f, x0_f, y0_f, sigx_f, sigy_f, theta_f, offset_f = fitr['popt']
+#        ell = Ellipse((x0_f, y0_f), abs(sigx_f)*sigma_scale, abs(sigy_f)*sigma_scale, 
+#                      angle=np.rad2deg(theta_f), alpha=0.5, edgecolor='w') #theta_f)
+#        ax.add_patch(ell)
+#        ax.text(0, -1, 'r2=%.2f, theta=%.2f' % (fitr['r2'], theta_f), color='k')
+        ax = plot_rf_ellipse(fitr, ax, scale_sigma=scale_sigma)
+                
         # Visualize fit results:
         im2 = ax2.imshow(fitr['pcov'])
         ax2.set_yticks(np.arange(0, 7))
@@ -1205,27 +1232,45 @@ def target_fov(avg_resp_by_cond, fitdf, screen, fit_roi_list=[], row_vals=[], co
 
     #%%
 
-def fit_rfs(avg_resp_by_cond, row_vals=[], col_vals=[], response_type='dff', roi_list=None,
+def fit_rfs(avg_resp_by_cond, fitparams={}, #row_vals=[], col_vals=[], fitparams=None,
+            response_type='dff', roi_list=None, #scale_sigma=True,
             rf_results_fpath='/tmp/fit_results.pkl', data_identifier='METADATA', 
             response_thr=None, create_new=False):
 
-    trim=False; hard_cutoff=False; map_thr=''; set_to_min=False; 
+    '''
+    Saves 2 output files for fitting: 
+    
+    fit_results.pkl 
+        stiff
+        
+    fit_params.json
+    '''
 
-    '''
-    hard_cutoff:
-        (bool) Use hard cut-off for zscores (set to False to use some % of max value)
-    set_to_min: 
-        (bool) Threshold x,y condition grid and set non-passing conditions to min value or 0 
-    '''
+    trim=False; hard_cutoff=False; map_thr=''; set_to_min=False; 
+     # '''
+    # hard_cutoff:
+    #     (bool) Use hard cut-off for zscores (set to False to use some % of max value)
+    # set_to_min: 
+    #     (bool) Threshold x,y condition grid and set non-passing conditions to min value or 0 
+    # '''
+
+  
+    scale_sigma = fitparams['scale_sigma']
+    row_vals = fitparams['row_vals']
+    col_vals = fitparams['col_vals']
+    sigma_scale = fitparams['sigma_scale']
 
     #%
-    rfdir = os.path.split(rf_results_fpath)[0]
-    
-    #if do_fits:
+    rfdir = os.path.split(rf_results_fpath)[0]    
     # Create subdir for saving each roi's fit
     if not os.path.exists(os.path.join(rfdir, 'roi_fits')):
         os.makedirs(os.path.join(rfdir, 'roi_fits'))
 
+    # Save params
+    rf_params_fpath = os.path.join(rfdir, 'fit_params.json')
+    with open(rf_params_fpath, 'w') as f:
+        json.dump(fitparams, f, indent=4)
+    
     #sigma_scale = 2.35   # Value to scale sigma in order to get FW (instead of FWHM)
     if roi_list is None:
         if response_thr == None:
@@ -1239,12 +1284,10 @@ def fit_rfs(avg_resp_by_cond, row_vals=[], col_vals=[], response_type='dff', roi
     results = {}
     for rid in roi_list:
         #print rid
-        roi_fit_results, fig = plot_and_fit_roi_RF(avg_resp_by_cond[rid], row_vals, col_vals) 
-#                                                       trim=trim,
-#                                                       hard_cutoff=hard_cutoff, map_thr=map_thr, 
-#                                                       set_to_min=set_to_min, perc_min=perc_min)
+        roi_fit_results, fig = plot_and_fit_roi_RF(avg_resp_by_cond[rid], 
+                                                    row_vals, col_vals,
+                                                    scale_sigma=scale_sigma) 
         fig.suptitle('roi %i' % int(rid+1))
-        
         label_figure(fig, data_identifier)            
         figname = '%s_%s_RF_roi%05d' % (trace_type, response_type, int(rid+1))
         pl.savefig(os.path.join(rfdir, 'roi_fits', '%s.png' % figname))
@@ -1253,7 +1296,6 @@ def fit_rfs(avg_resp_by_cond, row_vals=[], col_vals=[], response_type='dff', roi
         if roi_fit_results != {}:
             RF[rid] = roi_fit_results
         #%
-
 
     xi = np.arange(0, len(col_vals))
     yi = np.arange(0, len(row_vals))
@@ -1378,12 +1420,51 @@ def get_rf_to_fov_info(masks, rfdf, zimg, rfdir='/tmp', rfname='rfs',
 
     return fovinfo   
 
+
+def get_fit_params(animalid, session, fov, run='rfs', traceid='traces001', 
+                   post_stimulus_sec=0.5, sigma_scale=2.35, scale_sigma=True,
+                   rootdir='/n/coxfs01/2p-data'):
+    
+    screen = rutils.get_screen_info(animalid, session, rootdir=rootdir)
+    run_info, sdf = load_run_info(animalid, session, fov, run, traceid=traceid, rootdir=rootdir)
+    
+    row_vals = sorted(sdf[rows].unique())
+    col_vals = sorted(sdf[cols].unique())
+
+    fr = run_info['framerate'] #44.65 #dset['run_info'][()]['framerate']
+    nframes_per_trial = run_info['nframes_per_trial'][0]
+    #nframes_on = labels['nframes_on'].unique()[0]
+    #stim_on_frame = labels['stim_on_frame'].unique()[0]
+    #if nframes_post_onset is None:
+    #    nframes_post_onset = int(round(nframes_on*2.0))
+    #nframes_post_onset = nframes_on + int(round(1.*fr))       
+    nframes_post_onset = int(round(post_stimulus_sec * fr))
+    
+    fitparams = {
+            'frame_rate': fr,
+            'nframes_per_trial': nframes_per_trial,
+            # 'nframes_on': nframes_on,
+            'nframes_post_onset': nframes_post_onset,
+            'row_spacing': np.mean(np.diff(row_vals)),
+            'column_spacing': np.mean(np.diff(col_vals)),
+            'fit_thr': fit_thr,
+            'sigma_scale': sigma_scale,
+            'scale_sigma': scale_sigma,
+            'screen': screen,
+            'row_vals': row_vals,
+            'col_vals': col_vals
+            } 
+    
+    return fitparams
+
    #%%     
 def fit_2d_receptive_fields(animalid, session, fov, run, traceid, create_new=False,
                             trace_type='corrected', response_type='dff', 
+                            post_stimulus_sec=0.5,
                             make_pretty_plots=False, plot_response_type='dff',
                             visual_area='', select_rois=False, segment=False,
-                            ellipse_ec='w', ellipse_fc='none', ellipse_lw=2, plot_ellipse=True,
+                            ellipse_ec='w', ellipse_fc='none', ellipse_lw=2, 
+                            plot_ellipse=True, scale_sigma=True, sigma_scale=2.35,
                             linecolor = 'darkslateblue', cmap = 'bone', legend_lw=2, 
                             plot_format='pdf',
                             fit_thr=0.5, rootdir='/n/coxfs01/2p-data'):
@@ -1459,30 +1540,41 @@ def fit_2d_receptive_fields(animalid, session, fov, run, traceid, create_new=Fal
         col_vals = sorted(sdf[cols].unique())
         
         # Get screen dims
-        screen = rutils.get_screen_info(animalid, session, rootdir=rootdir)
+        fitparams = get_fit_params(animalid, session, fov, run=run, traceid=traceid, 
+                                    post_stimulus_sec=post_stimulus_sec, 
+                                    sigma_scale=sigma_scale, scale_sigma=scale_sigma)
+ 
+        screen = fitparams['screen'] #rutils.get_screen_info(animalid, session, rootdir=rootdir)
         fr = run_info['framerate'] #44.65 #dset['run_info'][()]['framerate']
         nframes_per_trial = int(dset['run_info'][()]['nframes_per_trial'][0])
         nframes_on = labels['nframes_on'].unique()[0]
         stim_on_frame = labels['stim_on_frame'].unique()[0]
-        nframes_post_onset = nframes_on + int(round(1.*fr))       
+        #nframes_post_onset = nframes_on + int(round(1.*fr))       
+        nframes_post_onset = fitparams['nframes_post_onset']
+        fitparams.update({'nframes_on': nframes_on}) 
+        print(fitparams.keys())
         #%       
         # zscore the traces:
         trials_by_cond = get_trials_by_cond(labels)
         zscored_traces, zscores = process_traces(raw_traces, labels, response_type=response_type,
                                                 nframes_post_onset=nframes_post_onset)
         avg_resp_by_cond = group_trial_values_by_cond(zscores, trials_by_cond)
-    
-        #%
+   
+       #%
         if do_fits:
             print("... fitting")
-            results = fit_rfs(avg_resp_by_cond, response_type=response_type, row_vals=row_vals, col_vals=col_vals,
-                              rf_results_fpath=rf_results_fpath, data_identifier=data_identifier, create_new=create_new)
+            results = fit_rfs(avg_resp_by_cond, response_type=response_type, 
+                              fitparams=fitparams,
+                              #row_vals=row_vals, col_vals=col_vals,
+                              #scale_sigma=scale_sigma,
+                              rf_results_fpath=rf_results_fpath, 
+                              data_identifier=data_identifier, create_new=create_new)
         
             #%%
             row_vals = results['row_vals']
             col_vals = results['col_vals']
             fitdf = rfits_to_df(results['fit_results'], row_vals=row_vals, col_vals=col_vals) #, roi_list=None)
-            fit_thr = 0.5
+            #fit_thr = 0.5
             fit_roi_list = fitdf[fitdf['r2'] > fit_thr].sort_values('r2', axis=0, ascending=False).index.tolist()
             print "... %i out of %i fit rois with r2 > %.2f" % (len(fit_roi_list), fitdf.shape[0], fit_thr)
         #    
@@ -1660,11 +1752,11 @@ def extract_options(options):
 
     # pretty plotting options
     parser.add_option('-f', '--ellipse-fc', action='store', dest='ellipse_fc', 
-                      default='none', help="[prettyplots] Face color for RF fit ellipse (default:none)")
+                      default='none', help="[prettyplots] Ellipse face color (default:none)")
     parser.add_option('-e', '--ellipse-ec', action='store', dest='ellipse_ec', 
-                      default='w', help="[prettyplots] Edge color for RF fit ellipse (default:w)")
+                      default='w', help="[prettyplots] Ellipse edge color (default:w)")
     parser.add_option('-l', '--ellipse-lw', action='store', dest='ellipse_lw', 
-                      default=2, help="[prettyplots] Linewidth for RF fit ellipse (default:2)")
+                      default=2, help="[prettyplots] Ellipse linewidth (default:2)")
     parser.add_option('--no-ellipse', action='store_false', dest='plot_ellipse', 
                       default=True, help="[prettyplots] Flag to NOT plot fit RF as ellipse")
     parser.add_option('-L', '--linecolor', action='store', dest='linecolor', 
@@ -1672,8 +1764,19 @@ def extract_options(options):
     parser.add_option('-c', '--cmap', action='store', dest='cmap', 
                       default='bone', help="[prettyplots] Cmap for RF maps (default:bone)")
     parser.add_option('-W', '--legend-lw', action='store', dest='legend_lw', 
-                      default=2.0, help="[prettyplots] Linewidth for df/f legend (default:2)")
- 
+                      default=2.0, help="[prettyplots] Lw for df/f legend (default:2)")
+
+    parser.add_option('--no-scale', action='store_false', dest='scale_sigma', 
+                      default=False, help="flag to NOT scale sigma (use true sigma)")
+    parser.add_option('--sigma', action='store', dest='sigma_scale', 
+                      default=2.35, help="Sigma size to scale (FWHM, 2.35)")
+    parser.add_option('--fmt', action='store', dest='plot_format', 
+                      default='svg', help="Plot format (default:svg)")
+    parser.add_option('-F', '--fit-thr', action='store', dest='fit_thr', default=0.5, 
+                      help="Fit threshold (default:0.5)")
+    parser.add_option('-p', '--post', action='store', dest='post_stimulus_sec', default=0.0, 
+                      help="N sec to include in stimulus-response calculation for maps (default:0.0)")
+
     (options, args) = parser.parse_args(options)
 
     return options
@@ -1724,11 +1827,15 @@ def main(options):
     plot_rois = optsE.plot_rois
     create_new= optsE.create_new
 
-    fit_thr = 0.50 
-    plot_format = 'svg'
+    fit_thr = float(optsE.fit_thr) 
+    plot_format = optsE.plot_format
+    post_stimulus_sec = float(optsE.post_stimulus_sec)
+    
 
     rfresults, fovinfo = fit_2d_receptive_fields(animalid, session, fov, run, traceid, 
                                 trace_type=trace_type, 
+                                post_stimulus_sec=post_stimulus_sec,
+                                fit_thr=fit_thr,
                                 #visual_area=visual_area, select_rois=select_rois,
                                 response_type=response_type, #response_thr=response_thr, 
                                 make_pretty_plots=plot_rois, create_new=create_new,
