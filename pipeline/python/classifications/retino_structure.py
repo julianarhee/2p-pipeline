@@ -132,16 +132,18 @@ def create_deviant_dataframe(dsets, traceid='traces001', n_processes=1,
 
             # Evaluate RF results        
             regresults = evalrfs.do_rf_fits_and_evaluation(animalid, session, fov, 
-                                                            rfname=rfname,
-                                                            n_processes=n_processes, 
-                                                            fit_thr=fit_thr,
-                                                            ci=ci, n_bootstrap_iters=n_bootstrap_iters,
-                                                            n_resamples=n_resamples,
-                                                            transform_fov=transform_fov,
-                                                            plot_boot_distns=plot_boot_distns,
-                                                            deviant_color=deviant_color,
-                                                            filter_weird=filter_weird,
-                                                            plot_all_cis=plot_all_cis)       
+                                                        rfname=rfname,
+                                                        n_processes=n_processes, 
+                                                        fit_thr=fit_thr,
+                                                        ci=ci, 
+                                                        n_bootstrap_iters=n_bootstrap_iters,
+                                                        n_resamples=n_resamples,
+                                                        transform_fov=transform_fov,
+                                                        plot_boot_distns=plot_boot_distns,
+                                                        deviant_color=deviant_color,
+                                                        filter_weird=filter_weird,
+                                                        plot_all_cis=plot_all_cis
+                                                        )       
 
             if len(regresults)==0:
                 bad_fit_results.append(datakey)

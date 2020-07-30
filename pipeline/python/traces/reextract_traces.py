@@ -209,7 +209,9 @@ def redo_manual_extraction(options):
                                                     sigma_scale=sigma_scale, 
                                                     scale_sigma=scale_sigma,
                                                     post_stimulus_sec=post_stimulus_sec,
-                                                    n_processes=n_processes) 
+                                                    n_processes=n_processes,
+                                                    reload_data=True,
+                                                    do_evaluation=True) 
 
     if roc_test:
         # Do ROC responsivity test

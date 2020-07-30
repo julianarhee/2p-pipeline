@@ -392,11 +392,15 @@ def main(options):
                 rfnames = g['experiment'].unique()
                 print("Found %i rf experiments." % len(rfnames))
                 for rfname in rfnames: 
-                    deviants = do_rf_fits_and_evaluation(animalid, session, fov, rfname=rfname,
-                                          traceid=traceid, response_type=response_type, fit_thr=fit_thr,
-                                          n_bootstrap_iters=n_bootstrap_iters, n_resamples=n_resamples, ci=ci,
-                                          transform_fov=transform_fov, plot_boot_distns=plot_rois, sigma_scale=sigma_scale,
-                                          n_processes=n_processes, create_new=plot_rois, rootdir=rootdir)
+                    deviants = do_rf_fits_and_evaluation(animalid, session, fov, 
+                                        rfname=rfname, traceid=traceid, 
+                                        response_type=response_type, fit_thr=fit_thr,
+                                        n_bootstrap_iters=n_bootstrap_iters, 
+                                        n_resamples=n_resamples, ci=ci,
+                                        transform_fov=transform_fov, 
+                                        plot_boot_distns=plot_rois, sigma_scale=sigma_scale,
+                                        n_processes=n_processes, 
+                                        create_new=plot_rois, rootdir=rootdir)
                 
                     tuning_counts['%s_%s' % (skey, rfname)] = deviants
                 
