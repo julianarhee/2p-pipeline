@@ -28,7 +28,7 @@ from matplotlib.patches import Ellipse
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 
 
-from pipeline.python.utils import natural_keys, label_figure, replace_root
+from pipeline.python.utils import natural_keys, label_figure, replace_root, get_screen_dims
 from pipeline.python.retinotopy import utils as util
 from pipeline.python.retinotopy import do_retinotopy_analysis as ra
 
@@ -260,9 +260,9 @@ def get_RF_size_estimates(acquisition_dir, fitness_thr=0.4, size_thr=0.1, analys
         interactive=False
     else:
         interactive=True
-    screen_info = util.get_screen_info(animalid, session, fov=acquisition.split('_')[0], interactive=True, rootdir=rootdir)
-    el_degrees_per_cycle = screen_info['elevation']
-    az_degrees_per_cycle = screen_info['azimuth']
+    screen_info = get_screen_dims()
+    el_degrees_per_cycle = screen_info['altitude_deg']
+    az_degrees_per_cycle = screen_info['azimuth_deg']
 
     
     frate = runinfo['frame_rate']
@@ -334,16 +334,16 @@ def plot_ROI_positions(acquisition_dir, run, retinoid, screen_info=None, roi_siz
 
     # Get screen info:
     if screen_info is None: 
-        screen_info = vis.get_screen_info(animalid, session, fov=acquisition.split('_')[0], interactive=True, rootdir=rootdir)
+        screen_info = get_screen_dims()
 
-    if len(screen_info.keys()) == 0:
-        screen_width = 117.56 #81.28
-        screen_height = 67.32 #45.77
-        screen_resolution = [1024, 768] #[1920, 1024]
-    else:
-        screen_width = screen_info['azimuth']
-        screen_height = screen_info['elevation']
-        screen_resolution = screen_info['resolution']
+#    if len(screen_info.keys()) == 0:
+#        screen_width = 117.56 #81.28
+#        screen_height = 67.32 #45.77
+#        screen_resolution = [1024, 768] #[1920, 1024]
+#    else:
+    screen_width = screen_info['azimuth_deg']
+    screen_height = screen_info['altitude_deg']
+    screen_resolution = screen_info['resolution']
 
     #retino_info = vis.get_retino_info(width=screen_width, height=screen_height, resolution=screen_resolution, azimuth='right', elevation='top')
     retino_info = util.get_retino_info(animalid, session, fov=acquisition, interactive=interactive, rootdir=rootdir, \
