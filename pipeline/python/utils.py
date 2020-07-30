@@ -172,66 +172,184 @@ def load_run_info(animalid, session, fov, run, traceid='traces001',
     run_info = dset['run_info'][()]
 
     return run_info, sdf
+   
+
+def process_and_save_traces(trace_type='dff',
+                            animalid=None, session=None, fov=None, 
+                            experiment=None, traceid='traces001',
+                            soma_fpath=None,
+                            rootdir='/n/coxfs01/2p-data'):
+
+    print("... processing + saving data arrays (%s)." % trace_type)
+
+    assert (animalid is None and soma_fpath is not None) or (soma_fpath is None and animalid is not None), "Must specify either dataset params (animalid, session, etc.) OR soma_fpath to data arrays."
+
+    if soma_fpath is None:
+        soma_fpath = glob.glob(os.path.join(rootdir, animalid, session, fov,
+                                '*%s*' % experiment, 'traces', '%s*' % traceid, 
+                                'data_arrays', 'np_subtracted.npz'))[0]
+
+    dset = np.load(soma_fpath)
     
-def load_dataset(soma_fpath, trace_type='dff', add_offset=True, make_equal=False):
-    print("[loading dataset]: %s" % soma_fpath)
+    # Stimulus / condition info
+    labels = pd.DataFrame(data=dset['labels_data'], 
+                          columns=dset['labels_columns'])
+    sdf = pd.DataFrame(dset['sconfigs'][()]).T
+    if 'blobs' in soma_fpath: #self.experiment_type:
+        sdf = reformat_morph_values(sdf)
+    run_info = dset['run_info'][()]
+
+    xdata_df = pd.DataFrame(dset['data'][:]) # neuropil-subtracted & detrended
+    F0 = pd.DataFrame(dset['f0'][:]).mean().mean() # detrended offset
+    
+    #% Add baseline offset back into raw traces:
+    neuropil_fpath = soma_fpath.replace('np_subtracted', 'neuropil')
+    npdata = np.load(neuropil_fpath)
+    neuropil_f0 = np.nanmean(np.nanmean(pd.DataFrame(npdata['f0'][:])))
+    neuropil_df = pd.DataFrame(npdata['data'][:]) 
+    print("adding NP offset... (NP f0 offset: %.2f)" % neuropil_f0)
+
+    # # Also add raw 
+    raw_fpath = soma_fpath.replace('np_subtracted', 'raw')
+    rawdata = np.load(raw_fpath)
+    raw_f0 = np.nanmean(np.nanmean(pd.DataFrame(rawdata['f0'][:])))
+    raw_df = pd.DataFrame(rawdata['data'][:])
+    print("adding raw offset... (raw f0 offset: %.2f)" % raw_f0)
+
+    raw_traces = xdata_df + list(np.nanmean(neuropil_df, axis=0)) + raw_f0 
+    #+ neuropil_f0 + raw_f0 # list(np.nanmean(raw_df, axis=0)) #.T + F0
+     
+    # SAVE
+    data_dir = os.path.split(soma_fpath)[0]
+    data_fpath = os.path.join(data_dir, 'corrected.npz')
+    print("Saving labels data...\nto: %s" %  data_fpath)
+    np.savez(data_fpath, 
+             data=raw_traces.values)
+
+   
+    stim_on_frame = labels['stim_on_frame'].unique()[0]
+    tmp_df = []
+    tmp_dff = []
+    for k, g in labels.groupby(['trial']):
+        tmat = raw_traces.loc[g.index]
+        bas_mean = np.nanmean(tmat[0:stim_on_frame], axis=0)
+        
+        #if trace_type == 'dff':
+        tmat_dff = (tmat - bas_mean) / bas_mean
+        tmp_dff.append(tmat_dff)
+
+        #elif trace_type == 'df':
+        tmat_df = (tmat - bas_mean)
+        tmp_df.append(tmat_df)
+
+    dff_traces = pd.concat(tmp_dff, axis=0) 
+    data_fpath = os.path.join(data_dir, 'dff.npz')
+    print("Saving labels data...\nto: %s" %  data_fpath)
+    np.savez(data_fpath, data=dff_traces.values)
+
+    df_traces = pd.concat(tmp_df, axis=0) 
+    data_fpath = os.path.join(data_dir, 'df.npz')
+    print("Saving labels data...\nto: %s" %  data_fpath)
+    np.savez(data_fpath, data=df_traces.values)
+
+    if trace_type=='dff':
+        return dff_traces, labels, sdf, run_info
+    elif trace_type == 'df':
+        return df_traces, labels, sdf, run_info
+    else:
+        return raw_traces, labels, sdf, run_info
+
+    
+
+def load_dataset(soma_fpath, trace_type='dff', add_offset=True, 
+                make_equal=False, create_new=False):
+    
+    #print("... [loading dataset]")
     traces=None
     labels=None
     sdf=None
     run_info=None
+
     try:
-        dset = np.load(soma_fpath)
-        
-        # Stimulus / condition info
-        labels = pd.DataFrame(data=dset['labels_data'], columns=dset['labels_columns'])
-        sdf = pd.DataFrame(dset['sconfigs'][()]).T
-        if 'blobs' in soma_fpath: #self.experiment_type:
-            sdf = reformat_morph_values(sdf)
+        data_fpath = soma_fpath.replace('np_subtracted', trace_type)
+        if not os.path.exists(data_fpath) and create_new is False:
+            traces, labels, sdf, run_info = process_and_save_traces(
+                                                    trace_type=trace_type,
+                                                    soma_fpath=soma_fpath
+                                                    )
+
         else:
-            sdf = sdf
-        run_info = dset['run_info'][()]
-        
-        # Traces
-        xdata_df = pd.DataFrame(dset['data'][:]) # neuropil-subtracted & detrended
-        F0 = pd.DataFrame(dset['f0'][:]).mean().mean() # detrended offset
-        print("NP_subtracted f0 offset was: %.2f" % F0)
-        if add_offset:
-            #% Add baseline offset back into raw traces:
-            neuropil_fpath = soma_fpath.replace('np_subtracted', 'neuropil')
-            npdata = np.load(neuropil_fpath)
-            neuropil_f0 = np.nanmean(np.nanmean(pd.DataFrame(npdata['f0'][:])))
-            neuropil_df = pd.DataFrame(npdata['data'][:]) #+ pd.DataFrame(npdata['f0'][:]).mean().mean()
-            print("adding NP offset... (NP f0 offset: %.2f)" % neuropil_f0)
-
-            # # Also add raw 
-            raw_fpath = soma_fpath.replace('np_subtracted', 'raw')
-            rawdata = np.load(raw_fpath)
-            raw_f0 = np.nanmean(np.nanmean(pd.DataFrame(rawdata['f0'][:])))
-            raw_df = pd.DataFrame(rawdata['data'][:]) #+ pd.DataFrame(npdata['f0'][:]).mean().mean()
-            print("adding raw offset... (raw f0 offset: %.2f)" % raw_f0)
-
-            raw_traces = xdata_df + list(np.nanmean(neuropil_df, axis=0)) + raw_f0 #+ neuropil_f0 + raw_f0 # list(np.nanmean(raw_df, axis=0)) #.T + F0
-        else:
-            raw_traces = xdata_df + F0
-
-        if trace_type == 'corrected':
-            traces = raw_traces
-        elif trace_type in ['dff', 'df']:
-            stim_on_frame = labels['stim_on_frame'].unique()[0]
-            tmp_df = []
-            for k, g in labels.groupby(['trial']):
-                tmat = raw_traces.loc[g.index]
-                bas_mean = np.nanmean(tmat[0:stim_on_frame], axis=0)
-                if trace_type == 'dff':
-                    tmat_df = (tmat - bas_mean) / bas_mean
-                elif trace_type == 'df':
-                    tmat_df = (tmat - bas_mean)
-                tmp_df.append(tmat_df)
-            traces = pd.concat(tmp_df, axis=0)
-            del tmp_df
+            print("... loading saved data array (%s)." % trace_type)
+            traces_dset = np.load(data_fpath)
+            traces = pd.DataFrame(traces_dset['data'][:])
+            labels_fpath = data_fpath.replace(trace_type, 'labels')
+            labels_dset = np.load(labels_fpath)
+            
+            # Stimulus / condition info
+            labels = pd.DataFrame(data=labels_dset['labels_data'], 
+                                  columns=labels_dset['labels_columns'])
+            sdf = pd.DataFrame(labels_dset['sconfigs'][()]).T
+            if 'blobs' in soma_fpath: #self.experiment_type:
+                sdf = reformat_morph_values(sdf)
+            else:
+                sdf = sdf
+            run_info = labels_dset['run_info'][()]
+# 
+#    try:
+#        dset = np.load(soma_fpath)
+#        
+#        # Stimulus / condition info
+#        labels = pd.DataFrame(data=dset['labels_data'], 
+#                              columns=dset['labels_columns'])
+#        sdf = pd.DataFrame(dset['sconfigs'][()]).T
+#        if 'blobs' in soma_fpath: #self.experiment_type:
+#            sdf = reformat_morph_values(sdf)
+#        else:
+#            sdf = sdf
+#        run_info = dset['run_info'][()]
+#        
+#        # Traces
+#        xdata_df = pd.DataFrame(dset['data'][:]) # neuropil-subtracted & detrended
+#        F0 = pd.DataFrame(dset['f0'][:]).mean().mean() # detrended offset
+#        print("NP_subtracted f0 offset was: %.2f" % F0)
+#        #if add_offset:
+#        #% Add baseline offset back into raw traces:
+#        neuropil_fpath = soma_fpath.replace('np_subtracted', 'neuropil')
+#        npdata = np.load(neuropil_fpath)
+#        neuropil_f0 = np.nanmean(np.nanmean(pd.DataFrame(npdata['f0'][:])))
+#        neuropil_df = pd.DataFrame(npdata['data'][:]) 
+#        print("adding NP offset... (NP f0 offset: %.2f)" % neuropil_f0)
+#
+#        # # Also add raw 
+#        raw_fpath = soma_fpath.replace('np_subtracted', 'raw')
+#        rawdata = np.load(raw_fpath)
+#        raw_f0 = np.nanmean(np.nanmean(pd.DataFrame(rawdata['f0'][:])))
+#        raw_df = pd.DataFrame(rawdata['data'][:])
+#        print("adding raw offset... (raw f0 offset: %.2f)" % raw_f0)
+#
+#        raw_traces = xdata_df + list(np.nanmean(neuropil_df, axis=0)) + raw_f0 
+#        #+ neuropil_f0 + raw_f0 # list(np.nanmean(raw_df, axis=0)) #.T + F0
+##        else:
+##            raw_traces = xdata_df + F0
+#
+#        if trace_type == 'corrected':
+#            traces = raw_traces
+#        elif trace_type in ['dff', 'df']:
+#            stim_on_frame = labels['stim_on_frame'].unique()[0]
+#            tmp_df = []
+#            for k, g in labels.groupby(['trial']):
+#                tmat = raw_traces.loc[g.index]
+#                bas_mean = np.nanmean(tmat[0:stim_on_frame], axis=0)
+#                if trace_type == 'dff':
+#                    tmat_df = (tmat - bas_mean) / bas_mean
+#                elif trace_type == 'df':
+#                    tmat_df = (tmat - bas_mean)
+#                tmp_df.append(tmat_df)
+#            traces = pd.concat(tmp_df, axis=0)
+#            del tmp_df
 
         if make_equal:
-            #print("... making equal")
+            print("... making equal")
             traces, labels = check_counts_per_condition(traces, labels)           
             
     except Exception as e:
