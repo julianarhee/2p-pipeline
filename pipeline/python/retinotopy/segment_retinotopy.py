@@ -24,7 +24,7 @@ from skimage.measure import block_reduce
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 
 from pipeline.python.retinotopy import utils as rutils
-from pipeline.python.utils import natural_keys, label_figure
+from pipeline.python.utils import natural_keys, label_figure, get_screen_dims
 
 
 #%%
@@ -129,11 +129,11 @@ print "Trials by condN:", trials_by_cond
 
 
 # adjust elevation limit to show only monitor extent
-screen = rutils.get_screen_info(animalid, session, rootdir=rootdir)
-screen_left = -1*screen['azimuth']/2.
-screen_right = screen['azimuth']/2.
-screen_top = screen['elevation']/2.
-screen_bottom = -1*screen['elevation']/2.
+screen = get_screen_dims() 
+screen_left = -1*screen['azimuth_deg']/2.
+screen_right = screen['azimuth_deg']/2.
+screen_top = screen['altitude_deg']/2.
+screen_bottom = -1*screen['altitude_deg']/2.
     
 elev_cutoff = screen_top / screen_right
 

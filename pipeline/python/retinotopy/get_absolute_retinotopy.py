@@ -35,7 +35,7 @@ from scipy.optimize import leastsq
 import pylab as plt
 
 
-from pipeline.python.utils import natural_keys, label_figure
+from pipeline.python.utils import natural_keys, label_figure, get_screen_dims
 from pipeline.python.retinotopy import target_visual_field as vf
 from pipeline.python.retinotopy import utils as util
 #from pipeline.python.retinotopy import do_retinotopy_analysis as ra
@@ -168,14 +168,14 @@ print("Saving fit results to: %s" % output_dir)
 
 
 # Get screen info:
-screen = util.get_screen_info(animalid, session, rootdir=rootdir)
+screen = get_screen_info()
 
 
 # Convert phase to linear coords:
-screen_left = -1*screen['azimuth']/2.
-screen_right = screen['azimuth']/2. #screen['azimuth']/2.
-screen_lower = -1*screen['elevation']/2.
-screen_upper = screen['elevation']/2. #screen['elevation']/2.
+screen_left = -1*screen['azimuth_deg']/2.
+screen_right = screen['azimuth_deg']/2. #screen['azimuth']/2.
+screen_lower = -1*screen['altitude_deg']/2.
+screen_upper = screen['altitude_deg']/2. #screen['elevation']/2.
 
 
 # # Load data
