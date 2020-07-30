@@ -31,7 +31,7 @@ import scipy.optimize as opt
 from matplotlib.patches import Ellipse, Rectangle
 
 from mpl_toolkits.axes_grid1 import AxesGrid
-from pipeline.python.utils import natural_keys, convert_range, label_figure, load_dataset, load_run_info #ata
+from pipeline.python.utils import natural_keys, convert_range, label_figure, load_dataset, load_run_info, get_screen_dims #ata
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 from scipy.signal import argrelextrema
 from scipy.interpolate import splrep, sproot, splev, interp1d
@@ -169,7 +169,7 @@ def process_traces(raw_traces, labels, response_type='zscore', nframes_post_onse
         zscored_traces_list.append(curr_zscored_traces)
         
         # Also get zscore (single value) for each trial:
-        stim_mean = curr_traces.iloc[stim_on_frame:stim_on_frame+nframes_post_onset].mean(axis=0)
+        stim_mean = curr_traces.iloc[stim_on_frame:(stim_on_frame+nframes_on+nframes_post_onset)].mean(axis=0)
         if response_type == 'zscore':
             zscores_list.append((stim_mean-bas_mean)/bas_std)
         elif response_type == 'snr':
@@ -351,6 +351,8 @@ def twoD_gauss((x, y), b, x0, y0, sigma_x, sigma_y, theta, a):
 class MultiplePeaks(Exception): pass
 class NoPeaksFound(Exception): pass
 
+
+
 def fwhm(x, y, k=3):
     """
     Determine full-with-half-maximum of a peaked set of points, x and y.
@@ -380,7 +382,6 @@ def raw_fwhm(arr):
     interpf = interp1d(np.linspace(0, len(arr)-1, num=len(arr)), arr, kind='linear')
     xnew = np.linspace(0, len(arr)-1, num=len(arr)*3)
     ynew = interpf(xnew)
-    
     
     hm = ((ynew.max() - ynew.min()) / 2 ) + ynew.min()
     pk = ynew.argmax()
@@ -449,9 +450,11 @@ def plot_roi_RF(response_vector, ncols, nrows, ax=None, trim=False, cmap='infern
     ax = plot_rf_map(coordmap_r, cmap=cmap, ax=ax)
     
     return ax, rfmap
-
-
-    
+#
+#rid=29
+#rfmap = avg_resp_by_cond[rid].reshape(21,11).T
+#sns.heatmap(rfmap)
+#
 def do_2d_fit(rfmap, nx=None, ny=None, verbose=False):
 
     # Set params for fit:
@@ -461,31 +464,26 @@ def do_2d_fit(rfmap, nx=None, ny=None, verbose=False):
     xx, yy = np.meshgrid(xi, yi)
     initial_guess = None
     try:
-            
-        #plot_xx = xx.copy()
-        #plot_yy = yy.copy()
-        amplitude = rfmap.max()
-
-        y0, x0 = np.where(rfmap == rfmap.max())
-        #print "x0, y0: (%i, %i)" % (int(x0), int(y0))
-    
+        amplitude = (rfmap**2).max()
+        #y0, x0 = np.where(rfmap == rfmap.max())
+        y0, x0 = np.where(rfmap**2. == (rfmap**2.).max())
+        #print "x0, y0: (%i, %i)" % (int(x0), int(y0))    
         try:
-            sigma_x = fwhm(xi, rfmap.sum(axis=0))
+            sigma_x = fwhm(xi, (rfmap**2).sum(axis=0))
             assert sigma_x is not None
-        except Exception as e:
-            #print e
+        except AssertionError:
             sigma_x = raw_fwhm(rfmap.sum(axis=0)) 
         try:
-            sigma_y = fwhm(yi, rfmap.sum(axis=1))
+            sigma_y = fwhm(yi, (rfmap**2).sum(axis=1))
             assert sigma_y is not None
-        except Exception as e:
-            #print e
+        except AssertionError: #Exception as e:
             sigma_y = raw_fwhm(rfmap.sum(axis=1))
         #print "sig-X, sig-Y:", sigma_x, sigma_y
         theta = 0
         offset=0
         initial_guess = (amplitude, int(x0), int(y0), sigma_x, sigma_y, theta, offset)
-        popt, pcov = opt.curve_fit(twoD_gauss, (xx, yy), rfmap.ravel(), p0=initial_guess, maxfev=2000)
+        popt, pcov = opt.curve_fit(twoD_gauss, (xx, yy), rfmap.ravel(), 
+                                   p0=initial_guess, maxfev=2000)
         fitr = twoD_gauss((xx, yy), *popt)
             
         # Get residual sum of squares 
@@ -493,6 +491,7 @@ def do_2d_fit(rfmap, nx=None, ny=None, verbose=False):
         ss_res = np.sum(residuals**2)
         ss_tot = np.sum((rfmap.ravel() - np.mean(rfmap.ravel()))**2)
         r2 = 1 - (ss_res / ss_tot)
+        #print(r2)
         if len(np.where(fitr > fitr.min())[0]) < 2 or pcov.max() == np.inf or r2 == 1: #round(r2, 3) < 0.15 or 
             success = False
         else:
@@ -508,8 +507,10 @@ def do_2d_fit(rfmap, nx=None, ny=None, verbose=False):
 # PLOTTING FUNCTIONS:
 # -----------------------------------------------------------------------------
 
+#response_vector = avg_resp_by_cond[rid]
+
 def plot_and_fit_roi_RF(response_vector, row_vals, col_vals, 
-                        min_sigma=5, max_sigma=50, sigma_scale=2.35, scale_sigma=True,
+                        min_sigma=2.5, max_sigma=50, sigma_scale=2.35, scale_sigma=True,
                         trim=False, hard_cutoff=False, map_thr=None, set_to_min=False, perc_min=None):
     '''
     Fits RFs and returns a dict with fit info if success.
@@ -527,17 +528,18 @@ def plot_and_fit_roi_RF(response_vector, row_vals, col_vals,
 #        map_thr = 1.5 if (trim and hard_cutoff) else perc_min
 #        
 #    set_to_min_str = 'set_min' if set_to_min else ''
-#
-#    
+
+    sigma_scale = sigma_scale if scale_sigma else 1.0
     results = {}
     fig, axes = pl.subplots(1,2, figsize=(8, 4)) # pl.figure()
     ax = axes[0]
     #ax, rfmap = plot_roi_RF(avg_zscores_by_cond[rid], ncols=len(col_vals), nrows=len(row_vals), ax=ax)
     ax, rfmap = plot_roi_RF(response_vector, ax=ax,
-                            ncols=len(col_vals), nrows=len(row_vals), trim=trim,
-                            perc_min=perc_min,
-                            hard_cutoff=False, map_thr=map_thr, set_to_min=set_to_min)
-
+                            ncols=len(col_vals), nrows=len(row_vals))
+#                            , trim=trim,
+#                            perc_min=perc_min,
+#                            hard_cutoff=False, map_thr=map_thr, set_to_min=set_to_min)
+#
     ax2 = axes[1]
 
     # Do fit 
@@ -559,7 +561,7 @@ def plot_and_fit_roi_RF(response_vector, row_vals, col_vals,
             
     xres = np.mean(np.diff(sorted(row_vals)))
     yres = np.mean(np.diff(sorted(col_vals)))
-    min_sigma = xres
+    min_sigma = xres/2.0
     
     if fitr['success']:
         amp_f, x0_f, y0_f, sigx_f, sigy_f, theta_f, offset_f = fitr['popt']
@@ -624,10 +626,10 @@ def plot_kde_maxima(kde_results, weights, linX, linY, screen, use_peak=True, \
                     draw_bb=True, marker_scale=200, exclude_bad=False, min_thr=0.01):
         
     # Convert phase to linear coords:
-    screen_left = -1*screen['azimuth']/2.
-    screen_right = screen['azimuth']/2. #screen['azimuth']/2.
-    screen_lower = -1*screen['elevation']/2.
-    screen_upper = screen['elevation']/2. #screen['elevation']/2.
+    screen_left = -1*screen['azimuth_deg']/2.
+    screen_right = screen['azimuth_deg']/2. #screen['azimuth']/2.
+    screen_lower = -1*screen['altitude_deg']/2.
+    screen_upper = screen['altitude_deg']/2. #screen['elevation']/2.
 
     fig = pl.figure(figsize=(10,6))
     ax = pl.subplot2grid((1, 2), (0, 0), colspan=2, fig=fig)
@@ -943,10 +945,10 @@ def plot_rfs_to_screen(fitdf, sdf, screen, sigma_scale=2.35, fit_roi_list=[]):
     
     avg_rfs = (majors + minors) / 2.
     
-    screen_left = -1*screen['azimuth']/2.
-    screen_right = screen['azimuth']/2.
-    screen_top = screen['elevation']/2.
-    screen_bottom = -1*screen['elevation']/2.
+    screen_left = -1*screen['azimuth_deg']/2.
+    screen_right = screen['azimuth_deg']/2.
+    screen_top = screen['altitude_deg']/2.
+    screen_bottom = -1*screen['altitude_deg']/2.
     
     
     fig, ax = pl.subplots(figsize=(12, 6))
@@ -997,10 +999,10 @@ def plot_rfs_to_screen_pretty(fitdf, sdf, screen, sigma_scale=2.35, fit_roi_list
     
     avg_rfs = (majors + minors) / 2.
     
-    screen_left = -1*screen['azimuth']/2.
-    screen_right = screen['azimuth']/2.
-    screen_top = screen['elevation']/2.
-    screen_bottom = -1*screen['elevation']/2.
+    screen_left = -1*screen['azimuth_deg']/2.
+    screen_right = screen['azimuth_deg']/2.
+    screen_top = screen['altitude_deg']/2.
+    screen_bottom = -1*screen['altitude_deg']/2.
     
     
     fig, ax = pl.subplots(figsize=(12, 6))
@@ -1049,10 +1051,10 @@ def plot_rfs_to_screen_pretty(fitdf, sdf, screen, sigma_scale=2.35, fit_roi_list
 def get_weighted_rf_density(xvals, yvals, weights, screen, weight_type='kde'):
     wtcoords = {}
     
-    screen_left = -1*screen['azimuth']/2.
-    screen_right = screen['azimuth']/2.
-    screen_top = screen['elevation']/2.
-    screen_bottom = -1*screen['elevation']/2.
+    screen_left = -1*screen['azimuth_deg']/2.
+    screen_right = screen['azimuth_deg']/2.
+    screen_top = screen['altitude_deg']/2.
+    screen_bottom = -1*screen['altitude_deg']/2.
 
     # Plot KDE:
     j = sns.jointplot(xvals, yvals, kind='kde', xlim=(screen_left, screen_right), ylim=(screen_bottom, screen_top))
@@ -1093,10 +1095,10 @@ def get_weighted_rf_density(xvals, yvals, weights, screen, weight_type='kde'):
 
 def target_screen_coords(wtcoords, screen, data_identifier='METADATA', target_fov_dir='/tmp', fit_thr=0.5):
     
-    screen_left = -1*screen['azimuth']/2.
-    screen_right = screen['azimuth']/2.
-    screen_top = screen['elevation']/2.
-    screen_bottom = -1*screen['elevation']/2.
+    screen_left = -1*screen['azimuth_deg']/2.
+    screen_right = screen['azimuth_deg']/2.
+    screen_top = screen['altitude_deg']/2.
+    screen_bottom = -1*screen['altitude_deg']/2.
     
     # Get targeting info from weights:
     az_max, az_min1, az_min2, az_maxima, az_minima = targ.find_local_min_max(wtcoords['azim_x'], wtcoords['azim_y'])
@@ -1232,7 +1234,23 @@ def target_fov(avg_resp_by_cond, fitdf, screen, fit_roi_list=[], row_vals=[], co
 
     #%%
 
-def fit_rfs(avg_resp_by_cond, fitparams={}, #row_vals=[], col_vals=[], fitparams=None,
+def load_rf_fit_results(animalid, session, fov, experiment='rfs',
+                        traceid='traces001', response_type='dff', 
+                        rootdir='/n/coxfs01/2p-data'):
+    rfdir = glob.glob(os.path.join(rootdir, animalid, session, fov, '*%s_*' % experiment,
+                           'traces', '%s*' % traceid, 'receptive_fields', 
+                           'fit-2dgaus_%s*' % response_type))[0]
+    rf_results_fpath = os.path.join(rfdir, 'fit_results.pkl')
+    with open(rf_results_fpath, 'rb') as f:
+        fit_results = pkl.load(f)
+    
+    rf_params_fpath = os.path.join(rfdir, 'fit_params.json')
+    with open(rf_params_fpath, 'r') as f:
+        fit_params = json.load(f)
+        
+    return fit_results, fit_params
+    
+def fit_rfs(avg_resp_by_cond, fit_params={}, #row_vals=[], col_vals=[], fitparams=None,
             response_type='dff', roi_list=None, #scale_sigma=True,
             rf_results_fpath='/tmp/fit_results.pkl', data_identifier='METADATA', 
             response_thr=None, create_new=False):
@@ -1253,12 +1271,11 @@ def fit_rfs(avg_resp_by_cond, fitparams={}, #row_vals=[], col_vals=[], fitparams
     # set_to_min: 
     #     (bool) Threshold x,y condition grid and set non-passing conditions to min value or 0 
     # '''
-
   
-    scale_sigma = fitparams['scale_sigma']
-    row_vals = fitparams['row_vals']
-    col_vals = fitparams['col_vals']
-    sigma_scale = fitparams['sigma_scale']
+    scale_sigma = fit_params['scale_sigma']
+    row_vals = fit_params['row_vals']
+    col_vals = fit_params['col_vals']
+    sigma_scale = fit_params['sigma_scale']
 
     #%
     rfdir = os.path.split(rf_results_fpath)[0]    
@@ -1269,7 +1286,7 @@ def fit_rfs(avg_resp_by_cond, fitparams={}, #row_vals=[], col_vals=[], fitparams
     # Save params
     rf_params_fpath = os.path.join(rfdir, 'fit_params.json')
     with open(rf_params_fpath, 'w') as f:
-        json.dump(fitparams, f, indent=4)
+        json.dump(fit_params, f, indent=4)
     
     #sigma_scale = 2.35   # Value to scale sigma in order to get FW (instead of FWHM)
     if roi_list is None:
@@ -1279,7 +1296,7 @@ def fit_rfs(avg_resp_by_cond, fitparams={}, #row_vals=[], col_vals=[], fitparams
         else:    
             roi_list = [r for r in avg_resp_by_cond.columns.tolist() if avg_resp_by_cond[r].max() >= response_thr]
             print("%i out of %i cells meet min req. of %.2f" % (len(roi_list), avg_resp_by_cond.shape[1], response_thr))
-         
+
     RF = {}
     results = {}
     for rid in roi_list:
@@ -1425,7 +1442,7 @@ def get_fit_params(animalid, session, fov, run='rfs', traceid='traces001',
                    post_stimulus_sec=0.5, sigma_scale=2.35, scale_sigma=True,
                    rootdir='/n/coxfs01/2p-data'):
     
-    screen = rutils.get_screen_info(animalid, session, rootdir=rootdir)
+    screen = get_screen_dims()
     run_info, sdf = load_run_info(animalid, session, fov, run, traceid=traceid, rootdir=rootdir)
     
     row_vals = sorted(sdf[rows].unique())
@@ -1440,7 +1457,7 @@ def get_fit_params(animalid, session, fov, run='rfs', traceid='traces001',
     #nframes_post_onset = nframes_on + int(round(1.*fr))       
     nframes_post_onset = int(round(post_stimulus_sec * fr))
     
-    fitparams = {
+    fit_params = {
             'frame_rate': fr,
             'nframes_per_trial': nframes_per_trial,
             # 'nframes_on': nframes_on,
@@ -1455,10 +1472,11 @@ def get_fit_params(animalid, session, fov, run='rfs', traceid='traces001',
             'col_vals': col_vals
             } 
     
-    return fitparams
+    return fit_params
 
    #%%     
-def fit_2d_receptive_fields(animalid, session, fov, run, traceid, create_new=False,
+def fit_2d_receptive_fields(animalid, session, fov, run, traceid, 
+                            reload_data=False, create_new=False,
                             trace_type='corrected', response_type='dff', 
                             post_stimulus_sec=0.5,
                             make_pretty_plots=False, plot_response_type='dff',
@@ -1492,7 +1510,7 @@ def fit_2d_receptive_fields(animalid, session, fov, run, traceid, create_new=Fal
         aggregate_experiment_runs(animalid, session, fov, run_name, traceid=traceid)
         print("*****corrected offsets!*****")
        
-    dset = np.load(data_fpath)
+    #dset = np.load(data_fpath)
    
 #    if segment:
 #        rfdir = os.path.join(rfdir, visual_area)
@@ -1529,7 +1547,8 @@ def fit_2d_receptive_fields(animalid, session, fov, run, traceid, create_new=Fal
         
         # Load processed traces 
         raw_traces, labels, sdf, run_info = load_dataset(data_fpath, trace_type=trace_type,
-                                                         add_offset=True, make_equal=False)        
+                                                         add_offset=True, make_equal=False,
+                                                         create_new=reload_data)        
         print("--- [%s|%s|%s|%s]: got traces for RF stuff." % (animalid, session, fov, run))        #%%
    
         # Format condition info:
@@ -1538,21 +1557,21 @@ def fit_2d_receptive_fields(animalid, session, fov, run, traceid, create_new=Fal
             sdf['size'] = [round(sz/aspect_ratio, 1) for sz in sdf['size']]
         row_vals = sorted(sdf[rows].unique())
         col_vals = sorted(sdf[cols].unique())
-        
+       
         # Get screen dims
-        fitparams = get_fit_params(animalid, session, fov, run=run, traceid=traceid, 
+        fit_params = get_fit_params(animalid, session, fov, run=run, traceid=traceid, 
                                     post_stimulus_sec=post_stimulus_sec, 
                                     sigma_scale=sigma_scale, scale_sigma=scale_sigma)
  
-        screen = fitparams['screen'] #rutils.get_screen_info(animalid, session, rootdir=rootdir)
+        screen = fit_params['screen'] #rutils.get_screen_info(animalid, session, rootdir=rootdir)
         fr = run_info['framerate'] #44.65 #dset['run_info'][()]['framerate']
-        nframes_per_trial = int(dset['run_info'][()]['nframes_per_trial'][0])
+        nframes_per_trial = run_info['nframes_per_trial'][0] #int(dset['run_info'][()]['nframes_per_trial'][0])
         nframes_on = labels['nframes_on'].unique()[0]
         stim_on_frame = labels['stim_on_frame'].unique()[0]
         #nframes_post_onset = nframes_on + int(round(1.*fr))       
-        nframes_post_onset = fitparams['nframes_post_onset']
-        fitparams.update({'nframes_on': nframes_on}) 
-        print(fitparams.keys())
+        nframes_post_onset = fit_params['nframes_post_onset']
+        fit_params.update({'nframes_on': nframes_on}) 
+        print(fit_params.keys())
         #%       
         # zscore the traces:
         trials_by_cond = get_trials_by_cond(labels)
@@ -1564,7 +1583,7 @@ def fit_2d_receptive_fields(animalid, session, fov, run, traceid, create_new=Fal
         if do_fits:
             print("... fitting")
             results = fit_rfs(avg_resp_by_cond, response_type=response_type, 
-                              fitparams=fitparams,
+                              fit_params=fit_params,
                               #row_vals=row_vals, col_vals=col_vals,
                               #scale_sigma=scale_sigma,
                               rf_results_fpath=rf_results_fpath, 
@@ -1777,6 +1796,11 @@ def extract_options(options):
     parser.add_option('-p', '--post', action='store', dest='post_stimulus_sec', default=0.0, 
                       help="N sec to include in stimulus-response calculation for maps (default:0.0)")
 
+    parser.add_option('--load', action='store_true', dest='reload_data', default=False, 
+                      help="flag to reload/reprocess data arrays")
+
+
+
     (options, args) = parser.parse_args(options)
 
     return options
@@ -1830,12 +1854,14 @@ def main(options):
     fit_thr = float(optsE.fit_thr) 
     plot_format = optsE.plot_format
     post_stimulus_sec = float(optsE.post_stimulus_sec)
-    
+     
+    reload_data = optsE.reload_data
 
     rfresults, fovinfo = fit_2d_receptive_fields(animalid, session, fov, run, traceid, 
                                 trace_type=trace_type, 
                                 post_stimulus_sec=post_stimulus_sec,
                                 fit_thr=fit_thr,
+                                reload_data=reload_data,
                                 #visual_area=visual_area, select_rois=select_rois,
                                 response_type=response_type, #response_thr=response_thr, 
                                 make_pretty_plots=plot_rois, create_new=create_new,
