@@ -1683,7 +1683,8 @@ class ReceptiveFields(Experiment):
 
         make_equal = kwargs.get('make_equal', True)
         get_grouped = kwargs.get('get_grouped', True)
-         
+        print("... getting stats, reload_data=%s" % str(reload_data))
+
         estats = Struct()
 
         # Get RF fit info
@@ -1693,7 +1694,7 @@ class ReceptiveFields(Experiment):
                                             rootdir=rootdir)
        
         # Load fits
-        print("... [%s] Loading roi stats and cell list..." % self.name)
+        #print("... [%s] Loading roi stats and cell list..." % self.name)
         rfits, roi_list, nrois_total = self.get_rf_fits(response_type=response_type,  
                                                     fit_thr=fit_thr,
                                                     pretty_plots=pretty_plots,
@@ -1720,8 +1721,8 @@ class ReceptiveFields(Experiment):
                     estats = pkl.load(f)
                     assert 'fovinfo' in dir(estats), "... recalculating stats"
             except Exception as e:
-                create_new = True
-       
+                reload_data = True
+        
      
         if reload_data: #create_new:         
             estats.experiment_id = 'rfs'
@@ -1750,7 +1751,8 @@ class ReceptiveFields(Experiment):
                                             row_vals=rfits['row_vals'],
                                             col_vals=rfits['col_vals'],
                                             roi_list=sorted(roi_list), 
-                                            scale_size=scale_sigma)
+                                            scale_size=scale_sigma,
+                                            sigma_scale=sigma_scale)
             rfits.pop('fit_results')                   
             estats.fitinfo = rfits
             estats.sdf = self.data.sdf
