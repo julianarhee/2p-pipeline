@@ -22,12 +22,9 @@ import seaborn as sns
 import cPickle as pkl
 import matplotlib.gridspec as gridspec
 
-#from pipeline.python.classifications import experiment_classes as util
 from pipeline.python.classifications import test_responsivity as resp
-#from pipeline.python.classifications import run_experiment_stats as rstats
 from pipeline.python.utils import label_figure, natural_keys, convert_range
 
-#from pipeline.python.retinotopy import fit_2d_rfs as fitrf
 from matplotlib.patches import Ellipse, Rectangle
 
 from shapely.geometry.point import Point
@@ -49,7 +46,7 @@ import multiprocessing as mp
 # Functions for processing ROIs (masks)
 # ############################################
 
-def get_roi_fov_info(masks, zimg, roi_list=None, transform_fov=True):    
+def calculate_roi_coords(masks, zimg, roi_list=None, convert_um=True): 
     '''
     Get FOV info relating cortical position to RF position of all cells.
     Info should be saved in: rfdir/fov_info.pkl
@@ -62,7 +59,7 @@ def get_roi_fov_info(masks, zimg, roi_list=None, transform_fov=True):
             'zimg': 
                 (array) z-projected image 
             'roi_contours': 
-                (list) roi contours created from classifications.convert_coords.contours_from_masks()
+                (list) roi contours, from classifications.convert_coords.contours_from_masks()
             'xlim' and 'ylim': 
                 (float) FOV limits (in pixels or um) for azimuth and elevation axes
     '''
@@ -81,7 +78,7 @@ def get_roi_fov_info(masks, zimg, roi_list=None, transform_fov=True):
     # Convert to brain coords
     fov_pos_x, fov_pos_y, xlim, ylim = get_roi_position_in_fov(roi_contours, 
                                                                roi_list=roi_list,
-                                                                 convert_um=True,
+                                                                 convert_um=convert_um,
                                                                  npix_y=npix_y,
                                                                  npix_x=npix_x)
     posdf = pd.DataFrame({'ml_pos': fov_pos_y, #fov_y,
@@ -108,7 +105,11 @@ def get_roi_position_in_fov(tmp_roi_contours, roi_list=None,
         xaxis_conversion = 2.312
         yaxis_conversion = 1.904
     '''
-    
+   
+    if not convert_um:
+        xaxis_conversion = 1.
+        yaxis_conversion = 1.
+
     # Sort ROIs b y x,y position:
     sorted_roi_indices_xaxis, sorted_roi_contours_xaxis = spatially_sort_contours(tmp_roi_contours, dims=(npix_x, npix_y), sort_by='x')
     sorted_roi_indices_yaxis, sorted_roi_contours_yaxis = spatially_sort_contours(tmp_roi_contours, dims=(npix_x, npix_y), sort_by='y')

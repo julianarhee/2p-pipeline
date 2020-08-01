@@ -1395,7 +1395,8 @@ def create_rf_dir(animalid, session, fov, run_name,
 
 #%%
 
-def get_rf_to_fov_info(masks, rfdf, zimg, rfdir='/tmp', rfname='rfs',
+
+def get_rf_to_fov_info(masks, rfdf, zimg, rfname='rfs', #rfdir='/tmp', rfname='rfs',
                        plot_spatial=False, transform_fov=True, create_new=False):    
     '''
     Get FOV info relating cortical position to RF position of all cells.
@@ -1409,7 +1410,7 @@ def get_rf_to_fov_info(masks, rfdf, zimg, rfdir='/tmp', rfname='rfs',
             'zimg': 
                 (array) z-projected image 
             'roi_contours': 
-                (list) roi contours created from classifications.convert_coords.contours_from_masks()
+                (list) roi contours, retinotopy.convert_coords.contours_from_masks()
             'xlim' and 'ylim': 
                 (float) FOV limits (in pixels or um) for azimuth and elevation axes
     '''

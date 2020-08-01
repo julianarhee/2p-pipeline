@@ -177,6 +177,7 @@ def get_rois(animalid, session, fov_name, traceid='traces001', roiid=None):
 
 
 def warp_rois(coreg_d, roi_masks, roi_zproj, clip_lim=2.0, tile=5):
+    print("warping 2d tranform to roi masks")
     # Format input images
     roi_zproj_eq = adjust_image_contrast(roi_zproj, clip=clip_lim, tile=5) 
 
