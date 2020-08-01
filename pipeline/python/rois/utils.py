@@ -27,9 +27,42 @@ import numpy as np
 from pipeline.python.utils import natural_keys, get_source_info, replace_root, write_dict_to_json
 import pprint
 pp = pprint.PrettyPrinter(indent=4)
+import cPickle as pkl
 
 #%%
 
+
+def load_roi_coords(animalid, session, fov, roiid=None, 
+                    convert_um=True, traceid='traces001', 
+                    create_new=False,rootdir='/n/coxfs01/2p-data'):
+
+    from pipeline.python.retinotopy import convert_coords as cc
+    fovinfo = None
+    roiid = get_roiid_from_traceid(animalid, session, fov, traceid=traceid)
+    masks, zimg = load_roi_masks(animalid, session, fov, rois=roiid)
+
+    # create outpath
+    roidir = glob.glob(os.path.join(rootdir, animalid, session, 
+                        'ROIs', '%s*' % roiid))[0]
+    fovinfo_fpath = os.path.join(roidir, 'fov_info.pkl')
+
+    if not create_new:
+        try:
+            with open(fovinfo_fpath, 'rb') as f:
+                fovinfo = pkl.load(f)
+            assert 'ap_lim' in fovinfo.keys(), "Bad fovinfo file, redoing"
+        except AssertionError:
+            create_new = True
+
+    if create_new:
+        print("... calculating roi-2-fov info")
+        fovinfo = cc.calculate_roi_coords(masks, zimg, convert_um=convert_um)
+        with open(fovinfo_fpath, 'wb') as f:
+            pkl.dump(fovinfo, f, protocol=pkl.HIGHEST_PROTOCOL)
+
+    return fovinfo
+
+    
 def get_roiid_from_traceid(animalid, session, fov, run_type=None, 
                             traceid='traces001', rootdir='/n/coxfs01/2p-data'):
     
@@ -52,7 +85,8 @@ def get_roiid_from_traceid(animalid, session, fov, run_type=None,
     return roiid
 
 def load_roi_masks(animalid, session, fov, rois=None, rootdir='/n/coxfs01/2p-data'):
-    mask_fpath = glob.glob(os.path.join(rootdir, animalid, session, 'ROIs', '%s*' % rois, 'masks.hdf5'))[0]
+    mask_fpath = glob.glob(os.path.join(rootdir, animalid, session, 
+                                'ROIs', '%s*' % rois, 'masks.hdf5'))[0]
     mfile = h5py.File(mask_fpath, 'r')
 
     # Load and reshape masks
@@ -61,10 +95,13 @@ def load_roi_masks(animalid, session, fov, rois=None, rootdir='/n/coxfs01/2p-dat
     mfile[mfile.keys()[0]].keys()
 
     zimg = mfile[mfile.keys()[0]]['zproj_img']['Slice01'][:].T
-    zimg.shape
     
     return masks, zimg
 
+
+
+
+#%% PLOTTING..................................................................
 
 
 def get_roi_contours(roi_masks, roi_axis=0):

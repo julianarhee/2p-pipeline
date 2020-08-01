@@ -56,8 +56,7 @@ import pipeline.python.traces.combine_runs as cb
 import pipeline.python.paradigm.align_acquisition_events as acq
 import pipeline.python.visualization.plot_psths_from_dataframe as vis
 from pipeline.python.traces.utils import load_TID
-from pipeline.python.rois.utils import load_roi_masks, get_roiid_from_traceid
-
+from pipeline.python.rois.utils import load_roi_masks, get_roiid_from_traceid, load_roi_coords
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 #from pipeline.python.traces.utils import get_frame_info
 
@@ -190,20 +189,6 @@ def get_anatomical(animalid, session, fov, channel_num=2, rootdir='/n/coxfs01/2p
         
     return anatomical
         
-#def load_roi_masks(animalid, session, fov, rois=None, rootdir='/n/coxfs01/2p-data'):
-#    mask_fpath = glob.glob(os.path.join(rootdir, animalid, session, 'ROIs', '%s*' % rois, 'masks.hdf5'))[0]
-#    mfile = h5py.File(mask_fpath, 'r')
-#
-#    # Load and reshape masks
-#    masks = mfile[mfile.keys()[0]]['masks']['Slice01'][:].T
-#    #print(masks.shape)
-#    mfile[mfile.keys()[0]].keys()
-#
-#    zimg = mfile[mfile.keys()[0]]['zproj_img']['Slice01'][:].T
-#    zimg.shape
-#    
-#    return masks, zimg
-
 # #############################################################################
 # Data processing and formatting
 # #############################################################################
@@ -722,7 +707,9 @@ class Session():
     def load_masks(self, rois='', rootdir='/n/coxfs01/2p-data'):
         if rois == '':
             rois = self.rois
-        masks, zimg = load_roi_masks(self.animalid, self.session, self.fov, rois=rois, rootdir=rootdir)
+        print("... loading masks (roiid: %s)" % rois)
+        masks, zimg = load_roi_masks(self.animalid, self.session, self.fov, 
+                                        rois=rois, rootdir=rootdir)
         return masks, zimg
     
     
@@ -927,6 +914,16 @@ class Session():
                 
         return estats_dict, nostats
 
+    def get_roi_coordinates(rois='rois001', convert_um=True, create_new=False,
+                            traceid=None, rootdir='/n/coxfs01/2p-data'):
+
+        fovinfo = load_roi_coords(self.animalid, self.session, self.fov, 
+                            roiid=rois, convert_um=convert_um, 
+                            create_new=create_new,
+                            traceid=self.traceid, rootdir=rootdir)
+
+        return fovinfo
+
         
     #%%
     
@@ -938,6 +935,7 @@ class Experiment(object):
         self.animalid = animalid
         self.session = session
         self.fov = fov
+        self.experiment_type=experiment_type
         self.get_roi_id(traceid=traceid, rootdir=rootdir)
             
         paths = self.get_data_paths(rootdir=rootdir)
@@ -965,7 +963,30 @@ class Experiment(object):
             rois = self.rois
         masks, zimg = load_roi_masks(self.animalid, self.session, self.fov, rois=rois, rootdir=rootdir)
         return masks, zimg
-    
+ 
+    def get_roi_coordinates(self, rois='', convert_um=True, create_new=False,
+                            traceid=None, rootdir='/n/coxfs01/2p-data'):
+        if rois == '':
+            rois = self.rois
+        else:
+            if rois != self.rois:
+                print("updating roi id from %s to %s" % (rois, self.rois))
+                self.rois = rois
+        fovinfo = load_roi_coords(self.animalid, self.session, self.fov, 
+                            roiid=rois, convert_um=convert_um,  
+                            create_new=create_new,
+                            traceid=self.traceid, rootdir=rootdir)
+
+        return fovinfo
+
+    def load_masks(self, rois='', rootdir='/n/coxfs01/2p-data'):
+        if rois == '':
+            rois = self.rois
+        print("... loading masks (roiid: %s)" % rois)
+        masks, zimg = load_roi_masks(self.animalid, self.session, self.fov, 
+                                        rois=rois, rootdir=rootdir)
+        return masks, zimg
+ 
 
     def print_info(self):
         print("************* Experiment Object info *************")
@@ -981,17 +1002,27 @@ class Experiment(object):
         else:
             print("No data loaded yet.")
         print("**************************************************")
-    
+   
+
     def get_roi_id(self, traceid='traces001', rootdir='/n/coxfs01/2p-data'):
-        extraction_type = re.sub('[0-9]+', '', traceid) if 'traces' in traceid else 'retino_analysis'
-        #extraction_num = int(re.findall(r'\d+', traceid)[0])
+
+        extraction_type = re.sub('[0-9]+', '', traceid) \
+                            if 'traces' in traceid else 'retino_analysis'
         
-        if 'retino' in self.name and extraction_type=='traces': # using traceid in reference to other run types
-            traceid_info_fpath = glob.glob(os.path.join(rootdir, self.animalid, self.session, self.fov, '*', \
-                                             'traces', 'traceids_*.json'))[0] # % traceid, ))
+        if 'retino' in self.name and extraction_type=='traces':
+            # using traceid in reference to other run types
+            traceid_info_fpath = glob.glob(os.path.join(rootdir, self.animalid, 
+                                              self.session, self.fov, '*', \
+                                              'traces', 'traceids_*.json'))[0] 
         else:
-            traceid_info_fpath = glob.glob(os.path.join(rootdir, self.animalid, self.session, self.fov, '*%s*' % self.name, \
-                                                 '%s' % extraction_type, '*.json'))[0] # % traceid, ))
+            if int(self.session) < 20190511 and self.experiment_type=='rfs':
+                exp_name = 'gratings'
+            else:
+                exp_name = self.experiment_type
+            traceid_info_fpath = glob.glob(os.path.join(rootdir, self.animalid, 
+                                            self.session, self.fov, 
+                                            '*%s*' % exp_name, \
+                                            'traces', '*.json'))[0] # % traceid, ))
         with open(traceid_info_fpath, 'r') as f:
             traceids = json.load(f)
             
@@ -1024,7 +1055,7 @@ class Experiment(object):
         self.rois = roi_id
         self.traceid = traceid
         
-        #return roi_id, traceid
+        return roi_id#, traceid
 
     def get_stimuli(self, rootdir='/n/coxfs01/2p-data'):
         print("... getting stimulus info for: %s" % self.name)
@@ -1584,7 +1615,6 @@ class ReceptiveFields(Experiment):
             super(ReceptiveFields, self).__init__('gratings', animalid, session, fov, traceid=traceid, rootdir=rootdir)
         else:
             super(ReceptiveFields, self).__init__(experiment_name, animalid, session, fov, traceid=traceid, rootdir=rootdir)
-        
         self.experiment_type = 'rfs'
         self.traceid = traceid
         self.trace_type = trace_type
@@ -1887,7 +1917,7 @@ class Retinobar(Experiment):
                                                          return_grouped=get_grouped,
                                                          nframes_post=nframes_post)
               
-                estats.finfo = rstats
+            estats.finfo = rstats
             estats.sdf = self.data.sdf
         else:
             estats.gdf = rstats #rstats['magratios'].max(axis=1)
