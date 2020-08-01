@@ -99,8 +99,9 @@ def get_roi_fov_info(masks, zimg, roi_list=None, transform_fov=True):
 
 
 
-def get_roi_position_in_fov(tmp_roi_contours, roi_list=None, convert_um=True, npix_y=512, npix_x=512,
-                            xaxis_conversion=2.312, yaxis_conversion=1.904):
+def get_roi_position_in_fov(tmp_roi_contours, roi_list=None, 
+                            convert_um=True, npix_y=512, npix_x=512,
+                            xaxis_conversion=2.3, yaxis_conversion=1.9):
     
     '''
     From 20190605 PSF measurement:
@@ -112,8 +113,8 @@ def get_roi_position_in_fov(tmp_roi_contours, roi_list=None, convert_um=True, np
     sorted_roi_indices_xaxis, sorted_roi_contours_xaxis = spatially_sort_contours(tmp_roi_contours, dims=(npix_x, npix_y), sort_by='x')
     sorted_roi_indices_yaxis, sorted_roi_contours_yaxis = spatially_sort_contours(tmp_roi_contours, dims=(npix_x, npix_y), sort_by='y')
 
-    _, sorted_roi_centroids_xaxis = spatially_sort_contours(tmp_roi_contours, dims=(npix_x, npix_y), sort_by='x', get_centroids=True)
-    _, sorted_roi_centroids_yaxis = spatially_sort_contours(tmp_roi_contours, dims=(npix_x, npix_y), sort_by='y', get_centroids=True)
+    _, sorted_roi_centroids_xaxis = spatially_sort_contours(tmp_roi_contours, dims=(npix_x, npix_y), sort_by='x', return_centroids=True)
+    _, sorted_roi_centroids_yaxis = spatially_sort_contours(tmp_roi_contours, dims=(npix_x, npix_y), sort_by='y', return_centroids=True)
 
     # Convert pixels to um:
     xlinspace = np.linspace(0, npix_x*xaxis_conversion, num=npix_x)
@@ -123,77 +124,74 @@ def get_roi_position_in_fov(tmp_roi_contours, roi_list=None, convert_um=True, np
     if roi_list is None:
         roi_list = range(len(sorted_roi_indices_xaxis))
 
-    # Get values for azimuth:
-    spatial_rank_x = [sorted_roi_indices_xaxis.index(roi) for roi in roi_list] # Get sorted rank for indexing
-    pixel_order_x = [sorted_roi_centroids_xaxis[s] for s in spatial_rank_x]    # Get corresponding spatial position in FOV
-    pixel_order_xvals = [p[0] for p in pixel_order_x]
-    if convert_um:
-        fov_pos_x = [xlinspace[p] for p in pixel_order_xvals]
-        xlim=xlinspace.max()
-    else:
-        fov_pos_x = pixel_order_xvals
-        xlim = npix_x
+    # Azimuth
 
-    # Get values for elevation
-    spatial_rank_y = [sorted_roi_indices_yaxis.index(roi) for roi in roi_list] # Get sorted rank for indexing
-    pixel_order_y = [sorted_roi_centroids_yaxis[s] for s in spatial_rank_y]    # Get corresponding spatial position in FOV
+    # Get sorted rank for indexing
+    spatial_rank_x = [sorted_roi_indices_xaxis.index(roi) \
+                        for roi in roi_list] 
+    # Get corresponding spatial position in FOV
+    pixel_order_x = [sorted_roi_centroids_xaxis[s] \
+                        for s in spatial_rank_x]    
+    pixel_order_xvals = [p[0] for p in pixel_order_x]
+    fov_pos_x = [xlinspace[p] for p in pixel_order_xvals] \
+                        if convert_um else pixel_order_xvals
+    xlim=xlinspace.max() if convert_um else npix_x
+
+    # Elevation 
+
+    # Get sorted rank for indexing
+    spatial_rank_y = [sorted_roi_indices_yaxis.index(roi) \
+                        for roi in roi_list] 
+    # Get corresponding spatial position in FOV
+    pixel_order_y = [sorted_roi_centroids_yaxis[s] \
+                        for s in spatial_rank_y] 
     pixel_order_yvals = [p[1] for p in pixel_order_y]
-    if convert_um:
-        fov_pos_y = [ylinspace[p] for p in pixel_order_yvals]
-        ylim = ylinspace.max()
-    else:
-        fov_pos_y = pixel_order_yvals
-        ylim = npix_y
+    fov_pos_y = [ylinspace[p] for p in pixel_order_yvals] \
+                        if convert_um else pixel_order_yvals
+    ylim = ylinspace.max() if convert_um else npix_y
 
     return fov_pos_x, fov_pos_y, xlim, ylim
 
 
-def get_roi_position_um(rffits, tmp_roi_contours, rf_exp_name='rfs', convert_um=True, npix_y=512, npix_x=512,
-                        xaxis_conversion=2.312, yaxis_conversion=1.904):
+def get_roi_position_um(rffits, tmp_roi_contours, rf_exp_name='rfs', 
+                        convert_um=True, npix_y=512, npix_x=512,
+                        xaxis_conversion=2.3, yaxis_conversion=1.9):
     
     '''
+    Same as get_roi_position_fov, but includes RF pos
+
     From 20190605 PSF measurement:
         xaxis_conversion = 2.312
         yaxis_conversion = 1.904
     '''
-    
+   
+   
     # Sort ROIs b y x,y position:
-    sorted_roi_indices_xaxis, sorted_roi_contours_xaxis = spatially_sort_contours(tmp_roi_contours, dims=(npix_x, npix_y), sort_by='x')
-    sorted_roi_indices_yaxis, sorted_roi_contours_yaxis = spatially_sort_contours(tmp_roi_contours, dims=(npix_x, npix_y), sort_by='y')
-
-    _, sorted_roi_centroids_xaxis = spatially_sort_contours(tmp_roi_contours, dims=(npix_x, npix_y), sort_by='x', get_centroids=True)
-    _, sorted_roi_centroids_yaxis = spatially_sort_contours(tmp_roi_contours, dims=(npix_x, npix_y), sort_by='y', get_centroids=True)
-
-    # Convert pixels to um:
-    xlinspace = np.linspace(0, npix_x*xaxis_conversion, num=npix_x)
-    ylinspace = np.linspace(0, npix_y*yaxis_conversion, num=npix_y)
-    
+#    sorted_roi_indices_xaxis, sorted_roi_contours_xaxis = spatially_sort_contours(tmp_roi_contours, dims=(npix_x, npix_y), sort_by='x')
+#    sorted_roi_indices_yaxis, sorted_roi_contours_yaxis = spatially_sort_contours(tmp_roi_contours, dims=(npix_x, npix_y), sort_by='y')
+#
+#    # Sort ROi centroids, too
+#    _, sorted_roi_centroids_xaxis = spatially_sort_contours(tmp_roi_contours, dims=(npix_x, npix_y), sort_by='x', return_centroids=True)
+#    _, sorted_roi_centroids_yaxis = spatially_sort_contours(tmp_roi_contours, dims=(npix_x, npix_y), sort_by='y', return_centroids=True)
+#
+#    # Convert pixels to um:
+#    xlinspace = np.linspace(0, npix_x*xaxis_conversion, num=npix_x)
+#    ylinspace = np.linspace(0, npix_y*yaxis_conversion, num=npix_y)
+#    
     # ---- Spatially sorted ROIs vs. RF position -----------------------
     rf_rois = rffits['cell'].values #.index.tolist() 
-    #colors = ['k' for _ in range(len(rf_rois))]
-    # Get values for azimuth:
-    spatial_rank_x = [sorted_roi_indices_xaxis.index(roi) for roi in rf_rois] # Get sorted rank for indexing
-    pixel_order_x = [sorted_roi_centroids_xaxis[s] for s in spatial_rank_x]    # Get corresponding spatial position in FOV
-    pixel_order_xvals = [p[0] for p in pixel_order_x]
-    if convert_um:
-        fov_pos_x = [xlinspace[p] for p in pixel_order_xvals]
-        xlim=xlinspace.max()
-    else:
-        fov_pos_x = pixel_order_xvals
-        xlim = npix_x
-    rf_xpos = rffits['x0'][rf_rois] #[gdfs[rf_exp_name].fits.loc[roi]['x0'] for roi in rf_rois]
 
-    # Get values for elevation
-    spatial_rank_y = [sorted_roi_indices_yaxis.index(roi) for roi in rf_rois] # Get sorted rank for indexing
-    pixel_order_y = [sorted_roi_centroids_yaxis[s] for s in spatial_rank_y]    # Get corresponding spatial position in FOV
-    pixel_order_yvals = [p[1] for p in pixel_order_y]
-    if convert_um:
-        fov_pos_y = [ylinspace[p] for p in pixel_order_yvals]
-        ylim = ylinspace.max()
-    else:
-        fov_pos_y = pixel_order_yvals
-        ylim = npix_y
-    rf_ypos = rffits['y0'][rf_rois] #[gdfs[rf_exp_name].fits.loc[roi]['y0'] for roi in rf_rois]
+    fov_pos_x, fov_pos_y, xlim, ylim =  get_roi_position_in_fov(
+                                                tmp_roi_contours, 
+                                                roi_list=rf_rois, 
+                                                convert_um=convert_um, 
+                                                npix_y=npix_y, npix_x=npix_x,
+                                                xaxis_conversion=xaxis_conversion, 
+                                                yaxis_conversion=yaxis_conversion)
+    
+    # Get cell's VF coords
+    rf_xpos = rffits['x0'][rf_rois] 
+    rf_ypos = rffits['y0'][rf_rois]
 
     return fov_pos_x, rf_xpos, xlim, fov_pos_y, rf_ypos, ylim
 
@@ -216,7 +214,8 @@ def contours_from_masks(masks):
     return tmp_roi_contours
 
 
-def spatially_sort_contours(tmp_roi_contours, dims=(512, 512), sort_by='xy', get_centroids=False):
+def spatially_sort_contours(tmp_roi_contours, dims=(512, 512), 
+                            sort_by='xy', return_centroids=False):
 
     if sort_by == 'xy':
         sorted_rois =  sorted(tmp_roi_contours, key=lambda ctr: (cv2.boundingRect(ctr[1])[1] + cv2.boundingRect(ctr[1])[0]) * dims[1])  
@@ -230,7 +229,7 @@ def spatially_sort_contours(tmp_roi_contours, dims=(512, 512), sort_by='xy', get
     
     sorted_ixs = [c[0] for c in sorted_rois]
     
-    if get_centroids:
+    if return_centroids:
         sorted_contours = [get_contour_center(cnt[1]) for cnt in sorted_rois]
     else:
         sorted_contours = [cnt[1] for cnt in sorted_rois]
