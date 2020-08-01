@@ -50,15 +50,15 @@ from pipeline.python.traces.trial_alignment import aggregate_experiment_runs
 #%% Data formating for working with fit params (custom functions)
 
 def rfits_to_df(rffits, row_vals=[], col_vals=[], roi_list=None,
-                scale_size=False, sigma_scale=2.35):
+                scale_sigma=False, sigma_scale=2.35):
     '''
     Takes each roi's RF fit results, converts to screen units, and return as dataframe.
-    Scale to make size FWFM if scale_size is True.
+    Scale to make size FWFM if scale_sigma is True.
     '''
     if roi_list is None:
         roi_list = sorted(rffits.keys())
        
-    scale_ = sigma_scale if scale_size else 1.0
+    scale_ = sigma_scale if scale_sigma else 1.0
 
     rf_fits_df = pd.DataFrame({'x0': [rffits[r]['x0'] for r in roi_list],
                                'y0': [rffits[r]['y0'] for r in roi_list],
@@ -496,6 +496,10 @@ def do_2d_fit(rfmap, nx=None, ny=None, verbose=False):
             success = False
         else:
             success = True
+            # modulo theta
+            mod_theta = popt[5] % np.pi
+            popt[5] = mod_theta
+            
     except Exception as e:
         if verbose:
             print e
@@ -513,9 +517,12 @@ def plot_and_fit_roi_RF(response_vector, row_vals, col_vals,
                         min_sigma=2.5, max_sigma=50, sigma_scale=2.35, scale_sigma=True,
                         trim=False, hard_cutoff=False, map_thr=None, set_to_min=False, perc_min=None):
     '''
-    Fits RFs and returns a dict with fit info if success.
-    
+    Fits RF for single ROI. 
     Note: This does not filter by R2, includes all fit-able.
+    
+    Returns a dict with fit info if doesn't error out.
+    
+    Sigma must be [2.5, 50]...
     '''
 
 #        set_to_min = False
@@ -1234,16 +1241,30 @@ def target_fov(avg_resp_by_cond, fitdf, screen, fit_roi_list=[], row_vals=[], co
 
     #%%
 
-def load_rf_fit_results(animalid, session, fov, experiment='rfs',
+def load_fit_results(animalid, session, fov, experiment='rfs',
                         traceid='traces001', response_type='dff', 
+                        fit_desc=None,
                         rootdir='/n/coxfs01/2p-data'):
-    rfdir = glob.glob(os.path.join(rootdir, animalid, session, fov, '*%s_*' % experiment,
-                           'traces', '%s*' % traceid, 'receptive_fields', 
-                           'fit-2dgaus_%s*' % response_type))[0]
+ 
+    fit_results = None
+    fit_params = None
+    try: 
+        if fit_desc is None:
+            assert response_type is not None, "No response_type or fit_desc provided"
+            fit_desc = 'fit-2dgaus_%s' % response_type
+            
+        rfdir = glob.glob(os.path.join(rootdir, animalid, session, fov, '*%s_*' % experiment,
+                        'traces', '%s*' % traceid, 'receptive_fields', 
+                        '%s*' % fit_desc))[0]
+    except AssertionError as e:
+        traceback.print_exc()
+       
+    # Load results
     rf_results_fpath = os.path.join(rfdir, 'fit_results.pkl')
     with open(rf_results_fpath, 'rb') as f:
         fit_results = pkl.load(f)
-    
+   
+    # Load params 
     rf_params_fpath = os.path.join(rfdir, 'fit_params.json')
     with open(rf_params_fpath, 'r') as f:
         fit_params = json.load(f)
@@ -1256,6 +1277,8 @@ def fit_rfs(avg_resp_by_cond, fit_params={}, #row_vals=[], col_vals=[], fitparam
             response_thr=None, create_new=False):
 
     '''
+    Main fitting function.
+    
     Saves 2 output files for fitting: 
     
     fit_results.pkl 
@@ -1277,18 +1300,16 @@ def fit_rfs(avg_resp_by_cond, fit_params={}, #row_vals=[], col_vals=[], fitparam
     col_vals = fit_params['col_vals']
     sigma_scale = fit_params['sigma_scale']
 
-    #%
+    #% Save params
     rfdir = os.path.split(rf_results_fpath)[0]    
-    # Create subdir for saving each roi's fit
-    if not os.path.exists(os.path.join(rfdir, 'roi_fits')):
-        os.makedirs(os.path.join(rfdir, 'roi_fits'))
-
-    # Save params
     rf_params_fpath = os.path.join(rfdir, 'fit_params.json')
     with open(rf_params_fpath, 'w') as f:
         json.dump(fit_params, f, indent=4)
     
-    #sigma_scale = 2.35   # Value to scale sigma in order to get FW (instead of FWHM)
+    # Create subdir for saving each roi's fit
+    if not os.path.exists(os.path.join(rfdir, 'roi_fits')):
+        os.makedirs(os.path.join(rfdir, 'roi_fits'))
+
     if roi_list is None:
         if response_thr == None:
             roi_list = avg_resp_by_cond.columns.tolist()
@@ -1303,7 +1324,8 @@ def fit_rfs(avg_resp_by_cond, fit_params={}, #row_vals=[], col_vals=[], fitparam
         #print rid
         roi_fit_results, fig = plot_and_fit_roi_RF(avg_resp_by_cond[rid], 
                                                     row_vals, col_vals,
-                                                    scale_sigma=scale_sigma) 
+                                                    scale_sigma=scale_sigma, 
+                                                    sigma_scale=sigma_scale) 
         fig.suptitle('roi %i' % int(rid+1))
         label_figure(fig, data_identifier)            
         figname = '%s_%s_RF_roi%05d' % (trace_type, response_type, int(rid+1))
@@ -1412,18 +1434,21 @@ def get_rf_to_fov_info(masks, rfdf, zimg, rfdir='/tmp', rfname='rfs',
         
         # Create contours from maskL
         roi_contours = coor.contours_from_masks(masks)
-        
+
         # Convert to brain coords
         rfdf['cell'] = rfdf.index.tolist()
-        fov_x, rf_x, xlim, fov_y, rf_y, ylim = coor.get_roi_position_um(rfdf, roi_contours, 
-                                                                         rf_exp_name=rfname,
-                                                                         convert_um=True,
-                                                                         npix_y=npix_y,
-                                                                         npix_x=npix_x)
-        posdf = pd.DataFrame({'xpos_fov': fov_y,
-                               'xpos_rf': rf_x,
-                               'ypos_fov': fov_x,
-                               'ypos_rf': rf_y}, index=rfdf.index)
+        fov_x, fov_y, xlim, ylim = coor.get_roi_position_in_fov(
+                                                rfdf, roi_contours, 
+                                                rf_exp_name=rfname,
+                                                convert_um=True,
+                                                roi_list=sorted(rfdf['cell'].values),
+                                                npix_y=npix_y,
+                                                npix_x=npix_x)
+        posdf = pd.DataFrame({'xpos_fov': fov_y,  # ML axis correpsonds to fov y-axis
+                               'xpos_rf': rf_x,   # xpos VF should go with ML axis on brain
+                               'ypos_fov': fov_x, # AP axis on brain corresponds to fov x-axis
+                               'ypos_rf': rf_y    # ypos in VF goes with AP axis on brain.., ish
+                               }, index=rfdf.index)
     
         # Save fov info
         fovinfo = {'zimg': zimg,
@@ -1436,6 +1461,9 @@ def get_rf_to_fov_info(masks, rfdf, zimg, rfdir='/tmp', rfname='rfs',
             pkl.dump(fovinfo, f, protocol=pkl.HIGHEST_PROTOCOL)
 
     return fovinfo   
+
+
+#%%
 
 
 def get_fit_params(animalid, session, fov, run='rfs', traceid='traces001', 
@@ -1592,7 +1620,9 @@ def fit_2d_receptive_fields(animalid, session, fov, run, traceid,
             #%%
             row_vals = results['row_vals']
             col_vals = results['col_vals']
-            fitdf = rfits_to_df(results['fit_results'], row_vals=row_vals, col_vals=col_vals) #, roi_list=None)
+            fitdf = rfits_to_df(results['fit_results'], 
+                                row_vals=row_vals, col_vals=col_vals,
+                                scale_sigma=scale_sigma, sigma_scale=sigma_scale)
             #fit_thr = 0.5
             fit_roi_list = fitdf[fitdf['r2'] > fit_thr].sort_values('r2', axis=0, ascending=False).index.tolist()
             print "... %i out of %i fit rois with r2 > %.2f" % (len(fit_roi_list), fitdf.shape[0], fit_thr)
@@ -1647,7 +1677,9 @@ def fit_2d_receptive_fields(animalid, session, fov, run, traceid,
        
             if not do_fits:
                 # need to load results
-                fitdf = rfits_to_df(results['fit_results'], row_vals=row_vals, col_vals=col_vals) #, roi_list=None)
+                fitdf = rfits_to_df(results['fit_results'], 
+                                    row_vals=row_vals, col_vals=col_vals,
+                                    scale_sigma=scale_sigma, sigma_scale=sigma_scale)
                 #fit_thr = 0.5
                 fit_roi_list = fitdf[fitdf['r2'] > fit_thr].sort_values('r2', axis=0, ascending=False).index.tolist()
                 print "%i out of %i fit rois with r2 > %.2f" % (len(fit_roi_list), fitdf.shape[0], fit_thr)
@@ -1716,17 +1748,19 @@ def fit_2d_receptive_fields(animalid, session, fov, run, traceid,
             print("Error finding target coords for FOV.")
             
 
-    fitdf = rfits_to_df(results['fit_results'], row_vals=results['row_vals'], col_vals=results['col_vals']) #, roi_list=None)
-    fit_thr = 0.5
+    fitdf = rfits_to_df(results['fit_results'], 
+                        row_vals=results['row_vals'], col_vals=results['col_vals'],
+                        scale_sigma=scale_sigma, sigma_scale=sigma_scale) 
+    #fit_thr = 0.5
     #fit_roi_list = fitdf[fitdf['r2'] >= fit_thr].sort_values('r2', axis=0, ascending=False).index.tolist()
     #print "%i out of %i fit rois with r2 > %.2f" % (len(fit_roi_list), fitdf.shape[0], fit_thr)
 #    
-    if int(session) < 20190511:
-        rois = get_roiid_from_traceid(animalid, session, fov, run_type='gratings', traceid=traceid)
-    else:
-        rois = get_roiid_from_traceid(animalid, session, fov, run_type='rfs', traceid=traceid)
+    #if int(session) < 20190511:
+    #    rois = get_roiid_from_traceid(animalid, session, fov, run_type='gratings', traceid=traceid)
+    #else:
+    rois = get_roiid_from_traceid(animalid, session, fov, run_type='rfs', traceid=traceid)
     masks, zimg = load_roi_masks(animalid, session, fov, rois=rois, rootdir=rootdir)
-    fovinfo = get_rf_to_fov_info(masks, fitdf, zimg, rfdir=rfdir, create_new=create_new)
+    fovinfo = get_rf_to_fov_info(masks, fitdf, zimg, rfdir=rfdir, create_new=do_fits)
   
     return results, fovinfo
 

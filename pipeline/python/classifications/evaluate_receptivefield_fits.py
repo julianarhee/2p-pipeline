@@ -675,26 +675,30 @@ def plot_linear_regr_by_condition(posdf, meas_df):
         print('[%s] Variance score: %.2f' % (cond, r2))
         
         ax=axes[ri, 0]
+        ax.set_title(cond, fontsize=12, loc='left')
         ax.scatter(xv, yv, c='k', alpha=0.5)
         ax.set_ylabel('RF position (rel. deg.)')
         ax.set_xlabel('FOV position (um)')
         #ax.set_xlim([0, ylim])
-        sns.despine(offset=1, trim=True, ax=ax)
+        #sns.despine(offset=1, trim=True, ax=ax)
         ax.plot(xv, fitv, 'r')
-        
+        ax.set_xlim([0, 1200])
+        #ax.set_ylim()    
         r, p = spstats.pearsonr(posdf['xpos_fov'], posdf['xpos_rf'].abs())
         corr_str = 'pearson=%.2f (p=%.2f)' % (r, p)
         ax.plot(ax.get_xlim()[0], ax.get_ylim()[0], alpha=0, label=corr_str)
         ax.legend(loc='upper right', fontsize=8)
     
         ax = axes[ri, 1]
-        ax.set_title(cond)
+        #ax.set_title(cond)
         residuals = fitv - yv
         ax.hist(residuals, histtype='step', color='k')
-        sns.despine(offset=1, trim=True, ax=ax)
+        #sns.despine(offset=1, trim=True, ax=ax)
         ax.set_xlabel('residuals')
         ax.set_ylabel('counts')
-        
+        maxval = max (abs(residuals))
+        ax.set_xlim([-maxval, maxval])
+         
         ax = axes[ri, 2]
         r2_vals = meas_df['r2']
         ax.scatter(r2_vals, abs(residuals), c='k', alpha=0.5)
@@ -705,7 +709,7 @@ def plot_linear_regr_by_condition(posdf, meas_df):
         testregr.fit(r2_vals.reshape(-1, 1), residuals.reshape(-1, 1)) #, yv)
         r2_dist_corr = testregr.predict(r2_vals.reshape(-1, 1))
         ax.plot(r2_vals, r2_dist_corr, 'r')
-        sns.despine(offset=1, trim=True, ax=ax)
+        #sns.despine(offset=1, trim=True, ax=ax)
         r, p = spstats.pearsonr(r2_vals.values, np.abs(residuals))
         corr_str2 = 'pearson=%.2f (p=%.2f)' % (r, p)
         ax.plot(ax.get_xlim()[0], ax.get_xlim()[-1], alpha=0, label=corr_str2)
@@ -731,7 +735,9 @@ def compare_regr_to_boot_params(eval_results, fovinfo, outdir='/tmp',
     bootdata = eval_results['data']
     bootcis = eval_results['cis']
     fit_rois = [int(k) for k, g in bootdata.groupby(['cell'])]    
- 
+    pass_rois = eval_results['pass_cis'].index.tolist()
+    print(len(fit_rois), len(pass_rois)) 
+    
     posdf = fovinfo['positions']
     xlim, ylim = fovinfo['xlim'], fovinfo['ylim']
 
@@ -762,7 +768,8 @@ def compare_regr_to_boot_params(eval_results, fovinfo, outdir='/tmp',
     return regresults
 
 
-def identify_deviants(regresults, eval_results, posdf, ci=0.95, rfdir='/tmp'):
+def identify_deviants(regresults, eval_results, posdf, ci=0.95, 
+                      offset_labels=False, rfdir='/tmp'):
     bootcis = eval_results['cis']
 
     # Which cells' CI contain the regression line, and which don't?
@@ -802,22 +809,24 @@ def identify_deviants(regresults, eval_results, posdf, ci=0.95, rfdir='/tmp'):
         if len(trudeviants) > 0:
             deviant_fpos = posdf['%s_fov' % axname][trudeviants]
             deviant_rpos = posdf['%s_rf' % axname][trudeviants]
-            ax.scatter(deviant_fpos, deviant_rpos, marker='*', c='dodgerblue', s=30, alpha=0.8)
+            ax.scatter(deviant_fpos, deviant_rpos, marker='*', c='dodgerblue', s=35, 
+                       alpha=0.95, linewidth=2)
 
             avg_interval = np.diff(ax.get_yticks()).mean()
             if label_deviants:
                 deviant_ixs = [roi_list.index(d) for d in trudeviants]
                 for ix, roi in zip(deviant_ixs, trudeviants):
-                    if deviant_rpos[roi]  > max(regcis[ix]):
-                        #print roi
-                        ax.annotate(roi, (deviant_fpos[roi], deviant_rpos[roi]+avg_interval/2.), fontsize=6)
+                    if offset_labels:
+                        if deviant_rpos[roi]  > max(regcis[ix]):
+                            ax.annotate(roi, (deviant_fpos[roi], deviant_rpos[roi]+avg_interval/2.), fontsize=6)
+                        else:
+                            ax.annotate(roi, (deviant_fpos[roi], deviant_rpos[roi]-avg_interval/2.), fontsize=6)        
                     else:
-                        ax.annotate(roi, (deviant_fpos[roi], deviant_rpos[roi]-avg_interval/2.), fontsize=6)        
+                        ax.annotate(roi, (deviant_fpos[roi], deviant_rpos[roi]), fontsize=10)
             #ax.set_ylim([-10, 40])
-            #ax.set_xlim([0, 800])
-            
+            #ax.set_xlim([0, 800])            
         sns.despine( trim=True, ax=ax)
-      
+        
         pl.savefig(os.path.join(rfdir, 'evaluation', 'regr-with-deviants_%s-test.svg' % cond))
         pl.close()
 
@@ -889,7 +898,7 @@ def evaluate_rfs(estats, rfdir='/tmp', response_type='dff',
         if os.path.exists(eval_params_fpath):
             opts_update = dict((k, eval(k)) for k in inspect.getargspec(evaluate_rfs).args)
             opts_dict = load_params(eval_params_fpath)
-            for k, v in opts_update:
+            for k, v in opts_update.items():
                 opts_dict.update({k: v})
         else:
             opts_dict = dict((k, eval(k)) for k in inspect.getargspec(evaluate_rfs).args) 
@@ -929,13 +938,14 @@ def identify_reliable_fits(fit_results, eval_results, pass_criterion='all',
     # Plot distribution of params w/ 95% CI
     if plot_boot_distns:
         print("... plotting boot distn.\n(to: %s" % outdir)
-        for r in glob.glob(os.path.join(roidir, 'roi*')):
+        for r in glob.glob(os.path.join(outdir, 'roi*')):
             os.remove(r)
         plot_eval_summary(meas_df, fit_results, eval_results, reliable_rois=reliable_rois,
                           sigma_scale=sigma_scale, scale_sigma=scale_sigma,
                           outdir=outdir, plot_format=plot_format, 
                           data_id=data_id)
-
+        
+    print("%i out of %i cells w. R2>0.5 are reliable (95%% CI)" % (len(reliable_rois), len(pass_rois)))
     return reliable_rois    
 
 
@@ -950,7 +960,9 @@ def plot_eval_summary(meas_df, fit_results, eval_results, reliable_rois=[],
     bootdata = eval_results['data']
     roi_list = meas_df.index.tolist() #sorted(bootdata['cell'].unique())
     
-    for rid in roi_list:
+    for ri, rid in enumerate(sorted(roi_list)):
+        if ri % 20 == 0:
+            print("... plotting eval summary (%i of %i)" % (int(ri+1), len(roi_list))) 
         _fitr = fit_results['fit_results'][rid]
         _bootdata = bootdata[bootdata['cell']==rid]
         fig = plot_roi_evaluation(rid, meas_df, _fitr, _bootdata, 
@@ -977,8 +989,10 @@ def do_rf_fits_and_evaluation(animalid, session, fov, rfname=None, traceid='trac
     from pipeline.python.classifications import experiment_classes as util
     reload(util)
     rfname= 'rfs' 
-    #do_fits =False
-     
+    do_fits =False
+    do_evaluation = True
+    reload_data=True
+    
     #%% Create session and experiment objects
     S = util.Session(animalid, session, fov)
     experiment_list = S.get_experiment_list(traceid=traceid)
@@ -1001,7 +1015,7 @@ def do_rf_fits_and_evaluation(animalid, session, fov, rfname=None, traceid='trac
     nframes_post = int(round(post_stimulus_sec*44.65))
     if not do_fits:
         try:
-            fit_results, fit_params = fitrf.load_rf_fit_results(animalid, session,
+            fit_results, fit_params = fitrf.load_fit_results(animalid, session,
                                                                 fov, traceid=traceid,
                                                                 experiment=rfname,
                                                                 response_type=response_type)
@@ -1044,7 +1058,10 @@ def do_rf_fits_and_evaluation(animalid, session, fov, rfname=None, traceid='trac
     # Update params
     eval_params_fpath = os.path.join(rfdir, 'evaluation', 'evaluation_params.json')
     opts_dict = dict((k, eval(k)) for k in inspect.getargspec(do_rf_fits_and_evaluation).args)
+    if 'opts' in opts_dict:
+        opts_dict.pop('opts')    
     save_params(eval_params_fpath, opts_dict)
+
 
     if len(eval_results.keys())==0:# is None: # or 'data' not in eval_results:
         return {} #None
@@ -1077,8 +1094,9 @@ def do_rf_fits_and_evaluation(animalid, session, fov, rfname=None, traceid='trac
     label_figure(fig, data_id)
     pl.savefig(os.path.join(evaldir, 'RFpos_v_FOVpos_split_axes_reliable_cells.svg'))   
     pl.close()
-    
+   
     #%% Compare regression fit to bootstrapped params
+    #fovinfo = estats.fovinfo 
     regresults = compare_regr_to_boot_params(eval_results, estats.fovinfo, 
                                             outdir=evaldir,
                                             data_id=data_id, 
@@ -1087,7 +1105,8 @@ def do_rf_fits_and_evaluation(animalid, session, fov, rfname=None, traceid='trac
                                             deviant_color=deviant_color)
     
     #%% Identify "deviants" based on spatial coordinates
-    deviants = identify_deviants(regresults, eval_results, estats.fovinfo['positions'], 
+    deviants = identify_deviants(regresults, eval_results, estats.fovinfo['positions'],
+                                 offset_labels=False, 
                                  ci=ci, rfdir=rfdir)    
 #    with open(os.path.join(rfdir, 'evaluation', 'deviants_bothconds.json'), 'w') as f:
 #        json.dump(deviants, f, indent=4)
@@ -1108,6 +1127,44 @@ def save_params(params_fpath, opts):
     with open(params_fpath, 'w') as f:
         json.dump(options_dict, f, indent=4, sort_keys=True) 
     return
+  
+#%%
+def load_eval_results(animalid, session, fov, experiment='rfs',
+                        traceid='traces001', response_type='dff', 
+                        fit_desc=None,
+                        rootdir='/n/coxfs01/2p-data'):
+    eval_results = None
+    eval_params = None
+                
+    if fit_desc is None:
+        assert response_type is not None, "No response_type or fit_desc provided"
+
+        try: 
+            fit_desc = 'fit-2dgaus_%s' % response_type
+            rfdir = glob.glob(os.path.join(rootdir, animalid, session, fov, '*%s_*' % experiment,
+                            'traces', '%s*' % traceid, 'receptive_fields', 
+                            '%s*' % fit_desc))[0]
+            evaldir = os.path.join(rfdir, 'evaluation')
+            assert os.path.exists(evaldir), "No evaluation exists. Aborting"
+        except IndexError as e:
+            traceback.print_exc()
+        except AssertionError as e:
+            traceback.print_exc()
+            
+        
+    # Load results
+    rf_eval_fpath = os.path.join(evaldir, 'evaluation_results.pkl')
+    with open(rf_eval_fpath, 'rb') as f:
+        eval_results = pkl.load(f)
+   
+    #  Load params 
+    eval_params_fpath = os.path.join(evaldir, 'evaluation_params.json')
+    with open(eval_params_fpath, 'r') as f:
+        eval_params = json.load(f)
+        
+    return eval_results, eval_params
+ 
+ 
    
 #%%
 def extract_options(options):

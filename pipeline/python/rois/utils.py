@@ -30,12 +30,19 @@ pp = pprint.PrettyPrinter(indent=4)
 
 #%%
 
-def get_roiid_from_traceid(animalid, session, fov, run_type=None, traceid='traces001', rootdir='/n/coxfs01/2p-data'):
+def get_roiid_from_traceid(animalid, session, fov, run_type=None, 
+                            traceid='traces001', rootdir='/n/coxfs01/2p-data'):
     
     if run_type is not None:
-        a_traceid_dict = glob.glob(os.path.join(rootdir, animalid, session, fov, '*%s*' % run_type, 'traces', 'traceids*.json'))[0]
+        if int(session) < 20190511 and 'rfs' in run_type:
+            run_name = 'gratings'
+
+        a_traceid_dict = glob.glob(os.path.join(rootdir, animalid, session, 
+                                    fov, '*%s*' % run_type, 'traces', 
+                                    'traceids*.json'))[0]
     else:
-        a_traceid_dict = glob.glob(os.path.join(rootdir, animalid, session, fov, '*run*', 'traces', 'traceids*.json'))[0]
+        a_traceid_dict = glob.glob(os.path.join(rootdir, animalid, session, 
+                                    fov, '*run*', 'traces', 'traceids*.json'))[0]
     with open(a_traceid_dict, 'r') as f:
         tracedict = json.load(f)
     
