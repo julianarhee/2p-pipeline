@@ -272,7 +272,8 @@ def load_dataset(soma_fpath, trace_type='dff', add_offset=True,
 
     try:
         data_fpath = soma_fpath.replace('np_subtracted', trace_type)
-        if not os.path.exists(data_fpath) and create_new is False:
+        if not os.path.exists(data_fpath) or create_new is False:
+            # Process data and save
             traces, labels, sdf, run_info = process_and_save_traces(
                                                     trace_type=trace_type,
                                                     soma_fpath=soma_fpath
@@ -1043,4 +1044,3 @@ def zproj_tseries(source_dir, runinfo_path, zproj_type='mean', write_dir=None, f
 
     # Sort separated tiff slice images:
     sort_deinterleaved_tiffs(write_dir, runinfo_path)  # Moves all 'vis_' files to separate subfolder 'visible'
-    #sort_deinterleaved_tiffs(os.path.join(write_dir, 'visible'), runinfo_path)

@@ -67,7 +67,7 @@ def aggregate_rf_dataframes(filter_by, fit_desc=None, scale_sigma=True, fit_thr=
                                               excluded_sessions=excluded_sessions)
 
     #### Get RF dataframe for all datasets (filter to include only good fits)
-    all_df = aggregate_rf_data(rf_dpaths, scale_size=scale_sigma, verbose=False,
+    all_df = aggregate_rf_data(rf_dpaths, scale_sigma=scale_sigma, verbose=False,
                                           fit_desc=fit_desc, traceid=traceid)
     all_df.groupby(['visual_area', 'experiment'])['datakey'].count()
 
@@ -134,8 +134,9 @@ def get_fit_dpaths(dsets, traceid='traces001', fit_desc=None, excluded_sessions=
 
 
 def aggregate_rf_data(rf_dpaths, fit_desc=None, traceid='traces001', fit_thr=0.5, 
-                      scale_size=True, sigma_scale=2.35, verbose=False,
-                     rootdir='/n/coxfs01/2p-data'):
+                      scale_sigma=True, sigma_scale=2.35, verbose=False, 
+                      response_type='None',
+                      rootdir='/n/coxfs01/2p-data'):
     '''
     Combines fit_results.pkl(fit from data) and evaluation_results.pkl (evaluated fits via bootstrap)
     and gets fit results only for those cells that are good/robust fits based on bootstrap analysis.
@@ -150,26 +151,45 @@ def aggregate_rf_data(rf_dpaths, fit_desc=None, traceid='traces001', fit_thr=0.5
         try:
             #### Load evaluation results (bootstrap analysis of each fit paramater)
             curr_rfname = experiment if int(session)>=20190511 else 'gratings'
-            eval_dpaths = glob.glob(os.path.join(rootdir, animalid, session, 'FOV%i_zoom2p0x' % fovnum, 
-                                                 '*%s_*' % curr_rfname, 'traces', '%s*' % traceid, 
-                                                 'receptive_fields', fit_desc, 'evaluation', 'evaluation_results.pkl'))
-            assert len(eval_dpaths)==1, "%s: Evaluation not found: %s" % (datakey, str(eval_dpaths))
-            eval_dpath = eval_dpaths[0]
-            with open(eval_dpath, 'rb') as f:
-                eval_results = pkl.load(f)
+#            eval_dpaths = glob.glob(os.path.join(rootdir, animalid, session, 'FOV%i_zoom2p0x' % fovnum, 
+#                                                 '*%s_*' % curr_rfname, 'traces', '%s*' % traceid, 
+#                                                 'receptive_fields', fit_desc, 'evaluation', 'evaluation_results.pkl'))
+#            assert len(eval_dpaths)==1, "%s: Evaluation not found: %s" % (datakey, str(eval_dpaths))
+#            eval_dpath = eval_dpaths[0]
+#            with open(eval_dpath, 'rb') as f:
+#                eval_results = pkl.load(f)
+
+            #### Load eval results 
+            eval_results, eval_params = fitrf.load_eval_results(
+                                                animalid, session, fov,
+                                                experiment=curr_rfname,
+                                                traceid=traceid, 
+                                                fit_desc=fit_desc)   
             if eval_results is None:
                 print('-- no good (%s), skipping' % datakey)
                 continue
-
+            
             #### Load fit results from measured
-            fpath = g['path'].values[0]
-            with open(fpath,'rb') as f:
-                fit_results = pkl.load(f)
+            #fpath = g['path'].values[0]
+            #with open(fpath,'rb') as f:
+            #    fit_results = pkl.load(f)
+            fit_results, fit_params = fitrf.load_fit_results(
+                                                animalid, session, fov,
+                                                experiment=curr_rfname,
+                                                traceid=traceid, 
+                                                fit_desc=fit_desc)
+
             #fit_rois = sorted(fit_results['fit_results'].keys())
             fit_rois = sorted(eval_results['data']['cell'].unique())
-            rfit_df = fitrf.rfits_to_df(fit_results['fit_results'], scale_size=True,
-                                        row_vals=fit_results['row_vals'], 
-                                        col_vals=fit_results['col_vals'], roi_list=fit_rois)
+
+            scale_sigma = fit_params['scale_sigma']
+            sigma_scale = fit_params['sigma_scale']
+            rfit_df = fitrf.rfits_to_df(fit_results['fit_results'], 
+                            scale_sigma=scale_sigma, 
+                            sigma_scale=sigma_scale,
+                            row_vals=fit_results['row_vals'], 
+                            col_vals=fit_results['col_vals'], 
+                            roi_list=fit_rois)
 
             #### Identify cells with measured params within 95% CI of bootstrap distN
             param_list = [param for param in rfit_df.columns if param != 'r2']
@@ -180,7 +200,7 @@ def aggregate_rf_data(rf_dpaths, fit_desc=None, traceid='traces001', fit_thr=0.5
             #### Create dataframe with params only for good fit cells
             passdf = rfit_df.loc[pass_rois].copy()
             # "un-scale" size, if flagged
-            if not scale_size:
+            if not scale_sigma:
                 sigma_x = passdf['sigma_x']/sigma_scale
                 sigma_y = passdf['sigma_y'] / sigma_scale
                 passdf['sigma_x'] = sigma_x

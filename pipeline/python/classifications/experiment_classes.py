@@ -1709,7 +1709,7 @@ class ReceptiveFields(Experiment):
                                         row_vals=rfits['row_vals'],
                                         col_vals=rfits['col_vals'],
                                         roi_list=sorted(roi_list), 
-                                        scale_size=scale_sigma, 
+                                        scale_sigma=scale_sigma, 
                                         sigma_scale=sigma_scale)
 
         # Get rest of stats struct
@@ -1751,7 +1751,7 @@ class ReceptiveFields(Experiment):
                                             row_vals=rfits['row_vals'],
                                             col_vals=rfits['col_vals'],
                                             roi_list=sorted(roi_list), 
-                                            scale_size=scale_sigma,
+                                            scale_sigma=scale_sigma,
                                             sigma_scale=sigma_scale)
             rfits.pop('fit_results')                   
             estats.fitinfo = rfits
@@ -1886,11 +1886,7 @@ class Retinobar(Experiment):
                                                          roi_list=roi_list,
                                                          return_grouped=get_grouped,
                                                          nframes_post=nframes_post)
-            if 'rf' in experiment_id:
-                estats.fits = fitrf.rfits_to_df(rstats, roi_list=sorted(roi_list))
-                rstats.pop('fits')
-                print("*** got rf fits***")
-                
+              
                 estats.finfo = rstats
             estats.sdf = self.data.sdf
         else:
@@ -2085,7 +2081,7 @@ def sort_rois_2D(traceid_dir):
 def plot_roi_contours(zproj, sorted_rids, cnts, clip_limit=0.008, sorted_colors=None,
                       overlay=True, label=True, label_rois=[], thickness=2, 
                       draw_box=False, roi_color=(0, 255, 0), transform=False,
-                      single_color=False, ax=None):
+                      single_color=False, ax=None, font_scale=0.5):
 
     # Create ZPROJ img to draw on:
     refRGB = uint16_to_RGB(zproj)
@@ -2160,7 +2156,7 @@ def plot_roi_contours(zproj, sorted_rids, cnts, clip_limit=0.008, sorted_colors=
             cv2.drawContours(orig, cnt, -1, col255, thickness)
             
         if label:
-            cv2.putText(orig, str(rid+1), cv2.boundingRect(cnt)[:2], cv2.FONT_HERSHEY_COMPLEX, .5, [0])
+            cv2.putText(orig, str(rid+1), cv2.boundingRect(cnt)[:2], cv2.FONT_HERSHEY_COMPLEX, font_scale, [0])
         
         if transform:
             img = imutils.rotate(orig, 90)  
