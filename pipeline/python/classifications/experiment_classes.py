@@ -2044,69 +2044,6 @@ from imutils import perspective
 from imutils import contours
 import imutils
 
-def midpoint(ptA, ptB):
-	return ((ptA[0] + ptB[0]) * 0.5, (ptA[1] + ptB[1]) * 0.5)
-
-def uint16_to_RGB(img):
-    im = img.astype(np.float64)/img.max()
-    im = 255 * im
-    im = im.astype(np.uint8)
-    rgb = cv2.cvtColor(im, cv2.COLOR_GRAY2BGR)
-    return rgb
-
-def sort_rois_2D(traceid_dir):
-
-    run_dir = traceid_dir.split('/traces')[0]
-    acquisition_dir = os.path.split(run_dir)[0]; acquisition = os.path.split(acquisition_dir)[1]
-    session_dir = os.path.split(acquisition_dir)[0]; session = os.path.split(session_dir)[1]
-    animalid = os.path.split(os.path.split(session_dir)[0])[1]
-    rootdir = session_dir.split('/%s' % animalid)[0]
-
-    # Load formatted mask file:
-    mask_fpath = os.path.join(traceid_dir, 'MASKS.hdf5')
-    maskfile =h5py.File(mask_fpath, 'r')
-
-    # Get REFERENCE file (file from which masks were made):
-    mask_src = maskfile.attrs['source_file']
-    if rootdir not in mask_src:
-        mask_src = replace_root(mask_src, rootdir, animalid, session)
-    tmp_msrc = h5py.File(mask_src, 'r')
-    ref_file = tmp_msrc.keys()[0]
-    tmp_msrc.close()
-
-    # Load masks and reshape to 2D:
-    if ref_file not in maskfile.keys():
-        ref_file = maskfile.keys()[0]
-    masks = np.array(maskfile[ref_file]['Slice01']['maskarray'])
-    dims = maskfile[ref_file]['Slice01']['zproj'].shape
-    masks_r = np.reshape(masks, (dims[0], dims[1], masks.shape[-1]))
-    print "Masks: (%i, %i), % rois." % (masks_r.shape[0], masks_r.shape[1], masks_r.shape[-1])
-
-    # Load zprojection image:
-    zproj = np.array(maskfile[ref_file]['Slice01']['zproj'])
-
-
-    # Cycle through all ROIs and get their edges
-    # (note:  tried doing this on sum of all ROIs, but fails if ROIs are overlapping at all)
-    cnts = []
-    for ridx in range(masks_r.shape[-1]):
-        im = masks_r[:,:,ridx]
-        im[im>0] = 1
-        im[im==0] = np.nan #1
-        im = im.astype('uint8')
-        edged = cv2.Canny(im, 0, 0.9)
-        tmp_cnts = cv2.findContours(edged.copy(), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-        tmp_cnts = tmp_cnts[0] if imutils.is_cv2() else tmp_cnts[1]
-        cnts.append((ridx, tmp_cnts[0]))
-    print "Created %i contours for rois." % len(cnts)
-
-    # Sort ROIs b y x,y position:
-    sorted_cnts =  sorted(cnts, key=lambda ctr: (cv2.boundingRect(ctr[1])[1] + cv2.boundingRect(ctr[1])[0]) * zproj.shape[1] )
-    cnts = [c[1] for c in sorted_cnts]
-    sorted_rids = [c[0] for c in sorted_cnts]
-
-    return sorted_rids, cnts, zproj
-
 #
 def plot_roi_contours(zproj, sorted_rids, cnts, clip_limit=0.008, sorted_colors=None,
                       overlay=True, label=True, label_rois=[], thickness=2, 
@@ -2114,7 +2051,7 @@ def plot_roi_contours(zproj, sorted_rids, cnts, clip_limit=0.008, sorted_colors=
                       single_color=False, ax=None, font_scale=0.5):
 
     # Create ZPROJ img to draw on:
-    refRGB = uint16_to_RGB(zproj)
+    refRGB = util.uint16_to_RGB(zproj)
 
     # Use some color map to indicate distance from upper-left corner:
     if sorted_colors is None:
@@ -2161,8 +2098,8 @@ def plot_roi_contours(zproj, sorted_rids, cnts, clip_limit=0.008, sorted_colors=
             # followed by the midpoint between the top-right and
             # bottom-right
             (tl, tr, br, bl) = box
-            (tlblX, tlblY) = midpoint(tl, bl)
-            (trbrX, trbrY) = midpoint(tr, br)
+            (tlblX, tlblY) = util.midpoint(tl, bl)
+            (trbrX, trbrY) = util.midpoint(tr, br)
 
             # compute the Euclidean distance between the midpoints,
             # then construct the reference object

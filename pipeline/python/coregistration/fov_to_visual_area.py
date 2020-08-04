@@ -17,8 +17,8 @@ import pylab as pl
 import tifffile as tf
 import cPickle as pkl
 
-from pipeline.python.coregistration.align_fov import Animal, FOV, warp_im, transform2p_to_macro, scale_2p_fov
-from pipeline.python.rois import utils as roi_utils
+from pipeline.python.coregistration.align_fov import Animal, FOV, warp_im, transform_2p_fov
+from pipeline.python.rois import utils as roi_util
 from pipeline.python import utils as putils
 
 import numpy.ma as ma
@@ -63,15 +63,6 @@ def plot_roi_overlay(roi_img, roi_zproj, ax=None, cmap='jet', vmin=None, vmax=No
     ax.axis('off')
     
     return 
-
-def transform_2p_fov(img, pixel_size, zoom_factor=1., normalize=True):
-    '''
-    First, left/right reflection and rotation of 2p image to match orientation of widefield view.
-    Then, scale image to pixel size as measured by PSF.
-    '''
-    transf_ = transform2p_to_macro(img, zoom_factor=zoom_factor, save=False, normalize=normalize)
-    scaled_ = scale_2p_fov(transf_, pixel_size=pixel_size)
-    return scaled_
 
 def assign_int_to_masks(roi_masks):
     '''

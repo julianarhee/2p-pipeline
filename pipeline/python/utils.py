@@ -26,8 +26,8 @@ from scipy import ndimage
 def get_pixel_size():
     # Use measured pixel size from PSF (20191005, most recent)
     # ------------------------------------------------------------------
-    xaxis_conversion = 2.31  # size of x-axis pixel, goes with A-P axis
-    yaxis_conversion = 1.89  # size of y-axis pixels, goes with M-L axis
+    xaxis_conversion = 2.3 #1  # size of x-axis pixel, goes with A-P axis
+    yaxis_conversion = 1.9 #89  # size of y-axis pixels, goes with M-L axis
     return (xaxis_conversion, yaxis_conversion)
 
 def get_screen_dims():
@@ -73,12 +73,43 @@ def isnumber(n):
         return False
     return True
 
+def midpoint(ptA, ptB):
+	return ((ptA[0] + ptB[0]) * 0.5, (ptA[1] + ptB[1]) * 0.5)
+
+
 def uint16_to_RGB(img):
     im = img.astype(np.float64)/img.max()
     im = 255 * im
     im = im.astype(np.uint8)
     rgb = cv2.cvtColor(im, cv2.COLOR_GRAY2BGR)
     return rgb
+
+
+def adjust_image_contrast(img, clip_limit=2.0, tile_size=(10,10)):
+    img[img<-50] = 0 
+    normed = cv2.normalize(img, None, 0, 255, cv2.NORM_MINMAX)
+    
+    # Convert to 8-bit
+    img8 = cv2.convertScaleAbs(normed)
+    
+    # Equalize hist:
+    clahe = cv2.createCLAHE(clipLimit=clip_limit, tileGridSize=tile_size)
+    eq = clahe.apply(img8)
+
+    return eq
+
+def adjust_grayscale_image(zimg, clip_limit=0.01):
+    '''
+    if float, image must be -1, 1 normalize
+    '''
+    im_adapthist = exposure.equalize_adapthist(zimg, clip_limit=clip_limit)
+    im_adapthist *= 256
+    im_adapthist= im_adapthist.astype('uint8')
+    #ax.imshow(im_adapthist) #pl.figure(); pl.imshow(refRGB) # cmap='gray')
+    orig = im_adapthist.copy()
+
+    return orig
+ 
 
 def label_figure(fig, data_identifier):
     fig.text(0, 1,data_identifier, ha='left', va='top', fontsize=8)

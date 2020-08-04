@@ -62,7 +62,17 @@ def rotate_image(mat, angle):
     return rotated_mat
 
 
-def transform2p_to_macro(avg, zoom_factor, acquisition_dir='/tmp', channel_ix=0, plot=False, save=True, normalize=True): #,
+def transform_2p_fov(img, pixel_size, zoom_factor=1., normalize=True):
+    '''
+    First, left/right reflection and rotation of 2p image to match orientation of widefield view.
+    Then, scale image to pixel size as measured by PSF.
+    '''
+    transf_ = orient_2p_to_macro(img, zoom_factor=zoom_factor, save=False, normalize=normalize)
+    scaled_ = scale_2p_fov(transf_, pixel_size=pixel_size)
+    return scaled_
+
+
+def orient_2p_to_macro(avg, zoom_factor, acquisition_dir='/tmp', channel_ix=0, plot=False, save=True, normalize=True): #,
                         #xaxis_conversion=2.312, yaxis_conversion=1.904):
     '''
     Does standard Fiji steps:
@@ -101,10 +111,10 @@ def transform2p_to_macro(avg, zoom_factor, acquisition_dir='/tmp', channel_ix=0,
             
         if plot:
             pl.figure()
-            pl.subplot(2,2,1); pl.title('orig'); pl.imshow(rotated)
-            pl.subplot(2,2,2); pl.title('normalized'); pl.imshow(normed)
-            pl.subplot(2,2,3); pl.title('8 bit'); pl.imshow(img8)
-            pl.subplot(2,2,4); pl.title('equalize'); pl.imshow(eq)
+            pl.subplot(2,2,1); pl.title('orig'); pl.imshow(rotated); pl.colorbar();
+            pl.subplot(2,2,2); pl.title('normalized'); pl.imshow(normed); pl.colorbar();
+            pl.subplot(2,2,3); pl.title('8 bit'); pl.imshow(img8); pl.colorbar();
+            pl.subplot(2,2,4); pl.title('equalize'); pl.imshow(eq); pl.colorbar();
             pl.savefig(os.path.join(acquisition_dir, 'anatomical', 'transform_steps_Ch%i.png' % int(channel_ix+1)))
             pl.close()
        
@@ -163,7 +173,7 @@ def transform_anatomicals(acquisition_dir):
         avg = np.sum(np.dstack([np.mean(channel_img[i::nslices, :, :], axis=0) for i in range(nslices)]), axis=-1, dtype=channel_img.dtype)
         
         # Transform img:
-        image_path = transform2p_to_macro(avg, zoom_factor, acquisition_dir, channel_ix=channel_ix, plot=True)
+        image_path = orient_2p_to_macro(avg, zoom_factor, acquisition_dir, channel_ix=channel_ix, plot=True)
         image_paths.append(image_path)
         
     return image_paths
@@ -593,7 +603,7 @@ class FOV():
             avg = np.sum(np.dstack([np.mean(channel_img[i::nslices, :, :], axis=0) for i in range(nslices)]), axis=-1, dtype=channel_img.dtype)
             
             # Transform img:
-            image_path = transform2p_to_macro(avg, zoom_factor, acquisition_dir, channel_ix=channel_ix, plot=True)
+            image_path = orient_2p_to_macro(avg, zoom_factor, acquisition_dir, channel_ix=channel_ix, plot=True)
             image_paths.append(image_path)
         
         self.meta['nchannels'] = nchannels

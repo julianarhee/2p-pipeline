@@ -39,8 +39,7 @@ def load_roi_coords(animalid, session, fov, roiid=None,
     from pipeline.python.retinotopy import convert_coords as cc
     fovinfo = None
     roiid = get_roiid_from_traceid(animalid, session, fov, traceid=traceid)
-    masks, zimg = load_roi_masks(animalid, session, fov, rois=roiid)
-
+    
     # create outpath
     roidir = glob.glob(os.path.join(rootdir, animalid, session, 
                         'ROIs', '%s*' % roiid))[0]
@@ -50,12 +49,13 @@ def load_roi_coords(animalid, session, fov, roiid=None,
         try:
             with open(fovinfo_fpath, 'rb') as f:
                 fovinfo = pkl.load(f)
-            assert 'ap_lim' in fovinfo.keys(), "Bad fovinfo file, redoing"
+            assert 'fov_xpos' in fovinfo.keys() and 'ml_pos' in fovinfo.keys(), "Bad fovinfo file, redoing"
         except AssertionError:
             create_new = True
 
     if create_new:
         print("... calculating roi-2-fov info")
+        masks, zimg = load_roi_masks(animalid, session, fov, rois=roiid)
         fovinfo = cc.calculate_roi_coords(masks, zimg, convert_um=convert_um)
         with open(fovinfo_fpath, 'wb') as f:
             pkl.dump(fovinfo, f, protocol=pkl.HIGHEST_PROTOCOL)
