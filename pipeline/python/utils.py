@@ -238,14 +238,14 @@ def process_and_save_traces(trace_type='dff',
     npdata = np.load(neuropil_fpath)
     neuropil_f0 = np.nanmean(np.nanmean(pd.DataFrame(npdata['f0'][:])))
     neuropil_df = pd.DataFrame(npdata['data'][:]) 
-    print("adding NP offset... (NP f0 offset: %.2f)" % neuropil_f0)
+    print("    adding NP offset (NP f0 offset: %.2f)" % neuropil_f0)
 
     # # Also add raw 
     raw_fpath = soma_fpath.replace('np_subtracted', 'raw')
     rawdata = np.load(raw_fpath)
     raw_f0 = np.nanmean(np.nanmean(pd.DataFrame(rawdata['f0'][:])))
     raw_df = pd.DataFrame(rawdata['data'][:])
-    print("adding raw offset... (raw f0 offset: %.2f)" % raw_f0)
+    print("    adding raw offset (raw f0 offset: %.2f)" % raw_f0)
 
     raw_traces = xdata_df + list(np.nanmean(neuropil_df, axis=0)) + raw_f0 
     #+ neuropil_f0 + raw_f0 # list(np.nanmean(raw_df, axis=0)) #.T + F0
@@ -253,11 +253,10 @@ def process_and_save_traces(trace_type='dff',
     # SAVE
     data_dir = os.path.split(soma_fpath)[0]
     data_fpath = os.path.join(data_dir, 'corrected.npz')
-    print("Saving labels data...\nto: %s" %  data_fpath)
-    np.savez(data_fpath, 
-             data=raw_traces.values)
-
-   
+    print("Saving corrected data...\nto: %s" %  os.path.split(data_fpath)[-1])
+    np.savez(data_fpath, data=raw_traces.values)
+  
+    # Process dff/df/etc.
     stim_on_frame = labels['stim_on_frame'].unique()[0]
     tmp_df = []
     tmp_dff = []
@@ -275,12 +274,12 @@ def process_and_save_traces(trace_type='dff',
 
     dff_traces = pd.concat(tmp_dff, axis=0) 
     data_fpath = os.path.join(data_dir, 'dff.npz')
-    print("Saving labels data...\nto: %s" %  data_fpath)
+    print("Saving dff data...\nto: %s" %  os.path.split(data_fpath)[-1])
     np.savez(data_fpath, data=dff_traces.values)
 
     df_traces = pd.concat(tmp_df, axis=0) 
     data_fpath = os.path.join(data_dir, 'df.npz')
-    print("Saving labels data...\nto: %s" %  data_fpath)
+    print("Saving df data...\nto: %s" %  os.path.split(data_fpath)[-1])
     np.savez(data_fpath, data=df_traces.values)
 
     if trace_type=='dff':
@@ -303,7 +302,7 @@ def load_dataset(soma_fpath, trace_type='dff', add_offset=True,
 
     try:
         data_fpath = soma_fpath.replace('np_subtracted', trace_type)
-        if not os.path.exists(data_fpath) or create_new is False:
+        if not os.path.exists(data_fpath) or create_new is True:
             # Process data and save
             traces, labels, sdf, run_info = process_and_save_traces(
                                                     trace_type=trace_type,
@@ -323,8 +322,6 @@ def load_dataset(soma_fpath, trace_type='dff', add_offset=True,
             sdf = pd.DataFrame(labels_dset['sconfigs'][()]).T
             if 'blobs' in soma_fpath: #self.experiment_type:
                 sdf = reformat_morph_values(sdf)
-            else:
-                sdf = sdf
             run_info = labels_dset['run_info'][()]
         if make_equal:
             print("... making equal")
@@ -338,7 +335,6 @@ def load_dataset(soma_fpath, trace_type='dff', add_offset=True,
     if 'image' in sdf['stimtype']:
         aspect_ratio = sdf['aspect'].unique()[0]
         sdf['size'] = [round(sz/aspect_ratio, 1) for sz in sdf['size']]
-
 
     return traces, labels, sdf, run_info
 

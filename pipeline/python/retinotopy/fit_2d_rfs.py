@@ -49,32 +49,33 @@ from pipeline.python.traces.trial_alignment import aggregate_experiment_runs
 
 #%% Data formating for working with fit params (custom functions)
 
-def rfits_to_df(rffits, row_vals=[], col_vals=[], roi_list=None,
-                scale_sigma=False, sigma_scale=2.35):
+def rfits_to_df(fitr, row_vals=[], col_vals=[], roi_list=None,
+                scale_sigma=True, sigma_scale=2.35, convert_coords=True):
     '''
     Takes each roi's RF fit results, converts to screen units, and return as dataframe.
     Scale to make size FWFM if scale_sigma is True.
     '''
     if roi_list is None:
-        roi_list = sorted(rffits.keys())
+        roi_list = sorted(fitr.keys())
        
-    scale_ = sigma_scale if scale_sigma else 1.0
+    sigma_scale = sigma_scale if scale_sigma else 1.0
 
-    rf_fits_df = pd.DataFrame({'x0': [rffits[r]['x0'] for r in roi_list],
-                               'y0': [rffits[r]['y0'] for r in roi_list],
-                               'sigma_x': [rffits[r]['sigma_x'] for r in roi_list],
-                               'sigma_y': [rffits[r]['sigma_y'] for r in roi_list],
-                               'theta': [rffits[r]['theta'] for r in roi_list],
-                               'r2': [rffits[r]['r2'] for r in roi_list]},
+    fitdf = pd.DataFrame({'x0': [fitr[r]['x0'] for r in roi_list],
+                               'y0': [fitr[r]['y0'] for r in roi_list],
+                               'sigma_x': [fitr[r]['sigma_x'] for r in roi_list],
+                               'sigma_y': [fitr[r]['sigma_y'] for r in roi_list],
+                               'theta': [fitr[r]['theta'] for r in roi_list],
+                               'r2': [fitr[r]['r2'] for r in roi_list]},
                               index=roi_list)
 
-    x0, y0, sigma_x, sigma_y = convert_fit_to_coords(rf_fits_df, row_vals, col_vals)
-    rf_fits_df['x0'] = x0
-    rf_fits_df['y0'] = y0
-    rf_fits_df['sigma_x'] = sigma_x * scale_
-    rf_fits_df['sigma_y'] = sigma_y * scale_ 
-    
-    return rf_fits_df
+    if convert_coords:
+        x0, y0, sigma_x, sigma_y = convert_fit_to_coords(fitdf, row_vals, col_vals)
+        fitdf['x0'] = x0
+        fitdf['y0'] = y0
+        fitdf['sigma_x'] = sigma_x * sigma_scale
+        fitdf['sigma_y'] = sigma_y * sigma_scale
+
+    return fitdf
 
 
 def convert_fit_to_coords(fitdf, row_vals, col_vals, rid=None):
@@ -703,12 +704,16 @@ def plot_kde_maxima(kde_results, weights, linX, linY, screen, use_peak=True, \
 
 #%% Plotting p
 
-def plot_best_rfs(fit_roi_list, avg_resp_by_cond, fitdf, 
-                  row_vals=[], col_vals=[], response_type='response',
-                  sigma_scale=2.35, plot_ellipse=True, single_colorbar=True):
+def plot_best_rfs(fit_roi_list, avg_resp_by_cond, fitdf, fit_params,
+                    plot_ellipse=True, single_colorbar=True, nr=6, nc=10):
     #plot_ellipse = True
     #single_colorbar = True
     
+    row_vals = fit_params['row_vals']
+    col_vals = fit_params['col_vals']
+    response_type = fit_params['response_type']
+    sigma_scale = fit_params['sigma_scale'] if fit_params['scale_sigma'] else 1.0
+     
     cbar_pad = 0.05 if not single_colorbar else 0.5
     
     cmap = 'magma' if plot_ellipse else 'inferno' # inferno
@@ -717,8 +722,6 @@ def plot_best_rfs(fit_roi_list, avg_resp_by_cond, fitdf,
     vmin = round(max([avg_resp_by_cond.min().min(), 0]), 1)
     vmax = round(min([5, avg_resp_by_cond.max().max()]), 1)
     
-    nr = 6# 6 #6
-    nc=10 #10 #10
     fig = pl.figure(figsize=(nc*2,nr+2))
     grid = AxesGrid(fig, 111,
                 nrows_ncols=(nr, nc),
@@ -733,12 +736,9 @@ def plot_best_rfs(fit_roi_list, avg_resp_by_cond, fitdf,
         coordmap = np.reshape(avg_resp_by_cond[rid], (len(col_vals), len(row_vals))).T
         
         im = ax.imshow(coordmap, cmap=cmap, vmin=vmin, vmax=vmax) #, vmin=vmin, vmax=vmax)
-        #ax.contour(results['fit_params']['xx'], results['fit_params']['yy'], fitdf['fit'][rid].reshape(coordmap.shape), 1, colors='w')
         ax.set_title('roi %i (r2=%.2f)' % (int(rid+1), fitdf['r2'][rid]), fontsize=8)
         
-        if plot_ellipse:
-            # = Ellipse((x0_f, y0_f), abs(sigx_f)*sig_scale, abs(sigy_f)*sig_scale, angle=np.rad2deg(theta_f)) #theta_f)
-    
+        if plot_ellipse:    
             ell = Ellipse((fitdf['x0'][rid], fitdf['y0'][rid]), 
                           abs(fitdf['sigma_x'][rid])*sigma_scale, abs(fitdf['sigma_y'][rid])*sigma_scale, 
                           angle=np.rad2deg(fitdf['theta'][rid]))
@@ -777,76 +777,85 @@ def plot_best_rfs(fit_roi_list, avg_resp_by_cond, fitdf,
 
 
 #%%
-def overlay_traces_on_rfmap(rid, avg_resp_by_cond, zscored_traces, labels, sdf, 
-                            nframes_per_trial=89, vmin=None, vmax=None, scaley=None,
-                            response_type='response', nframes_plot=45, yunit_sec=1.0, lw=1, 
-                            cmap='bone', linecolor='darkslateblue', start_frame=0, 
-                            row_vals=[], col_vals=[], fitdf=None, plot_ellipse=True,
-                            ellipse_ec='w', ellipse_fc='none', ellipse_lw=1, ellipse_alpha=1.0,
-                            sigma_scale=2.35, legend_lw=2.): 
+def get_trial_averaged_timecourse(rid, traces, labels, run_info, config='config001', 
+                                  nframes_plot=None, start_frame=0):
+    
+    fr_ixs = np.array(labels[labels['config']==config].index.tolist()) # Get corresponding trial indices
+    ntrials_cond = len(labels[labels['config']==config]['trial'].unique())
+    nframes_trial = run_info['nframes_per_trial'][0]
+    ntrials_cond = run_info['ntrials_by_cond'][config] 
+    if nframes_plot is None:
+        nframes_plot = nframes_trial # plot whole trial
+    tmat = np.reshape(traces[rid][fr_ixs].values, (ntrials_cond, nframes_trial)) # reshape to get ntrials x nframes_in_trial
+    avg_trace = np.nanmean(tmat, axis=0)[start_frame:start_frame+nframes_plot] # Get average across trials
+    sem_trace = stats.sem(tmat, axis=0, nan_policy='omit')[start_frame:start_frame+nframes_plot] # Get sem across trials
+    tsecs = np.nanmean(np.vstack(labels[labels['config']==config].groupby(['trial'])['tsec'].apply(np.array)), axis=0)
+    if len(avg_trace) < nframes_plot: # Pad with nans
+        avg_trace = np.pad(avg_trace, (0, nframes_plot-len(avg_trace)), mode='constant', constant_values=[np.nan])
+        sem_trace = np.pad(sem_trace, (0, nframes_plot-len(sem_trace)), mode='constant', constant_values=[np.nan])
+    if len(tsecs) < nframes_plot:
+        tsecs = np.pad(tsecs, (0, nframes_plot-len(tsecs)), mode='constant', constant_values=[np.nan])
+    elif len(tsecs) > nframes_plot:
+        tsecs = tsecs[0:nframes_plot]
+    tsecs = np.array(tsecs).astype('float')
+    
+    return tsecs, avg_trace, sem_trace
+
+#%%
+def overlay_traces_on_rfmap(rid, avg_resp_by_cond, zscored_traces, labels, sdf, run_info,
+                            fitdf=None, response_type='response', start_frame=0, nframes_plot=45, 
+                            yunit_sec=1.0, scaley=None, vmin=None, vmax=None, 
+                            lw=1, legend_lw=2., cmap='bone', linecolor='darkslateblue', 
+                            row_vals=[], col_vals=[], 
+                            plot_ellipse=True, scale_sigma=True, sigma_scale=2.35, 
+                            ellipse_ec='w', ellipse_fc='none', ellipse_lw=1, ellipse_alpha=1.0): 
                             #screen_ylim=[-33.6615, 33.6615], screen_xlim=[-59.7782, 59.7782]):
     
     # TODO:  FIX LEGEND SCALE BAR
     
     nr = len(row_vals)
     nc = len(col_vals)
-    #nframes_on = labels['nframes_on'].unique()[0]
-    #stim_on_frame = labels['stim_on_frame'].unique()[0]
-    
-    coordmap = np.flipud(np.reshape(avg_resp_by_cond[rid], (len(col_vals), len(row_vals))).T) # Fipud to match screen
-    vmin = coordmap.min() if vmin is None else vmin
-    vmax = coordmap.max() if vmax is None else vmax
+   
+    rfmap = np.flipud(np.reshape(avg_resp_by_cond[rid], (len(col_vals), len(row_vals))).T) # Fipud to match screen
+    vmin = rfmap.min() if vmin is None else vmin
+    vmax = rfmap.max() if vmax is None else vmax
     norm = mpl.colors.Normalize(vmin=vmin, vmax=vmax)
     cmapper = cm.ScalarMappable(norm=norm, cmap=cmap)
    
     fig = pl.figure(figsize=(12, 6))
     gs = gridspec.GridSpec(nr, nc)
     all_axes = [] 
-    ymin=0; ymax=0;
-    #for ri, rval in enumerate(sorted(row_vals)): # Draw plots in reverse to match screen
-    #    for ci, cval in enumerate(sorted(col_vals)[::-1]):
-    #        #print rval, cval
-    #        ax = axes[nr-ri-1, nc-ci-1]
-    k=0
+    ymin=0; ymax=0; k=0;
     for ri, rval in enumerate(sorted(row_vals)): # Draw plots in reverse to match screen
         for ci, cval in enumerate(sorted(col_vals)):
-            #print rval, cval
             map_ix_row = nr-ri-1 #row_vals.index(rval)
             map_ix_col = col_vals.index(cval)
             ax = fig.add_subplot(gs[map_ix_row, map_ix_col]) #nr-ri-1, nc-ci-1]) #gs[k])
             ax.clear()
             #pcolor = cmapper.to_rgba(coordmap[nr-ri-1, nc-ci-1])
-            pcolor = cmapper.to_rgba(coordmap[nr-ri-1, ci])
+            pcolor = cmapper.to_rgba(rfmap[nr-ri-1, ci])
             ax.patch.set_color(pcolor)
             k+=1
-            
+           
             cfg = sdf[((sdf['xpos']==cval) & (sdf['ypos']==rval))].index[0] # Get current cfg
-            fr_ixs = np.array(labels[labels['config']==cfg].index.tolist()) # Get corresponding trial indices
-            ntrials_cond = len(labels[labels['config']==cfg]['trial'].unique())
-            tmat = np.reshape(zscored_traces[rid][fr_ixs].values, (ntrials_cond, nframes_per_trial)) # reshape to get ntrials x nframes_in_trial
-            avg_trace = np.nanmean(tmat, axis=0)[start_frame:start_frame+nframes_plot] # Get average across trials
-            sem_trace = stats.sem(tmat, axis=0, nan_policy='omit')[start_frame:start_frame+nframes_plot] # Get sem across trials
-            tsecs = np.nanmean(np.vstack(labels[labels['config']==cfg].groupby(['trial'])['tsec'].apply(np.array)), axis=0)
-            if len(avg_trace) < nframes_plot: # Pad with nans
-                avg_trace = np.pad(avg_trace, (0, nframes_plot-len(avg_trace)), mode='constant', constant_values=[np.nan])
-                sem_trace = np.pad(sem_trace, (0, nframes_plot-len(sem_trace)), mode='constant', constant_values=[np.nan])
-            if len(tsecs) < nframes_plot:
-                tsecs = np.pad(tsecs, (0, nframes_plot-len(tsecs)), mode='constant', constant_values=[np.nan])
-            elif len(tsecs) > nframes_plot:
-                tsecs = tsecs[0:nframes_plot]
-            tsecs = np.array(tsecs).astype('float')
+            tsecs, avg_trace, sem_trace = get_trial_averaged_timecourse(rid, 
+                                                        zscored_traces, labels, 
+                                                        run_info, config=cfg, 
+                                                        nframes_plot=nframes_plot, start_frame=start_frame)
             ax.plot(tsecs, avg_trace, linecolor, lw=lw)
+       
+            # Fill sem trace 
             y1 = np.array(avg_trace + sem_trace)
             y2 = np.array(avg_trace - sem_trace)
-            
             ax.fill_between(tsecs, y1, y2=y2, color=linecolor, alpha=0.4)
+            
+            # Hide tick stuff
             ax.tick_params(axis='both', which='both', length=0, labelsize=0)
             ax.set_xticks([])
             ax.set_yticks([])
             ymin = min([ymin, np.nanmin(avg_trace)-np.nanmin(sem_trace)])
             ymax = max([ymax, np.nanmax(avg_trace) + np.nanmax(sem_trace)])
             all_axes.append(ax)
-            
     
     ymin = round(ymin, 2) #if scaley is None else scaley[0] #round(min([ymin, 0]), 1)
     ymax = round(ymax, 2) #if scaley is None else scaley[1]
@@ -855,8 +864,9 @@ def overlay_traces_on_rfmap(rid, avg_resp_by_cond, zscored_traces, labels, sdf,
 
     subplot_xlims = ax.get_xlim()
     subplot_ylims = ax.get_ylim()
-   
-    # Reduce spcaing between subplots
+    subplot_pos = ax.get_position()
+     
+    # Reduce spacing between subplots
     pl.subplots_adjust(left=0.05, right=0.8, wspace=0, hspace=0)
 
     if plot_ellipse:
@@ -865,30 +875,26 @@ def overlay_traces_on_rfmap(rid, avg_resp_by_cond, zscored_traces, labels, sdf,
         screen_xlim_centered = get_centered_screen_points(pos_xlim, nc)
         screen_ylim_centered = get_centered_screen_points(pos_ylim, nr)
                   
-        # = Ellipse((x0_f, y0_f), abs(sigx_f)*sig_scale, abs(sigy_f)*sig_scale, angle=np.rad2deg(theta_f)) #theta_f)
         outergs = gridspec.GridSpec(1,1)
         outerax = fig.add_subplot(outergs[0])
         outerax.tick_params(axis='both', which='both', bottom=0, left=0, 
                         labelbottom=0, labelleft=0)
         outerax.set_facecolor('crimson')
         outerax.patch.set_alpha(0.1)
-        #outerax.invert_yaxis()
         outerax = fig.add_subplot(outergs[0])
         outerax.set_ylim(screen_ylim_centered) #[screen_bottom, screen_top])
         outerax.set_xlim(screen_xlim_centered) #[screen_left, screen_right])
  
         ell = Ellipse((fitdf['x0'][rid], fitdf['y0'][rid]), 
-                        abs(fitdf['sigma_x'][rid]), #*sigma_scale, 
-                        abs(fitdf['sigma_y'][rid]), #*sigma_scale, 
+                        abs(fitdf['sigma_x'][rid])*sigma_scale, 
+                        abs(fitdf['sigma_y'][rid])*sigma_scale, 
                         angle=np.rad2deg(fitdf['theta'][rid]))
         ell.set_alpha(ellipse_alpha)
         ell.set_edgecolor(ellipse_ec)
         ell.set_facecolor(ellipse_fc)
         ell.set_linewidth(ellipse_lw)
         outerax.add_patch(ell) 
-        #outerax.invert_yaxis()
 
-    #fig = pl.figure()        
     # Add colorbar for RF map
     cmapper._A = []
     cbar_ax = fig.add_axes([0.82, 0.15, 0.015, 0.3])
@@ -899,8 +905,8 @@ def overlay_traces_on_rfmap(rid, avg_resp_by_cond, zscored_traces, labels, sdf,
     cbar.ax.tick_params(axis='both', which='both', length=0, pad=1)
 
     # Add legend for traces
-    rect = [0.84, 0.78, .1, .1]
-    leg = fig.add_subplot(111, position=rect, aspect='auto')
+    legend_pos = [0.84, 0.78, subplot_pos.width, subplot_pos.height] #.1, .1]
+    leg = fig.add_subplot(111, position=legend_pos) #, aspect='auto')
     leg.clear()
     leg.plot(tsecs, avg_trace, 'w', alpha=1)
     #leg.set_ylim([ymin, ymax])
@@ -908,9 +914,9 @@ def overlay_traces_on_rfmap(rid, avg_resp_by_cond, zscored_traces, labels, sdf,
     leg.set_xlim(subplot_xlims)
     yscale = min([ymax, 2.0]) if response_type=='zscore' else min([ymax, 0.5])
     #yscale = trace_scale #min([ymax, trace_scale])
-    
-    leg.set_yticks([np.abs(ymin), yscale-np.abs(ymin)])
-    leg.set_yticks([0, 0.1])
+    leg.set_yticks([ymin, ymin+yscale])
+    #print(ymin, yscale, yscale+ymin)
+    #leg.set_yticks([0, 0.1])
     yunits = 'std' if response_type=='zscore' else response_type
     leg.set_ylabel('%.1f %s' % (yscale, yunits))
     
@@ -922,14 +928,28 @@ def overlay_traces_on_rfmap(rid, avg_resp_by_cond, zscored_traces, labels, sdf,
     leg.set_xticklabels([])
     sns.despine(ax=leg, trim=True, offset=0)
 
-    leg.tick_params(axis='both', which='both', length=0.2, labelsize=0, pad=0.01)
+    leg.tick_params(axis='both', which='both', length=0, labelsize=0, pad=0.01)
     for axlabel in ['left', 'bottom']:
         leg.spines[axlabel].set_linewidth(legend_lw)
     leg.set_xlabel('%.1f s' % yunit_sec, horizontalalignment='left', x=0)
 
     return fig
 
-
+#%%
+        
+#fig = overlay_traces_on_rfmap(rid, avg_resp_by_cond, zscored_traces, 
+#                                        labels, sdf,
+#                                        response_type=plot_response_type, 
+#                                        nframes_plot=nframes_plot, 
+#                                        start_frame=start_frame, yunit_sec=yunit_sec,
+#                                        row_vals=fit_params['row_vals'], col_vals=fit_params['col_vals'], 
+#                                        linecolor=linecolor, cmap=cmap,
+#                                        fitdf=fitdf, plot_ellipse=plot_ellipse,
+#                                        ellipse_fc=ellipse_fc, ellipse_ec=ellipse_ec,
+#                                        ellipse_lw=ellipse_lw, legend_lw=legend_lw)
+#
+ 
+#%%
 def get_centered_screen_points(screen_xlim, nc):
     col_pts = np.linspace(screen_xlim[0], screen_xlim[1], nc+1) # n points for NC columns
     pt_spacing = np.mean(np.diff(col_pts)) 
@@ -1240,7 +1260,6 @@ def target_fov(avg_resp_by_cond, fitdf, screen, fit_roi_list=[], row_vals=[], co
     print("ELEV bounds: %s" % str(kde_results['el_bounds']))
     print("CENTER: %.2f, %.2f" % (kde_results['center_x'], kde_results['center_y']))
 
-    
     #%
     fig = plot_centroids(kde_results, weights, screen, xvals=xvals, yvals=yvals,
                          fit_roi_list=fit_roi_list, use_peak=True, exclude_bad=False, min_thr=0.01, marker_scale=100)
@@ -1477,6 +1496,7 @@ def get_rf_to_fov_info(masks, rfdf, zimg, rfname='rfs', #rfdir='/tmp', rfname='r
 
 
 def get_fit_params(animalid, session, fov, run='rfs', traceid='traces001', 
+                   response_type='dff', fit_thr=0.5, 
                    post_stimulus_sec=0.5, sigma_scale=2.35, scale_sigma=True,
                    rootdir='/n/coxfs01/2p-data'):
     
@@ -1486,19 +1506,18 @@ def get_fit_params(animalid, session, fov, run='rfs', traceid='traces001',
     row_vals = sorted(sdf[rows].unique())
     col_vals = sorted(sdf[cols].unique())
 
-    fr = run_info['framerate'] #44.65 #dset['run_info'][()]['framerate']
-    nframes_per_trial = run_info['nframes_per_trial'][0]
-    #nframes_on = labels['nframes_on'].unique()[0]
-    #stim_on_frame = labels['stim_on_frame'].unique()[0]
-    #if nframes_post_onset is None:
+    fr = run_info['framerate'] 
     #    nframes_post_onset = int(round(nframes_on*2.0))
     #nframes_post_onset = nframes_on + int(round(1.*fr))       
     nframes_post_onset = int(round(post_stimulus_sec * fr))
     
     fit_params = {
+            'response_type': response_type,
             'frame_rate': fr,
-            'nframes_per_trial': nframes_per_trial,
-            # 'nframes_on': nframes_on,
+            'nframes_per_trial': run_info['nframes_per_trial'][0],
+            'stim_on_frame': run_info['stim_on_frame'],
+            'nframes_on': int(run_info['nframes_on'][0]),
+            'post_stimulus_sec': post_stimulus_sec,
             'nframes_post_onset': nframes_post_onset,
             'row_spacing': np.mean(np.diff(row_vals)),
             'column_spacing': np.mean(np.diff(col_vals)),
@@ -1512,17 +1531,16 @@ def get_fit_params(animalid, session, fov, run='rfs', traceid='traces001',
     
     return fit_params
 
-   #%%     
+#%%     
 def fit_2d_receptive_fields(animalid, session, fov, run, traceid, 
                             reload_data=False, create_new=False,
                             trace_type='corrected', response_type='dff', 
                             post_stimulus_sec=0.5,
-                            make_pretty_plots=False, plot_response_type='dff',
+                            make_pretty_plots=False, plot_response_type='dff', plot_format='pdf',
                             visual_area='', select_rois=False, segment=False,
                             ellipse_ec='w', ellipse_fc='none', ellipse_lw=2, 
                             plot_ellipse=True, scale_sigma=True, sigma_scale=2.35,
                             linecolor = 'darkslateblue', cmap = 'bone', legend_lw=2, 
-                            plot_format='pdf',
                             fit_thr=0.5, rootdir='/n/coxfs01/2p-data'):
 
     rows = 'ypos'
@@ -1530,9 +1548,7 @@ def fit_2d_receptive_fields(animalid, session, fov, run, traceid,
 
     # Set output dirs
     # -----------------------------------------------------------------------------
-    # rfdir = os.path.join(traceid_dir, 'figures', 'receptive_fields')
     # rf_param_str = 'fit-2dgaus_%s-no-cutoff' % (response_type) #, response_thr) #, cutoff_type, set_to_min_str)
-    #print(animalid, session, fov, run, response_type)
     run_name = run.split('_')[1] if 'combined' in run else run
 
     rfdir, fit_desc = create_rf_dir(animalid, session, fov, 
@@ -1541,6 +1557,7 @@ def fit_2d_receptive_fields(animalid, session, fov, run, traceid,
 
     traceid_dir = rfdir.split('/receptive_fields/')[0]
     data_fpath = os.path.join(traceid_dir, 'data_arrays', 'np_subtracted.npz')
+    data_id = '|'.join([animalid, session, fov, run, traceid, visual_area, fit_desc])
 
     if not os.path.exists(data_fpath):
         # Realign traces
@@ -1548,28 +1565,21 @@ def fit_2d_receptive_fields(animalid, session, fov, run, traceid,
         print("%s | %s | %s | %s | %s" % (animalid, session, fov, run, traceid))
         aggregate_experiment_runs(animalid, session, fov, run_name, traceid=traceid)
         print("*****corrected offsets!*****")
-       
-    #dset = np.load(data_fpath)
-   
+  
 #    if segment:
 #        rfdir = os.path.join(rfdir, visual_area)
     if not os.path.exists(rfdir):
         os.makedirs(rfdir)
-    #print "Saving output to:", rfdir
-    #%
-    # Create subdir for saving figs/results based on fit params
-    # -----------------------------------------------------------------------------
-    data_identifier = '|'.join([animalid, session, fov, run, traceid, visual_area, fit_desc])
-    
+
     # Create results outfile, or load existing:
     do_fits = False
     rf_results_fpath = os.path.join(rfdir, 'fit_results.pkl') #results_outfile = 'RESULTS_%s.pkl' % fit_desc
     do_fits = create_new
-    if os.path.exists(rf_results_fpath) and create_new is False:
+    if create_new is False:
         try:
             print "... checking for existing fit results"
             fit_results, fit_params = load_fit_results(animalid, session, fov,
-                                        experiment=run, traceid=traceid,
+                                        experiment=run_name, traceid=traceid,
                                         response_type=response_type)
             print "... loaded RF fit results"
             if fit_results is None or fit_params is None: #len(fit_results.keys())==0:
@@ -1580,10 +1590,9 @@ def fit_2d_receptive_fields(animalid, session, fov, run, traceid,
             do_fits = True
     else:
         do_fits = True
-        
-    #%%
     print("... do fits?", do_fits) 
-    if do_fits or make_pretty_plots:
+
+    if do_fits:
         
         # Load processed traces 
         raw_traces, labels, sdf, run_info = load_dataset(data_fpath, 
@@ -1591,189 +1600,152 @@ def fit_2d_receptive_fields(animalid, session, fov, run, traceid,
                                                     add_offset=True, make_equal=False,
                                                     create_new=reload_data)        
         print("--- [%s|%s|%s|%s]: loaded traces (%s, for %s)." % (animalid, session, fov, run, trace_type, response_type)) 
-   
       
-        # Get screen dims
+        # Get screen dims and fit params
         fit_params = get_fit_params(animalid, session, fov, run=run, traceid=traceid, 
+                                    response_type=response_type, fit_thr=fit_thr,
                                     post_stimulus_sec=post_stimulus_sec, 
                                     sigma_scale=sigma_scale, scale_sigma=scale_sigma)
- 
-        screen = fit_params['screen'] #rutils.get_screen_info(animalid, session, rootdir=rootdir)
-        fr = run_info['framerate'] #44.65 #dset['run_info'][()]['framerate']
-        nframes_per_trial = run_info['nframes_per_trial'][0] 
-        nframes_on = labels['nframes_on'].unique()[0]
-        stim_on_frame = labels['stim_on_frame'].unique()[0]
-        #nframes_post_onset = nframes_on + int(round(1.*fr))       
-        nframes_post_onset = fit_params['nframes_post_onset']
-        fit_params.update({'nframes_on': nframes_on}) 
-        #print(fit_params.keys())
-        #%       
-        # zscore the traces:
+
+        # Z-score or dff the traces:
         trials_by_cond = get_trials_by_cond(labels)
         zscored_traces, zscores = process_traces(raw_traces, labels, 
                                                 response_type=response_type,
-                                                nframes_post_onset=nframes_post_onset)
+                                                nframes_post_onset=fit_params['nframes_post_onset'])
         avg_resp_by_cond = group_trial_values_by_cond(zscores, trials_by_cond)
-   
-       #%
-        if do_fits:
-            #print("... fitting")
-            fit_results = fit_rfs(avg_resp_by_cond, response_type=response_type, 
-                              fit_params=fit_params,
-                              #scale_sigma=scale_sigma,
-                              rf_results_fpath=rf_results_fpath, 
-                              data_identifier=data_identifier, create_new=create_new)
-        
-            #%%
-            row_vals = fit_params['row_vals']
-            col_vals = fit_params['col_vals']
-            fitdf = rfits_to_df(fit_results['fit_results'], 
-                                row_vals=row_vals, col_vals=col_vals,
-                                scale_sigma=scale_sigma, sigma_scale=sigma_scale)
-            #fit_thr = 0.5
-            fit_roi_list = fitdf[fitdf['r2'] > fit_thr].sort_values('r2', axis=0, ascending=False).index.tolist()
-            print("... %i out of %i fit rois with r2 > %.2f" % 
-                        (len(fit_roi_list), fitdf.shape[0], fit_thr))
-        #    
-            # Plot all RF maps for fit cells (limit = 60 to plot)
-            
-            #rf_results_dir = os.path.split(rf_results_fpath)[0]
-            #rf_param_str = os.path.split(rf_results_dir)[-1]
-            try:
-                fitdf_pos = pd.DataFrame(fit_results['fit_results']).T
-                fig = plot_best_rfs(fit_roi_list, avg_resp_by_cond, fitdf_pos, 
-                                    row_vals=row_vals, col_vals=col_vals, 
-                                    response_type=response_type,
-                                    plot_ellipse=True, single_colorbar=True)
-                
-                label_figure(fig, data_identifier)
-                figname = 'top%i_fit_thr_%.2f_%s_ellipse' % (len(fit_roi_list), fit_thr, fit_desc)
-                pl.savefig(os.path.join(rfdir, '%s.png' % figname))
-                print figname
-                pl.close()
-            except Exception as e:
-                traceback.print_exc()
-                print("Error plotting all RF maps that pass thr.")
-            
-        #%%
-        #make_pretty_plots= False
-        if make_pretty_plots:
-                        
-            #screen_xlim = [-1*screen['azimuth']/2., screen['azimuth']/2.]
-            #screen_ylim = [-1*screen['elevation']/2., screen['elevation']/2.]
-
-            print("... plottin' pretty (%s)" % response_type)
-            if response_type != plot_response_type:
-                zscored_traces, zscores = process_traces(raw_traces, labels, 
-                                                response_type=plot_response_type,
-                                                nframes_post_onset=nframes_post_onset)
-                avg_resp_by_cond = group_trial_values_by_cond(zscores, trials_by_cond)
-        #%
-            # Overlay RF map and mean traces:
-            # -----------------------------------------------------------------------------
-#            linecolor = 'darkslateblue' #'purple'
-#            cmap = 'bone'
-#            ellipse_fc = 'none'
-#            ellipse_ec = 'w'
-#            ellipse_lw=1.
-            nframes_plot = stim_on_frame + nframes_on + nframes_post_onset
-            #int(np.floor(fr*1.5))
-            start_frame=0
-            yunit_sec = round(nframes_on/fr, 1)
-                
-            best_rois_figdir = os.path.join(rfdir, 'best_rfs')
-            # Plot overlay?
-            if not os.path.exists(os.path.join(best_rois_figdir, 
-                                    '%s_%s' % (plot_response_type, plot_format))):
-                os.makedirs(os.path.join(best_rois_figdir, 
-                                    '%s_%s' % (plot_response_type, plot_format)))
        
-            if not do_fits:
-                # need to load results
-                fitdf = rfits_to_df(fit_results['fit_results'], 
-                                    row_vals=row_vals, col_vals=col_vals,
-                                    scale_sigma=scale_sigma, sigma_scale=sigma_scale)
-                #fit_thr = 0.5
-                fit_roi_list = fitdf[fitdf['r2'] > fit_thr].sort_values('r2', axis=0, ascending=False).index.tolist()
-                print("%i out of %i fit rois with r2 > %.2f" % 
-                            (len(fit_roi_list), fitdf.shape[0], fit_thr))
-     
-            for ri, rid in enumerate(fit_roi_list):
-                if ri % 20 == 0:
-                    print("    %i of %i pretty plots" % (int(ri+1), len(fit_roi_list)))
-                fig = overlay_traces_on_rfmap(rid, avg_resp_by_cond, zscored_traces, 
-                                            labels, sdf,
-                                            nframes_per_trial=nframes_per_trial, 
-                                            response_type=plot_response_type, 
-                                            nframes_plot=nframes_plot, 
-                                            start_frame=start_frame, yunit_sec=yunit_sec,
-                                            row_vals=row_vals, col_vals=col_vals, 
-                                            linecolor=linecolor, cmap=cmap,
-                                            fitdf=fitdf, plot_ellipse=plot_ellipse,
-                                            ellipse_fc=ellipse_fc, ellipse_ec=ellipse_ec,
-                                            ellipse_lw=ellipse_lw,
-                                            legend_lw=legend_lw)
-                label_figure(fig, data_identifier)
-                fig.suptitle('roi %i' % int(rid+1))
-                figname = 'roi%05d-overlay_%s' % (int(rid+1), plot_response_type) 
-                pl.savefig(os.path.join(best_rois_figdir, 
-                                        '%s_%s' % (plot_response_type, plot_format),
-                                        '%s.%s' % (figname, plot_format)), 
-                           bboxx_inches='tight')
-                pl.close()
-                
-        #%%
-       
+        # Do fits 
+        fit_results = fit_rfs(avg_resp_by_cond, response_type=response_type, 
+                            fit_params=fit_params,
+                            rf_results_fpath=rf_results_fpath, 
+                            data_identifier=data_id, create_new=create_new)        
         try:
-            fig = plot_rfs_to_screen(fitdf, sdf, screen, fit_roi_list=fit_roi_list)
-            label_figure(fig, data_identifier)
-            #%
-            figname = 'overlaid_RFs_top%i_fit_thr_%.2f_%s' % (len(fit_roi_list), fit_thr, fit_desc)
+            # Convert to dataframe
+            fitdf_pos = rfits_to_df(fit_results['fit_results'], 
+                                row_vals=fit_params['row_vals'], col_vals=fit_params['col_vals'],
+                                scale_sigma=False, convert_coords=False)
+            fit_roi_list = fitdf_pos[fitdf_pos['r2'] > fit_thr].sort_values('r2', axis=0, ascending=False).index.tolist()
+            print("... %i out of %i fit rois with r2 > %.2f" % 
+                        (len(fit_roi_list), fitdf_pos.shape[0], fit_thr))
+
+            # Plot all RF maps for fit cells (limit = 60 to plot)
+            fig = plot_best_rfs(fit_roi_list, avg_resp_by_cond, fitdf_pos, fit_params,
+                                single_colorbar=True, plot_ellipse=True, nr=6, nc=10)
+            label_figure(fig, data_id)
+            figname = 'top%i_fit_thr_%.2f_%s_ellipse_sc' % (len(fit_roi_list), fit_thr, fit_desc)
             pl.savefig(os.path.join(rfdir, '%s.png' % figname))
             print figname
             pl.close()
         except Exception as e:
             traceback.print_exc()
-            print("Error plotting RFs to screen coords.")
+            print("Error plotting all RF maps that pass thr.")
+        
+    #%%
+    #make_pretty_plots= False
+    if make_pretty_plots:
+        print("... plottin' pretty (%s)" % plot_response_type)
+        if response_type != plot_response_type or do_fits is False:
+            zscored_traces, zscores = process_traces(raw_traces, labels, 
+                                            response_type=plot_response_type,
+                                            nframes_post_onset=fit_params['nframes_post_onset'])
+            avg_resp_by_cond = group_trial_values_by_cond(zscores, trials_by_cond)
+    #%
+        # Overlay RF map and mean traces:
+        # -----------------------------------------------------------------------------
+#            linecolor = 'darkslateblue' #'purple'
+#            cmap = 'bone'
+#            ellipse_fc = 'none'
+#            ellipse_ec = 'w'
+#            ellipse_lw=1.
+        nframes_plot = fit_params['stim_on_frame'] + fit_params['nframes_on'] + fit_params['nframes_post_onset'] #int(np.floor(fr*1.5))
+        start_frame = fit_params['stim_on_frame'] #stim_on_frame #plot_start_frame #stim_on_frame #0
+        yunit_sec = round(fit_params['nframes_on']/fit_params['frame_rate'], 1)
             
-        try:
-            fig = plot_rfs_to_screen_pretty(fitdf, sdf, screen, fit_roi_list=fit_roi_list)
-            label_figure(fig, data_identifier)
-            #%
-            figname = 'overlaid_RFs_pretty' 
-            pl.savefig(os.path.join(rfdir, '%s.svg' % figname))
-            print figname
-            pl.close()
-        except Exception as e:
-            traceback.print_exc()
-            print("Error plotting RFs to screen coords.")
-            
-            #%%
-        try:
-            # Identify VF area to target:
-            target_fov_dir = os.path.join(rfdir, 'target_fov')
-            if not os.path.exists(target_fov_dir):
-                os.makedirs(target_fov_dir)
-                
-            kde_results = target_fov(avg_resp_by_cond, fitdf, screen, 
-                                     fit_roi_list=fit_roi_list, 
-                                     row_vals=row_vals, col_vals=col_vals, 
-                                     compare_kdes=False,
-                                     weight_type='kde', target_fov_dir=target_fov_dir, 
-                                     data_identifier=data_identifier)
-        except Exception as e:
-            traceback.print_exc()
-            print("Error finding target coords for FOV.")
-            
+        best_rois_figdir = os.path.join(rfdir, 'best_rfs', '%s_%s' % (plot_response_type, plot_format))
+        if not os.path.exists(best_rois_figdir):
+            os.makedirs(best_rois_figdir)
+    
+        #if not do_fits: # need to load results
+        fitdf = rfits_to_df(fit_results['fit_results'], scale_sigma=False, 
+                            row_vals=fit_params['row_vals'], col_vals=fit_params['col_vals'],
+                            convert_coords=True)
+        fit_roi_list = fitdf[fitdf['r2'] > fit_thr].sort_values('r2', axis=0, ascending=False).index.tolist()
+        print("%i out of %i fit rois with r2 > %.2f" % 
+                    (len(fit_roi_list), fitdf.shape[0], fit_thr))
 
-#    fitdf = rfits_to_df(fit_results['fit_results'], 
-#                        row_vals=results['row_vals'], col_vals=results['col_vals'],
-#                        scale_sigma=scale_sigma, sigma_scale=sigma_scale) 
-    #fit_thr = 0.5
-    #fit_roi_list = fitdf[fitdf['r2'] >= fit_thr].sort_values('r2', axis=0, ascending=False).index.tolist()
-    #print "%i out of %i fit rois with r2 > %.2f" % (len(fit_roi_list), fitdf.shape[0], fit_thr)
-#    
-    #if int(session) < 20190511:
+#        ellipse_ec='w'
+#        ellipse_fc='none'
+#        ellipse_lw=2 
+#        plot_ellipse=True
+#        linecolor = 'darkslateblue'
+#        cmap = 'bone'
+#        legend_lw=2 
+#
+        for ri, rid in enumerate(fit_roi_list):
+            if ri % 20 == 0:
+                print("    %i of %i pretty plots" % (int(ri+1), len(fit_roi_list)))
+            fig = overlay_traces_on_rfmap(rid, avg_resp_by_cond, zscored_traces, 
+                                        labels, sdf, run_info,
+                                        response_type=plot_response_type, 
+                                        nframes_plot=nframes_plot, 
+                                        start_frame=start_frame, yunit_sec=yunit_sec,
+                                        row_vals=fit_params['row_vals'], col_vals=fit_params['col_vals'],
+                                        linecolor=linecolor, cmap=cmap,
+                                        fitdf=fitdf, plot_ellipse=plot_ellipse,
+                                        ellipse_fc=ellipse_fc, ellipse_ec=ellipse_ec,
+                                        ellipse_lw=ellipse_lw, legend_lw=legend_lw)
+            label_figure(fig, data_id)
+            fig.suptitle('roi %i' % int(rid+1))
+            figname = 'roi%05d-overlay_%s' % (int(rid+1), plot_response_type) 
+            pl.savefig(os.path.join(best_rois_figdir, '%s.%s' % (figname, plot_format)), 
+                        bboxx_inches='tight')
+            pl.close()
+            
+    #%%
+    
+    try:
+        fig = plot_rfs_to_screen(fitdf, sdf, fit_params['screen'], fit_roi_list=fit_roi_list)
+        label_figure(fig, data_id)
+        #%
+        figname = 'overlaid_RFs_top%i_fit_thr_%.2f_%s' % (len(fit_roi_list), fit_thr, fit_desc)
+        pl.savefig(os.path.join(rfdir, '%s.png' % figname))
+        print figname
+        pl.close()
+    except Exception as e:
+        traceback.print_exc()
+        print("Error plotting RFs to screen coords.")
+        
+    try:
+        fig = plot_rfs_to_screen_pretty(fitdf, sdf, fit_params['screen'], fit_roi_list=fit_roi_list)
+        label_figure(fig, data_id)
+        #%
+        figname = 'overlaid_RFs_pretty' 
+        pl.savefig(os.path.join(rfdir, '%s.svg' % figname))
+        print figname
+        pl.close()
+    except Exception as e:
+        traceback.print_exc()
+        print("Error plotting RFs to screen coords.")
+        
+        #%%
+    try:
+        # Identify VF area to target:
+        target_fov_dir = os.path.join(rfdir, 'target_fov')
+        if not os.path.exists(target_fov_dir):
+            os.makedirs(target_fov_dir)
+            
+        kde_results = target_fov(avg_resp_by_cond, fitdf, screen, 
+                                    fit_roi_list=fit_roi_list, 
+                                    row_vals=row_vals, col_vals=col_vals, 
+                                    compare_kdes=False,
+                                    weight_type='kde', target_fov_dir=target_fov_dir, 
+                                    data_identifier=data_id)
+    except Exception as e:
+        traceback.print_exc()
+        print("Error finding target coords for FOV.")
+        
+
+   #if int(session) < 20190511:
     #    rois = get_roiid_from_traceid(animalid, session, fov, run_type='gratings', traceid=traceid)
     #else:
     #rois = get_roiid_from_traceid(animalid, session, fov, run_type='rfs', traceid=traceid)

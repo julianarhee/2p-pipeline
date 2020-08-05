@@ -1672,7 +1672,7 @@ class ReceptiveFields(Experiment):
                                         self.fov, self.name, traceid=self.traceid,
                                         response_type=response_type, fit_thr=fit_thr)
         rf_results_fpath = os.path.join(rfdir, 'fit_results.pkl')
-        if os.path.exists(rf_results_fpath) and create_new is False:
+        if create_new is False:
             print("... checking for existing results: %s" % fit_desc)
             try:
                 fit_results, fit_params = fitrf.load_fit_results(animalid, session, fov,
@@ -1708,7 +1708,7 @@ class ReceptiveFields(Experiment):
                 traceback.print_exc()
 
         roi_list = [r for r, res in fit_results['fit_results'].items() \
-                    if fit_results['fit_r']['r2'] > fit_thr]
+                    if res['r2'] > fit_thr]
         nrois_total = len(fit_results['fit_results'].keys())
         print("... fit results (%i of %i attempted fits with R2 > %.2f)" % (len(roi_list), nrois_total, fit_thr))
 
