@@ -31,9 +31,9 @@ import cPickle as pkl
 
 #from pipeline.python.classifications import experiment_classes as util
 #from pipeline.python.classifications import test_responsivity as resp
-from pipeline.python.classifications import responsivity_stats as respstats
+#from pipeline.python.classifications import responsivity_stats as respstats
 from pipeline.python.utils import label_figure, natural_keys, convert_range
-from pipeline.python.retinotopy import convert_coords as coor
+from pipeline.python.retinotopy import convert_coords as cc
 from pipeline.python.retinotopy import fit_2d_rfs as fitrf
 #from matplotlib.patches import Ellipse, Rectangle
 
@@ -47,57 +47,18 @@ import multiprocessing as mp
 # Functions for processing visual field coverage
 # ############################################
 
-def create_ellipse(center, lengths, angle=0):
-    """
-    create a shapely ellipse. adapted from
-    https://gis.stackexchange.com/a/243462
-    """
-    circ = Point(center).buffer(1)
-    ell = affinity.scale(circ, int(lengths[0]), int(lengths[1]))
-    ellr = affinity.rotate(ell, angle)
-    return ellr
+#def create_ellipse(center, lengths, angle=0):
+#    """
+#    create a shapely ellipse. adapted from
+#    https://gis.stackexchange.com/a/243462
+#    """
+#    circ = Point(center).buffer(1)
+#    ell = affinity.scale(circ, int(lengths[0]), int(lengths[1]))
+#    ellr = affinity.rotate(ell, angle)
+#    return ellr
 
-def intersection(lst1, lst2): 
-    return list(set(lst1) & set(lst2)) 
-
-#%%
-def get_session_object(animalid, session, fov, traceid='traces001', trace_type='corrected',
-                       create_new=True, rootdir='/n/coxfs01/2p-data'):
-        
-    from pipeline.python.classifications import experiment_classes as util
-
-    # # Creat session object
-    summarydir = os.path.join(rootdir, animalid, session, fov, 'summaries')
-    session_outfile = os.path.join(summarydir, 'sessiondata.pkl')
-    if os.path.exists(session_outfile) and create_new is False:
-        print("... loading session object")
-        with open(session_outfile, 'rb') as f:
-            S = pkl.load(f)
-    else:
-        print("... creating new session object")
-        S = util.Session(animalid, session, fov, rootdir=rootdir)
-    
-        # Save session data object
-        if not os.path.exists(summarydir):
-            os.makedirs(summarydir)
-            
-        with open(session_outfile, 'wb') as f:
-            pkl.dump(S, f, protocol=pkl.HIGHEST_PROTOCOL)
-            print("... new session object to: %s" % session_outfile)
-    print("... got session object w/ experiments:", S.experiments)
-
-    try:
-        print("Found %i experiments in current session:" % len(S.experiment_list), S.experiment_list)
-        assert 'rfs' in S.experiment_list or 'rfs10' in S.experiment_list, "ERROR:  No receptive field mapping found for current dataset: [%s|%s|%s]" % (S.animalid, S.session, S.fov)
-    except Exception as e:
-        print e
-        return None
-
-    return S
-
-
-   
-
+#def intersection(lst1, lst2): 
+#    return list(set(lst1) & set(lst2)) 
 
 #%%
 
@@ -177,6 +138,11 @@ def bootstrap_rf_params(rdf, response_type='dff',
 
     return paramsdf
 
+#%%
+# --------------------------------------------------------
+# Bootstrap (and corresponding pool/mp functions)
+# --------------------------------------------------------
+
 from functools import partial
 from contextlib import contextmanager
 
@@ -185,7 +151,7 @@ def poolcontext(*args, **kwargs):
     pool = mp.Pool(*args, **kwargs)
     yield pool
     pool.terminate()
-
+    pool.join()
   
 def initializer(terminating_):
     # This places terminating in the global namespace of the worker subprocesses.
@@ -194,32 +160,31 @@ def initializer(terminating_):
     global terminating
     terminating = terminating_
 
-
 def pool_bootstrap(rdf_list, params, n_processes=1):   
     #try:
     results = []# None
     terminating = mp.Event()
     
-    # with poolcontext(initializer=initializer, 
-    #                  initargs=(terminating, ),
-    #                  processes=n_processes) as pool:
+    with poolcontext(initializer=initializer, 
+                      initargs=(terminating, ),
+                      processes=n_processes) as pool:
         
-    pool = mp.Pool(initializer=initializer, initargs=(terminating, ), processes=n_processes)
-    try:
-        results = pool.map(partial(bootstrap_rf_params, 
-                            response_type=params['response_type'],
-                            row_vals=params['row_vals'], 
-                            col_vals=params['col_vals'],
-                            n_resamples=params['n_resamples'], 
-                            n_bootstrap_iters=params['n_bootstrap_iters']), 
-                        rdf_list)
-        pool.close()
-    except KeyboardInterrupt:
-        print("**interupt")
-        pool.terminate()
-        print("***Termiating!")
-    finally:
-        pool.join()
+    #pool = mp.Pool(initializer=initializer, initargs=(terminating, ), processes=n_processes)
+        try:
+            results = pool.map(partial(bootstrap_rf_params, 
+                                response_type=params['response_type'],
+                                row_vals=params['row_vals'], 
+                                col_vals=params['col_vals'],
+                                n_resamples=params['n_resamples'], 
+                                n_bootstrap_iters=params['n_bootstrap_iters']), 
+                            rdf_list)
+            pool.close()
+        except KeyboardInterrupt:
+            print("**interupt")
+            pool.terminate()
+            print("***Termiating!")
+        finally:
+            pool.join()
 
     # except KeyboardInterrupt:
     #     pool.terminate()
@@ -237,21 +202,22 @@ def pool_bootstrap(rdf_list, params, n_processes=1):
 #print(results)
 #
 
-def bootstrap_param_fits(estats, response_type='dff',
+def bootstrap_param_fits(estats, fit_params, 
                             n_bootstrap_iters=1000, n_resamples=10,
-                            ci=0.95, n_processes=1, 
-                            scale_sigma=True, sigma_scale=2.35):
+                            ci=0.95, n_processes=1):
     eval_results = {}
-    sigma_scale = sigma_scale if scale_sigma else 1.0
-         
+    scale_sigma = fit_params['scale_sigma']
+    sigma_scale = fit_params['sigma_scale'] if scale_sigma else 1.0
+    response_type = fit_params['response_type']
+             
     print("... doing bootstrap analysis for param fits.")
     roi_list = estats.rois  # Get list of all cells that pass fit-thr
     rdf_list = [estats.gdf.get_group(roi)[['config', 'trial', response_type]] for roi in roi_list]
-    bootparams = {'row_vals': estats.fitinfo['row_vals'], 'col_vals': estats.fitinfo['col_vals'],
-               'n_bootstrap_iters': n_bootstrap_iters, 'n_resamples': n_resamples,
-               'ci': ci,
-               'response_type': response_type}
-    
+    bootparams = copy.copy(fit_params)
+    bootparams.update({'n_bootstrap_iters': n_bootstrap_iters, 
+                       'n_resamples': n_resamples,
+                       'ci': ci}
+)   
     start_t = time.time()
     bootstrap_results = pool_bootstrap(rdf_list, bootparams, n_processes=n_processes)
     #except KeyboardInterrupt:
@@ -267,8 +233,8 @@ def bootstrap_param_fits(estats, response_type='dff',
     bootdata = pd.concat(bootstrap_results)
     
     xx, yy, sigx, sigy = fitrf.convert_fit_to_coords(bootdata, 
-                                                     estats.fitinfo['row_vals'], 
-                                                     estats.fitinfo['col_vals'])
+                                                     fit_params['row_vals'], 
+                                                     fit_params['col_vals'])
     bootdata['x0'] = xx
     bootdata['y0'] = yy
     bootdata['sigma_x'] = sigx * sigma_scale
@@ -778,7 +744,9 @@ def identify_deviants(regresults, eval_results, posdf, ci=0.95,
     label_deviants = True
     deviants = {}
     conditions = regresults.keys() 
-    bad_rois = intersection(regresults['azimuth']['bad_fits'], regresults['elevation']['bad_fits']) # these are cells whose mean value does not lie within the 95% CI 
+    
+    # "bad_rois" : these are cells whose mean value does not lie within the 95% CI for BOTH conditions
+    bad_rois = np.intersect1d(regresults['azimuth']['bad_fits'], regresults['elevation']['bad_fits'])
 
     within = dict((k, []) for k in conditions)
     for cond in conditions:
@@ -833,9 +801,9 @@ def identify_deviants(regresults, eval_results, posdf, ci=0.95,
         deviants[cond] = trudeviants
 
     #%
-    deviant_both = sorted(intersection(deviants['azimuth'], deviants['elevation']))
+    deviant_both = np.intersect1d(deviants['azimuth'], deviants['elevation'])
     #print deviant_both
-    within_both = sorted(intersection(within['azimuth'], within['elevation']))
+    within_both = np.intersect1d(within['azimuth'], within['elevation'])
    
     deviants['bad'] = bad_rois
     deviants['pass'] = within_both
@@ -847,9 +815,9 @@ def identify_deviants(regresults, eval_results, posdf, ci=0.95,
     
 
 #%%
-def evaluate_rfs(estats, rfdir='/tmp', response_type='dff', 
+def evaluate_rfs(estats, fit_params, rfdir='/tmp', 
                  n_bootstrap_iters=1000, n_resamples=10,
-                 ci=0.95, n_processes=1, sigma_scale=2.35, scale_sigma=True,
+                 ci=0.95, n_processes=1, 
                  create_new=False, rootdir='/n/coxfs01/2p-data'):
 
     '''
@@ -873,26 +841,25 @@ def evaluate_rfs(estats, rfdir='/tmp', response_type='dff',
     rf_eval_fpath = os.path.join(evaldir, 'evaluation_results.pkl')
     
     #do_evaluation = True
-    if os.path.exists(rf_eval_fpath) and create_new is False: #nd create_new is False:
+    if create_new is False: #nd create_new is False:
         print("... loading existing evaluation results.")
         try:
-            with open(rf_eval_fpath, 'rb') as f:
-                eval_results = pkl.load(f)
+            eval_results, eval_params = load_eval_results(animalid, session, fov, 
+                                                         fit_desc=os.path.split(rfdir)[-1],
+                                                         response_type=response_type) 
             assert 'data' in eval_results.keys(), "... old datafile, redoing boot analysis"
-            assert 'pass' in eval_results.keys(), "... no criteria passed, redoing"
+            assert 'pass_cis' in eval_results.keys(), "... no criteria passed, redoing"
         except Exception as e:
             print("... ERROR loading evaluation results. Doing it now.")
             create_new = True
              
     if create_new:
         print("... do bootstrap analysis")
-        eval_results = bootstrap_param_fits(estats, response_type=response_type,
+        eval_results = bootstrap_param_fits(estats, fit_params, 
                                              n_bootstrap_iters=n_bootstrap_iters, 
                                              n_resamples=n_resamples,
-                                             ci=ci, n_processes=n_processes, 
-                                             sigma_scale=sigma_scale,
-                                             scale_sigma=scale_sigma)
-
+                                             ci=ci, n_processes=n_processes)
+        
         # Update params if re-did evaluation
         eval_params_fpath = os.path.join(evaldir, 'evaluation_params.json')
         if os.path.exists(eval_params_fpath):
@@ -915,7 +882,7 @@ def evaluate_rfs(estats, rfdir='/tmp', response_type='dff',
     with open(rf_eval_fpath, 'wb') as f:
         pkl.dump(eval_results, f, protocol=pkl.HIGHEST_PROTOCOL)
 
-    return eval_results
+    return eval_results, eval_params
        
 #%%
 def identify_reliable_fits(fit_results, eval_results, pass_criterion='all',
@@ -924,7 +891,8 @@ def identify_reliable_fits(fit_results, eval_results, pass_criterion='all',
                            outdir='/tmp/roi_bootdistns', data_id='DATAID'):
     
     sigma_scale = sigma_scale if scale_sigma else 1.0
-    reliable_rois = get_reliable_fits(eval_results['pass_cis'], pass_criterion=pass_criterion)
+    reliable_rois = get_reliable_fits(eval_results['pass_cis'], 
+                                      pass_criterion=pass_criterion)
     if len(plot_rois)==0:
         plot_rois = reliable_rois
         
@@ -987,18 +955,19 @@ def do_rf_fits_and_evaluation(animalid, session, fov, rfname=None, traceid='trac
                               rootdir='/n/coxfs01/2p-data', opts=None):
 
     from pipeline.python.classifications import experiment_classes as util
-    reload(util)
-    rfname= 'rfs' 
-    do_fits =False
-    do_evaluation = True
-    reload_data=True
-    
-    #%% Create session and experiment objects
+#    rfname= 'rfs' 
+#    do_fits =False
+#    do_evaluation = True
+#    reload_data=True
+#    
+    #%% Get session info 
     S = util.Session(animalid, session, fov)
     experiment_list = S.get_experiment_list(traceid=traceid)
     assert 'rfs' in experiment_list or 'rfs10' in experiment_list, "NO receptive field experiments found!"
     if rfname is None:
         rfname = 'rfs10' if 'rfs10' in experiment_list else 'rfs'      
+   
+    # Create experiment object 
     exp = util.ReceptiveFields(rfname, animalid, session, fov, 
                                traceid=traceid, trace_type='corrected')
 
@@ -1008,10 +977,8 @@ def do_rf_fits_and_evaluation(animalid, session, fov, rfname=None, traceid='trac
                                           response_type=response_type, fit_thr=fit_thr)
     data_id = '|'.join([exp.animalid, exp.session, exp.fov, \
                             exp.traceid, exp.rois, exp.trace_type, fit_desc])
-    #view_str = '_transformed' if transform_fov else '' 
 
-    #reload(fitrf)
-    # Get RF params
+    # Check if should do fitting 
     nframes_post = int(round(post_stimulus_sec*44.65))
     if not do_fits:
         try:
@@ -1020,8 +987,15 @@ def do_rf_fits_and_evaluation(animalid, session, fov, rfname=None, traceid='trac
                                                                 experiment=rfname,
                                                                 response_type=response_type)
             assert fit_params['nframes_post_onset'] == nframes_post, \
-                "Incorrect nframes_post (found %i, requested %i" % (nframes_post, fit_params['nframes_post_onset'])
-       
+                "Incorrect nframes_post (found %i, requested %i" % (fit_params['nframes_post_onset'], nframes_post)
+            assert fit_params['response_type'] == response_type, \
+                "Incorrect response type (found %i, requested %i" %(fit_params['repsonse_type'], response_type)
+            if sigma_scale != fit_params['sigma_scale']:
+                print("... updating sigma_scale to %.2f (from %.2f)" % (fit_params['sigma_scale'], sigma_scale))
+                sigma_scale=fit_params['sigma_scale']
+            if scale_sigma != fit_params['scale_sigma']:
+                print("... updating scale_sigma: %s" % str(fit_params['sigma_scale']))
+                scale_sigma=fit_params['scale_sigma']
         except AssertionError as e:
             print(e)
             print("Redoing original fit")       
@@ -1048,7 +1022,7 @@ def do_rf_fits_and_evaluation(animalid, session, fov, rfname=None, traceid='trac
         shutil.rmtree(os.path.join(evaldir, 'rois'))
 
     #%% Do bootstrap analysis    
-    eval_results = evaluate_rfs(estats, rfdir=rfdir, 
+    eval_results, eval_params = evaluate_rfs(estats, rfdir=rfdir, 
                                 n_bootstrap_iters=n_bootstrap_iters, 
                                 n_resamples=n_resamples,
                                 ci=ci, n_processes=n_processes, 
@@ -1186,6 +1160,9 @@ def extract_options(options):
                       help="flag to do RF fitting anew")
     parser.add_option('--eval', action='store_true', dest='do_evaluation', default=False, \
                       help="flag to do RF evaluation anew")
+    parser.add_option('--load', action='store_true', dest='reload_data', default=False, \
+                      help="flag to reload data arrays and save (e.g., dff.pkl)")
+
 
 
     parser.add_option('-t', '--traceid', action='store', dest='traceid', default='traces001', \
@@ -1221,7 +1198,9 @@ def extract_options(options):
     parser.add_option('-c', '--color', action='store', dest='deviant_color', default='dodgerblue', \
             help="color to plot deviants to stand out (default: dodgerblue)")
 
-
+    parser.add_option('--pass', action='store', dest='pass_criterion', default='all', \
+                      help="criterion for ROI passing fit(default: 'all' - all params pass 95% CI)")
+ 
 
     parser.add_option('--sigma', action='store', dest='sigma_scale', default=2.35, \
                       help="sigma scale factor for FWHM (default: 2.35)")
@@ -1274,24 +1253,25 @@ def main(options):
     traceid = opts.traceid
     response_type = opts.response_type
     rootdir = opts.rootdir
-    
-    n_resamples = opts.n_resamples
-    n_bootstrap_iters = opts.n_bootstrap_iters
-    # create_new = opts.create_new
-    n_processes = int(opts.n_processes)
+
     do_fits = opts.do_fits
     do_evaluation = opts.do_evaluation
-    pass_all_params = opts.pass_all_params
+    reload_data = opts.reload_data
+   
+    n_resamples = opts.n_resamples
+    n_bootstrap_iters = opts.n_bootstrap_iters
+    n_processes = int(opts.n_processes)
+    pass_criterion = opts.pass_criterion
     
     ci = opts.ci
-    #transform_fov = opts.transform_fov
     plot_boot_distns = opts.plot_boot_distns
-    sigma_scale = float(opts.sigma_scale)
+
     rfname = opts.rfname
     filter_weird = opts.filter_weird
     plot_all_cis = opts.plot_all_cis
     deviant_color = opts.deviant_color
 
+    sigma_scale = float(opts.sigma_scale)
     scale_sigma = opts.scale_sigma
     post_stimulus_sec = float(opts.post_stimulus_sec)
     fit_thr = float(opts.fit_thr)
@@ -1308,9 +1288,9 @@ def main(options):
                               n_processes=n_processes, filter_weird=filter_weird, plot_all_cis=plot_all_cis,
                               deviant_color=deviant_color, 
                               scale_sigma=scale_sigma, sigma_scale=sigma_scale,
-                              pass_all_params=pass_all_params,
-                              do_fits=do_fits, do_evaluation=do_evaluation,rootdir=rootdir,
-                              opts=opts)
+                              pass_criterion=pass_criterion,
+                              do_fits=do_fits, do_evaluation=do_evaluation, reload_data=reload_data,
+                              rootdir=rootdir, opts=opts)
         
     print("***DONE!***")
 

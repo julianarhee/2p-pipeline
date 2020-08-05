@@ -395,7 +395,7 @@ fit_thr = 0.5
 #%%
 
 
-def spatially_sort_RF_versus_VF(animalid, session, fov, traceid='traces001', 
+def sort_roi_vs_rf_position(animalid, session, fov, traceid='traces001', 
                                 rfname='rfs', response_type='dff', 
                                 convert_um=True, transform_fov=True, plot=True,
                                 create_new=True, rootdir='/n/coxfs01/2p-data'):
