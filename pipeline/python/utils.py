@@ -55,7 +55,7 @@ def get_screen_dims():
     deg_per_pixel_x = screen_x / float(resolution[0])
     deg_per_pixel_y = screen_y / float(resolution[1])
     deg_per_pixel = np.mean([deg_per_pixel_x, deg_per_pixel_y])
-    print("Screen size (deg): %.2f, %.2f (~%.2f deg/pix)" % (screen_x, screen_y, deg_per_pixel))
+    # print("Screen size (deg): %.2f, %.2f (~%.2f deg/pix)" % (screen_x, screen_y, deg_per_pixel))
 
     screen = {'azimuth_deg': screen_x,
               'altitude_deg': screen_y,
@@ -85,7 +85,7 @@ def uint16_to_RGB(img):
     return rgb
 
 
-def adjust_image_contrast(img, clip_limit=2.0, tile_size=(10,10)):
+def adjust_image_contrast(img, clip_limit=2.0, tile_size=10):#(10,10)):
     img[img<-50] = 0 
     normed = cv2.normalize(img, None, 0, 255, cv2.NORM_MINMAX)
     
@@ -93,7 +93,7 @@ def adjust_image_contrast(img, clip_limit=2.0, tile_size=(10,10)):
     img8 = cv2.convertScaleAbs(normed)
     
     # Equalize hist:
-    clahe = cv2.createCLAHE(clipLimit=clip_limit, tileGridSize=tile_size)
+    clahe = cv2.createCLAHE(clipLimit=clip_limit, tileGridSize=(tile_size, tile_size))
     eq = clahe.apply(img8)
 
     return eq
@@ -326,60 +326,6 @@ def load_dataset(soma_fpath, trace_type='dff', add_offset=True,
             else:
                 sdf = sdf
             run_info = labels_dset['run_info'][()]
-# 
-#    try:
-#        dset = np.load(soma_fpath)
-#        
-#        # Stimulus / condition info
-#        labels = pd.DataFrame(data=dset['labels_data'], 
-#                              columns=dset['labels_columns'])
-#        sdf = pd.DataFrame(dset['sconfigs'][()]).T
-#        if 'blobs' in soma_fpath: #self.experiment_type:
-#            sdf = reformat_morph_values(sdf)
-#        else:
-#            sdf = sdf
-#        run_info = dset['run_info'][()]
-#        
-#        # Traces
-#        xdata_df = pd.DataFrame(dset['data'][:]) # neuropil-subtracted & detrended
-#        F0 = pd.DataFrame(dset['f0'][:]).mean().mean() # detrended offset
-#        print("NP_subtracted f0 offset was: %.2f" % F0)
-#        #if add_offset:
-#        #% Add baseline offset back into raw traces:
-#        neuropil_fpath = soma_fpath.replace('np_subtracted', 'neuropil')
-#        npdata = np.load(neuropil_fpath)
-#        neuropil_f0 = np.nanmean(np.nanmean(pd.DataFrame(npdata['f0'][:])))
-#        neuropil_df = pd.DataFrame(npdata['data'][:]) 
-#        print("adding NP offset... (NP f0 offset: %.2f)" % neuropil_f0)
-#
-#        # # Also add raw 
-#        raw_fpath = soma_fpath.replace('np_subtracted', 'raw')
-#        rawdata = np.load(raw_fpath)
-#        raw_f0 = np.nanmean(np.nanmean(pd.DataFrame(rawdata['f0'][:])))
-#        raw_df = pd.DataFrame(rawdata['data'][:])
-#        print("adding raw offset... (raw f0 offset: %.2f)" % raw_f0)
-#
-#        raw_traces = xdata_df + list(np.nanmean(neuropil_df, axis=0)) + raw_f0 
-#        #+ neuropil_f0 + raw_f0 # list(np.nanmean(raw_df, axis=0)) #.T + F0
-##        else:
-##            raw_traces = xdata_df + F0
-#
-#        if trace_type == 'corrected':
-#            traces = raw_traces
-#        elif trace_type in ['dff', 'df']:
-#            stim_on_frame = labels['stim_on_frame'].unique()[0]
-#            tmp_df = []
-#            for k, g in labels.groupby(['trial']):
-#                tmat = raw_traces.loc[g.index]
-#                bas_mean = np.nanmean(tmat[0:stim_on_frame], axis=0)
-#                if trace_type == 'dff':
-#                    tmat_df = (tmat - bas_mean) / bas_mean
-#                elif trace_type == 'df':
-#                    tmat_df = (tmat - bas_mean)
-#                tmp_df.append(tmat_df)
-#            traces = pd.concat(tmp_df, axis=0)
-#            del tmp_df
-
         if make_equal:
             print("... making equal")
             traces, labels = check_counts_per_condition(traces, labels)           
@@ -387,6 +333,12 @@ def load_dataset(soma_fpath, trace_type='dff', add_offset=True,
     except Exception as e:
         traceback.print_exc()
         print("ERROR LOADING DATA")
+
+    # Format condition info:
+    if 'image' in sdf['stimtype']:
+        aspect_ratio = sdf['aspect'].unique()[0]
+        sdf['size'] = [round(sz/aspect_ratio, 1) for sz in sdf['size']]
+
 
     return traces, labels, sdf, run_info
 
