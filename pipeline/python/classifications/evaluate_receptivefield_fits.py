@@ -819,7 +819,6 @@ def evaluate_rfs(estats, fit_params, rfdir='/tmp',
                  n_bootstrap_iters=1000, n_resamples=10,
                  ci=0.95, n_processes=1, 
                  create_new=False, rootdir='/n/coxfs01/2p-data'):
-
     '''
     Evaluate receptive field fits for cells with R2 > fit_thr.
 
@@ -831,7 +830,6 @@ def evaluate_rfs(estats, fit_params, rfdir='/tmp',
         cis: confidence intervals of fit params
 
         If no fits, returns {}
-
     '''
     eval_results = None
     # Create output dir for bootstrap results
@@ -840,7 +838,6 @@ def evaluate_rfs(estats, fit_params, rfdir='/tmp',
         os.makedirs(evaldir)
     rf_eval_fpath = os.path.join(evaldir, 'evaluation_results.pkl')
     
-    #do_evaluation = True
     if create_new is False: #nd create_new is False:
         print("... loading existing evaluation results.")
         try:
@@ -850,6 +847,7 @@ def evaluate_rfs(estats, fit_params, rfdir='/tmp',
             assert 'data' in eval_results.keys(), "... old datafile, redoing boot analysis"
             assert 'pass_cis' in eval_results.keys(), "... no criteria passed, redoing"
         except Exception as e:
+            traceback.print_exc()
             print("... ERROR loading evaluation results. Doing it now.")
             create_new = True
              
@@ -862,15 +860,14 @@ def evaluate_rfs(estats, fit_params, rfdir='/tmp',
         
         # Update params if re-did evaluation
         eval_params_fpath = os.path.join(evaldir, 'evaluation_params.json')
+        opts_update = dict((k, eval(k)) for k in inspect.getargspec(evaluate_rfs).args if k not in ['estats', 'fit_params'])
         if os.path.exists(eval_params_fpath):
-            opts_update = dict((k, eval(k)) for k in inspect.getargspec(evaluate_rfs).args if k!='estats')
-            opts_dict = load_params(eval_params_fpath)
+            eval_params = load_params(eval_params_fpath)
             for k, v in opts_update.items():
-                opts_dict.update({k: v})
+                eval_params.update({k: v})
         else:
-            opts_dict = dict((k, eval(k)) for k in inspect.getargspec(evaluate_rfs).args) 
-        opts_dict.pop('estats')
-        save_params(eval_params_fpath, opts_dict)
+            eval_params = opts_update.copy()
+        save_params(eval_params_fpath, eval_params)
         print("... updated eval params")
 
     #%% Identify reliable fits 
@@ -885,7 +882,7 @@ def evaluate_rfs(estats, fit_params, rfdir='/tmp',
     return eval_results, eval_params
        
 #%%
-def identify_reliable_fits(fit_results, eval_results, pass_criterion='all',
+def identify_reliable_fits(meas_df, fit_results, eval_results, pass_criterion='all',
                            plot_boot_distns=True, plot_rois=[],
                            scale_sigma=True, sigma_scale=2.35, plot_format='svg', 
                            outdir='/tmp/roi_bootdistns', data_id='DATAID'):
@@ -895,25 +892,20 @@ def identify_reliable_fits(fit_results, eval_results, pass_criterion='all',
                                       pass_criterion=pass_criterion)
     if len(plot_rois)==0:
         plot_rois = reliable_rois
-        
-    meas_df = fitrf.rfits_to_df(fit_results['fit_results'],
-                            row_vals=fit_results['row_vals'],
-                            col_vals=fit_results['col_vals'],
-                            scale_size=scale_sigma, sigma_scale=sigma_scale)
-    meas_df = meas_df[meas_df['r2']>fit_thr]
-    pass_rois = meas_df.index.tolist()
     
+    pass_rois = meas_df.index.tolist()
     # Plot distribution of params w/ 95% CI
     if plot_boot_distns:
         print("... plotting boot distn.\n(to: %s" % outdir)
         for r in glob.glob(os.path.join(outdir, 'roi*')):
             os.remove(r)
-        plot_eval_summary(meas_df, fit_results, eval_results, reliable_rois=reliable_rois,
+        plot_eval_summary(meas_df, fit_results, eval_results, reliable_rois=pass_rois, #reliable_rois,
                           sigma_scale=sigma_scale, scale_sigma=scale_sigma,
                           outdir=outdir, plot_format=plot_format, 
                           data_id=data_id)
         
-    print("%i out of %i cells w. R2>0.5 are reliable (95%% CI)" % (len(reliable_rois), len(pass_rois)))
+    print("%i out of %i cells w. R2>0.5 are reliable (95%% CI)" 
+            % (len(reliable_rois), len(pass_rois)))
     return reliable_rois    
 
 
@@ -1029,34 +1021,25 @@ def do_rf_fits_and_evaluation(animalid, session, fov, rfname=None, traceid='trac
                                 create_new=do_evaluation)
 
     # Update params
-    eval_params_fpath = os.path.join(rfdir, 'evaluation', 'evaluation_params.json')
-    opts_dict = dict((k, eval(k)) for k in inspect.getargspec(do_rf_fits_and_evaluation).args)
-    if 'opts' in opts_dict:
-        opts_dict.pop('opts')    
-    save_params(eval_params_fpath, opts_dict)
-
+    #eval_params_fpath = os.path.join(rfdir, 'evaluation', 'evaluation_params.json')
+    #eval_params = dict((k, eval(k)) for k in inspect.getargspec(do_rf_fits_and_evaluation).args if k not in ['opts'])
+    #save_params(eval_params_fpath, eval_params)
 
     if len(eval_results.keys())==0:# is None: # or 'data' not in eval_results:
         return {} #None
 
     ##------------------------------------------------
-    # rf_eval_fpath = os.path.join(evaldir, 'evaluation_results.pkl')
- 
     #%% Get measured fits
-    try:
-        fit_results_dpath = os.path.join(rfdir, 'fit_results.pkl')
-        with open(fit_results_dpath, 'rb') as f:
-            fit_results = pkl.load(f)
-    except Exception as e:
-        traceback.print_exc()
-        print("--- unable to load fit results from path:\n  %s" % fit_results_dpath)
-
-
+    meas_df = fitrf.rfits_to_df(fit_results['fit_results'],
+                            row_vals=fit_params['row_vals'],
+                            col_vals=fit_params['col_vals'],
+                            scale_sigma=scale_sigma, sigma_scale=sigma_scale)
+    meas_df = meas_df[meas_df['r2']>fit_thr]
     
     #%% Identify reliable fits 
-    reliable_rois = identify_reliable_fits(fit_results, eval_results, 
+    reliable_rois = identify_reliable_fits(meas_df, fit_results, eval_results, 
                                            pass_criterion=pass_criterion, 
-                                           plot_boot_distns=do_evaluation,
+                                           plot_boot_distns=plot_boot_distns, #do_evaluation,
                                            scale_sigma=scale_sigma, sigma_scale=sigma_scale,
                                            plot_format='svg', outdir=roidir, data_id=data_id)
     
@@ -1110,21 +1093,19 @@ def load_eval_results(animalid, session, fov, experiment='rfs',
     eval_params = None
                 
     if fit_desc is None:
-        assert response_type is not None, "No response_type or fit_desc provided"
+        fit_desc = 'fit-2dgaus_%s' % response_type
 
-        try: 
-            fit_desc = 'fit-2dgaus_%s' % response_type
-            rfdir = glob.glob(os.path.join(rootdir, animalid, session, fov, '*%s_*' % experiment,
-                            'traces', '%s*' % traceid, 'receptive_fields', 
-                            '%s*' % fit_desc))[0]
-            evaldir = os.path.join(rfdir, 'evaluation')
-            assert os.path.exists(evaldir), "No evaluation exists. Aborting"
-        except IndexError as e:
-            traceback.print_exc()
-        except AssertionError as e:
-            traceback.print_exc()
-            
-        
+    try: 
+        rfdir = glob.glob(os.path.join(rootdir, animalid, session, fov, '*%s_*' % experiment,
+                        'traces', '%s*' % traceid, 'receptive_fields', 
+                        '%s*' % fit_desc))[0]
+        evaldir = os.path.join(rfdir, 'evaluation')
+        assert os.path.exists(evaldir), "No evaluation exists. Aborting"
+    except IndexError as e:
+        traceback.print_exc()
+    except AssertionError as e:
+        traceback.print_exc()
+
     # Load results
     rf_eval_fpath = os.path.join(evaldir, 'evaluation_results.pkl')
     with open(rf_eval_fpath, 'rb') as f:
@@ -1149,7 +1130,7 @@ def extract_options(options):
     parser.add_option('-i', '--animalid', action='store', dest='animalid', default='', help='Animal ID')
 
     # Set specific session/run for current animal:
-    parser.add_option('-S', '--session', action='store', dest='session', default='', \
+    parser.add_option('-S', '--session', action='store', dest='session', default='FOV1_zoom2p0x', \
                       help='session dir (format: YYYMMDD_ANIMALID')
     parser.add_option('-A', '--fov', action='store', dest='fov', default='FOV1_zoom2p0x', \
                       help="acquisition folder (ex: 'FOV2_zoom3x') [default: FOV1]")
@@ -1241,7 +1222,8 @@ do_fits=False
 do_evaluation=True
 reload_data=False
 
-options = ['-i', animalid]
+options = ['-i', animalid, '-S', session, '-A', fov, '-t', traceid,
+           '-R', 'rfs', '-M', response_type, '-p', 0.5, '--eval']
 #%%
 
 def main(options):
@@ -1275,8 +1257,6 @@ def main(options):
     post_stimulus_sec = float(opts.post_stimulus_sec)
     fit_thr = float(opts.fit_thr)
      
-    from pipeline.python.classifications import experiment_classes as util
-
 
     deviants = do_rf_fits_and_evaluation(animalid, session, fov, rfname=rfname,
                               traceid=traceid, response_type=response_type, fit_thr=fit_thr,
@@ -1302,3 +1282,6 @@ if __name__ == '__main__':
     
     #options = ['-i', 'JC084', '-S', '20190525', '-A', 'FOV1_zoom2p0x', '-R', 'rfs']
     
+
+
+# %%
