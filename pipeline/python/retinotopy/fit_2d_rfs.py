@@ -1631,7 +1631,7 @@ def fit_2d_receptive_fields(animalid, session, fov, run, traceid,
             # Plot all RF maps for fit cells (limit = 60 to plot)
             fig = plot_best_rfs(fit_roi_list, avg_resp_by_cond, fitdf_pos, fit_params,
                                 single_colorbar=True, plot_ellipse=True, nr=6, nc=10)
-            label_figure(fig, data_id)
+            label_figure(fig, data_i)
             figname = 'top%i_fit_thr_%.2f_%s_ellipse_sc' % (len(fit_roi_list), fit_thr, fit_desc)
             pl.savefig(os.path.join(rfdir, '%s.png' % figname))
             print figname
@@ -1645,9 +1645,15 @@ def fit_2d_receptive_fields(animalid, session, fov, run, traceid,
     if make_pretty_plots:
         print("... plottin' pretty (%s)" % plot_response_type)
         if response_type != plot_response_type or do_fits is False:
+            raw_traces, labels, sdf, run_info = load_dataset(data_fpath, 
+                                            trace_type=trace_type,
+                                            add_offset=True, make_equal=False,
+                                            create_new=reload_data)        
+            # Z-score or dff the traces:
+            trials_by_cond = get_trials_by_cond(labels)
             zscored_traces, zscores = process_traces(raw_traces, labels, 
-                                            response_type=plot_response_type,
-                                            nframes_post_onset=fit_params['nframes_post_onset'])
+                                        response_type=plot_response_type,
+                                        nframes_post_onset=fit_params['nframes_post_onset'])
             avg_resp_by_cond = group_trial_values_by_cond(zscores, trials_by_cond)
     #%
         # Overlay RF map and mean traces:
@@ -1734,9 +1740,9 @@ def fit_2d_receptive_fields(animalid, session, fov, run, traceid,
         if not os.path.exists(target_fov_dir):
             os.makedirs(target_fov_dir)
             
-        kde_results = target_fov(avg_resp_by_cond, fitdf, screen, 
+        kde_results = target_fov(avg_resp_by_cond, fitdf, fit_params['screen'], 
                                     fit_roi_list=fit_roi_list, 
-                                    row_vals=row_vals, col_vals=col_vals, 
+                                    row_vals=fit_params['row_vals'], col_vals=fit_params['col_vals'], 
                                     compare_kdes=False,
                                     weight_type='kde', target_fov_dir=target_fov_dir, 
                                     data_identifier=data_id)

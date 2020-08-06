@@ -863,7 +863,7 @@ def evaluate_rfs(estats, fit_params, rfdir='/tmp',
         # Update params if re-did evaluation
         eval_params_fpath = os.path.join(evaldir, 'evaluation_params.json')
         if os.path.exists(eval_params_fpath):
-            opts_update = dict((k, eval(k)) for k in inspect.getargspec(evaluate_rfs).args)
+            opts_update = dict((k, eval(k)) for k in inspect.getargspec(evaluate_rfs).args if k!='estats')
             opts_dict = load_params(eval_params_fpath)
             for k, v in opts_update.items():
                 opts_dict.update({k: v})
@@ -1011,7 +1011,7 @@ def do_rf_fits_and_evaluation(animalid, session, fov, rfname=None, traceid='trac
                             nframes_post=nframes_post,
                             do_fits=do_fits, pretty_plots=do_fits,
                             return_all_rois=False,
-                            reload_data=True) #True) 
+                            reload_data=reload_data) #True) 
         
     # Set directories
     evaldir = os.path.join(rfdir, 'evaluation')
@@ -1022,11 +1022,10 @@ def do_rf_fits_and_evaluation(animalid, session, fov, rfname=None, traceid='trac
         shutil.rmtree(os.path.join(evaldir, 'rois'))
 
     #%% Do bootstrap analysis    
-    eval_results, eval_params = evaluate_rfs(estats, rfdir=rfdir, 
+    eval_results, eval_params = evaluate_rfs(estats, fit_params, rfdir=rfdir, 
                                 n_bootstrap_iters=n_bootstrap_iters, 
                                 n_resamples=n_resamples,
                                 ci=ci, n_processes=n_processes, 
-                                sigma_scale=sigma_scale, scale_sigma=scale_sigma,
                                 create_new=do_evaluation)
 
     # Update params

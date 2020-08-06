@@ -1675,8 +1675,9 @@ class ReceptiveFields(Experiment):
         if create_new is False:
             print("... checking for existing results: %s" % fit_desc)
             try:
-                fit_results, fit_params = fitrf.load_fit_results(animalid, session, fov,
-                                                    experiment=self.name, 
+                fit_results, fit_params = fitrf.load_fit_results(self.animalid, 
+                                                    self.session, self.fov,
+                                                    experiment=self.experiment_type, 
                                                     traceid=self.traceid,
                                                     response_type=response_type)
                 with open(rf_results_fpath, 'rb') as f:
@@ -1757,27 +1758,25 @@ class ReceptiveFields(Experiment):
                                                     pretty_plots=pretty_plots,
                                                     create_new=do_fits,
                                                     reload_data=reload_data)
-    
-        if rfits is None and roi_list is None:
+         
+        if fit_results is None:
             print("--- NO STATS (%s)" % response_type)
             return None
 
+        roi_list = [r for r, res in fit_results['fit_results'].items() \
+                    if res['r2'] > fit_thr]
+        nrois_total = len(fit_results['fit_results'].keys())
+        print("... fits (%i of %i attempted, R2 > %.2f)" 
+                % (len(roi_list), nrois_total, fit_thr))
+        estats.rois = roi_list # This is list of cells that had R2 > 0.5
+        estats.nrois = nrois_total # N rois that were fit attempted
         estats.fits = fitrf.rfits_to_df(fit_results['fit_results'], 
-                                        row_vals=fit_results['row_vals'],
-                                        col_vals=fit_results['col_vals'],
+                                        row_vals=fit_params['row_vals'],
+                                        col_vals=fit_params['col_vals'],
                                         roi_list=sorted(roi_list), 
                                         scale_sigma=scale_sigma, 
                                         sigma_scale=sigma_scale)
         estats.fitinfo = fit_params
-
-        roi_list = [r for r, res in fit_results['fit_results'].items() \
-                    if fit_results['fit_r']['r2'] > fit_thr]
-        nrois_total = len(fit_results['fit_results'].keys())
-        print("... fits (%i of %i attempted, R2 > %.2f)" 
-                % (len(roi_list), nrois_total, fit_thr))
-
-        estats.rois = roi_list # This is list of cells that had R2 > 0.5
-        estats.nrois = nrois_total # N rois that were fit attempted
 
      
         if reload_data: #create_new:         
