@@ -1353,7 +1353,7 @@ def fit_rfs(avg_resp_by_cond, fit_params={}, #row_vals=[], col_vals=[], fitparam
             print("%i out of %i cells meet min req. of %.2f" % 
                     (len(roi_list), avg_resp_by_cond.shape[1], response_thr))
 
-    RF = {}
+    fit_results = {}
     for rid in roi_list:
         #print rid
         roi_fit_results, fig = plot_and_fit_roi_RF(avg_resp_by_cond[rid], 
@@ -1367,7 +1367,7 @@ def fit_rfs(avg_resp_by_cond, fit_params={}, #row_vals=[], col_vals=[], fitparam
         pl.close()
         
         if roi_fit_results != {}:
-            RF[rid] = roi_fit_results
+            fit_results[rid] = roi_fit_results
         #%
 
     xi = np.arange(0, len(col_vals))
@@ -1375,11 +1375,11 @@ def fit_rfs(avg_resp_by_cond, fit_params={}, #row_vals=[], col_vals=[], fitparam
     xx, yy = np.meshgrid(xi, yi)
 
     # Combine all the stuff
-    fit_results = {}
-    if len(RF.keys())>0:
-        fit_results = {'fit_results': RF, #RF
-                   'fit_params': fit_params}
-                   
+#    fit_results = {}
+#    if len(RF.keys())>0:
+#        fit_results = RF #{'fit_results': RF, #RF
+#                   #'fit_params': fit_params}
+#                   
     with open(rf_results_fpath, 'wb') as f:
         pkl.dump(fit_results, f, protocol=pkl.HIGHEST_PROTOCOL)
 
@@ -1621,8 +1621,9 @@ def fit_2d_receptive_fields(animalid, session, fov, run, traceid,
                             data_identifier=data_id, create_new=create_new)        
         try:
             # Convert to dataframe
-            fitdf_pos = rfits_to_df(fit_results['fit_results'], 
-                                row_vals=fit_params['row_vals'], col_vals=fit_params['col_vals'],
+            fitdf_pos = rfits_to_df(fit_results, 
+                                row_vals=fit_params['row_vals'], 
+                                col_vals=fit_params['col_vals'],
                                 scale_sigma=False, convert_coords=False)
             fit_roi_list = fitdf_pos[fitdf_pos['r2'] > fit_thr].sort_values('r2', axis=0, ascending=False).index.tolist()
             print("... %i out of %i fit rois with r2 > %.2f" % 
@@ -1672,7 +1673,7 @@ def fit_2d_receptive_fields(animalid, session, fov, run, traceid,
             os.makedirs(best_rois_figdir)
     
         #if not do_fits: # need to load results
-        fitdf = rfits_to_df(fit_results['fit_results'], scale_sigma=False, 
+        fitdf = rfits_to_df(fit_results, scale_sigma=False, 
                             row_vals=fit_params['row_vals'], col_vals=fit_params['col_vals'],
                             convert_coords=True)
         fit_roi_list = fitdf[fitdf['r2'] > fit_thr].sort_values('r2', axis=0, ascending=False).index.tolist()
@@ -1888,7 +1889,7 @@ def main(options):
      
     reload_data = optsE.reload_data
 
-    fit_results, fit_parmas = fit_2d_receptive_fields(animalid, session, fov, 
+    fit_results, fit_params = fit_2d_receptive_fields(animalid, session, fov, 
                                 run, traceid, 
                                 trace_type=trace_type, 
                                 post_stimulus_sec=post_stimulus_sec,
@@ -1905,7 +1906,7 @@ def main(options):
                                 legend_lw=optsE.legend_lw, 
                                 plot_format=plot_format)
     
-    print("--- fit %i rois total ---" % (len(rfresults['fit_results'].keys())))
+    print("--- fit %i rois total ---" % (len(fit_results.keys())))
 
     #%
 

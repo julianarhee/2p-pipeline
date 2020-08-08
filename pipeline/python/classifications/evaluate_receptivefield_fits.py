@@ -333,14 +333,6 @@ def get_reliable_fits(pass_cis, pass_criterion='all'):
 
  
 def check_reliable_fits(meas_df, boot_cis): 
-#                      fit_thr=0.5, ci=0.95, i
-#                      #fit_results, eval_results, fit_thr=0.5, 
-#                      scale_sigma=True, sigma_scale=2.35): #,
-#                      plot_boot_distn=True): #, pass_all_params=True):
-#
-#    sigma_scale = sigma_sclae if scale_sigma else 1.0
-#    pass_rois = meas_df.index.tolist()
-
     # Test which params lie within 95% CI
     params = [p for p in meas_df.columns.tolist() if p!='r2']
     pass_cis = pd.concat([pd.DataFrame(
@@ -923,7 +915,7 @@ def plot_eval_summary(meas_df, fit_results, eval_results, reliable_rois=[],
     for ri, rid in enumerate(sorted(roi_list)):
         if ri % 20 == 0:
             print("... plotting eval summary (%i of %i)" % (int(ri+1), len(roi_list))) 
-        _fitr = fit_results['fit_results'][rid]
+        _fitr = fit_results[rid]
         _bootdata = bootdata[bootdata['cell']==rid]
         fig = plot_roi_evaluation(rid, meas_df, _fitr, _bootdata, 
                                         scale_sigma=scale_sigma, sigma_scale=sigma_scale)
@@ -1077,7 +1069,7 @@ def do_rf_fits_and_evaluation(animalid, session, fov, rfname=None, traceid='trac
 
     ##------------------------------------------------
     #%% Get measured fits
-    meas_df = fitrf.rfits_to_df(fit_results['fit_results'],
+    meas_df = fitrf.rfits_to_df(fit_results,
                             row_vals=fit_params['row_vals'],
                             col_vals=fit_params['col_vals'],
                             scale_sigma=scale_sigma, sigma_scale=sigma_scale)

@@ -456,33 +456,6 @@ def get_receptive_field_fits(animalid, session, fov, response_type='dff',
     return fit_results, fit_params #rfits, fovinfo
 
 #
-#def get_rf_stats(animalid, session, fov, exp_name=None, traceid='traces001', 
-#                 response_type='dff', pretty_plots=False, create_new=False,
-#                 rootdir='/n/coxfs01/2p-data'):
-#
-#    #if 'rfs' in exp_name or ('gratings' in exp_name and int(session) < 20190511):
-##            if (exp_name == 'gratings' and int(session) < 20190511):
-##                print "OLD"
-#    try:
-#        rf_fit_thr = 0.5
-#        rstats = get_receptive_field_fits(animalid, session, fov,
-#                                         run=exp_name, traceid=traceid, 
-#                                         response_type=response_type,
-#                                         pretty_plots=pretty_plots,
-#                                         create_new=create_new,
-#                                         rootdir=rootdir) #(S.experiments[exp_name])
-#        print("... loaded rf fits")
-#        roi_list = [r for r, res in rstats['fit_results'].items() if res['fit_r']['r2'] >= rf_fit_thr]
-#        #if exp_name == 'gratings':
-#        #    exp_name = 'rfs'
-#        nrois_total = len(rstats['fit_results'].keys())
-#        
-#    except Exception as e:
-#        print e
-#        print("-- No RF fits! [%s]" % exp_name)
-#        
-#    return rstats, roi_list, nrois_total
-
 
 # #############################################################################
 # Generic "event"-based experiments
@@ -1032,24 +1005,27 @@ class Experiment(object):
         if 'retino' in self.name: #extraction_type == 'retino_analysis':
             extraction_type = 'retino_analysis'
             try:
-                #print(self.name)
-                #print(glob.glob(os.path.join(rootdir, self.animalid, self.session, self.fov, '*%s*' % 'retino', 'retino_analysis', '*.json')))
-                retinoid_info_fpath = glob.glob(os.path.join(rootdir, self.animalid, self.session, self.fov, '*%s*' % 'retino', \
-                                                     '%s' % extraction_type, '*.json'))[0] # % traceid, ))
+               retinoid_info_fpath = glob.glob(os.path.join(rootdir, 
+                                                self.animalid, self.session, self.fov, 
+                                                '*%s*' % 'retino', 
+                                                '%s' % extraction_type, '*.json'))[0] 
+
                 with open(retinoid_info_fpath, 'r') as f:
                     retino_ids = json.load(f)
-                found_ids = [t for t, tinfo in retino_ids.items() if 'roi_id' in tinfo['PARAMS'].keys()\
-                             and tinfo['PARAMS']['roi_id'] == roi_id]
+                found_ids = [t for t, tinfo in retino_ids.items() 
+                                if 'roi_id' in tinfo['PARAMS'].keys()
+                                and tinfo['PARAMS']['roi_id'] == roi_id]
                 if len(found_ids) > 1:
                     for fi, fid in enumerate(found_ids):
                         print fi, fid
-                    sel = input("More than 1 retino analysis using [%s]. Select IDX to use: " % roi_id)
+                    sel = input(">1 retino analysis [%s]. Select IDX to use: " % roi_id)
                     traceid = found_ids[int(sel)]
                 else:
                     traceid = found_ids[0]
             except Exception as e:
                 print(e)
-                print("-- can't create EXP for retino, not processed: %s|%s|%s|%s" % (self.animalid, self.session, self.fov, self.name))
+                print("-- can't create EXP for retino, not processed: %s|%s|%s|%s" 
+                        % (self.animalid, self.session, self.fov, self.name))
                 roi_id = None
             
         self.rois = roi_id
@@ -1060,7 +1036,8 @@ class Experiment(object):
     def get_stimuli(self, rootdir='/n/coxfs01/2p-data'):
         print("... getting stimulus info for: %s" % self.name)
         dset_path = glob.glob(os.path.join(rootdir, self.animalid, self.session,
-                                           self.fov, self.name, 'traces/traces*', 'data_arrays', 'labels.npz'))[0]
+                                           self.fov, self.name, 'traces/traces*', 
+                                           'data_arrays', 'labels.npz'))[0]
         dset = np.load(dset_path)
         sdf = pd.DataFrame(dset['sconfigs'][()]).T
         if 'blobs' in self.name:
@@ -1068,7 +1045,9 @@ class Experiment(object):
      
         return sdf
     
-    def load(self, trace_type='corrected', update_self=True, make_equal=False, add_offset=True, rootdir='/n/coxfs01/2p-data', create_new=False):
+    def load(self, trace_type='corrected', update_self=True, 
+            make_equal=False, add_offset=True, 
+            rootdir='/n/coxfs01/2p-data', create_new=False):
         '''
         Populates trace_type and data
         '''
@@ -1077,8 +1056,8 @@ class Experiment(object):
         self.data = Struct()
         
         if not(isinstance(self.source, list)):
-            assert os.path.exists(self.source), "File path does not exist! -- %s" % self.source
-            print("... loading data array") # (%s - %s)" % (self.name, os.path.split(self.source)[-1] ))
+            assert os.path.exists(self.source), "Path does not exist! -- %s" % self.source
+            print("... loading data array") 
             try:
                 if self.source.endswith('npz'):
                     basename = os.path.splitext(os.path.split(self.source)[-1])[0]
@@ -1089,14 +1068,18 @@ class Experiment(object):
                     if create_new is True or not os.path.exists(soma_fpath) or not os.path.exists(raw_fpath):
                         # Realign traces
                         print("*****corrected offset unfound, running now*****")
-                        print("%s | %s | %s | %s | %s" % (self.animalid, self.session, self.fov, self.experiment_type, self.traceid))
+                        print("%s | %s | %s | %s | %s" % (self.animalid, 
+                            self.session, self.fov, self.experiment_type, self.traceid))
 
-                        aggregate_experiment_runs(self.animalid, self.session, self.fov, self.experiment_type, 
-                                                  traceid=self.traceid)
+                        aggregate_experiment_runs(self.animalid, self.session, 
+                                                    self.fov, self.experiment_type, 
+                                                    traceid=self.traceid)
                         print("*****corrected offsets!*****")
 
-                    traces, labels, sdf, run_info = util.load_dataset(soma_fpath, trace_type=trace_type, 
-                                                                      add_offset=add_offset, make_equal=make_equal)
+                    traces, labels, sdf, run_info = util.load_dataset(soma_fpath, 
+                                                            trace_type=trace_type, 
+                                                            add_offset=add_offset, 
+                                                            make_equal=make_equal)
                    
                     # Stimulus / condition info
                     self.data.labels = labels 
@@ -1106,10 +1089,11 @@ class Experiment(object):
                 elif self.source.endswith('h5'):
                     #dfile = h5py.File(self.source, 'r')
                     # TODO: formatt retino data in sensible way with rutils
-                    self.data.info = retinotools.get_protocol_info(self.animalid, self.session, self.fov, run=self.name,
-                                                                   rootdir=rootdir)
-                    traces, self.data.labels = retinotools.format_retino_traces(self.source, info=self.data.info)      
-                
+                    self.data.info = retinotools.get_protocol_info(self.animalid, 
+                                            self.session, self.fov, run=self.name,
+                                            rootdir=rootdir)
+                    traces, self.data.labels = retinotools.format_retino_traces(
+                                                    self.source, info=self.data.info)       
                 # Update self:"
                 if update_self:
                     print("... updating self")
@@ -1135,30 +1119,37 @@ class Experiment(object):
         if 'retino' in self.name:
             print("...retino traceid:", self.traceid)
             # Check that this is ROI:
-            roi_info_fp = glob.glob(os.path.join(fov_dir, 'retino*', 'retino_analysis', 'analysis*.json'))[0]
+            roi_info_fp = glob.glob(os.path.join(fov_dir, 'retino*', 
+                                        'retino_analysis', 'analysis*.json'))[0]
             with open(roi_info_fp, 'r') as f:
                 rids = json.load(f)
             traceid_name = self.traceid if 'traces' not in self.traceid else self.traceid.replace('traces', 'analysis')
             if rids[traceid_name]['PARAMS']['roi_type'] != 'manual2D_circle':
-                traceid_name = [r for r, k in rids.items() if k['PARAMS']['roi_type']=='manual2D_circle'][0]
+                traceid_name = [r for r, k in rids.items() 
+                                if k['PARAMS']['roi_type']=='manual2D_circle'][0]
             self.traceid = traceid_name
             print("...updated analysis id:", traceid_name)
 
-            all_runs = glob.glob(os.path.join(fov_dir, '*%s*' % 'retino', 'retino_analysis', 'analysis*', 'traces', '*.h5'))
+            all_runs = glob.glob(os.path.join(fov_dir, '*%s*' % 'retino', 
+                                        'retino_analysis', 'analysis*', 'traces', '*.h5'))
             trace_extraction = 'retino_analysis'
 
         else:
             try:
-                all_runs = glob.glob(os.path.join(fov_dir, '*%s_*' % self.name, 'traces', 'traces*', 'data_arrays', 'np_subtracted*.npz'))
+                all_runs = glob.glob(os.path.join(fov_dir, '*%s_*' % self.name, 
+                                        'traces', 'traces*', 'data_arrays', 
+                                        'np_subtracted*.npz'))
                 assert len(all_runs) > 0, "np_subtracted not found!"
             except Exception as e:
-                all_runs = glob.glob(os.path.join(fov_dir, '*%s_*' % self.name, 'traces', 'traces*', 'data_arrays', 'datasets.npz'))
+                all_runs = glob.glob(os.path.join(fov_dir, '*%s_*' % self.name, 
+                                        'traces', 'traces*', 'data_arrays', 
+                                        'datasets.npz'))
                 
             trace_extraction = 'traces'
 
         #print("FOUND RUNS:", all_runs)    
         if len(all_runs) == 0:
-            print("[ERROR]: No extracted traces: %s" % self.name) #(self.animalid, self.session, self.fov, self.name))
+            print("[ERROR]: No extracted traces: %s" % self.name) 
             return None
         
         all_runs = [s.split('/%s' % trace_extraction)[0] for s in all_runs]
@@ -1181,18 +1172,21 @@ class Experiment(object):
                 if 'retino' in run_name:
                     # Select analysis ID that corresponds to current ROI set:
                     extraction_name = 'retino_analysis'
+                    # returns extracted raw_traces (.h5)
                     fpath = get_retino_analysis(self.animalid, self.session, self.fov,\
-                                                run=run_name, rois=self.rois, rootdir=rootdir) # retrun extracted raw tracs (.h5)
+                                                run=run_name, rois=self.rois, 
+                                                rootdir=rootdir)
                     
                 else:
                     extraction_name = 'traces'
                     try:
-                        fpath = glob.glob(os.path.join(run_dir, 'traces', '%s*' % self.traceid, \
-                                                   'data_arrays', 'np_subtracted.npz'))[0] #'datasets.npz'))[0]
+                        fpath = glob.glob(os.path.join(run_dir, 'traces', 
+                                                    '%s*' % self.traceid, \
+                                                   'data_arrays', 'np_subtracted.npz'))[0] 
                     except Exception as e:
-                        fpath = glob.glob(os.path.join(run_dir, 'traces', '%s*' % self.traceid, \
+                        fpath = glob.glob(os.path.join(run_dir, 'traces', 
+                                                    '%s*' % self.traceid, \
                                                    'data_arrays', 'datasets.npz'))[0] #
-
                 data_fpaths.append(fpath)
             except IndexError:
                 print("... no data arrays found: %s" % run_name)
@@ -1214,36 +1208,45 @@ class Experiment(object):
     def process_traces(self, response_type='dff', nframes_post_onset=None):
         print("... getting traces: %s" % response_type)
         traces = process_traces(self.data.traces, self.data.labels, 
-                                response_type=response_type, nframes_post_onset=nframes_post_onset)
+                                response_type=response_type, 
+                                nframes_post_onset=nframes_post_onset)
         
         return traces
     
-    def get_trial_metrics(self, response_type='dff', nframes_post_onset=None, add_offset=True):
+    def get_trial_metrics(self, response_type='dff', nframes_post_onset=None, 
+                            add_offset=True):
 
         if self.data is None or self.trace_type != 'corrected':
-            traces, labels = self.load(trace_type='corrected', update_self=False, add_offset=add_offset)
+            traces, labels = self.load(trace_type='corrected', 
+                                        update_self=False, add_offset=add_offset)
         else:
             traces = self.data.traces
             labels = self.data.labels
             
-        trialmetrics = get_trial_metrics(traces, labels, response_type=response_type, nframes_post_onset=nframes_post_onset)
+        trialmetrics = get_trial_metrics(traces, labels, response_type=response_type, 
+                                            nframes_post_onset=nframes_post_onset)
         
         return trialmetrics
                     
 
-    def get_responsive_cells(self, response_type='dff', responsive_test='ROC', responsive_thr=0.05, n_stds=2.5):
+    def get_responsive_cells(self, response_type='dff', responsive_test='ROC', 
+                                responsive_thr=0.05, n_stds=2.5):
         print("... getting responsive cells (test: %s, thr: %.2f')" % (responsive_test, responsive_thr))
         assert ('blobs' in self.name) or ('gratings' in self.name and int(self.session) >= 20190511), "Incorrect call for event data analysis (expecting gratings or blobs)."
         try:
-            roi_list, nrois_total = get_responsive_cells(self.animalid, self.session, self.fov, run=self.name, 
-                                            traceid=self.traceid, responsive_test=responsive_test, 
+            roi_list, nrois_total = get_responsive_cells(self.animalid, self.session, 
+                                            self.fov, run=self.name, 
+                                            traceid=self.traceid, 
+                                            responsive_test=responsive_test, 
                                             responsive_thr=responsive_thr, n_stds=n_stds)
             assert roi_list is not None, "--- no stats on initial pass"
         except Exception as e:
             if responsive_test == 'nstds':
                 print("... trying calculating nframes above/below nstd")
-                framesdf = self.calculate_nframes_above_nstds(n_stds=n_stds, trace_type='dff')
-                roi_list = [roi for roi in framesdf.columns if any(framesdf[roi] > responsive_thr)]
+                framesdf = self.calculate_nframes_above_nstds(n_stds=n_stds, 
+                                                                trace_type='dff')
+                roi_list = [roi for roi in framesdf.columns \
+                                if any(framesdf[roi] > responsive_thr)]
                 nrois_total = framesdf.shape[-1]
             else:
                 return None, None
@@ -1255,21 +1258,14 @@ class Experiment(object):
                     n_processes=1, add_offset=True, 
                     make_equal=False, get_grouped=True,
                     nframes_post=0, **kwargs): 
-        #responsive_test='ROC', responsive_thr=0.05, make_equal=True, get_grouped=True):
         print("... [%s] Loading roi stats and cell list..." % self.name)
-        #responsive_test = kwargs.get('responsive_test', None)
-        #responsive_thr = kwargs.get('responsive_thr', 0.5)
-        #make_equal = kwargs.get('make_equal', True)
-        #get_grouped = kwargs.get('get_grouped', True)
-
-        if self.data is None or len([i for i in dir(self.data) if not i.startswith('__')])==0 or ('traces' in dir(self.data) and self.data.traces is None) or self.trace_type != 'corrected':
-            self.load(trace_type='corrected', make_equal=make_equal, add_offset=add_offset, update_self=True)
+        dircontents = [i for i in dir(self.data) if not i.startswith('__')]
+        if self.data is None or len(dircontents)==0 \
+                or ('traces' in dir(self.data) and self.data.traces is None) \
+                or self.trace_type != 'corrected':
+            self.load(trace_type='corrected', make_equal=make_equal, 
+                        add_offset=add_offset, update_self=True)
         
-        # if responsive_test is not None:
-#        rstats, roi_list, nrois_total = get_roi_stats(trace_type=trace_type,
-#                                                       response_type=response_type,
-#                                                       responsive_test=responsive_test,
-#                                                       responsive_thr=responsive_thr)
         if responsive_test is not None:    
             print("filtering responsive cells: %s" % responsive_test)
             roi_list, nrois_total = self.get_responsive_cells(response_type=response_type, 
@@ -1454,29 +1450,7 @@ class Gratings(Experiment):
                 pl.savefig(os.path.join(osidir, 'roi-fits', 'roi%05d__%s.png' % (int(roi+1), stimkey)))
                 pl.close()
                     
-                    
-              
-#    def plot_roi_tuning_and_fit(self, fitdf, fitparams, fitdata):
-#        print("---- plotting tuning curves and fits for each roi ----")
-#        osidir = fitparams['directory']
-#        if not os.path.exists(os.path.join(osidir, 'roi_fits')):
-#            os.makedirs(os.path.join(osidir, 'roi_fits'))
-#        
-#        if fitparams['response_type'] == 'dff' and self.trace_type == 'corrected': #'dff':
-#            raw_traces = self.process_traces(response_type=fitparams['response_type'])
-#        else:
-#            raw_traces = self.traces
-#        
-#        sdf = self.get_stimuli()
-#        
-#        fit_desc = os.path.split(osidir)[-1]
-#        data_identifier = '|'.join([self.animalid, self.session, self.fov, self.name, self.traceid, fit_desc])
-#        for roi in fitdf['cell'].unique():
-#            fig = osi.plot_roi_tuning(roi, fitdata, sdf, raw_traces, self.data.labels, trace_type=fitparams['response_type'])
-#            label_figure(fig, data_identifier)
-#            pl.savefig(os.path.join(osidir, 'roi_fits', 'roi%05d.png' % int(roi+1)))
-#            pl.close()
-    
+   
         
     def fit_tuning(self, response_type='dff',
                    n_bootstrap_iters=100, n_resamples=60, n_intervals_interp=3,
@@ -1621,9 +1595,6 @@ class ReceptiveFields(Experiment):
     
     def get_responsive_cells(self, response_type='dff', fit_thr=0.5, 
                                 reload_data=False, create_new=False, **kwargs):
-#        rfits, roi_list, nrois_total = self.get_rf_fits(response_type=response_type, 
-#                                                        fit_thr=fit_thr,
-#                                                        reload_data=reload_data)
         fit_results, fit_params = self.get_rf_fits(response_type=response_type, 
                                         fit_thr=fit_thr, reload_data=reload_data,
                                         create_new=create_new)
@@ -1631,7 +1602,8 @@ class ReceptiveFields(Experiment):
         roi_list = [r for r, res in fit_results['fit_results'].items() \
                     if fit_results['fit_r']['r2'] > fit_thr]
         nrois_total = len(fit_results['fit_results'].keys())
-        print("... fit results (%i of %i attempted fits with R2 > %.2f)" % (len(roi_list), nrois_total, fit_thr))
+        print("... fit results (%i of %i attempted fits with R2 > %.2f)" 
+                % (len(roi_list), nrois_total, fit_thr))
 
         return roi_list, nrois_total
         
@@ -1662,16 +1634,11 @@ class ReceptiveFields(Experiment):
                 
         '''
         print("... [RF] getting fits.")
-        #rfits=None; roi_list=None; nrois_total=None;
+
         fit_results=None
         fit_params=None
-        #fov_dir = os.path.join(rootdir, self.animalid, self.session, self.fov)
         do_fits = create_new #False
-        
-        rfdir, fit_desc = fitrf.create_rf_dir(self.animalid, self.session, 
-                                        self.fov, self.name, traceid=self.traceid,
-                                        response_type=response_type, fit_thr=fit_thr)
-        rf_results_fpath = os.path.join(rfdir, 'fit_results.pkl')
+
         if create_new is False:
             print("... checking for existing results: %s" % fit_desc)
             try:
@@ -1680,8 +1647,6 @@ class ReceptiveFields(Experiment):
                                                     experiment=self.experiment_type, 
                                                     traceid=self.traceid,
                                                     response_type=response_type)
-                with open(rf_results_fpath, 'rb') as f:
-                    rfits = pkl.load(f)
                 print("... loaded fits (response-type: %s)" % response_type)
             except Exception as e:
                 print(".... unable to load RF fit results. re-fitting...")
@@ -1711,7 +1676,8 @@ class ReceptiveFields(Experiment):
         roi_list = [r for r, res in fit_results['fit_results'].items() \
                     if res['r2'] > fit_thr]
         nrois_total = len(fit_results['fit_results'].keys())
-        print("... fit results (%i of %i attempted fits with R2 > %.2f)" % (len(roi_list), nrois_total, fit_thr))
+        print("... fit results (%i of %i attempted fits with R2 > %.2f)" 
+                    % (len(roi_list), nrois_total, fit_thr))
 
         return fit_results, fit_params #roi_list, nrois_total
 
@@ -1768,6 +1734,7 @@ class ReceptiveFields(Experiment):
         nrois_total = len(fit_results['fit_results'].keys())
         print("... fits (%i of %i attempted, R2 > %.2f)" 
                 % (len(roi_list), nrois_total, fit_thr))
+
         estats.rois = roi_list # This is list of cells that had R2 > 0.5
         estats.nrois = nrois_total # N rois that were fit attempted
         estats.fits = fitrf.rfits_to_df(fit_results['fit_results'], 
