@@ -936,6 +936,57 @@ def plot_eval_summary(meas_df, fit_results, eval_results, reliable_rois=[],
 
 
 #%%
+def load_params(params_fpath):
+    with open(params_fpath, 'r') as f:
+        options_dict = json.load(f)
+    return options_dict
+
+def save_params(params_fpath, opts):
+    if isinstance(opts, dict):
+        options_dict = opts.copy()
+    else:
+        options_dict = vars(opts)
+    with open(params_fpath, 'w') as f:
+        json.dump(options_dict, f, indent=4, sort_keys=True) 
+    return
+  
+#%%
+def load_eval_results(animalid, session, fov, experiment='rfs',
+                        traceid='traces001', response_type='dff', 
+                        fit_desc=None,
+                        rootdir='/n/coxfs01/2p-data'):
+    eval_results = None
+    eval_params = None
+                
+    if fit_desc is None:
+        fit_desc = 'fit-2dgaus_%s' % response_type
+
+    try: 
+        rfdir = glob.glob(os.path.join(rootdir, animalid, session, fov, '*%s_*' % experiment,
+                        'traces', '%s*' % traceid, 'receptive_fields', 
+                        '%s*' % fit_desc))[0]
+        evaldir = os.path.join(rfdir, 'evaluation')
+        assert os.path.exists(evaldir), "No evaluation exists. Aborting"
+    except IndexError as e:
+        traceback.print_exc()
+    except AssertionError as e:
+        traceback.print_exc()
+
+    # Load results
+    rf_eval_fpath = os.path.join(evaldir, 'evaluation_results.pkl')
+    with open(rf_eval_fpath, 'rb') as f:
+        eval_results = pkl.load(f)
+   
+    #  Load params 
+    eval_params_fpath = os.path.join(evaldir, 'evaluation_params.json')
+    with open(eval_params_fpath, 'r') as f:
+        eval_params = json.load(f)
+        
+    return eval_results, eval_params
+ 
+
+
+#%%
 def do_rf_fits_and_evaluation(animalid, session, fov, rfname=None, traceid='traces001', 
                               response_type='dff', n_processes=1,
                               fit_thr=0.5, n_resamples=10, n_bootstrap_iters=1000, 
@@ -947,7 +998,7 @@ def do_rf_fits_and_evaluation(animalid, session, fov, rfname=None, traceid='trac
                               rootdir='/n/coxfs01/2p-data', opts=None):
 
     from pipeline.python.classifications import experiment_classes as util
-#    rfname= 'rfs' 
+    rfname= 'rfs' 
 #    do_fits =False
 #    do_evaluation = True
 #    reload_data=True
@@ -1021,10 +1072,6 @@ def do_rf_fits_and_evaluation(animalid, session, fov, rfname=None, traceid='trac
                                 create_new=do_evaluation)
 
     # Update params
-    #eval_params_fpath = os.path.join(rfdir, 'evaluation', 'evaluation_params.json')
-    #eval_params = dict((k, eval(k)) for k in inspect.getargspec(do_rf_fits_and_evaluation).args if k not in ['opts'])
-    #save_params(eval_params_fpath, eval_params)
-
     if len(eval_results.keys())==0:# is None: # or 'data' not in eval_results:
         return {} #None
 
@@ -1069,55 +1116,6 @@ def do_rf_fits_and_evaluation(animalid, session, fov, rfname=None, traceid='trac
 
 
     return regresults #deviants
-
-def load_params(params_fpath):
-    with open(params_fpath, 'r') as f:
-        options_dict = json.load(f)
-    return options_dict
-
-def save_params(params_fpath, opts):
-    if isinstance(opts, dict):
-        options_dict = opts.copy()
-    else:
-        options_dict = vars(opts)
-    with open(params_fpath, 'w') as f:
-        json.dump(options_dict, f, indent=4, sort_keys=True) 
-    return
-  
-#%%
-def load_eval_results(animalid, session, fov, experiment='rfs',
-                        traceid='traces001', response_type='dff', 
-                        fit_desc=None,
-                        rootdir='/n/coxfs01/2p-data'):
-    eval_results = None
-    eval_params = None
-                
-    if fit_desc is None:
-        fit_desc = 'fit-2dgaus_%s' % response_type
-
-    try: 
-        rfdir = glob.glob(os.path.join(rootdir, animalid, session, fov, '*%s_*' % experiment,
-                        'traces', '%s*' % traceid, 'receptive_fields', 
-                        '%s*' % fit_desc))[0]
-        evaldir = os.path.join(rfdir, 'evaluation')
-        assert os.path.exists(evaldir), "No evaluation exists. Aborting"
-    except IndexError as e:
-        traceback.print_exc()
-    except AssertionError as e:
-        traceback.print_exc()
-
-    # Load results
-    rf_eval_fpath = os.path.join(evaldir, 'evaluation_results.pkl')
-    with open(rf_eval_fpath, 'rb') as f:
-        eval_results = pkl.load(f)
-   
-    #  Load params 
-    eval_params_fpath = os.path.join(evaldir, 'evaluation_params.json')
-    with open(eval_params_fpath, 'r') as f:
-        eval_params = json.load(f)
-        
-    return eval_results, eval_params
- 
  
    
 #%%
@@ -1219,11 +1217,11 @@ scale_sigma = True
 post_stimulus_sec=0.5
 
 do_fits=False
-do_evaluation=True
+do_evaluation=False
 reload_data=False
 
 options = ['-i', animalid, '-S', session, '-A', fov, '-t', traceid,
-           '-R', 'rfs', '-M', response_type, '-p', 0.5, '--eval']
+           '-R', 'rfs', '-M', response_type, '-p', 0.5 ]
 #%%
 
 def main(options):

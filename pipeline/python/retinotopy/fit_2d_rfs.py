@@ -1383,7 +1383,7 @@ def fit_rfs(avg_resp_by_cond, fit_params={}, #row_vals=[], col_vals=[], fitparam
     with open(rf_results_fpath, 'wb') as f:
         pkl.dump(fit_results, f, protocol=pkl.HIGHEST_PROTOCOL)
 
-    return fit_results
+    return fit_results, fit_params
 
 #%%
 
@@ -1615,7 +1615,7 @@ def fit_2d_receptive_fields(animalid, session, fov, run, traceid,
         avg_resp_by_cond = group_trial_values_by_cond(zscores, trials_by_cond)
        
         # Do fits 
-        fit_results = fit_rfs(avg_resp_by_cond, response_type=response_type, 
+        fit_results, fit_params = fit_rfs(avg_resp_by_cond, response_type=response_type, 
                             fit_params=fit_params,
                             rf_results_fpath=rf_results_fpath, 
                             data_identifier=data_id, create_new=create_new)        

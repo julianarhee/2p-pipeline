@@ -188,7 +188,7 @@ def redo_manual_extraction(options):
             print("[%s] 6a.  Fitting RF runs." % rf_run)
             # fit RFs
             fit_thr = 0.5
-            res_, fov_ = fitrf.fit_2d_receptive_fields(animalid, session, fov, 
+            res_, params_ = fitrf.fit_2d_receptive_fields(animalid, session, fov, 
                                                         rf_run, traceid, 
                                                         fit_thr=fit_thr, 
                                                         make_pretty_plots=True,

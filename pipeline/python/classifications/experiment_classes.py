@@ -442,7 +442,7 @@ def get_receptive_field_fits(animalid, session, fov, response_type='dff',
     
     if do_fits:
         print("... specified RF fit method not found, running now: %s" % fit_desc)
-        rfits, fovinfo = fitrf.fit_2d_receptive_fields(animalid, session, fov, run, traceid,
+        fit_results, fit_params = fitrf.fit_2d_receptive_fields(animalid, session, fov, run, traceid,
                                                         reload_data=reload_data,
                                                         make_pretty_plots=pretty_plots,
                                                         create_new=create_new,
@@ -453,7 +453,7 @@ def get_receptive_field_fits(animalid, session, fov, response_type='dff',
 #        print("*** NO receptive field fits found: %s ***" % '|'.join([animalid, session, fov, run, traceid]))
 #        traceback.print_exc()
         
-    return rfits, fovinfo
+    return fit_results, fit_params #rfits, fovinfo
 
 #
 #def get_rf_stats(animalid, session, fov, exp_name=None, traceid='traces001', 
@@ -1861,7 +1861,7 @@ class ReceptiveFields(Experiment):
 
         #% Fit linear regression for brain coords vs VF coords
         fit_roi_list =  estats.fits.index.tolist()
-        fig = evalrfs.compare_fits_by_condition( estats.fovinfo['positions'].loc[fit_roi_list], estats.fits )
+        fig = evalrfs.plot_linear_regr_by_condition(estats.fovinfo['positions'].loc[fit_roi_list], estats.fits )
         pl.subplots_adjust(top=0.9, bottom=0.1, hspace=0.5)
         label_figure(fig, data_identifier)
         pl.savefig(os.path.join(statsdir, 'receptive_fields', 'RF_fits-by-az-el.png'))
