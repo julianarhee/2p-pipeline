@@ -1136,6 +1136,7 @@ def do_rf_fits_and_evaluation(animalid, session, fov, rfname=None, traceid='trac
         shutil.rmtree(os.path.join(evaldir, 'rois'))
 
     #%% Do bootstrap analysis    
+    print("-evaluating-")
     eval_results, eval_params = evaluate_rfs(estats, fit_params, 
                                 n_bootstrap_iters=n_bootstrap_iters, 
                                 n_resamples=n_resamples,
@@ -1358,6 +1359,7 @@ def main(options):
                               scale_sigma=scale_sigma, sigma_scale=sigma_scale,
                               pass_criterion=pass_criterion,
                               do_fits=do_fits, do_evaluation=do_evaluation, reload_data=reload_data,
+                              create_stats=any([do_fits, do_evaluation, reload_data]),
                               rootdir=rootdir, opts=opts)
         
     print("***DONE!***")
