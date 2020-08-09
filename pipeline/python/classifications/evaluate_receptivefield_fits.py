@@ -1123,6 +1123,7 @@ def do_rf_fits_and_evaluation(animalid, session, fov, rfname=None, traceid='trac
      
     rfdir = estats.fitinfo['rfdir']
     fit_desc = estats.fitinfo['fit_desc'] 
+    fit_params = estats.fitinfo
     data_id = '|'.join([exp.animalid, exp.session, exp.fov, \
                             exp.traceid, exp.rois, exp.trace_type, fit_desc])
 
