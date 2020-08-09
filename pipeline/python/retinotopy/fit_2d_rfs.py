@@ -865,6 +865,7 @@ def overlay_traces_on_rfmap(rid, avg_resp_by_cond, zscored_traces, labels, sdf, 
     subplot_xlims = ax.get_xlim()
     subplot_ylims = ax.get_ylim()
     subplot_pos = ax.get_position()
+   
      
     # Reduce spacing between subplots
     pl.subplots_adjust(left=0.05, right=0.8, wspace=0, hspace=0)
@@ -1284,9 +1285,14 @@ def load_fit_results(animalid, session, fov, experiment='rfs',
         if fit_desc is None:
             assert response_type is not None, "No response_type or fit_desc provided"
             fit_desc = 'fit-2dgaus_%s' % response_type
-            
+    
+        if int(session) < 2019511:
+            rfname = 'gratings'
+        else:
+            rfname = experiment.split('_')[1] if 'combined' in experiment else experiment
+
         rfdir = glob.glob(os.path.join(rootdir, animalid, session, fov, 
-                        '*%s_*' % experiment,
+                        '*%s_*' % rfname, #experiment
                         'traces', '%s*' % traceid, 'receptive_fields', 
                         '%s*' % fit_desc))[0]
     except AssertionError as e:
@@ -1730,7 +1736,7 @@ def fit_2d_receptive_fields(animalid, session, fov, run, traceid,
         label_figure(fig, data_id)
         #%
         figname = 'overlaid_RFs_top%i_fit_thr_%.2f_%s' % (len(fit_roi_list), fit_thr, fit_desc)
-        pl.savefig(os.path.join(rfdir, '%s.png' % figname))
+        pl.savefig(os.path.join(rfdir, '%s_sc.png' % figname))
         print figname
         pl.close()
     except Exception as e:
@@ -1742,7 +1748,7 @@ def fit_2d_receptive_fields(animalid, session, fov, run, traceid,
         label_figure(fig, data_id)
         #%
         figname = 'overlaid_RFs_pretty' 
-        pl.savefig(os.path.join(rfdir, '%s.svg' % figname))
+        pl.savefig(os.path.join(rfdir, '%s_sc.svg' % figname))
         print figname
         pl.close()
     except Exception as e:
