@@ -177,6 +177,7 @@ def redo_manual_extraction(options):
         post_stimulus_sec = 0.5
         sigma_scale=2.35 #True
         scale_sigma=True
+        ci=0.95
 
         # Do RF fits
         if int(session) < 20190511 and 'gratings' in experiment_types:
@@ -202,15 +203,17 @@ def redo_manual_extraction(options):
 
             # evaluate  
             print("[%s] 6b. Evaluating RF fits." % rf_run)
-            devs_ = evalrfs.do_rf_fits_and_evaluation(animalid, session, fov, 
+            eval_, params_ = evalrfs.do_rf_fits_and_evaluation(animalid, session, fov, 
                                                     rfname=rf_run, traceid=traceid, 
                                                     response_type=response_type, 
                                                     fit_thr=fit_thr, 
                                                     sigma_scale=sigma_scale, 
                                                     scale_sigma=scale_sigma,
+                                                    ci=ci,
                                                     post_stimulus_sec=post_stimulus_sec,
                                                     n_processes=n_processes,
-                                                    reload_data=True,
+                                                    reload_data=False,
+                                                    create_stats=True,
                                                     do_evaluation=True) 
 
     if roc_test:
