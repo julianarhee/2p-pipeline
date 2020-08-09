@@ -1005,7 +1005,7 @@ class Experiment(object):
         if 'retino' in self.name: #extraction_type == 'retino_analysis':
             extraction_type = 'retino_analysis'
             try:
-               retinoid_info_fpath = glob.glob(os.path.join(rootdir, 
+                retinoid_info_fpath = glob.glob(os.path.join(rootdir, 
                                                 self.animalid, self.session, self.fov, 
                                                 '*%s*' % 'retino', 
                                                 '%s' % extraction_type, '*.json'))[0] 
@@ -1057,7 +1057,7 @@ class Experiment(object):
         
         if not(isinstance(self.source, list)):
             assert os.path.exists(self.source), "Path does not exist! -- %s" % self.source
-            print("... loading data array") 
+            print("... exp.load()") 
             try:
                 if self.source.endswith('npz'):
                     basename = os.path.splitext(os.path.split(self.source)[-1])[0]
@@ -1599,9 +1599,9 @@ class ReceptiveFields(Experiment):
                                         fit_thr=fit_thr, reload_data=reload_data,
                                         create_new=create_new)
 
-        roi_list = [r for r, res in fit_results['fit_results'].items() \
-                    if fit_results['fit_r']['r2'] > fit_thr]
-        nrois_total = len(fit_results['fit_results'].keys())
+        roi_list = [r for r, res in fit_results.items() \
+                    if res['r2'] > fit_thr]
+        nrois_total = len(fit_results.keys())
         print("... fit results (%i of %i attempted fits with R2 > %.2f)" 
                 % (len(roi_list), nrois_total, fit_thr))
 
@@ -1616,23 +1616,10 @@ class ReceptiveFields(Experiment):
 
         Returns:
         
-        rfits (dict):
-            {'fit_results': RF, # dict, keys=rids, values=fit_reuslts (fitable rois only)
-             'fit_params': {'rfmap_thr': map_thr,
-                        'cut_off': hard_cutoff,
-                        'set_to_min': set_to_min,
-                        'trim': trim,
-                        'xx': xx,
-                        'yy': yy,
-                        'metric': response_type},
-             'row_vals': row_vals,
-             'col_vals': col_vals}   
-                
-        roi_list (list): All rois that pass fit_thr (0.5)
-            
-        nrois_total (int): N cells for which a fit was possible.
-                
+        fit_results (dict) - keys are rids, vals are fit results               
+        fit_params (dict) - all meta info
         '''
+
         print("... [RF] getting fits.")
 
         fit_results=None
@@ -1640,7 +1627,6 @@ class ReceptiveFields(Experiment):
         do_fits = create_new #False
 
         if create_new is False:
-            print("... checking for existing results: %s" % fit_desc)
             try:
                 fit_results, fit_params = fitrf.load_fit_results(self.animalid, 
                                                     self.session, self.fov,
@@ -1670,12 +1656,12 @@ class ReceptiveFields(Experiment):
                                                       response_type=response_type,
                                                       rootdir=rootdir)
             except Exception as e:
-                print("*** NO RF fits found: %s ***" % fit_desc)
+                print("*** NO RF fits found ***")
                 traceback.print_exc()
 
-        roi_list = [r for r, res in fit_results['fit_results'].items() \
+        roi_list = [r for r, res in fit_results.items() \
                     if res['r2'] > fit_thr]
-        nrois_total = len(fit_results['fit_results'].keys())
+        nrois_total = len(fit_results.keys())
         print("... fit results (%i of %i attempted fits with R2 > %.2f)" 
                     % (len(roi_list), nrois_total, fit_thr))
 
@@ -1683,16 +1669,16 @@ class ReceptiveFields(Experiment):
 
     def get_stats(self, response_type='dff', fit_thr=0.5, pretty_plots=False, 
                     scale_sigma=True, sigma_scale=2.35, nframes_post=0, 
-                    do_fits=False, return_all_rois=False,
-                    create_new=False,  add_offset=True,
+                    do_fits=False, return_all_rois=True,
+                    create_new=False, # create stats.pkl anew
+                    add_offset=True,
                     reload_data=False,
-                    rootdir='/n/coxfs01/2p-data', **kwargs): #make_equal=True, get_grouped=True):
+                    rootdir='/n/coxfs01/2p-data', **kwargs):
         '''
         return_all_rois will return all rois in grouped gdf.
         do_fits will redo 2d RF fits.
 
         '''
-
         make_equal = kwargs.get('make_equal', True)
         get_grouped = kwargs.get('get_grouped', True)
         print("... getting stats, reload_data=%s" % str(reload_data))
@@ -1709,14 +1695,16 @@ class ReceptiveFields(Experiment):
         stats_fpath = os.path.join(rfdir, 'stats.pkl') 
 
         #check existing 
-        if reload_data is False:
+        if create_new is False:
             try:
                 print("... loading existing stats")
                 with open(stats_fpath, 'rb') as f:
                     estats = pkl.load(f)
-                    assert 'fovinfo' in dir(estats), "... recalculating stats"
+                    assert 'rfits' not in dir(estats), "... recalculating stats"
+                    assert 'fovinfo' not in dir(estats), "... recalculating stats"
             except Exception as e:
                 reload_data = True
+                create_new = True
   
         # Load fits
         fit_results, fit_params = self.get_rf_fits(response_type=response_type, 
@@ -1729,15 +1717,13 @@ class ReceptiveFields(Experiment):
             print("--- NO STATS (%s)" % response_type)
             return None
 
-        roi_list = [r for r, res in fit_results['fit_results'].items() \
+        roi_list = [r for r, res in fit_results.items() \
                     if res['r2'] > fit_thr]
-        nrois_total = len(fit_results['fit_results'].keys())
-        print("... fits (%i of %i attempted, R2 > %.2f)" 
-                % (len(roi_list), nrois_total, fit_thr))
+        nrois_total = len(fit_results.keys())
 
         estats.rois = roi_list # This is list of cells that had R2 > 0.5
         estats.nrois = nrois_total # N rois that were fit attempted
-        estats.fits = fitrf.rfits_to_df(fit_results['fit_results'], 
+        estats.fits = fitrf.rfits_to_df(fit_results, 
                                         row_vals=fit_params['row_vals'],
                                         col_vals=fit_params['col_vals'],
                                         roi_list=sorted(roi_list), 
@@ -1746,7 +1732,7 @@ class ReceptiveFields(Experiment):
         estats.fitinfo = fit_params
 
      
-        if reload_data: #create_new:         
+        if create_new:         
             estats.experiment_id = 'rfs'
             estats.gdf = None
             estats.sdf = None
@@ -1758,7 +1744,7 @@ class ReceptiveFields(Experiment):
             all_rois = [r for r in self.data.traces.columns.tolist() 
                         if util.isnumber(r)]
             selected_rois = all_rois if return_all_rois else roi_list
-            print("Selecting %i rois (return_all=%s)" 
+            print("... selecting %i rois (return_all=%s)" 
                     % (len(selected_rois), str(return_all_rois)))
             estats.gdf = resp.group_roidata_stimresponse(self.data.traces[selected_rois], 
                                                          self.data.labels, 
@@ -1773,11 +1759,11 @@ class ReceptiveFields(Experiment):
             # also save FOV info
             #estats.fovcoords = self.get_fov_info(estats.fits, rfdir=rfdir)
     
-            print("... saving stats (%s)" % stats_fpath)
+            #print("... saving stats (%s)" % stats_fpath)
             with open(stats_fpath, 'wb') as f:
                 pkl.dump(estats, f, protocol=pkl.HIGHEST_PROTOCOL)
         
-        print("got stats (n good: %i, nrois_total: %i" % (len(estats.rois), estats.nrois))
+        print("got stats (n fit: %i, n attempted: %i" % (len(estats.rois), estats.nrois))
         return estats #{experiment_id: estats}
 
 
@@ -1795,57 +1781,94 @@ class ReceptiveFields(Experiment):
                       n_bootstrap_iters=1000, n_resamples=10, ci=0.95, 
                       plot_boot_distns=True, nframes_post=0,
                       transform_fov=True, sigma_scale=2.35, scale_sigma=True,
+                      do_fits=False, reload_data=False,
                       create_new=False, rootdir='/n/coxfs01/2p-data'):
         
         from pipeline.python.classifications import evaluate_receptivefield_fits as evalrfs
-        # analyze_retino_structure as evalrfs
-        # Get output dir for stats
-        estats = self.get_stats(response_type=response_type, fit_thr=fit_thr,
-                                nframes_post=nframes_post) 
-        # estats.rois = list of all cells that pass fit-thr
+
+        estats = self.get_stats(response_type=response_type, 
+                                fit_thr=fit_thr,
+                                nframes_post=nframes_post,
+                                sigma_scale=sigma_scale, scale_sigma=scale_sigma,
+                                do_fits=do_fits,
+                                reload_data=reload_data,
+                                create_new=reload_data) 
+
+        data_id = '|'.join([self.animalid, self.session, self.fov, self.traceid, 
+                            self.rois, self.trace_type, estats.fitinfo['fit_desc']])
+      
+        # get or do RF evaluation                
+        eval_results, eval_params = evalrfs.evaluate_rfs(estats, 
+                                            estats.fit_params,
+                                            n_bootstrap_iters=n_bootstrap_iters, 
+                                            n_resamples=n_resamples,
+                                            ci=ci, n_processes=n_processes, 
+                                            create_new=create_new) 
+
+        #%% Identify reliable fits 
+        reliable_rois = identify_reliable_fits(eval_results, fit_results, fit_params,
+                                           pass_criterion=pass_criterion, 
+                                           plot_boot_distns=plot_boot_distns, 
+                                           plot_format=plot_format, outdir=roidir, 
+                                           data_id=data_id)
+        eval_results.update({'reliable_rois': reliable_rois}) 
+        
+        return eval_results, eval_params #deviants
     
-        # Get RF dir for current fit type         
-        rfdir, fit_desc = fitrf.create_rf_dir(self.animalid, self.session, 
-                                              self.fov, self.name, traceid=self.traceid,
-                                              response_type=response_type, fit_thr=fit_thr)
-        
-        bootresults = evalrfs.evaluate_rfs(estats, rfdir=rfdir, 
-                                           n_bootstrap_iters=n_bootstrap_iters, 
-                                           n_resamples=n_resamples,
-                                           ci=ci, n_processes=n_processes, 
-                                           sigma_scale=sigma_scale, create_new=create_new)
-        
 
-        # Compare regression fit to bootstrapped params
-        statsdir, stats_desc = create_stats_dir(self.animalid, self.session, self.fov,
-                                                      traceid=self.traceid, 
-                                                      trace_type=self.trace_type,
-                                                      response_type=response_type, 
-                                                      responsive_test=None, 
-                                                      responsive_thr=0)
-        
-        data_identifier = '|'.join([self.animalid, self.session, self.fov, self.traceid, self.rois, self.trace_type, fit_desc])
+    def regr_rf_fov(self, pass_criterion='all', sigma_scale=2.35, scale_sigma=True,
+                    marker='o', marker_size=30, fill_marker=True, deviant_color='magenta'):
+        # Get reliable
+        fit_results, fit_params = evalrfs.load_matching_fit_results(self.animalid, 
+                                                self.session, self.fov,
+                                                experiment=self.experiment_type, 
+                                                traceid=self.traceid, 
+                                                response_type=self.response_type,
+                                                sigma_scale=sigma_scale, 
+                                                scale_sigma=scale_sigma)
 
-        #% Fit linear regression for brain coords vs VF coords
-        fit_roi_list =  estats.fits.index.tolist()
-        fig = evalrfs.plot_linear_regr_by_condition(estats.fovinfo['positions'].loc[fit_roi_list], estats.fits )
+        eval_results, eval_params = evalrfs.load_eval_results(self.animalid,
+                                                self.session, self.fov,
+                                                fit_desc=fit_params['fit_desc'],
+                                                response_type=self.response_type)
+
+        reliable_rois = identify_reliable_fits(eval_results, fit_results, fit_params,
+                                           pass_criterion=pass_criterion, 
+                                           plot_boot_distns=False) 
+
+        evaldir = os.path.join(fit_params['rfdir'],'evaluation')
+        data_id = '|'.join([self.animalid, self.session, self.fov, self.traceid, 
+                            self.rois, self.trace_type, fit_params['fit_desc']])
+ 
+        #%% Get measured fits
+        meas_df = fitrf.rfits_to_df(fit_results, row_vals=fit_params['row_vals'], 
+                                    col_vals=fit_params['col_vals'],
+                                    scale_sigma=fit_params['scale_sigma'], 
+                                    sigma_scale=fit_params['sigma_scale'])
+        meas_df = meas_df[meas_df['r2']>fit_params['fit_thr']]
+     
+
+        #%% Fit linear regression for brain coords vs VF coords 
+        fovcoords = self.get_roi_coordinates()
+        posdf = pd.concat([meas_df[['x0', 'y0']].copy(), 
+                           fovcoords['roi_positions'].copy()], axis=1) 
+        posdf = posdf.rename(columns={'x0': 'xpos_rf', 'y0': 'ypos_rf',
+                                      'ml_pos': 'xpos_fov', 'ap_pos': 'ypos_fov'})
+            
+        fig = evalrfs.plot_linear_regr_by_condition(posdf.loc[reliable_rois], 
+                                                    meas_df.loc[reliable_rois])
         pl.subplots_adjust(top=0.9, bottom=0.1, hspace=0.5)
-        label_figure(fig, data_identifier)
-        pl.savefig(os.path.join(statsdir, 'receptive_fields', 'RF_fits-by-az-el.png'))
+        label_figure(fig, data_id)
+        pl.savefig(os.path.join(evaldir, 'RFpos_v_FOVpos_split_axes_reliable_cells.svg'))   
         pl.close()
-        
-        regresults = evalrfs.compare_regr_to_boot_params(bootresults, estats.fovinfo, 
-                                        statsdir=statsdir, data_identifier=data_identifier)
-        
-        # Identify deviants
-        deviants = evalrfs.identify_deviants(regresults, bootresults, estats.fovinfo['positions'], ci=ci, rfdir=rfdir)
-        with open(os.path.join(rfdir, 'evaluation', 'deviants.json'), 'w') as f:
-            json.dump(deviants, f, indent=4)
 
-        return deviants
-    
-    
-        #%%
+        reg_results = evalrfs.compare_regr_to_boot_params(eval_results, posdf, 
+                                            outdir=evaldir, data_id=data_id, 
+                                            deviant_color=deviant_color, marker=marker,
+                                            marker_size=marker_size, 
+                                            fill_marker=fill_marker)
+
+        return posdf, reg_results
 
     
 class Retinobar(Experiment):
