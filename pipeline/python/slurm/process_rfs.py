@@ -54,7 +54,8 @@ for r in old_logs:
 ROOTDIR = '/n/coxfs01/2p-data'
 FOV = args.fov_type
 
-def load_metadata(rootdir='/n/coxfs01/2p-data', experiment='', traceid='traces001'):
+def load_metadata(rootdir='/n/coxfs01/2p-data', aggregate_dir='/n/coxfs01/julianarhee/aggregate-visual-areas',
+                    experiment='', traceid='traces001'):
 
     sdata_fpath = os.path.join(aggregate_dir, 'dataset_info.pkl')
     with open(sdata_fpath, 'rb') as f:
@@ -65,8 +66,16 @@ def load_metadata(rootdir='/n/coxfs01/2p-data', experiment='', traceid='traces00
         exp_list = [e for e in g['experiment'].values if experiment in e]
         for e in exp_list:
             if experiment in e:
-                meta_list.append(tuple(animalid, session, fov, e, traceid))    
-
+                meta_list.append(tuple([animalid, session, fov, e, traceid]))    
+                existing_dirs = glob.glob(os.path.join(rootdir, animalid, session, fov, '*%s*' % e, 
+                                                'traces', '%s*' % traceid, 'receptive_fields', 
+                                                'fit-2dgaus_dff*'))
+                for edir in existing_dirs:
+                    tmp_od = os.path.split(edir)[0]
+                    tmp_rt = os.path.split(edir)[-1]
+                    old_dir = os.path.join(tmp_od, '_%s' % tmp_rt)
+                    os.rename(edir, old_dir)    
+                    info('renamed: %s' % old_dir)
     return meta_list
 
 
