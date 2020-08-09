@@ -1620,7 +1620,7 @@ class ReceptiveFields(Experiment):
         fit_params (dict) - all meta info
         '''
 
-        print("... [RF] getting fits.")
+        print("... [RF] getting fits (response_type: '%s)." % response_type)
 
         fit_results=None
         fit_params=None
@@ -1633,7 +1633,7 @@ class ReceptiveFields(Experiment):
                                                     experiment=self.experiment_type, 
                                                     traceid=self.traceid,
                                                     response_type=response_type)
-                print("... loaded fits (response-type: %s)" % response_type)
+                #print("... loaded fits (response-type: %s)" % response_type)
             except Exception as e:
                 print(".... unable to load RF fit results. re-fitting...")
                 do_fits = True
@@ -1763,7 +1763,7 @@ class ReceptiveFields(Experiment):
             with open(stats_fpath, 'wb') as f:
                 pkl.dump(estats, f, protocol=pkl.HIGHEST_PROTOCOL)
         
-        print("got stats (n fit: %i, n attempted: %i" % (len(estats.rois), estats.nrois))
+        print("... got stats (n fit: %i, n attempted: %i" % (len(estats.rois), estats.nrois))
         return estats #{experiment_id: estats}
 
 

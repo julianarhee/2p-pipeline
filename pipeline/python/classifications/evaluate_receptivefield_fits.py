@@ -527,9 +527,8 @@ def do_regr_on_fov_cis(bootdata, bootcis, posdf, cond='azimuth',
                         fmt='none', color=deviant_color, alpha=0.7, lw=1)
     ax.legend()
 
-    bad_fits = [roi for rix, roi, lo, up, med \
-                in zip(roi_ixs, roi_list, roi_lower, roi_upper, yvals)\
-                if not (lo <= med <= up) ]
+    bad_fits = [roi for rix, (roi, (lo, up), med) \
+                in enumerate(zip(roi_list, bootc, rf_pos)) if not (lo <= med <= up) ]
 
     print("[%s] N deviants: %i (of %i reliable fits) | %i bad fits" % (cond, len(deviants), len(roi_list), len(bad_fits)))
  
@@ -667,8 +666,7 @@ def plot_linear_regr_by_condition(posdf, meas_df,):
 
         rmse = np.sqrt(skmetrics.mean_squared_error(yv, fitv))
         r2 = float(skmetrics.r2_score(yv, fitv))
-        print("[%s] Mean squared error: %.2f" % (cond, rmse))
-        print('[%s] Variance score: %.2f' % (cond, r2))
+        print("[%s] Mean squared error: %.2f | Variance score: %.2f" % (cond, rmse, r2))
         
         ax=axes[ri, 0]
         ax.set_title(cond, fontsize=12, loc='left')
@@ -738,7 +736,7 @@ def compare_regr_to_boot_params(eval_results, posdf, xlim=None, ylim=None,
     fit_rois = [int(k) for k, g in bootdata.groupby(['cell'])]    
     pass_rois = eval_results['pass_cis'].index.tolist()
     reliable_rois = get_reliable_fits(eval_results['pass_cis'], pass_criterion=pass_criterion)
-    print('%i reliable of %i fit (thr>.5)' % (len(reliable_rois), len(pass_rois)))
+    #print('%i reliable of %i fit (thr>.5)' % (len(reliable_rois), len(pass_rois)))
     
     #% # Plot bootstrapped param CIs + regression CI
     xaxis_lim = max([xlim, ylim])
@@ -953,7 +951,7 @@ def identify_reliable_fits(eval_results, fit_results, fit_params, pass_criterion
     pass_rois = meas_df.index.tolist()
     # Plot distribution of params w/ 95% CI
     if plot_boot_distns:
-        print("... plotting boot distn.\n(to: %s" % outdir)
+        print("... plotting boot distn") #.\n(to: %s" % outdir)
         for r in glob.glob(os.path.join(outdir, 'roi*')):
             os.remove(r)
         plot_eval_summary(meas_df, fit_results, eval_results, reliable_rois=pass_rois, #reliable_rois,
@@ -1159,15 +1157,18 @@ def do_rf_fits_and_evaluation(animalid, session, fov, rfname=None, traceid='trac
 
     fovcoords = exp.get_roi_coordinates()
     marker_size=30; fill_marker=True; marker='o';
-    reg_results, posdf = regr_rf_fov(fov_coords, fit_results, fit_params, eval_results, 
-                                     data_id=data_id, marker=marker, marker_size=marker_size, 
+    reg_results, posdf = regr_rf_fov(fovcoords, fit_results, fit_params, eval_results, data_id=data_id,
+                                     pass_criterion=pass_criterion, marker=marker, marker_size=marker_size, 
                                      fill_marker=fill_marker, deviant_color=deviant_color)
     
     return eval_results, eval_params
 
 
-def regr_rf_fov(fov_coords, fit_results, fit_params, eval_results, data_id='ID',
-                marker='o', marker_size=20, fill_marker=True):
+def regr_rf_fov(fovcoords, fit_results, fit_params, eval_results, 
+                pass_criterion='all', data_id='ID', 
+                deviant_color='magenta', marker='o', 
+                marker_size=20, fill_marker=True):
+    reliable_rois = get_reliable_fits(eval_results['pass_cis'], pass_criterion=pass_criterion)
 
     #%% Get measured fits
     meas_df = fitrf.rfits_to_df(fit_results,
@@ -1191,6 +1192,7 @@ def regr_rf_fov(fov_coords, fit_results, fit_params, eval_results, data_id='ID',
     #%% Compare regression fit to bootstrapped params 
     reg_results = compare_regr_to_boot_params(eval_results, posdf, 
                                             outdir=evaldir, data_id=data_id, 
+                                            pass_criterion=pass_criterion,
                                             deviant_color=deviant_color, marker=marker,
                                             marker_size=marker_size, fill_marker=fill_marker)
                                             #filter_weird=filter_weird, plot_all_cis=plot_all_cis 
@@ -1201,6 +1203,7 @@ def regr_rf_fov(fov_coords, fit_results, fit_params, eval_results, data_id='ID',
 #                                 ci=ci, rfdir=rfdir)    
 ##    with open(os.path.join(rfdir, 'evaluation', 'deviants_bothconds.json'), 'w') as f:
 #        json.dump(deviants, f, indent=4)
+    print('%i reliable of %i fit (thr>.5)' % (len(reg_results['reliable_rois']), len(meas_df)))
 
     return reg_results, posdf #deviants
 
