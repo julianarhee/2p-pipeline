@@ -91,15 +91,19 @@ def calculate_roi_coords(masks, zimg, roi_list=None, convert_um=True):
     
     Returns:
         fovinfo (dict)
-            'positions': 
-                dataframe of azimuth (xpos) and elevation (ypos) for cell's 
-                cortical position and cell's RF position (i.e., 'posdf')
+            'roi_positions': dataframe
+                fov_xpos: micron-converted fov position (IRL is AP-axis)
+                fov_ypos: " " (IRL is ML-axis)
+                fov_xpos_pix: coords in pixel space
+                fov_ypos_pix': " "
+                ml_pos: transformed, rotated coords
+                ap_pos: transformed, rotated coors (natural view)
             'zimg': 
                 (array) z-projected image 
             'roi_contours': 
-                (list) roi contours, from classifications.convert_coords.contours_from_masks()
+                (list) roi contours, classifications.convert_coords.contours_from_masks()
             'xlim' and 'ylim': 
-                (float) FOV limits (in pixels or um) for azimuth and elevation axes
+                (float) FOV limits (in pixels or um) for (natural) azimuth and elevation axes
     '''
 
         
@@ -152,7 +156,7 @@ def get_roi_position_in_fov(tmp_roi_contours, roi_list=None,
         xaxis_conversion = 2.312
         yaxis_conversion = 1.904
     '''
-    print("not sorting")
+    print("... (not sorting)")
 
     if not convert_um:
         xaxis_conversion = 1.
@@ -162,7 +166,7 @@ def get_roi_position_in_fov(tmp_roi_contours, roi_list=None,
         (xaxis_conversion, yaxis_conversion) = get_pixel_size()
 
     # Get ROI centroids:
-    print(tmp_roi_contours[0])
+    #print(tmp_roi_contours[0])
     centroids = [get_contour_center(cnt[1]) for cnt in tmp_roi_contours]
 
     # Convert pixels to um:

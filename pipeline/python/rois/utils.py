@@ -47,6 +47,7 @@ def load_roi_coords(animalid, session, fov, roiid=None,
 
     if not create_new:
         try:
+            print("... loading roi coords")
             with open(fovinfo_fpath, 'rb') as f:
                 fovinfo = pkl.load(f)
             assert 'fov_xpos' in fovinfo.keys() and 'ml_pos' in fovinfo.keys(), "Bad fovinfo file, redoing"
