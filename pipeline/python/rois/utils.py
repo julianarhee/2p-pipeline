@@ -50,7 +50,7 @@ def load_roi_coords(animalid, session, fov, roiid=None,
             print("... loading roi coords")
             with open(fovinfo_fpath, 'rb') as f:
                 fovinfo = pkl.load(f)
-            assert 'fov_xpos' in fovinfo.keys() and 'ml_pos' in fovinfo.keys(), "Bad fovinfo file, redoing"
+            assert 'roi_positions' in fovinfo.keys(), "Bad fovinfo file, redoing"
         except AssertionError:
             create_new = True
 
