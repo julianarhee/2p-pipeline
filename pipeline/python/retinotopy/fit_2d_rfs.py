@@ -1306,7 +1306,8 @@ def load_fit_results(animalid, session, fov, experiment='rfs',
     
 def fit_rfs(avg_resp_by_cond, fit_params={}, #row_vals=[], col_vals=[], fitparams=None,
             response_type='dff', roi_list=None, #scale_sigma=True,
-            rf_results_fpath='/tmp/fit_results.pkl', data_identifier='METADATA', 
+            #rf_results_fpath='/tmp/fit_results.pkl', 
+            data_identifier='METADATA', 
             response_thr=None, create_new=False):
 
     '''
@@ -1334,7 +1335,8 @@ def fit_rfs(avg_resp_by_cond, fit_params={}, #row_vals=[], col_vals=[], fitparam
     col_vals = fit_params['col_vals']
 
     #% Save params
-    rfdir = os.path.split(rf_results_fpath)[0]    
+    rfdir = fit_params['rfdir'] #os.path.split(rf_results_fpath)[0]    
+    rf_results_fpath = os.path.join(rfdir, 'fit_results.pkl')
     rf_params_fpath = os.path.join(rfdir, 'fit_params.json')
     with open(rf_params_fpath, 'w') as f:
         json.dump(fit_params, f, indent=4)
@@ -1379,7 +1381,7 @@ def fit_rfs(avg_resp_by_cond, fit_params={}, #row_vals=[], col_vals=[], fitparam
 #    if len(RF.keys())>0:
 #        fit_results = RF #{'fit_results': RF, #RF
 #                   #'fit_params': fit_params}
-#                   
+#        
     with open(rf_results_fpath, 'wb') as f:
         pkl.dump(fit_results, f, protocol=pkl.HIGHEST_PROTOCOL)
 
@@ -1432,7 +1434,7 @@ def get_rf_to_fov_info(masks, rfdf, zimg, rfname='rfs', #rfdir='/tmp', rfname='r
     
     Returns:
         fovinfo (dict)
-            'positions': 
+            'roi_positions': 
                 dataframe of azimuth (xpos) and elevation (ypos) for cell's 
                 cortical position and cell's RF position (i.e., 'posdf')
             'zimg': 
@@ -1493,24 +1495,27 @@ def get_rf_to_fov_info(masks, rfdf, zimg, rfname='rfs', #rfdir='/tmp', rfname='r
 
 
 #%%
-
-
+#%%
 def get_fit_params(animalid, session, fov, run='rfs', traceid='traces001', 
                    response_type='dff', fit_thr=0.5, 
                    post_stimulus_sec=0.5, sigma_scale=2.35, scale_sigma=True,
                    rootdir='/n/coxfs01/2p-data'):
     
     screen = get_screen_dims()
-    run_info, sdf = load_run_info(animalid, session, fov, run, traceid=traceid, rootdir=rootdir)
+    run_info, sdf = load_run_info(animalid, session, fov, run,
+                                   traceid=traceid, rootdir=rootdir)
     
-    row_vals = sorted(sdf[rows].unique())
-    col_vals = sorted(sdf[cols].unique())
+    row_vals = sorted(sdf['ypos'].unique())
+    col_vals = sorted(sdf['xpos'].unique())
 
     fr = run_info['framerate'] 
-    #    nframes_post_onset = int(round(nframes_on*2.0))
-    #nframes_post_onset = nframes_on + int(round(1.*fr))       
     nframes_post_onset = int(round(post_stimulus_sec * fr))
     
+    rfdir, fit_desc = create_rf_dir(animalid, session, fov, 
+                                    'combined_%s_static' % run, traceid=traceid,
+                                    response_type=response_type, fit_thr=fit_thr)
+
+
     fit_params = {
             'response_type': response_type,
             'frame_rate': fr,
@@ -1526,8 +1531,13 @@ def get_fit_params(animalid, session, fov, run='rfs', traceid='traces001',
             'scale_sigma': scale_sigma,
             'screen': screen,
             'row_vals': row_vals,
-            'col_vals': col_vals
+            'col_vals': col_vals,
+            'rfdir': rfdir,
+            'fit_desc': fit_desc
             } 
+   
+    with open(os.path.join(rfdir, 'fit_params.json'), 'w') as f:
+        json.dump(fit_params, f, indent=4, sort_keys=True)
     
     return fit_params
 
@@ -1573,7 +1583,6 @@ def fit_2d_receptive_fields(animalid, session, fov, run, traceid,
 
     # Create results outfile, or load existing:
     do_fits = False
-    rf_results_fpath = os.path.join(rfdir, 'fit_results.pkl') #results_outfile = 'RESULTS_%s.pkl' % fit_desc
     do_fits = create_new
     if create_new is False:
         try:
@@ -1617,7 +1626,6 @@ def fit_2d_receptive_fields(animalid, session, fov, run, traceid,
         # Do fits 
         fit_results, fit_params = fit_rfs(avg_resp_by_cond, response_type=response_type, 
                             fit_params=fit_params,
-                            rf_results_fpath=rf_results_fpath, 
                             data_identifier=data_id, create_new=create_new)        
         try:
             # Convert to dataframe
