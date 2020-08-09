@@ -1659,11 +1659,12 @@ class ReceptiveFields(Experiment):
                 print("*** NO RF fits found ***")
                 traceback.print_exc()
 
-        roi_list = [r for r, res in fit_results.items() \
-                    if res['r2'] > fit_thr]
-        nrois_total = len(fit_results.keys())
-        print("... fit results (%i of %i attempted fits with R2 > %.2f)" 
-                    % (len(roi_list), nrois_total, fit_thr))
+        if fit_results is not None:
+            roi_list = [r for r, res in fit_results.items() \
+                        if res['r2'] > fit_thr]
+            nrois_total = len(fit_results.keys())
+            print("... fit results (%i of %i attempted fits with R2 > %.2f)" 
+                        % (len(roi_list), nrois_total, fit_thr))
 
         return fit_results, fit_params #roi_list, nrois_total
 
@@ -1715,8 +1716,9 @@ class ReceptiveFields(Experiment):
          
         if fit_results is None:
             print("--- NO STATS (%s)" % response_type)
+            #create_new=True 
             return None
-
+ 
         roi_list = [r for r, res in fit_results.items() \
                     if res['r2'] > fit_thr]
         nrois_total = len(fit_results.keys())

@@ -1339,7 +1339,7 @@ def fit_rfs(avg_resp_by_cond, fit_params={}, #row_vals=[], col_vals=[], fitparam
     rf_results_fpath = os.path.join(rfdir, 'fit_results.pkl')
     rf_params_fpath = os.path.join(rfdir, 'fit_params.json')
     with open(rf_params_fpath, 'w') as f:
-        json.dump(fit_params, f, indent=4)
+        json.dump(fit_params, f, indent=4, sort_keys=True)
     
     # Create subdir for saving each roi's fit
     if not os.path.exists(os.path.join(rfdir, 'roi_fits')):
@@ -1406,7 +1406,12 @@ def create_rf_dir(animalid, session, fov, run_name,
     fit_desc = get_fit_desc(response_type=response_type)
 
     fov_dir = os.path.join(rootdir, animalid, session, fov)
-    traceid_dirs = [t for t in glob.glob(os.path.join(fov_dir, '*%s*' % run_name, 'traces', '%s*' % traceid)) if 'combined' in t]
+    #print(fov_dir, run_name)
+    #print(glob.glob(os.path.join(fov_dir, run_name)))
+    if 'combined' in run_name:
+        traceid_dirs = [t for t in glob.glob(os.path.join(fov_dir, run_name, 'traces', '%s*' % traceid))]
+    else: 
+        traceid_dirs = [t for t in glob.glob(os.path.join(fov_dir, 'combined_%s_*' % run_name, 'traces', '%s*' % traceid))]
     if len(traceid_dirs) > 1:
         print "More than 1 trace ID found:"
         for ti, traceid_dir in enumerate(traceid_dirs):
@@ -1510,9 +1515,10 @@ def get_fit_params(animalid, session, fov, run='rfs', traceid='traces001',
 
     fr = run_info['framerate'] 
     nframes_post_onset = int(round(post_stimulus_sec * fr))
-    
+   
+     
     rfdir, fit_desc = create_rf_dir(animalid, session, fov, 
-                                    'combined_%s_static' % run, traceid=traceid,
+                                    run, traceid=traceid,
                                     response_type=response_type, fit_thr=fit_thr)
 
 
@@ -1624,6 +1630,7 @@ def fit_2d_receptive_fields(animalid, session, fov, run, traceid,
         avg_resp_by_cond = group_trial_values_by_cond(zscores, trials_by_cond)
        
         # Do fits 
+        print(".getting fits.")
         fit_results, fit_params = fit_rfs(avg_resp_by_cond, response_type=response_type, 
                             fit_params=fit_params,
                             data_identifier=data_id, create_new=create_new)        
@@ -1640,7 +1647,7 @@ def fit_2d_receptive_fields(animalid, session, fov, run, traceid,
             # Plot all RF maps for fit cells (limit = 60 to plot)
             fig = plot_best_rfs(fit_roi_list, avg_resp_by_cond, fitdf_pos, fit_params,
                                 single_colorbar=True, plot_ellipse=True, nr=6, nc=10)
-            label_figure(fig, data_i)
+            label_figure(fig, data_id)
             figname = 'top%i_fit_thr_%.2f_%s_ellipse_sc' % (len(fit_roi_list), fit_thr, fit_desc)
             pl.savefig(os.path.join(rfdir, '%s.png' % figname))
             print figname
