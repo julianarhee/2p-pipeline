@@ -686,8 +686,7 @@ def plot_kde_maxima(kde_results, weights, linX, linY, screen, use_peak=True, \
         cgy = kde_results['center_y'] #np.sum(linY * mean_fits) / np.sum(mean_fits)
         centroid_type = 'center'
         
-    print('%s x: %f' % (centroid_type, cgx))
-    print('%s y: %f' % (centroid_type, cgy))
+    print('%s x, y: (%f, %f)' % (centroid_type, cgx, cgy))
     ax.scatter(cgx, cgy, color='k', marker='+', s=1e4);
     ax.text(cgx+3, cgy+3, '%s x, y:\n(%.2f, %.2f)' % (centroid_type, cgx, cgy), color='k', fontweight='bold')
 
@@ -720,7 +719,7 @@ def plot_best_rfs(fit_roi_list, avg_resp_by_cond, fitdf, fit_params,
     cbar_mode = 'single' if single_colorbar else  'each'
     
     vmin = round(max([avg_resp_by_cond.min().min(), 0]), 1)
-    vmax = round(min([5, avg_resp_by_cond.max().max()]), 1)
+    vmax = round(min([.5, avg_resp_by_cond.max().max()]), 1)
     
     fig = pl.figure(figsize=(nc*2,nr+2))
     grid = AxesGrid(fig, 111,
@@ -980,9 +979,8 @@ def plot_rfs_to_screen(fitdf, sdf, screen, sigma_scale=2.35, fit_roi_list=[]):
     majors = np.array([np.abs(fitdf['sigma_x'][rid]*sigma_scale) for rid in fit_roi_list])
     minors = np.array([np.abs(fitdf['sigma_y'][rid]*sigma_scale) for rid in fit_roi_list])
 
-    print "Avg sigma-x, -y: %.2f" % majors.mean()
-    print "Avg sigma-y: %.2f" % minors.mean()
-    print "Average RF size: %.2f" % np.mean([majors.mean(), minors.mean()])
+    print "Avg sigma-x, -y: %.2f, %.2f (avg sz, %.2f)" % (majors.mean(), minors.mean(), 
+                                                                np.mean([majors.mean(), minors.mean()]))
     
     avg_rfs = (majors + minors) / 2.
     
@@ -1257,8 +1255,8 @@ def target_fov(avg_resp_by_cond, fitdf, screen, fit_roi_list=[], row_vals=[], co
         json.dump(kde_results, f, sort_keys=True, indent=4)
 
     
-    print("AZIMUTH bounds: %s" % str(kde_results['az_bounds']))
-    print("ELEV bounds: %s" % str(kde_results['el_bounds']))
+    print("AZIMUTH bounds: [%.2f, %.2f]" % (kde_results['az_bounds'][0], kde_results['az_bounds'][1]))
+    print("ELEV bounds: [%.2f, %.2f]" % (kde_results['el_bounds'][0], kde_results['el_bounds'][1]))
     print("CENTER: %.2f, %.2f" % (kde_results['center_x'], kde_results['center_y']))
 
     #%
@@ -1286,11 +1284,10 @@ def load_fit_results(animalid, session, fov, experiment='rfs',
             assert response_type is not None, "No response_type or fit_desc provided"
             fit_desc = 'fit-2dgaus_%s' % response_type
     
-        if int(session) < 2019511:
-            rfname = 'gratings'
-        else:
-            rfname = experiment.split('_')[1] if 'combined' in experiment else experiment
+        rfname = 'gratings' if int(session) < 201905211 else experiment
+        rfname = rfname.split('_')[1] if 'combined' in rfname else rfname
 
+        #print("Loading results: %s" % rfname)
         rfdir = glob.glob(os.path.join(rootdir, animalid, session, fov, 
                         '*%s_*' % rfname, #experiment
                         'traces', '%s*' % traceid, 'receptive_fields', 
@@ -1347,22 +1344,26 @@ def fit_rfs(avg_resp_by_cond, fit_params={}, #row_vals=[], col_vals=[], fitparam
     if not os.path.exists(os.path.join(rfdir, 'roi_fits')):
         os.makedirs(os.path.join(rfdir, 'roi_fits'))
 
-    if roi_list is None:
-        if response_thr == None:
-            roi_list = avg_resp_by_cond.columns.tolist()
-            response_thr = 0
-        else:    
-            roi_list = [r for r in avg_resp_by_cond.columns.tolist() \
-                                if avg_resp_by_cond[r].max() >= response_thr]
-            print("%i out of %i cells meet min req. of %.2f" % 
-                    (len(roi_list), avg_resp_by_cond.shape[1], response_thr))
-
+    roi_list = avg_resp_by_cond.columns.tolist()
+#    if roi_list is None:
+#        if response_thr == None:
+#            roi_list = avg_resp_by_cond.columns.tolist()
+#            response_thr = 0
+#        else:    
+#            roi_list = [r for r in avg_resp_by_cond.columns.tolist() \
+#                                if avg_resp_by_cond[r].max() >= response_thr]
+#            print("%i out of %i cells meet min req. of %.2f" % 
+#                    (len(roi_list), avg_resp_by_cond.shape[1], response_thr))
+#
     bad_rois = [r for r in roi_list if avg_resp_by_cond.max()[r] > 1.0]
     print("%i bad rois (skipping: %s)" % (len(bad_rois), str(bad_rois)))
 
     fit_results = {}
     for rid in roi_list:
         #print rid
+        if rid in bad_rois:
+            continue
+
         roi_fit_results, fig = plot_and_fit_roi_RF(avg_resp_by_cond[rid], 
                                                     row_vals, col_vals,
                                                     scale_sigma=scale_sigma, 
@@ -1635,7 +1636,6 @@ def fit_2d_receptive_fields(animalid, session, fov, run, traceid,
         avg_resp_by_cond = group_trial_values_by_cond(zscores, trials_by_cond)
        
         # Do fits 
-        print(".getting fits.")
         fit_results, fit_params = fit_rfs(avg_resp_by_cond, response_type=response_type, 
                             fit_params=fit_params,
                             data_identifier=data_id, create_new=create_new)        
@@ -1689,7 +1689,7 @@ def fit_2d_receptive_fields(animalid, session, fov, run, traceid,
         yunit_sec = round(fit_params['nframes_on']/fit_params['frame_rate'], 1)
             
         best_rois_figdir = os.path.join(rfdir, 'best_rfs', '%s_%s' % (plot_response_type, plot_format))
-        if not os.path.exists(best_rois_figdir):
+        if not os.path.isdir(best_rois_figdir):
             os.makedirs(best_rois_figdir)
     
         #if not do_fits: # need to load results
