@@ -97,14 +97,15 @@ def bootstrap_rf_params(rdf, response_type='dff',
             
         xres = np.unique(np.diff(row_vals))[0]
         yres = np.unique(np.diff(col_vals))[0]
-        min_sigma=5; max_sigma=50;
+        min_sigma=2.5; max_sigma=50;
 
         grouplist = [group_configs(group, response_type) for config, group in rdf.groupby(['config'])]
         responses_df = pd.concat(grouplist, axis=1) # indices = trial reps, columns = conditions
 
         # Get mean response across re-sampled trials for each condition (i.e., each position)
         # Do this n-bootstrap-iters times
-        bootdf = pd.concat([responses_df.sample(n_resamples, replace=True).mean(axis=0) for ni in range(n_bootstrap_iters)], axis=1)
+        bootdf = pd.concat([responses_df.sample(n_resamples, replace=True).mean(axis=0) 
+                                for ni in range(n_bootstrap_iters)], axis=1)
         
         # Fit receptive field for each set of bootstrapped samples 
         bparams = []; #x0=[]; y0=[];
@@ -247,9 +248,9 @@ def run_bootstrap_evaluation(estats, fit_params,
     # Plot bootstrapped distn of x0 and y0 parameters for each roi (w/ CIs)
     counts = bootdata.groupby(['cell']).count()['x0']
     unreliable = counts[counts < n_bootstrap_iters*0.5].index.tolist()
-    print("%i cells seem to have unreliable estimates." % len(unreliable))
+    print("%i cells seem to have <50%% iters with fits" % len(unreliable))
     
-    eval_results = {'data': bootdata, 'params': bootparams, 'cis': bootcis}
+    eval_results = {'data': bootdata, 'params': bootparams, 'cis': bootcis, 'unreliable': unreliable}
     
     return eval_results
 
