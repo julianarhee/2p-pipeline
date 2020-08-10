@@ -723,7 +723,7 @@ class Session():
     
                 
     def load_data(self, experiment=None, traceid='traces001', trace_type='corrected',\
-                  make_equal=True, rootdir='/n/coxfs01/2p-data', update_self=True, add_offset=True):
+                  make_equal=False, rootdir='/n/coxfs01/2p-data', update_self=True, add_offset=True):
         
         '''Set experiment = None to load all data'''
         
@@ -765,7 +765,7 @@ class Session():
         return experiment_list
     
     def get_experiment_data(self, experiment=None, traceid='traces001', trace_type='corrected',\
-                            add_offset=True, rootdir='/n/coxfs01/2p-data', make_equal=True):
+                            add_offset=True, rootdir='/n/coxfs01/2p-data', make_equal=False):
         experiment_dict = {}
 
         all_experiments = self.get_experiment_list(traceid=traceid, trace_type=trace_type, rootdir=rootdir)
@@ -825,7 +825,7 @@ class Session():
     
     def get_grouped_stats(self, experiment_type, response_type='dff',
                           responsive_thr=0.01, responsive_test=None, n_stds=2.5,
-                          update=True, get_grouped=True, make_equal=True,
+                          update=True, get_grouped=True, make_equal=False,
                           nframes_post=0.,
                           pretty_plots=False, n_processes=1, add_offset=True, 
                           traceid='traces001', trace_type='corrected',
@@ -1048,8 +1048,8 @@ class Experiment(object):
         return sdf
     
     def load(self, trace_type='corrected', update_self=True, 
-            make_equal=False, add_offset=True, 
-            rootdir='/n/coxfs01/2p-data', create_new=False):
+                make_equal=False, add_offset=True, 
+                rootdir='/n/coxfs01/2p-data', create_new=False):
         '''
         Populates trace_type and data
         '''
@@ -1682,7 +1682,7 @@ class ReceptiveFields(Experiment):
         do_fits will redo 2d RF fits.
 
         '''
-        make_equal = kwargs.get('make_equal', True)
+        make_equal = kwargs.get('make_equal', False)
         get_grouped = kwargs.get('get_grouped', True)
         print("... getting stats, reload_data=%s" % str(reload_data))
 
@@ -1890,9 +1890,9 @@ class Retinobar(Experiment):
     
 
     def get_stats(self, responsive_test='ROC', responsive_thr=0.01, 
-                  make_equal=True,
-                  receptive_field_fit='zscore0.00_no_trim', 
-                  get_grouped=True, nframes_post=0):
+                  make_equal=False):
+                  #receptive_field_fit='zscore0.00_no_trim', 
+                  #get_grouped=True, nframes_post=0):
         print("... [%s] Loading roi stats and cell list..." % self.name)
 
         rstats, roi_list, nrois_total, trials_by_cond = self.get_responsive_cells(
