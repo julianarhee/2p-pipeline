@@ -88,7 +88,7 @@ def group_configs(group, response_type):
 def bootstrap_rf_params(rdf, response_type='dff',
                         row_vals=[], col_vals=[], sigma_scale=2.35,
                         n_resamples=10, n_bootstrap_iters=1000):
-    print(rdf.index.tolist()[0])
+    #print(rdf.index.tolist()[0])
      
     paramsdf = None
     try:
@@ -204,7 +204,7 @@ def pool_bootstrap(rdf_list, params, n_processes=1):
 #print(results)
 #
 
-def bootstrap_param_fits(estats, fit_params, 
+def run_bootstrap_evaluation(estats, fit_params, 
                             n_bootstrap_iters=1000, n_resamples=10,
                             ci=0.95, n_processes=1):
     eval_results = {}
@@ -903,7 +903,7 @@ def evaluate_rfs(estats, fit_params,
             
     if create_new:
         print("... do bootstrap analysis")
-        eval_results = bootstrap_param_fits(estats, fit_params, 
+        eval_results = run_bootstrap_evaluation(estats, fit_params, 
                                              n_bootstrap_iters=n_bootstrap_iters, 
                                              n_resamples=n_resamples,
                                              ci=ci, n_processes=n_processes)
@@ -1074,7 +1074,7 @@ def do_rf_fits_and_evaluation(animalid, session, fov, rfname=None, traceid='trac
                               fit_thr=0.5, n_resamples=10, n_bootstrap_iters=1000, 
                               post_stimulus_sec=0., sigma_scale=2.35, scale_sigma=True,
                               ci=0.95, pass_criterion='all',
-                              plot_boot_distns=True,   
+                              plot_boot_distns=True, plot_pretty_rfs=True,  
                               deviant_color='dodgerblue', filter_weird=False, plot_all_cis=False,
                               do_fits=False, do_evaluation=False, reload_data=False,
                               create_stats=False,
@@ -1116,11 +1116,13 @@ def do_rf_fits_and_evaluation(animalid, session, fov, rfname=None, traceid='trac
     estats = exp.get_stats(response_type=response_type, fit_thr=fit_thr, 
                             scale_sigma=scale_sigma, sigma_scale=sigma_scale,
                             nframes_post=nframes_post,
-                            do_fits=do_fits, pretty_plots=do_fits,
+                            do_fits=do_fits, plot_pretty_rfs=plot_pretty_rfs,
                             return_all_rois=False,
                             reload_data=reload_data,
                             create_new=create_stats)
-     
+    
+    assert estats is not None, "Failed to get exp.get_stats(). ABORTING."
+ 
     rfdir = estats.fitinfo['rfdir']
     fit_desc = estats.fitinfo['fit_desc'] 
     fit_params = estats.fitinfo
@@ -1149,7 +1151,11 @@ def do_rf_fits_and_evaluation(animalid, session, fov, rfname=None, traceid='trac
         return {} #None
 
     ##------------------------------------------------
-    #%% Identify reliable fits 
+    #%% Identify reliable fits
+    if not do_fits: # need to load fit results
+        fit_results, fit_params = exp.get_rf_fits(response_type=response_type, fit_thr=fit_thr, 
+                                                    make_pretty_plots=False, reload_data=False,create_new=False)
+
     reliable_rois = identify_reliable_fits(eval_results, fit_results, fit_params,
                                            pass_criterion=pass_criterion, 
                                            plot_boot_distns=plot_boot_distns, #do_evaluation,
