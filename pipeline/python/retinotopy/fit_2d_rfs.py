@@ -1357,7 +1357,10 @@ def fit_rfs(avg_resp_by_cond, fit_params={}, #row_vals=[], col_vals=[], fitparam
 #
     bad_rois = [r for r in roi_list if avg_resp_by_cond.max()[r] > 1.0]
     print("%i bad rois (skipping: %s)" % (len(bad_rois), str(bad_rois)))
-
+    badr_fpath = os.path.join(rfdir.split('/receptive_fields/')[0], 'funky.json')
+    with open(badr_fpath, 'w') as f:
+        json.dump(bad_rois)
+     
     fit_results = {}
     for rid in roi_list:
         #print rid
