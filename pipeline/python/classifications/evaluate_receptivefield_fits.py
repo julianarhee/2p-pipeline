@@ -1091,7 +1091,7 @@ def do_rf_fits_and_evaluation(animalid, session, fov, rfname=None, traceid='trac
     S = util.Session(animalid, session, fov)
     experiment_list = S.get_experiment_list(traceid=traceid)
     assert 'rfs' in experiment_list or 'rfs10' in experiment_list, "NO receptive field experiments found!"
-    if rfname is None:
+    if rfname is None or 'rfs' not in rfname:
         rfname = 'rfs10' if 'rfs10' in experiment_list else 'rfs'      
    
     # Create experiment object 
@@ -1153,8 +1153,8 @@ def do_rf_fits_and_evaluation(animalid, session, fov, rfname=None, traceid='trac
 
     ##------------------------------------------------
     #%% Identify reliable fits
-    if not do_fits: # need to load fit results
-        fit_results, fit_params = exp.get_rf_fits(response_type=response_type, fit_thr=fit_thr, 
+    #if not do_fits: # need to load fit results
+    fit_results, fit_params = exp.get_rf_fits(response_type=response_type, fit_thr=fit_thr, 
                                                     make_pretty_plots=False, reload_data=False,create_new=False)
 
     reliable_rois = identify_reliable_fits(eval_results, fit_results, fit_params,

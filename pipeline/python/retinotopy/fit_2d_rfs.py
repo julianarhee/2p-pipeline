@@ -1032,9 +1032,9 @@ def plot_rfs_to_screen_pretty(fitdf, sdf, screen, sigma_scale=2.35, fit_roi_list
     majors = np.array([np.abs(fitdf['sigma_x'][rid]*sigma_scale) for rid in fit_roi_list])
     minors = np.array([np.abs(fitdf['sigma_y'][rid]*sigma_scale) for rid in fit_roi_list])
 
-    print "Avg sigma-x, -y: %.2f" % majors.mean()
-    print "Avg sigma-y: %.2f" % minors.mean()
-    print "Average RF size: %.2f" % np.mean([majors.mean(), minors.mean()])
+    #print "Avg sigma-x, -y: %.2f" % majors.mean()
+    #print "Avg sigma-y: %.2f" % minors.mean()
+    #print "Average RF size: %.2f" % np.mean([majors.mean(), minors.mean()])
     
     avg_rfs = (majors + minors) / 2.
     
@@ -1284,10 +1284,10 @@ def load_fit_results(animalid, session, fov, experiment='rfs',
             assert response_type is not None, "No response_type or fit_desc provided"
             fit_desc = 'fit-2dgaus_%s' % response_type
     
-        rfname = 'gratings' if int(session) < 201905211 else experiment
+        rfname = 'gratings' if int(session) < 20190511 else experiment
         rfname = rfname.split('_')[1] if 'combined' in rfname else rfname
 
-        #print("Loading results: %s" % rfname)
+        print("[RF] Loading results: %s" % rfname)
         rfdir = glob.glob(os.path.join(rootdir, animalid, session, fov, 
                         '*%s_*' % rfname, #experiment
                         'traces', '%s*' % traceid, 'receptive_fields', 
@@ -1360,7 +1360,7 @@ def fit_rfs(avg_resp_by_cond, fit_params={}, #row_vals=[], col_vals=[], fitparam
     if len(bad_rois) > 0:
         badr_fpath = os.path.join(rfdir.split('/receptive_fields/')[0], 'funky.json')
         with open(badr_fpath, 'w') as f:
-            json.dump(bad_rois)
+            json.dump(bad_rois, f)
      
     fit_results = {}
     for rid in roi_list:
@@ -1605,6 +1605,7 @@ def fit_2d_receptive_fields(animalid, session, fov, run, traceid,
             fit_results, fit_params = load_fit_results(animalid, session, fov,
                                         experiment=run_name, traceid=traceid,
                                         response_type=response_type)
+
             print "... loaded RF fit results"
             if fit_results is None or fit_params is None: #len(fit_results.keys())==0:
                 do_fits = True
@@ -1733,7 +1734,11 @@ def fit_2d_receptive_fields(animalid, session, fov, run, traceid,
             pl.close()
             
     #%%
-    
+    #if not do_fits: # need to load results
+    fitdf = rfits_to_df(fit_results, scale_sigma=False, 
+                        row_vals=fit_params['row_vals'], col_vals=fit_params['col_vals'],
+                        convert_coords=True)
+
     try:
         fig = plot_rfs_to_screen(fitdf, sdf, fit_params['screen'], fit_roi_list=fit_roi_list)
         label_figure(fig, data_id)
