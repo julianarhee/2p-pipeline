@@ -1317,14 +1317,10 @@ def fit_rfs(avg_resp_by_cond, fit_params={}, #row_vals=[], col_vals=[], fitparam
             response_thr=None, create_new=False):
 
     '''
-    Main fitting function.
-    
+    Main fitting function.    
     Saves 2 output files for fitting: 
-    
-    fit_results.pkl 
-        stuff
-        
-    fit_params.json
+        fit_results.pkl 
+        fit_params.json
     '''
 
     trim=False; hard_cutoff=False; map_thr=''; set_to_min=False; 
@@ -1360,6 +1356,9 @@ def fit_rfs(avg_resp_by_cond, fit_params={}, #row_vals=[], col_vals=[], fitparam
                                 if avg_resp_by_cond[r].max() >= response_thr]
             print("%i out of %i cells meet min req. of %.2f" % 
                     (len(roi_list), avg_resp_by_cond.shape[1], response_thr))
+
+    bad_rois = [r for r in roi_list if avg_resp_by_cond.max()[r] > 1.0]
+    print("%i bad rois (skipping: %s)" % (len(bad_rois), str(bad_rois)))
 
     fit_results = {}
     for rid in roi_list:
@@ -1559,7 +1558,7 @@ def fit_2d_receptive_fields(animalid, session, fov, run, traceid,
                             trace_type='corrected', response_type='dff', 
                             post_stimulus_sec=0.5,
                             make_pretty_plots=False, plot_response_type='dff', plot_format='pdf',
-                            visual_area='', select_rois=False, segment=False,
+                            #visual_area='', select_rois=False, segment=False,
                             ellipse_ec='w', ellipse_fc='none', ellipse_lw=2, 
                             plot_ellipse=True, scale_sigma=True, sigma_scale=2.35,
                             linecolor = 'darkslateblue', cmap = 'bone', legend_lw=2, 
@@ -1579,7 +1578,7 @@ def fit_2d_receptive_fields(animalid, session, fov, run, traceid,
 
     traceid_dir = rfdir.split('/receptive_fields/')[0]
     data_fpath = os.path.join(traceid_dir, 'data_arrays', 'np_subtracted.npz')
-    data_id = '|'.join([animalid, session, fov, run, traceid, visual_area, fit_desc])
+    data_id = '|'.join([animalid, session, fov, run, traceid, fit_desc])
 
     if not os.path.exists(data_fpath):
         # Realign traces
@@ -1594,7 +1593,6 @@ def fit_2d_receptive_fields(animalid, session, fov, run, traceid,
         os.makedirs(rfdir)
 
     # Create results outfile, or load existing:
-    do_fits = False
     do_fits = create_new
     if create_new is False:
         try:
@@ -1631,8 +1629,9 @@ def fit_2d_receptive_fields(animalid, session, fov, run, traceid,
         # Z-score or dff the traces:
         trials_by_cond = get_trials_by_cond(labels)
         zscored_traces, zscores = process_traces(raw_traces, labels, 
-                                                response_type=response_type,
+                                                response_type=fit_params['response_type'],
                                                 nframes_post_onset=fit_params['nframes_post_onset'])
+        
         avg_resp_by_cond = group_trial_values_by_cond(zscores, trials_by_cond)
        
         # Do fits 
@@ -1861,10 +1860,10 @@ def extract_options(options):
 #%%
 
 rootdir = '/n/coxfs01/2p-data'
-animalid = 'JC084' #'JC097' #'JC084' #'JC059'
-session = '20190522' #'20190623' #'20190522' #'20190227'
+animalid = 'JC083' #'JC097' #'JC084' #'JC059'
+session = '20190510' #'20190623' #'20190522' #'20190227'
 fov = 'FOV1_zoom2p0x' #'FOV4_zoom4p0x'
-run = 'combined_rfs_static'
+run = 'combined_gratings_static'
 traceid = 'traces001' #'traces001'
 #segment = False
 #visual_area = 'V1'
@@ -1874,9 +1873,10 @@ response_type = 'dff'
 rows = 'ypos'
 cols = 'xpos'
 fit_thr = 0.5
+post_stimulus_sec = 0.5
 
 options = ['-i', animalid, '-S', session, '-A', fov, '-R', run, '-t', traceid,
-           '--plot', '--new']
+           '--plot', '--new', '-p', post_stimulus_sec]
 
 #if segment:
 #    options.extend(['--segment', '-V', visual_area])
@@ -1907,7 +1907,6 @@ def main(options):
     fit_thr = float(optsE.fit_thr) 
     plot_format = optsE.plot_format
     post_stimulus_sec = float(optsE.post_stimulus_sec)
-     
     reload_data = optsE.reload_data
 
     fit_results, fit_params = fit_2d_receptive_fields(animalid, session, fov, 
