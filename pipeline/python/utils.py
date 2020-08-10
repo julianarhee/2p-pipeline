@@ -253,7 +253,7 @@ def process_and_save_traces(trace_type='dff',
     # SAVE
     data_dir = os.path.split(soma_fpath)[0]
     data_fpath = os.path.join(data_dir, 'corrected.npz')
-    print("Saving corrected data...\nto: %s" %  os.path.split(data_fpath)[-1])
+    print("... Saving corrected data (%s)" %  os.path.split(data_fpath)[-1])
     np.savez(data_fpath, data=raw_traces.values)
   
     # Process dff/df/etc.
@@ -274,12 +274,12 @@ def process_and_save_traces(trace_type='dff',
 
     dff_traces = pd.concat(tmp_dff, axis=0) 
     data_fpath = os.path.join(data_dir, 'dff.npz')
-    print("Saving dff data...\nto: %s" %  os.path.split(data_fpath)[-1])
+    print("... Saving dff data (%s)" %  os.path.split(data_fpath)[-1])
     np.savez(data_fpath, data=dff_traces.values)
 
     df_traces = pd.concat(tmp_df, axis=0) 
     data_fpath = os.path.join(data_dir, 'df.npz')
-    print("Saving df data...\nto: %s" %  os.path.split(data_fpath)[-1])
+    print("... Saving df data (%s)" %  os.path.split(data_fpath)[-1])
     np.savez(data_fpath, data=df_traces.values)
 
     if trace_type=='dff':

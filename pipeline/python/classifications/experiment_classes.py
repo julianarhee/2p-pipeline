@@ -172,7 +172,7 @@ def get_anatomical(animalid, session, fov, channel_num=2, rootdir='/n/coxfs01/2p
     fov_dir = os.path.join(rootdir, animalid, session, fov)
     anatomical_dirs = glob.glob(os.path.join(fov_dir, 'anatomical'))
     try:
-        assert len(anatomical_dirs) > 0, "No anatomicals for current session: (%s | %s | %s)" % (animalid, session, fov)
+        assert len(anatomical_dirs) > 0, "---> (warning): no anatomicals for (%s|%s|%s)" % (animalid, session, fov)
         anatomical_dir = anatomical_dirs[0]
         print("... found %i anatomical runs." % len(anatomical_dirs))
         anatomical_imgs = glob.glob(os.path.join(anatomical_dir, 'processed',
@@ -588,7 +588,7 @@ class Session():
         self.visual_area = visual_area
         self.state = state
         
-        print("[%s] %s - %s\n... creating session object" % (animalid, session, fov))
+        print("Creating session object [%s|%s|%s]" % (animalid, session, fov))
 
         self.anatomical = get_anatomical(animalid, session, fov, rootdir=rootdir)
         
@@ -903,14 +903,16 @@ class Session():
 class Experiment(object):
     def __init__(self, experiment_type, animalid, session, fov, \
                  traceid='traces001', rootdir='/n/coxfs01/2p-data'):
-        print("--- [%s|%s|%s] creating %s object" % (animalid, session, fov, experiment_type))
         self.name = experiment_type
         self.animalid = animalid
         self.session = session
         self.fov = fov
-        self.experiment_type=experiment_type
-        self.get_roi_id(traceid=traceid, rootdir=rootdir)
-            
+        if int(session) < 20190511 and experiment_type=='gratings':
+            experiment_type = 'rfs'
+        self.experiment_type = experiment_type
+        print("Creating %s object [%s|%s|%s|%s]" % (experiment_type, animalid, session, fov, traceid))
+
+        self.get_roi_id(traceid=traceid, rootdir=rootdir)            
         paths = self.get_data_paths(rootdir=rootdir)
         assert paths is not None, "[ERROR] no paths found!"
         self.source = paths
@@ -1597,17 +1599,17 @@ class ReceptiveFields(Experiment):
                                 reload_data=False, create_new=False, **kwargs):
         fit_results, fit_params = self.get_rf_fits(response_type=response_type, 
                                         fit_thr=fit_thr, reload_data=reload_data,
-                                        create_new=create_new)
+                                        create_new=create_new, make_pretty_plots=False)
 
         roi_list = [r for r, res in fit_results.items() \
                     if res['r2'] > fit_thr]
         nrois_total = len(fit_results.keys())
-        print("... fit results (%i of %i attempted fits with R2 > %.2f)" 
+        print("... Getting responsive cells from fit_results (%i of %i fit with R2 > %.2f)" 
                 % (len(roi_list), nrois_total, fit_thr))
 
         return roi_list, nrois_total
         
-    def get_rf_fits(self, response_type='dff', fit_thr=0.5, pretty_plots=False,
+    def get_rf_fits(self, response_type='dff', fit_thr=0.5, make_pretty_plots=False,
                     scale_sigma=True, sigma_scale=2.35, reload_data=False,
                     create_new=False, rootdir='/n/coxfs01/2p-data'):
         '''
@@ -1640,14 +1642,14 @@ class ReceptiveFields(Experiment):
                 traceback.print_exc()
 
         if do_fits:
-            pretty_plots=True
+            #make_pretty_plots=True
             try:
                 print("... (stats) fitting receptive fields")
                 fit_results, fit_params = fitrf.fit_2d_receptive_fields(self.animalid, 
                                                       self.session, 
                                                       self.fov, 
                                                       self.name, self.traceid, 
-                                                      make_pretty_plots=pretty_plots,
+                                                      make_pretty_plots=make_pretty_plots,
                                                       create_new=create_new,
                                                       reload_data=reload_data,
                                                       scale_sigma=scale_sigma,
@@ -1656,7 +1658,7 @@ class ReceptiveFields(Experiment):
                                                       response_type=response_type,
                                                       rootdir=rootdir)
             except Exception as e:
-                print("*** NO RF fits found ***")
+                print("*** [ERROR]: UNABLE TO GET RF FITS ***")
                 traceback.print_exc()
 
         if fit_results is not None:
@@ -1668,7 +1670,7 @@ class ReceptiveFields(Experiment):
 
         return fit_results, fit_params #roi_list, nrois_total
 
-    def get_stats(self, response_type='dff', fit_thr=0.5, pretty_plots=False, 
+    def get_stats(self, response_type='dff', fit_thr=0.5, plot_pretty_rfs=False, 
                     scale_sigma=True, sigma_scale=2.35, nframes_post=0, 
                     do_fits=False, return_all_rois=True,
                     create_new=False, # create stats.pkl anew
@@ -1710,12 +1712,12 @@ class ReceptiveFields(Experiment):
         # Load fits
         fit_results, fit_params = self.get_rf_fits(response_type=response_type, 
                                                     fit_thr=fit_thr,
-                                                    pretty_plots=pretty_plots,
+                                                    make_pretty_plots=plot_pretty_rfs,
                                                     create_new=do_fits,
                                                     reload_data=reload_data)
          
         if fit_results is None:
-            print("--- NO STATS (%s)" % response_type)
+            #print("--- NO STATS (%s)" % response_type)
             #create_new=True 
             return None
  

@@ -374,8 +374,8 @@ def find_local_min_max(xvals, yvals):
     
     lmins = argrelextrema(yvals, np.less)[0]
     lmaxs = argrelextrema(yvals, np.greater)[0]
-    print "local minima:", lmins
-    print "local maxima:", lmaxs
+    #print "local minima:", lmins
+    #print "local maxima:", lmaxs
         
     lmax_value = np.max([yvals[mx] for mx in lmaxs])
     lmax = [mx for mx in lmaxs if yvals[mx] == lmax_value][0]
