@@ -3,12 +3,14 @@
 #
 #SBATCH -J procrf # A single job name for the array
 #SBATCH -p cox # run on cox gpu to use correct env 
-#SBATCH -n 4 # one core
+#SBATCH -n 8 # one core
 #SBATCH -N 1 # on one node
-#SBATCH -t 0-2:00 # Running time of 3 hours
+#SBATCH -t 0-1:00 # Running time of 3 hours
 #SBATCH --mem 16384 #70656 # Memory request of 70 GB (set to 98304 if exceed lim)
 #SBATCH -o rfs_%A_%a.out # Standard output
 #SBATCH -e rfs_%A_%a.err # Standard error
+#SBATCH --mail-type=END,FAIL
+#SBATCH --mail-user=rhee@g.harvard.edu
 
 # load modules
 module load centos6/0.0.1-fasrc01
@@ -46,5 +48,5 @@ echo "SESSION: ${SESSION}"
 #cd ${OUTDIR}
 
 # run processing on raw data
-python /n/coxfs01/2p-pipeline/repos/2p-pipeline/pipeline/python/classifications/evaluate_receptivefield_fits.py -i $ANIMALID -S $SESSION -A $FOV -R $EXP -t $TRACEID -M dff -p 0.5 -c magenta --fit --eval --load -n 4
+python /n/coxfs01/2p-pipeline/repos/2p-pipeline/pipeline/python/classifications/evaluate_receptivefield_fits.py -i $ANIMALID -S $SESSION -A $FOV -R $EXP -t $TRACEID -M dff -p 0.5 -c magenta --fit --eval --load -n 8
 

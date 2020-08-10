@@ -14,6 +14,8 @@ parser = argparse.ArgumentParser(
     description = '''Look for XID files in session directory.\nFor PID files, run tiff-processing and evaluate.\nFor RID files, wait for PIDs to finish (if applicable) and then extract ROIs and evaluate.\n''',
     epilog = '''AUTHOR:\n\tJuliana Rhee''')
 parser.add_argument('-A', '--fov', dest='fov_type', action='store', default='zoom2p0x', help='FOV type (e.g., zoom2p0x)')
+parser.add_argument('-E', '--exp', dest='experiment_type', action='store', default='rfs', help='Experiment type (e.g., rfs')
+
 args = parser.parse_args()
 
 def info(info_str):
@@ -38,8 +40,6 @@ piper = str(piper)[0:8]
 if not os.path.exists('log'):
     os.mkdir('log')
 
-sys.stdout = open('log/loginfo_RFs.txt', 'w')
-
 old_logs = glob.glob(os.path.join('log', '*.err'))
 old_logs.extend(glob.glob(os.path.join('log', '*.out')))
 for r in old_logs:
@@ -53,6 +53,10 @@ for r in old_logs:
 # Note: the syntax a+=(b) adds b to the array a
 ROOTDIR = '/n/coxfs01/2p-data'
 FOV = args.fov_type
+EXP = args.experiment_type
+
+# Open log lfile
+sys.stdout = open('log/loginfo_%s.txt' % EXP, 'w')
 
 def load_metadata(rootdir='/n/coxfs01/2p-data', aggregate_dir='/n/coxfs01/julianarhee/aggregate-visual-areas',
                     experiment='', traceid='traces001'):
@@ -66,23 +70,31 @@ def load_metadata(rootdir='/n/coxfs01/2p-data', aggregate_dir='/n/coxfs01/julian
         exp_list = [e for e in g['experiment'].values if experiment in e]
         for e in exp_list:
             if experiment in e:
+                #rfname = 'gratings' if int(session)<20190511 else e
                 meta_list.append(tuple([animalid, session, fov, e, traceid]))    
-                existing_dirs = glob.glob(os.path.join(rootdir, animalid, session, fov, '*%s*' % e, 
+                existing_dirs = glob.glob(os.path.join(rootdir, animalid, session, fov, '*%s*' % e,
                                                 'traces', '%s*' % traceid, 'receptive_fields', 
                                                 'fit-2dgaus_dff*'))
                 for edir in existing_dirs:
                     tmp_od = os.path.split(edir)[0]
                     tmp_rt = os.path.split(edir)[-1]
                     old_dir = os.path.join(tmp_od, '_%s' % tmp_rt)
-                    os.rename(edir, old_dir)    
+                    if os.path.exists(old_dir):
+                        continue
+                    else:
+                        os.rename(edir, old_dir)    
                     info('renamed: %s' % old_dir)
     return meta_list
 
 
-#meta_list = [('JC084', '20190522', 'FOV1_zoom2p0x', 'rfs', 'traces001'),
-#             ('JC084', '20190525', 'FOV1_zoom2p0x', 'rfs', 'traces001')]
+meta_list = [('JC120', '20191111', 'FOV1_zoom2p0x', 'rfs10', 'traces001'),
+             ('JC083', '20190510', 'FOV1_zoom2p0x', 'rfs', 'traces001'),
+             ('JC083', '20190508', 'FOV1_zoom2p0x', 'rfs', 'traces001'),
+             ('JC084', '20190525', 'FOV1_zoom2p0x', 'rfs', 'traces001')]
 
-meta_list = load_metadata(experiment='rfs')
+
+
+#meta_list = load_metadata(experiment=EXP)
 
 if len(meta_list)==0:
     fatal("NO FOVs found.")
@@ -103,9 +115,9 @@ info("Found %i datasets to process." % len(meta_list))
 pid_jobids = {}
 for (animalid, session, fov, experiment, traceid) in meta_list:
     mtag = '-'.join([session, animalid, fov, experiment])
-    cmd = "sbatch --job-name=rfs.{MTAG}.{PROCID} \
-		-o 'log/rfs.{MTAG}.{PROCID}.out' \
-		-e 'log/rfs.{MTAG}.{PROCID}.err' \
+    cmd = "sbatch --job-name={PROCID}.rfs.{MTAG} \
+		-o 'log/{PROCID}.rfs.{MTAG}.out' \
+		-e 'log/{PROCID}.rfs.{MTAG}.err' \
 		/n/coxfs01/2p-pipeline/repos/2p-pipeline/pipeline/python/slurm/process_rfs.sbatch \
 		{ANIMALID} {SESSION} {FOV} {EXP} {TRACEID}".format(
                         PROCID=piper, MTAG=mtag, ANIMALID=animalid,
