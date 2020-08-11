@@ -309,15 +309,19 @@ def plot_roi_evaluation(rid, meas_df, _fitr, _bootdata, ci=0.95,
     ax = fitrf.plot_rf_map(_fitr['data'], cmap='inferno', ax=ax)
     ax = fitrf.plot_rf_ellipse(_fitr['fit_r'], ax=ax, scale_sigma=scale_sigma)
     params = ['sigma_x', 'sigma_y', 'theta', 'x0', 'y0']
-    ai=1
+    ai=0
     for param in params:
-        ax = axn.flat[ai]
-        ax = plot_bootstrapped_distribution(_bootdata[param], meas_df[param][rid], 
-                                            ci=ci, ax=ax, param_name=param)
         ai += 1
-    pl.subplots_adjust(wspace=0.7, hspace=0.5, top=0.8)
-    fig.suptitle('rid %i' % rid)
-
+        try:
+            ax = axn.flat[ai]
+            ax = plot_bootstrapped_distribution(_bootdata[param], meas_df[param][rid], 
+                                                    ci=ci, ax=ax, param_name=param)
+            pl.subplots_adjust(wspace=0.7, hspace=0.5, top=0.8)
+            fig.suptitle('rid %i' % rid)
+        except Exception as e:
+            print("!! eval error (plot_boot_distn): rid %i, param %s" % (rid, param))
+            traceback.print_exc()
+            
     return fig
 
 
@@ -606,8 +610,9 @@ def fit_linear_regr(xvals, yvals, return_regr=False):
         xvals = np.array(xvals)
         yvals = np.array(yvals)
     if any(np.isnan(xvals)) or any(np.isnan(yvals)):
-        print(np.where(np.isnan(xvals)))
-        print(np.where(np.isnan(yvals)))
+        print("NAN")
+        #print(np.where(np.isnan(xvals)))
+        #print(np.where(np.isnan(yvals)))
     regr.fit(xvals, yvals)
     fitv = regr.predict(xvals)
     if return_regr:
@@ -911,12 +916,17 @@ def evaluate_rfs(estats, fit_params,
         
         # Update params if re-did evaluation
         eval_params_fpath = os.path.join(evaldir, 'evaluation_params.json')
-        opts_update = dict((k, eval(k)) for k in inspect.getargspec(evaluate_rfs).args if k not in ['estats', 'fit_params'])
-        if os.path.exists(eval_params_fpath):
+        optsdict = locals()
+        keys = [k for k in inspect.getargspec(evaluate_rfs).args if k not in ['estats', 'fit_params']]
+        opts_update = dict((k, v) for k, v in optsdict.items() if k in keys)
+        #if os.path.exists(eval_params_fpath):
+        print(keys)
+        try:
             eval_params = load_params(eval_params_fpath)
             for k, v in opts_update.items():
                 eval_params.update({k: v})
-        else:
+        except Exception as e:
+            traceback.print_exc()
             eval_params = opts_update.copy()
         save_params(eval_params_fpath, eval_params)
         print("... updated eval params")
@@ -1090,9 +1100,10 @@ def do_rf_fits_and_evaluation(animalid, session, fov, rfname=None, traceid='trac
     #%% Get session info 
     S = util.Session(animalid, session, fov)
     experiment_list = S.get_experiment_list(traceid=traceid)
-    assert 'rfs' in experiment_list or 'rfs10' in experiment_list, "NO receptive field experiments found!"
-    if rfname is None or 'rfs' not in rfname:
-        rfname = 'rfs10' if 'rfs10' in experiment_list else 'rfs'      
+    assert rfname in experiment_list, "[%s] NO receptive field experiments found! (%s)" % (str(rfname), str(experiment_list))
+    #assert 'rfs' in experiment_list or 'rfs10' in experiment_list, "NO receptive field experiments found!"
+    #if rfname is None or 'rfs' not in rfname:
+    #    rfname = 'rfs10' if 'rfs10' in experiment_list else 'rfs'      
    
     # Create experiment object 
     exp = util.ReceptiveFields(rfname, animalid, session, fov, 
@@ -1130,7 +1141,10 @@ def do_rf_fits_and_evaluation(animalid, session, fov, rfname=None, traceid='trac
     data_id = '|'.join([exp.animalid, exp.session, exp.fov, \
                             exp.traceid, exp.rois, exp.trace_type, fit_desc])
 
-
+    if 'rfs10' in exp.name:
+        #print("Found: %i" % estats.fitinfo['column_spacing'])
+        assert fit_params['column_spacing']==10, "WRONG SPACING (%s), is %.2f." % (exp.name, fit_params['column_spacing'])
+        
     # Set directories
     evaldir = os.path.join(estats.fitinfo['rfdir'], 'evaluation')
     roidir = os.path.join(evaldir, 'rois_bootstrap-%i-iters_%i-resample' % (n_bootstrap_iters, n_resamples))
@@ -1288,6 +1302,9 @@ def extract_options(options):
     parser.add_option('-p', '--post', action='store', dest='post_stimulus_sec', default=0.0, 
                       help="N sec to include in stimulus-response calculation for maps (default:0.0)")
 
+    parser.add_option('--test', action='store_true', dest='test_run', default=False, 
+                      help="Flag to just wait 2 sec, for test")
+
 
     (options, args) = parser.parse_args(options)
 
@@ -1355,8 +1372,14 @@ def main(options):
     scale_sigma = opts.scale_sigma
     post_stimulus_sec = float(opts.post_stimulus_sec)
     fit_thr = float(opts.fit_thr)
-     
-    eval_results, eval_params = do_rf_fits_and_evaluation(animalid, session, fov, rfname=rfname,
+   
+    print("STATS?", any([do_fits, do_evaluation, reload_data]))
+    if opts.test_run:
+        print(">>> testing <<<")
+        assert opts.test_run is False, "FAKE ERROR, test."
+
+    else: 
+        eval_results, eval_params = do_rf_fits_and_evaluation(animalid, session, fov, rfname=rfname,
                               traceid=traceid, response_type=response_type, fit_thr=fit_thr,
                               n_bootstrap_iters=n_bootstrap_iters, n_resamples=n_resamples, ci=ci,
                               #transform_fov=transform_fov, 

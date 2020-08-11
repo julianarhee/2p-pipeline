@@ -1622,7 +1622,7 @@ class ReceptiveFields(Experiment):
         fit_params (dict) - all meta info
         '''
 
-        print("... [RF] getting fits (response_type: '%s)." % response_type)
+        print("... exp.get_rf_fits(), response_type: '%s." % response_type)
 
         fit_results=None
         fit_params=None
@@ -1632,10 +1632,10 @@ class ReceptiveFields(Experiment):
             try:
                 fit_results, fit_params = fitrf.load_fit_results(self.animalid, 
                                                     self.session, self.fov,
-                                                    experiment=self.experiment_type, 
+                                                    experiment=self.name, 
                                                     traceid=self.traceid,
                                                     response_type=response_type)
-                #print("... loaded fits (response-type: %s)" % response_type)
+                print("... loaded fits (%s, response-type: %s)" % (self.name, response_type))
             except Exception as e:
                 print(".... unable to load RF fit results. re-fitting...")
                 do_fits = True
@@ -1650,7 +1650,7 @@ class ReceptiveFields(Experiment):
                                                       self.fov, 
                                                       self.name, self.traceid, 
                                                       make_pretty_plots=make_pretty_plots,
-                                                      create_new=create_new,
+                                                      create_new=True, #create_new,
                                                       reload_data=reload_data,
                                                       scale_sigma=scale_sigma,
                                                       sigma_scale=sigma_scale,
@@ -1684,7 +1684,7 @@ class ReceptiveFields(Experiment):
         '''
         make_equal = kwargs.get('make_equal', False)
         get_grouped = kwargs.get('get_grouped', True)
-        print("... getting stats, reload_data=%s" % str(reload_data))
+        print("... (%s) getting stats, reload_data=%s" % (self.name, str(reload_data)))
 
         # Get RF fit info
         rfdir, fit_desc= fitrf.create_rf_dir(self.animalid, self.session, 
