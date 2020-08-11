@@ -15,6 +15,7 @@ parser = argparse.ArgumentParser(
     epilog = '''AUTHOR:\n\tJuliana Rhee''')
 parser.add_argument('-A', '--fov', dest='fov_type', action='store', default='zoom2p0x', help='FOV type (e.g., zoom2p0x)')
 parser.add_argument('-E', '--exp', dest='experiment_type', action='store', default='rfs', help='Experiment type (e.g., rfs')
+parser.add_argument('-e', '--email', dest='email', action='store', default='rhee@g.harvard.edu', help='Email to send log files')
 
 args = parser.parse_args()
 
@@ -54,6 +55,7 @@ for r in old_logs:
 ROOTDIR = '/n/coxfs01/2p-data'
 FOV = args.fov_type
 EXP = args.experiment_type
+email = args.email
 
 # Open log lfile
 sys.stdout = open('log/loginfo_%s.txt' % EXP, 'w')
@@ -87,20 +89,20 @@ def load_metadata(rootdir='/n/coxfs01/2p-data', aggregate_dir='/n/coxfs01/julian
     return meta_list
 
 
-meta_list = [('JC120', '20191111', 'FOV1_zoom2p0x', 'rfs10', 'traces001'),
-             ('JC083', '20190510', 'FOV1_zoom2p0x', 'rfs', 'traces001'),
-             ('JC083', '20190508', 'FOV1_zoom2p0x', 'rfs', 'traces001'),
-             ('JC084', '20190525', 'FOV1_zoom2p0x', 'rfs', 'traces001')]
+#meta_list = [('JC120', '20191111', 'FOV1_zoom2p0x', 'rfs10', 'traces001')] #,
+#             ('JC083', '20190510', 'FOV1_zoom2p0x', 'rfs', 'traces001'),
+#             ('JC083', '20190508', 'FOV1_zoom2p0x', 'rfs', 'traces001'),
+#             ('JC084', '20190525', 'FOV1_zoom2p0x', 'rfs', 'traces001')]
+#
 
 
-
-#meta_list = load_metadata(experiment=EXP)
+meta_list = load_metadata(experiment=EXP)
 
 if len(meta_list)==0:
     fatal("NO FOVs found.")
 
 
-info("Found %i datasets to process." % len(meta_list))
+info("Found %i [%s] datasets to process." % (len(meta_list), EXP))
 #for mi, meta in enumerate(meta_list):
 #    info("... %s" % '|'.join(meta))
 
@@ -112,7 +114,7 @@ info("Found %i datasets to process." % len(meta_list))
 # STEP1: TIFF PROCESSING. All PIDs will be processed in parallel since they don't
 #        have any dependencies
 
-pid_jobids = {}
+jobids = [] # {}
 for (animalid, session, fov, experiment, traceid) in meta_list:
     mtag = '-'.join([session, animalid, fov, experiment])
     cmd = "sbatch --job-name={PROCID}.rfs.{MTAG} \
@@ -125,9 +127,27 @@ for (animalid, session, fov, experiment, traceid) in meta_list:
     #info("Submitting PROCESSPID job with CMD:\n%s" % cmd)
     status, joboutput = commands.getstatusoutput(cmd)
     jobnum = joboutput.split(' ')[-1]
-    #pid_jobids[phash] = jobnum
+    jobids.append(jobnum)
     info("[%s]: %s" % (jobnum, mtag))
 
 
-info("****done!****")
+#info("****done!****")
+
+for jobdep in jobids:
+    print(jobdep)
+    cmd = "sbatch --job-name={JOBDEP}.checkstatus \
+		-o 'log/checkstatus.rfs.{JOBDEP}.out' \
+		-e 'log/checkstatus.rfs.{JOBDEP}.err' \
+                  --depend=afternotok:{JOBDEP} \
+                  /n/coxfs01/2p-pipeline/repos/2p-pipeline/pipeline/python/slurm/checkstatus.sbatch \
+                  {JOBDEP} {EMAIL}".format(JOBDEP=jobdep, EMAIL=email)
+    #info("Submitting MCEVAL job with CMD:\n%s" % cmd)
+    status, joboutput = commands.getstatusoutput(cmd)
+    jobnum = joboutput.split(' ')[-1]
+    #eval_jobids[phash] = jobnum
+    #info("MCEVAL calling jobids [%s]: %s" % (phash, jobnum))
+    print("... checking: %s (%s)" % (jobdep, jobnum))
+
+
+
 
