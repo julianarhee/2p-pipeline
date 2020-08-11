@@ -894,42 +894,30 @@ def evaluate_rfs(estats, fit_params,
         os.makedirs(evaldir)
     rf_eval_fpath = os.path.join(evaldir, 'evaluation_results.pkl')
     
-    if create_new is False: #nd create_new is False:
-        print("... loading existing evaluation results.")
-        try:
-            eval_results, eval_params = load_eval_results(animalid, session, fov, 
-                                                         fit_desc=os.path.split(rfdir)[-1],
-                                                         response_type=response_type) 
-            assert 'data' in eval_results.keys(), "... old datafile, redoing boot analysis"
-            assert 'pass_cis' in eval_results.keys(), "... no criteria passed, redoing"
-        except Exception as e:
-            traceback.print_exc()
-            print("... ERROR loading evaluation results. Doing it now.")
-            create_new = True
-            
-    if create_new:
-        print("... do bootstrap analysis")
-        eval_results = run_bootstrap_evaluation(estats, fit_params, 
-                                             n_bootstrap_iters=n_bootstrap_iters, 
-                                             n_resamples=n_resamples,
-                                             ci=ci, n_processes=n_processes)
-        
-        # Update params if re-did evaluation
-        eval_params_fpath = os.path.join(evaldir, 'evaluation_params.json')
-        optsdict = locals()
-        keys = [k for k in inspect.getargspec(evaluate_rfs).args if k not in ['estats', 'fit_params']]
-        opts_update = dict((k, v) for k, v in optsdict.items() if k in keys)
-        #if os.path.exists(eval_params_fpath):
-        print(keys)
-        try:
-            eval_params = load_params(eval_params_fpath)
-            for k, v in opts_update.items():
-                eval_params.update({k: v})
-        except Exception as e:
-            traceback.print_exc()
-            eval_params = opts_update.copy()
-        save_params(eval_params_fpath, eval_params)
-        print("... updated eval params")
+           
+    #if create_new:
+    print("... do bootstrap analysis")
+    eval_results = run_bootstrap_evaluation(estats, fit_params, 
+                                         n_bootstrap_iters=n_bootstrap_iters, 
+                                         n_resamples=n_resamples,
+                                         ci=ci, n_processes=n_processes)
+    
+    # Update params if re-did evaluation
+    eval_params_fpath = os.path.join(evaldir, 'evaluation_params.json')
+    optsdict = locals()
+    keys = [k for k in inspect.getargspec(evaluate_rfs).args if k not in ['estats', 'fit_params']]
+    opts_update = dict((k, v) for k, v in optsdict.items() if k in keys)
+    #if os.path.exists(eval_params_fpath):
+    print(keys)
+    try:
+        eval_params = load_params(eval_params_fpath)
+        for k, v in opts_update.items():
+            eval_params.update({k: v})
+    except Exception as e:
+        traceback.print_exc()
+        eval_params = opts_update.copy()
+    save_params(eval_params_fpath, eval_params)
+    print("... updated eval params")
 
     #%% Identify reliable fits 
     if eval_results is not None:
@@ -1024,10 +1012,18 @@ def load_eval_results(animalid, session, fov, experiment='rfs',
     eval_params = None
                 
     if fit_desc is None:
-        fit_desc = 'fit-2dgaus_%s' % response_type
+        fit_desc = 'fit-2dgaus_%s-no-cutoff' % response_type
 
+    if 'combined' in experiment:
+        rfname = experiment.split('_')[1]
+    else:
+        rfname = experiment
     try: 
-        rfdir = glob.glob(os.path.join(rootdir, animalid, session, fov, '*%s_*' % experiment,
+        #print(rfname, glob.glob(os.path.join(rootdir, animalid, session, fov)))
+        #for i in os.listdir(glob.glob(os.path.join(rootdir, animalid, session, fov))[0]):
+        #    print("--", i)
+
+        rfdir = glob.glob(os.path.join(rootdir, animalid, session, fov, '*%s_*' % rfname,
                         'traces', '%s*' % traceid, 'receptive_fields', 
                         '%s*' % fit_desc))[0]
         evaldir = os.path.join(rfdir, 'evaluation')
@@ -1154,12 +1150,27 @@ def do_rf_fits_and_evaluation(animalid, session, fov, rfname=None, traceid='trac
         shutil.rmtree(os.path.join(evaldir, 'rois'))
 
     #%% Do bootstrap analysis    
-    print("-evaluating-")
-    eval_results, eval_params = evaluate_rfs(estats, fit_params, 
-                                n_bootstrap_iters=n_bootstrap_iters, 
-                                n_resamples=n_resamples,
-                                ci=ci, n_processes=n_processes, 
-                                create_new=do_evaluation)
+    do_evaluation=create_new
+    print("-evaluating (%s)-" % str(do_evaluation))
+    if create_new is False: #nd create_new is False:
+        try:
+            eval_results, eval_params = load_eval_results(animalid, session, fov, 
+                                                         experiment=rfname,
+                                                         fit_desc=os.path.split(rfdir)[-1],
+                                                         response_type=response_type) 
+            print("N eval:", len(eval_results['pass_cis'].index.tolist()))
+            assert 'data' in eval_results.keys(), "... old datafile, redoing boot analysis"
+            assert 'pass_cis' in eval_results.keys(), "... no criteria passed, redoing"
+        except Exception as e:
+            traceback.print_exc()
+            do_evaluation=True
+ 
+    if do_evaluation: 
+        eval_results, eval_params = evaluate_rfs(estats, fit_params, 
+                                    n_bootstrap_iters=n_bootstrap_iters, 
+                                    n_resamples=n_resamples,
+                                    ci=ci, n_processes=n_processes, 
+                                    create_new=do_evaluation)
 
     # Update params
     if len(eval_results.keys())==0:# is None: # or 'data' not in eval_results:
