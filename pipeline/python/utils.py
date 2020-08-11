@@ -93,7 +93,8 @@ def adjust_image_contrast(img, clip_limit=2.0, tile_size=10):#(10,10)):
     img8 = cv2.convertScaleAbs(normed)
     
     # Equalize hist:
-    clahe = cv2.createCLAHE(clipLimit=clip_limit, tileGridSize=(tile_size, tile_size))
+    tg = tile_size if isinstance(tile_size, tuple) else (tile_size, tile_size)
+    clahe = cv2.createCLAHE(clipLimit=clip_limit, tileGridSize=tg)
     eq = clahe.apply(img8)
 
     return eq
