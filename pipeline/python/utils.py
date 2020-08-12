@@ -190,8 +190,9 @@ def reformat_morph_values(sdf):
 
 def load_run_info(animalid, session, fov, run, traceid='traces001',
                   rootdir='/n/coxfs01/2p-ddata'):
-    
-    labels_fpath = glob.glob(os.path.join(rootdir, animalid, session, fov, '*%s*' % run,
+   
+    search_name = '' if 'combined' in run else '_'  
+    labels_fpath = glob.glob(os.path.join(rootdir, animalid, session, fov, '*%s%s*' % (run, search_name),
                            'traces', '%s*' % traceid, 'data_arrays', 'labels.npz'))[0]
     
     dset = np.load(labels_fpath)
