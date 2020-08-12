@@ -192,8 +192,8 @@ def reformat_morph_values(sdf):
 def load_run_info(animalid, session, fov, run, traceid='traces001',
                   rootdir='/n/coxfs01/2p-ddata'):
    
-    search_name = '' if 'combined' in run else '_'  
-    labels_fpath = glob.glob(os.path.join(rootdir, animalid, session, fov, '*%s%s*' % (run, search_name),
+    search_str = '' if 'combined' in run else '_'  
+    labels_fpath = glob.glob(os.path.join(rootdir, animalid, session, fov, '*%s%s*' % (run, search_str),
                            'traces', '%s*' % traceid, 'data_arrays', 'labels.npz'))[0]
     
     dset = np.load(labels_fpath)
@@ -218,8 +218,9 @@ def process_and_save_traces(trace_type='dff',
     assert (animalid is None and soma_fpath is not None) or (soma_fpath is None and animalid is not None), "Must specify either dataset params (animalid, session, etc.) OR soma_fpath to data arrays."
 
     if soma_fpath is None:
+        search_str = '' if 'combined' in experiment else '_'
         soma_fpath = glob.glob(os.path.join(rootdir, animalid, session, fov,
-                                '*%s*' % experiment, 'traces', '%s*' % traceid, 
+                                '*%s%s*' % (experiment, search_str), 'traces', '%s*' % traceid, 
                                 'data_arrays', 'np_subtracted.npz'))[0]
 
     dset = np.load(soma_fpath)
