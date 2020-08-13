@@ -1793,7 +1793,9 @@ class ReceptiveFields(Experiment):
         estats = self.get_stats(response_type=response_type, 
                                 fit_thr=fit_thr,
                                 nframes_post=nframes_post,
-                                sigma_scale=sigma_scale, scale_sigma=scale_sigma,
+                                sigma_scale=sigma_scale, 
+                                scale_sigma=scale_sigma,
+                                plot_pretty_rfs=False,
                                 do_fits=do_fits,
                                 reload_data=reload_data,
                                 create_new=reload_data) 

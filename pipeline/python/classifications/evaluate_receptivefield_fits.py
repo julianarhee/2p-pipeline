@@ -1395,7 +1395,7 @@ def main(options):
                               traceid=traceid, response_type=response_type, fit_thr=fit_thr,
                               n_bootstrap_iters=n_bootstrap_iters, n_resamples=n_resamples, ci=ci,
                               #transform_fov=transform_fov, 
-                              plot_boot_distns=plot_boot_distns, plot_pretty_rfs=False, 
+                              plot_boot_distns=plot_boot_distns, plot_pretty_rfs=plot_pretty_rfs, 
                               post_stimulus_sec=post_stimulus_sec, 
                               
                               n_processes=n_processes, filter_weird=filter_weird, plot_all_cis=plot_all_cis,
