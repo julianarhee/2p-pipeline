@@ -1078,7 +1078,7 @@ def do_rf_fits_and_evaluation(animalid, session, fov, rfname=None, traceid='trac
                               fit_thr=0.5, n_resamples=10, n_bootstrap_iters=1000, 
                               post_stimulus_sec=0., sigma_scale=2.35, scale_sigma=True,
                               ci=0.95, pass_criterion='all',
-                              plot_boot_distns=True, plot_pretty_rfs=True,  
+                              plot_boot_distns=True, plot_pretty_rfs=False, #True,  
                               deviant_color='dodgerblue', filter_weird=False, plot_all_cis=False,
                               do_fits=False, do_evaluation=False, reload_data=False,
                               create_stats=False,
@@ -1288,6 +1288,9 @@ def extract_options(options):
 
     parser.add_option('--no-boot-plot', action='store_false', dest='plot_boot_distns', default=True, \
                       help="flag to not plot bootstrapped distNs of x0, y0 for each roi")
+    parser.add_option('--pretty', action='store_true', dest='plot_pretty_rfs', default=False, \
+                      help="flag to make pretty plots of RF maps")
+
 
 #    parser.add_option('--pixels', action='store_false', dest='transform_fov', default=True, \
 #                      help="flag to not convert fov space into microns (keep as pixels)")
@@ -1375,6 +1378,7 @@ def main(options):
     filter_weird = opts.filter_weird
     plot_all_cis = opts.plot_all_cis
     deviant_color = opts.deviant_color
+    plot_pretty_rfs =  opts.plot_pretty_rfs
 
     sigma_scale = float(opts.sigma_scale)
     scale_sigma = opts.scale_sigma
@@ -1391,8 +1395,9 @@ def main(options):
                               traceid=traceid, response_type=response_type, fit_thr=fit_thr,
                               n_bootstrap_iters=n_bootstrap_iters, n_resamples=n_resamples, ci=ci,
                               #transform_fov=transform_fov, 
-                              plot_boot_distns=plot_boot_distns, 
+                              plot_boot_distns=plot_boot_distns, plot_pretty_rfs=False, 
                               post_stimulus_sec=post_stimulus_sec, 
+                              
                               n_processes=n_processes, filter_weird=filter_weird, plot_all_cis=plot_all_cis,
                               deviant_color=deviant_color, 
                               scale_sigma=scale_sigma, sigma_scale=sigma_scale,
