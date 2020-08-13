@@ -1122,7 +1122,7 @@ def do_rf_fits_and_evaluation(animalid, session, fov, rfname=None,
     assert estats is not None, "Failed to get exp.get_stats(). ABORTING."
  
     rfdir = estats.fitinfo['rfdir']
-    fit_desc = estats.ffo['fit_desc'] 
+    fit_desc = estats.fitinfo['fit_desc'] 
     fit_params = estats.fitinfo
     data_id = '|'.join([exp.animalid, exp.session, exp.fov, \
                             exp.traceid, exp.rois, exp.trace_type, fit_desc])
