@@ -213,7 +213,7 @@ def run_bootstrap_evaluation(estats, fit_params,
     sigma_scale = fit_params['sigma_scale'] if scale_sigma else 1.0
     response_type = fit_params['response_type']
              
-    print("... doing bootstrap analysis for param fits.")
+    #print("... doing bootstrap analysis for param fits.")
     roi_list = estats.rois  # Get list of all cells that pass fit-thr
     rdf_list = [estats.gdf.get_group(roi)[['config', 'trial', response_type]] for roi in roi_list]
     bootparams = copy.copy(fit_params)
@@ -893,7 +893,7 @@ def evaluate_rfs(estats, fit_params,
     rf_eval_fpath = os.path.join(evaldir, 'evaluation_results.pkl')
            
     #if create_new:
-    print("... do bootstrap analysis")
+    #print("... do bootstrap analysis")
     eval_results = run_bootstrap_evaluation(estats, fit_params, 
                                          n_bootstrap_iters=n_bootstrap_iters, 
                                          n_resamples=n_resamples,
@@ -1005,22 +1005,15 @@ def load_eval_results(animalid, session, fov, experiment='rfs',
                         traceid='traces001', response_type='dff', 
                         fit_desc=None,
                         rootdir='/n/coxfs01/2p-data'):
-    eval_results = None
-    eval_params = None
-                
+
+    eval_results=None; eval_params=None;            
     if fit_desc is None:
         fit_desc = 'fit-2dgaus_%s-no-cutoff' % response_type
 
-    if 'combined' in experiment:
-        rfname = experiment.split('_')[1]
-    else:
-        rfname = experiment
+    rfname = experiment.split('_')[1] if 'combined' in experiment else experiment
     try: 
-        #print(rfname, glob.glob(os.path.join(rootdir, animalid, session, fov)))
-        #for i in os.listdir(glob.glob(os.path.join(rootdir, animalid, session, fov))[0]):
-        #    print("--", i)
-
-        rfdir = glob.glob(os.path.join(rootdir, animalid, session, fov, '*%s_*' % rfname,
+        rfdir = glob.glob(os.path.join(rootdir, animalid, session, 
+                        fov, '*%s_*' % rfname,
                         'traces', '%s*' % traceid, 'receptive_fields', 
                         '%s*' % fit_desc))[0]
         evaldir = os.path.join(rfdir, 'evaluation')
@@ -1032,7 +1025,7 @@ def load_eval_results(animalid, session, fov, experiment='rfs',
 
     # Load results
     rf_eval_fpath = os.path.join(evaldir, 'evaluation_results.pkl')
-    assert os.path.exists(rf_eval_fpath), "No evaluatoin file: %s" % rf_eval_fpath
+    assert os.path.exists(rf_eval_fpath), "No eval result: %s" % rf_eval_fpath
     with open(rf_eval_fpath, 'rb') as f:
         eval_results = pkl.load(f)
    
@@ -1073,15 +1066,19 @@ def load_matching_fit_results(animalid, session, fov, traceid='traces001',
     return fit_results, fit_params
 
 #%%
-def do_rf_fits_and_evaluation(animalid, session, fov, rfname=None, traceid='traces001', 
+def do_rf_fits_and_evaluation(animalid, session, fov, rfname=None, 
+                              traceid='traces001', 
                               response_type='dff', n_processes=1,
-                              fit_thr=0.5, n_resamples=10, n_bootstrap_iters=1000, 
-                              post_stimulus_sec=0., sigma_scale=2.35, scale_sigma=True,
+                              fit_thr=0.5, 
+                              n_resamples=10, n_bootstrap_iters=1000, 
+                              post_stimulus_sec=0., 
+                              sigma_scale=2.35, scale_sigma=True,
                               ci=0.95, pass_criterion='all',
-                              plot_boot_distns=True, plot_pretty_rfs=False, #True,  
-                              deviant_color='dodgerblue', filter_weird=False, plot_all_cis=False,
-                              do_fits=False, do_evaluation=False, reload_data=False,
-                              create_stats=False,
+                              plot_boot_distns=True, plot_pretty_rfs=False, 
+                              deviant_color='dodgerblue', filter_weird=False, 
+                              plot_all_cis=False,
+                              do_fits=False, do_evaluation=False, 
+                              reload_data=False, create_stats=False,
                               rootdir='/n/coxfs01/2p-data', opts=None):
 
     from pipeline.python.classifications import experiment_classes as util
@@ -1093,11 +1090,8 @@ def do_rf_fits_and_evaluation(animalid, session, fov, rfname=None, traceid='trac
     #%% Get session info 
     S = util.Session(animalid, session, fov)
     experiment_list = S.get_experiment_list(traceid=traceid)
-    assert rfname in experiment_list, "[%s] NO receptive field experiments found! (%s)" % (str(rfname), str(experiment_list))
-    #assert 'rfs' in experiment_list or 'rfs10' in experiment_list, "NO receptive field experiments found!"
-    #if rfname is None or 'rfs' not in rfname:
-    #    rfname = 'rfs10' if 'rfs10' in experiment_list else 'rfs'      
-   
+    assert rfname in experiment_list, "[%s] No rf experiments found! (%s)" % (str(rfname), str(experiment_list))
+  
     # Create experiment object 
     exp = util.ReceptiveFields(rfname, animalid, session, fov, 
                                traceid=traceid, trace_type='corrected')
@@ -1124,11 +1118,11 @@ def do_rf_fits_and_evaluation(animalid, session, fov, rfname=None, traceid='trac
                             do_fits=do_fits, plot_pretty_rfs=plot_pretty_rfs,
                             return_all_rois=False,
                             reload_data=reload_data,
-                            create_new=any([create_new, do_fits, do_evaluation])) #create_stats)
+                            create_new=any([create_new,do_fits,do_evaluation])) 
     assert estats is not None, "Failed to get exp.get_stats(). ABORTING."
  
     rfdir = estats.fitinfo['rfdir']
-    fit_desc = estats.fitinfo['fit_desc'] 
+    fit_desc = estats.ffo['fit_desc'] 
     fit_params = estats.fitinfo
     data_id = '|'.join([exp.animalid, exp.session, exp.fov, \
                             exp.traceid, exp.rois, exp.trace_type, fit_desc])
@@ -1147,16 +1141,17 @@ def do_rf_fits_and_evaluation(animalid, session, fov, rfname=None, traceid='trac
 
     #%% Do bootstrap analysis    
     print("-evaluating (%s)-" % str(do_evaluation))
-    if create_new is False: #nd create_new is False:
+    if do_evaluation is False: #nd create_new is False:
         try:
             print("... loading eval results")
             eval_results, eval_params = load_eval_results(animalid, session, fov, 
                                                          experiment=rfname,
                                                          fit_desc=os.path.split(rfdir)[-1],
                                                          response_type=response_type) 
-            print("N eval:", len(eval_results['pass_cis'].index.tolist()))
+
             assert 'data' in eval_results.keys(), "... old datafile, redoing boot analysis"
             assert 'pass_cis' in eval_results.keys(), "... no criteria passed, redoing"
+            print("N eval:", len(eval_results['pass_cis'].index.tolist()))
         except Exception as e:
             traceback.print_exc()
             do_evaluation=True

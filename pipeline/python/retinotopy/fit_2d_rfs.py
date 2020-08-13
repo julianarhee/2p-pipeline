@@ -442,12 +442,12 @@ def plot_roi_RF(response_vector, ncols, nrows, ax=None, trim=False, cmap='infern
     coordmap_r = np.reshape(response_vector, (ncols, nrows)).T
      
     rfmap = coordmap_r.copy()
-    if trim:
-        if hard_cutoff:
-            rfmap[coordmap_r < map_thr] = coordmap_r.min()*perc_min if set_to_min else 0
-        else:
-            rfmap[coordmap_r <= (coordmap_r.max()*map_thr)] = coordmap_r.min()*perc_min if set_to_min else 0
-        
+#    if trim:
+#        if hard_cutoff:
+#            rfmap[coordmap_r < map_thr] = coordmap_r.min()*perc_min if set_to_min else 0
+#        else:
+#            rfmap[coordmap_r <= (coordmap_r.max()*map_thr)] = coordmap_r.min()*perc_min if set_to_min else 0
+#        
     ax = plot_rf_map(coordmap_r, cmap=cmap, ax=ax)
     
     return ax, rfmap
@@ -1330,8 +1330,8 @@ def load_fit_results(animalid, session, fov, experiment='rfs',
 def fit_rfs(avg_resp_by_cond, fit_params={}, #row_vals=[], col_vals=[], fitparams=None,
             response_type='dff', roi_list=None, #scale_sigma=True,
             #rf_results_fpath='/tmp/fit_results.pkl', 
-            data_identifier='METADATA', 
-            response_thr=None, create_new=False):
+            data_identifier='METADATA'):
+            #response_thr=None):
 
     '''
     Main fitting function.    
@@ -1339,15 +1339,14 @@ def fit_rfs(avg_resp_by_cond, fit_params={}, #row_vals=[], col_vals=[], fitparam
         fit_results.pkl 
         fit_params.json
     '''
-
-    trim=False; hard_cutoff=False; map_thr=''; set_to_min=False; 
+    #trim=False; hard_cutoff=False; map_thr=''; set_to_min=False; 
      # '''
     # hard_cutoff:
     #     (bool) Use hard cut-off for zscores (set to False to use some % of max value)
     # set_to_min: 
     #     (bool) Threshold x,y condition grid and set non-passing conditions to min value or 0 
     # '''
-  
+    print("@@@ doing rf fits @@@")
     scale_sigma = fit_params['scale_sigma']
     sigma_scale = fit_params['sigma_scale']
     row_vals = fit_params['row_vals']
@@ -1366,18 +1365,9 @@ def fit_rfs(avg_resp_by_cond, fit_params={}, #row_vals=[], col_vals=[], fitparam
         os.makedirs(os.path.join(rfdir, 'roi_fits'))
 
     roi_list = avg_resp_by_cond.columns.tolist()
-#    if roi_list is None:
-#        if response_thr == None:
-#            roi_list = avg_resp_by_cond.columns.tolist()
-#            response_thr = 0
-#        else:    
-#            roi_list = [r for r in avg_resp_by_cond.columns.tolist() \
-#                                if avg_resp_by_cond[r].max() >= response_thr]
-#            print("%i out of %i cells meet min req. of %.2f" % 
-#                    (len(roi_list), avg_resp_by_cond.shape[1], response_thr))
-#
+
     bad_rois = [r for r in roi_list if avg_resp_by_cond.max()[r] > 1.0]
-    print("%i bad rois (skipping: %s)" % (len(bad_rois), str(bad_rois)))
+    print("... %i bad rois (skipping: %s)" % (len(bad_rois), str(bad_rois)))
     if len(bad_rois) > 0:
         badr_fpath = os.path.join(rfdir.split('/receptive_fields/')[0], 'funky.json')
         with open(badr_fpath, 'w') as f:
@@ -1426,14 +1416,14 @@ def create_rf_dir(animalid, session, fov, run_name,
     # Get RF dir for current fit type
     fit_desc = get_fit_desc(response_type=response_type)
     fov_dir = os.path.join(rootdir, animalid, session, fov)
-    print("... >>  (fitrfs) creating RF dir:", run_name)
+    #print("... >>  (fitrfs) creating RF dir:", run_name)
 
     if 'combined' in run_name:
         traceid_dirs = [t for t in glob.glob(os.path.join(fov_dir, run_name, 'traces', '%s*' % traceid))]
     else: 
         traceid_dirs = [t for t in glob.glob(os.path.join(fov_dir, 'combined_%s_*' % run_name, 'traces', '%s*' % traceid))]
     if len(traceid_dirs) > 1:
-        print "More than 1 trace ID found:"
+        print "[creating RF dir, %s] More than 1 trace ID found:" % run_name
         for ti, traceid_dir in enumerate(traceid_dirs):
             print ti, traceid_dir
         sel = input("Select IDX of traceid to use: ")
@@ -1611,8 +1601,7 @@ def fit_2d_receptive_fields(animalid, session, fov, run, traceid,
             create_new = True
     print("... do fits?", create_new) 
 
-    if create_new: #do_fits:
-        
+    if create_new or reload_data: #do_fits:
         # Load processed traces 
         raw_traces, labels, sdf, run_info = load_dataset(data_fpath, 
                                                     trace_type=trace_type,
@@ -1634,28 +1623,28 @@ def fit_2d_receptive_fields(animalid, session, fov, run, traceid,
        
         # Do fits 
         fit_results, fit_params = fit_rfs(avg_resp_by_cond, response_type=response_type, 
-                                            fit_params=fit_params, data_identifier=data_id, 
-                                            create_new=create_new)        
-        try:
-            # Convert to dataframe
-            fitdf_pos = rfits_to_df(fit_results, scale_sigma=False, convert_coords=False,
-                                row_vals=fit_params['row_vals'], col_vals=fit_params['col_vals'])
-            fit_roi_list = fitdf_pos[fitdf_pos['r2'] > fit_thr].sort_values('r2', axis=0, ascending=False).index.tolist()
-            print("... %i out of %i fit rois with r2 > %.2f" % 
-                        (len(fit_roi_list), fitdf_pos.shape[0], fit_thr))
+                                            fit_params=fit_params, data_identifier=data_id)        
+    
+    try:
+        # Convert to dataframe
+        fitdf_pos = rfits_to_df(fit_results, scale_sigma=False, convert_coords=False,
+                            row_vals=fit_params['row_vals'], col_vals=fit_params['col_vals'])
+        fit_roi_list = fitdf_pos[fitdf_pos['r2'] > fit_thr].sort_values('r2', axis=0, ascending=False).index.tolist()
+        print("... %i out of %i fit rois with r2 > %.2f" % 
+                    (len(fit_roi_list), fitdf_pos.shape[0], fit_thr))
 
-            # Plot all RF maps for fit cells (limit = 60 to plot)
-            fig = plot_best_rfs(fit_roi_list, avg_resp_by_cond, fitdf_pos, fit_params,
-                                single_colorbar=True, plot_ellipse=True, nr=6, nc=10)
-            label_figure(fig, data_id)
-            figname = 'top%i_fit_thr_%.2f_%s_ellipse_sc_2' % (len(fit_roi_list), fit_thr, fit_desc)
-            pl.savefig(os.path.join(rfdir, '%s.png' % figname))
-            print figname
-            pl.close()
-        except Exception as e:
-            traceback.print_exc()
-            print("Error plotting all RF maps that pass thr.")
-        
+        # Plot all RF maps for fit cells (limit = 60 to plot)
+        fig = plot_best_rfs(fit_roi_list, avg_resp_by_cond, fitdf_pos, fit_params,
+                            single_colorbar=True, plot_ellipse=True, nr=6, nc=10)
+        label_figure(fig, data_id)
+        figname = 'top%i_fit_thr_%.2f_%s_ellipse_sc_2' % (len(fit_roi_list), fit_thr, fit_desc)
+        pl.savefig(os.path.join(rfdir, '%s.png' % figname))
+        print figname
+        pl.close()
+    except Exception as e:
+        traceback.print_exc()
+        print("Error plotting all RF maps that pass thr.")
+    
     #%%
     #make_pretty_plots= False
     if make_pretty_plots:
@@ -1663,8 +1652,7 @@ def fit_2d_receptive_fields(animalid, session, fov, run, traceid,
         if response_type != plot_response_type or create_new is False:
             raw_traces, labels, sdf, run_info = load_dataset(data_fpath, 
                                             trace_type=trace_type,
-                                            add_offset=True, make_equal=False,
-                                            create_new=reload_data)        
+                                            add_offset=True, make_equal=False)
             # Z-score or dff the traces:
             trials_by_cond = get_trials_by_cond(labels)
             zscored_traces, zscores = process_traces(raw_traces, labels, 
@@ -1713,6 +1701,12 @@ def fit_2d_receptive_fields(animalid, session, fov, run, traceid,
                         bboxx_inches='tight')
             pl.close()
             
+            
+    #if not do_fits: # need to load results
+    fitdf = rfits_to_df(fit_results, scale_sigma=False, 
+                        row_vals=fit_params['row_vals'], col_vals=fit_params['col_vals'],
+                        convert_coords=True)
+
     #%%
     if create_new or make_pretty_plots:
         try:

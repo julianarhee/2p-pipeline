@@ -1622,14 +1622,13 @@ class ReceptiveFields(Experiment):
         fit_params (dict) - all meta info
         '''
 
-        print("... exp.get_rf_fits(), response_type: '%s." % response_type)
-
         fit_results=None
         fit_params=None
         do_fits = create_new #False
 
         if create_new is False:
             try:
+                print("... (stats) loading receptive field fits")
                 fit_results, fit_params = fitrf.load_fit_results(self.animalid, 
                                                     self.session, self.fov,
                                                     experiment=self.name, 
