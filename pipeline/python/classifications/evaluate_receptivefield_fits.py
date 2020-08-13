@@ -320,7 +320,7 @@ def plot_roi_evaluation(rid, meas_df, _fitr, _bootdata, ci=0.95,
             fig.suptitle('rid %i' % rid)
         except Exception as e:
             print("!! eval error (plot_boot_distn): rid %i, param %s" % (rid, param))
-            traceback.print_exc()
+            #traceback.print_exc()
             
     return fig
 
@@ -890,10 +890,7 @@ def evaluate_rfs(estats, fit_params,
     # Create output dir for bootstrap results
     rfdir = fit_params['rfdir']
     evaldir = os.path.join(rfdir, 'evaluation')
-    if not os.path.exists(os.path.join(evaldir)):
-        os.makedirs(evaldir)
     rf_eval_fpath = os.path.join(evaldir, 'evaluation_results.pkl')
-    
            
     #if create_new:
     print("... do bootstrap analysis")
@@ -1091,7 +1088,7 @@ def do_rf_fits_and_evaluation(animalid, session, fov, rfname=None, traceid='trac
 #    rfname= 'rfs' 
 #    do_fits =False
 #    do_evaluation = True
-#    reload_data=True
+#    reload_data=False
 #   
     #%% Get session info 
     S = util.Session(animalid, session, fov)
@@ -1127,8 +1124,7 @@ def do_rf_fits_and_evaluation(animalid, session, fov, rfname=None, traceid='trac
                             do_fits=do_fits, plot_pretty_rfs=plot_pretty_rfs,
                             return_all_rois=False,
                             reload_data=reload_data,
-                            create_new=create_stats)
-    
+                            create_new=any([create_new, do_fits, do_evaluation])) #create_stats)
     assert estats is not None, "Failed to get exp.get_stats(). ABORTING."
  
     rfdir = estats.fitinfo['rfdir']
@@ -1150,10 +1146,10 @@ def do_rf_fits_and_evaluation(animalid, session, fov, rfname=None, traceid='trac
         shutil.rmtree(os.path.join(evaldir, 'rois'))
 
     #%% Do bootstrap analysis    
-    do_evaluation=create_new
     print("-evaluating (%s)-" % str(do_evaluation))
     if create_new is False: #nd create_new is False:
         try:
+            print("... loading eval results")
             eval_results, eval_params = load_eval_results(animalid, session, fov, 
                                                          experiment=rfname,
                                                          fit_desc=os.path.split(rfdir)[-1],
@@ -1166,6 +1162,7 @@ def do_rf_fits_and_evaluation(animalid, session, fov, rfname=None, traceid='trac
             do_evaluation=True
  
     if do_evaluation: 
+        print("... doing rf evaluation")
         eval_results, eval_params = evaluate_rfs(estats, fit_params, 
                                     n_bootstrap_iters=n_bootstrap_iters, 
                                     n_resamples=n_resamples,
@@ -1220,7 +1217,7 @@ def regr_rf_fov(fovcoords, fit_results, fit_params, eval_results,
     fig = plot_linear_regr_by_condition( posdf.loc[reliable_rois], meas_df.loc[reliable_rois])
     pl.subplots_adjust(top=0.9, bottom=0.1, hspace=0.5)
     label_figure(fig, data_id)
-    pl.savefig(os.path.join(evaldir, 'RFpos_v_FOVpos_split_axes_reliable_cells.svg'))   
+    pl.savefig(os.path.join(evaldir, 'RFpos_v_FOVpos_split_axes_reliable_cells_.svg'))   
     pl.close()
    
     #%% Compare regression fit to bootstrapped params 
