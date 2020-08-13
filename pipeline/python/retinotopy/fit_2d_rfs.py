@@ -353,7 +353,6 @@ class MultiplePeaks(Exception): pass
 class NoPeaksFound(Exception): pass
 
 
-
 def fwhm(x, y, k=3):
     """
     Determine full-with-half-maximum of a peaked set of points, x and y.
@@ -365,7 +364,7 @@ def fwhm(x, y, k=3):
     half_max = max(y)/2.0
     s = splrep(x, y - half_max, k=k)
     roots = sproot(s)
-
+    #print(roots)
     if len(roots) > 2:
         return None
 #        raise MultiplePeaks("The dataset appears to have multiple peaks, and "
@@ -384,16 +383,17 @@ def raw_fwhm(arr):
     xnew = np.linspace(0, len(arr)-1, num=len(arr)*3)
     ynew = interpf(xnew)
     
-    hm = ((ynew.max() - ynew.min()) / 2 ) + ynew.min()
-    pk = ynew.argmax()
+    hm = ((ynew.max() - ynew.min()) / 2 ) + ynew.min() # half-max
+    pk = ynew.argmax() # find peak
+
     if pk == 0:
         r2 = pk + np.abs(ynew[pk:] - hm).argmin()
         return abs(xnew[r2]*2)
     else:
-        r1 = np.abs(ynew[0:pk] - hm).argmin()
-        r2 = pk + np.abs(ynew[pk:] - hm).argmin()
+        r1 = np.abs(ynew[0:pk] - hm).argmin() # find index of local min on left
+        r2 = pk + np.abs(ynew[pk:] - hm).argmin() # find index of local min on right
         
-        return abs(xnew[r2]-xnew[r1])
+        return abs(xnew[r2]-xnew[r1]) # return full width
     
 
 
@@ -451,13 +451,16 @@ def plot_roi_RF(response_vector, ncols, nrows, ax=None, trim=False, cmap='infern
     ax = plot_rf_map(coordmap_r, cmap=cmap, ax=ax)
     
     return ax, rfmap
-#
+#%%
 #rid=29
 #rfmap = avg_resp_by_cond[rid].reshape(21,11).T
 #sns.heatmap(rfmap)
 #
 def do_2d_fit(rfmap, nx=None, ny=None, verbose=False):
 
+    #TODO:  Instead of finding critical pts w/ squared RF map, do:
+    #    mean subtraction, followed by finding max delta from the  ____
+    #nx=len(col_vals); ny=len(row_vals);
     # Set params for fit:
     xi = np.arange(0, nx)
     yi = np.arange(0, ny)
@@ -465,20 +468,28 @@ def do_2d_fit(rfmap, nx=None, ny=None, verbose=False):
     xx, yy = np.meshgrid(xi, yi)
     initial_guess = None
     try:
-        amplitude = (rfmap**2).max()
+        #amplitude = (rfmap**2).max()
         #y0, x0 = np.where(rfmap == rfmap.max())
-        y0, x0 = np.where(rfmap**2. == (rfmap**2.).max())
+        #y0, x0 = np.where(rfmap**2. == (rfmap**2.).max())
         #print "x0, y0: (%i, %i)" % (int(x0), int(y0))    
+
+        rfmap_sub = np.abs(rfmap - rfmap.mean())
+        y0, x0 = np.where(rfmap_sub == rfmap_sub.max())
+        amplitude = rfmap[y0, x0][0]
+        #print "x0, y0: (%i, %i) | %.2f" % (int(x0), int(y0), amplitude)    
         try:
-            sigma_x = fwhm(xi, (rfmap**2).sum(axis=0))
+            #sigma_x = fwhm(xi, (rfmap**2).sum(axis=0))
+            #sigma_x = fwhm(xi, abs(rfmap.sum(axis=0) - rfmap.sum(axis=0).mean()) )
+            sigma_x = fwhm(xi, rfmap_sub.sum(axis=0) )
             assert sigma_x is not None
         except AssertionError:
-            sigma_x = raw_fwhm(rfmap.sum(axis=0)) 
+            #sigma_x = raw_fwhm(rfmap.sum(axis=0)) 
+            sigma_x = raw_fwhm(rfmap_sub.sum(axis=0)) 
         try:
-            sigma_y = fwhm(yi, (rfmap**2).sum(axis=1))
+            sigma_y = fwhm(yi, rfmap_sub.sum(axis=1))
             assert sigma_y is not None
         except AssertionError: #Exception as e:
-            sigma_y = raw_fwhm(rfmap.sum(axis=1))
+            sigma_y = raw_fwhm(rfmap_sub.sum(axis=1))
         #print "sig-X, sig-Y:", sigma_x, sigma_y
         theta = 0
         offset=0
@@ -493,7 +504,7 @@ def do_2d_fit(rfmap, nx=None, ny=None, verbose=False):
         ss_tot = np.sum((rfmap.ravel() - np.mean(rfmap.ravel()))**2)
         r2 = 1 - (ss_res / ss_tot)
         #print(r2)
-        if len(np.where(fitr > fitr.min())[0]) < 2 or pcov.max() == np.inf or r2 == 1: #round(r2, 3) < 0.15 or 
+        if len(np.where(fitr > fitr.min())[0]) < 2 or pcov.max() == np.inf or r2 == 1: 
             success = False
         else:
             success = True
@@ -507,7 +518,7 @@ def do_2d_fit(rfmap, nx=None, ny=None, verbose=False):
     
     return {'popt': popt, 'pcov': pcov, 'init': initial_guess, 'r2': r2, 'success': success}, fitr
 
-#%
+#%%
 # -----------------------------------------------------------------------------
 # PLOTTING FUNCTIONS:
 # -----------------------------------------------------------------------------
@@ -525,7 +536,6 @@ def plot_and_fit_roi_RF(response_vector, row_vals, col_vals,
     
     Sigma must be [2.5, 50]...
     '''
-
 #        set_to_min = False
 #        hard_cutoff = False
 #        set_to_min_str = ''    
@@ -536,7 +546,7 @@ def plot_and_fit_roi_RF(response_vector, row_vals, col_vals,
 #        map_thr = 1.5 if (trim and hard_cutoff) else perc_min
 #        
 #    set_to_min_str = 'set_min' if set_to_min else ''
-
+    #response_vector=avg_resp_by_cond[rid]
     sigma_scale = sigma_scale if scale_sigma else 1.0
     results = {}
     fig, axes = pl.subplots(1,2, figsize=(8, 4)) # pl.figure()
@@ -549,24 +559,23 @@ def plot_and_fit_roi_RF(response_vector, row_vals, col_vals,
 #                            hard_cutoff=False, map_thr=map_thr, set_to_min=set_to_min)
 #
     ax2 = axes[1]
-
     # Do fit 
     # ---------------------------------------------------------------------
     denoised=False
-    if hard_cutoff and (rfmap.max() < map_thr):
-        fitr = {'success': False}
-    else:
-        fitr, fit_y = do_2d_fit(rfmap, nx=len(col_vals), ny=len(row_vals))
-        if rfmap.max() > 3.0 and fit_y is None:
-            try:
-                rfmap[rfmap<rfmap.max()*0.2] = rfmap.min()
-                fitr, fit_y = do_2d_fit(rfmap, nx=len(col_vals), ny=len(row_vals))
-                assert fitr is not None, "--- no fit, trying with denoised..."
-                denoised=True
-            except Exception as e:
-                print e
-                pass
-            
+    #if hard_cutoff and (rfmap.max() < map_thr):
+    #    fitr = {'success': False}
+    #else:
+    fitr, fit_y = do_2d_fit(rfmap, nx=len(col_vals), ny=len(row_vals))
+#        if rfmap.max() > 3.0 and fit_y is None:
+#            try:
+#                rfmap[rfmap<rfmap.max()*0.2] = rfmap.min()
+#                fitr, fit_y = do_2d_fit(rfmap, nx=len(col_vals), ny=len(row_vals))
+#                assert fitr is not None, "--- no fit, trying with denoised..."
+#                denoised=True
+#            except Exception as e:
+#                print e
+#                pass
+#            
     xres = np.mean(np.diff(sorted(row_vals)))
     yres = np.mean(np.diff(sorted(col_vals)))
     min_sigma = xres/2.0
@@ -630,6 +639,8 @@ def plot_and_fit_roi_RF(response_vector, row_vals, col_vals,
     return results, fig
     
 
+
+#%%
 def plot_kde_maxima(kde_results, weights, linX, linY, screen, use_peak=True, \
                     draw_bb=True, marker_scale=200, exclude_bad=False, min_thr=0.01):
         
@@ -809,9 +820,7 @@ def overlay_traces_on_rfmap(rid, avg_resp_by_cond, zscored_traces, labels, sdf, 
                             plot_ellipse=True, scale_sigma=True, sigma_scale=2.35, 
                             ellipse_ec='w', ellipse_fc='none', ellipse_lw=1, ellipse_alpha=1.0): 
                             #screen_ylim=[-33.6615, 33.6615], screen_xlim=[-59.7782, 59.7782]):
-    
-    # TODO:  FIX LEGEND SCALE BAR
-    
+   
     nr = len(row_vals)
     nc = len(col_vals)
    
@@ -1344,10 +1353,11 @@ def fit_rfs(avg_resp_by_cond, fit_params={}, #row_vals=[], col_vals=[], fitparam
     row_vals = fit_params['row_vals']
     col_vals = fit_params['col_vals']
 
-    #% Save params
     rfdir = fit_params['rfdir'] #os.path.split(rf_results_fpath)[0]    
     rf_results_fpath = os.path.join(rfdir, 'fit_results.pkl')
     rf_params_fpath = os.path.join(rfdir, 'fit_params.json')
+
+    # Save params
     with open(rf_params_fpath, 'w') as f:
         json.dump(fit_params, f, indent=4, sort_keys=True)
     
@@ -1397,19 +1407,11 @@ def fit_rfs(avg_resp_by_cond, fit_params={}, #row_vals=[], col_vals=[], fitparam
     yi = np.arange(0, len(row_vals))
     xx, yy = np.meshgrid(xi, yi)
 
-    # Combine all the stuff
-#    fit_results = {}
-#    if len(RF.keys())>0:
-#        fit_results = RF #{'fit_results': RF, #RF
-#                   #'fit_params': fit_params}
-#        
+        
     with open(rf_results_fpath, 'wb') as f:
         pkl.dump(fit_results, f, protocol=pkl.HIGHEST_PROTOCOL)
 
     return fit_results, fit_params
-
-#%%
-
 
 #%%
 
@@ -1421,14 +1423,11 @@ def get_fit_desc(response_type='dff'):
 def create_rf_dir(animalid, session, fov, run_name, 
                traceid='traces001', response_type='dff', fit_thr=0.5,
                rootdir='/n/coxfs01/2p-data'):
-    
-
     # Get RF dir for current fit type
     fit_desc = get_fit_desc(response_type=response_type)
-
     fov_dir = os.path.join(rootdir, animalid, session, fov)
     print("... >>  (fitrfs) creating RF dir:", run_name)
-    #print(glob.glob(os.path.join(fov_dir, run_name)))
+
     if 'combined' in run_name:
         traceid_dirs = [t for t in glob.glob(os.path.join(fov_dir, run_name, 'traces', '%s*' % traceid))]
     else: 
@@ -1519,10 +1518,8 @@ def get_rf_to_fov_info(masks, rfdf, zimg, rfname='rfs', #rfdir='/tmp', rfname='r
 
     return fovinfo   
 
-
 #%%
-#%%
-def get_fit_params(animalid, session, fov, run='rfs', traceid='traces001', 
+def get_fit_params(animalid, session, fov, run='combined_rfs_static', traceid='traces001', 
                    response_type='dff', fit_thr=0.5, 
                    post_stimulus_sec=0.5, sigma_scale=2.35, scale_sigma=True,
                    rootdir='/n/coxfs01/2p-data'):
@@ -1554,7 +1551,7 @@ def get_fit_params(animalid, session, fov, run='rfs', traceid='traces001',
             'row_spacing': np.mean(np.diff(row_vals)),
             'column_spacing': np.mean(np.diff(col_vals)),
             'fit_thr': fit_thr,
-            'sigma_scale': sigma_scale,
+            'sigma_scale': float(sigma_scale),
             'scale_sigma': scale_sigma,
             'screen': screen,
             'row_vals': row_vals,
@@ -1577,25 +1574,18 @@ def fit_2d_receptive_fields(animalid, session, fov, run, traceid,
                             #visual_area='', select_rois=False, segment=False,
                             ellipse_ec='w', ellipse_fc='none', ellipse_lw=2, 
                             plot_ellipse=True, scale_sigma=True, sigma_scale=2.35,
-                            linecolor = 'darkslateblue', cmap = 'bone', legend_lw=2, 
+                            linecolor='darkslateblue', cmap='bone', legend_lw=2, 
                             fit_thr=0.5, rootdir='/n/coxfs01/2p-data'):
 
-    rows = 'ypos'
-    cols = 'xpos'
+    rows = 'ypos'; cols = 'xpos';
 
     # Set output dirs
     # -----------------------------------------------------------------------------
     # rf_param_str = 'fit-2dgaus_%s-no-cutoff' % (response_type) 
     run_name = run.split('_')[1] if 'combined' in run else run
-
     rfdir, fit_desc = create_rf_dir(animalid, session, fov, 
                                     'combined_%s_static' % run_name, traceid=traceid,
                                     response_type=response_type, fit_thr=fit_thr)
-#    if segment:
-#        rfdir = os.path.join(rfdir, visual_area)
-    if not os.path.exists(rfdir):
-        os.makedirs(rfdir)
-
     # Get data source
     traceid_dir = rfdir.split('/receptive_fields/')[0]
     data_fpath = os.path.join(traceid_dir, 'data_arrays', 'np_subtracted.npz')
@@ -1608,7 +1598,6 @@ def fit_2d_receptive_fields(animalid, session, fov, run, traceid,
         print("*****corrected offsets!*****")
   
     # Create results outfile, or load existing:
-    #do_fits = create_new
     if create_new is False:
         try:
             print "... checking for existing fit results"
@@ -1659,7 +1648,7 @@ def fit_2d_receptive_fields(animalid, session, fov, run, traceid,
             fig = plot_best_rfs(fit_roi_list, avg_resp_by_cond, fitdf_pos, fit_params,
                                 single_colorbar=True, plot_ellipse=True, nr=6, nc=10)
             label_figure(fig, data_id)
-            figname = 'top%i_fit_thr_%.2f_%s_ellipse_sc' % (len(fit_roi_list), fit_thr, fit_desc)
+            figname = 'top%i_fit_thr_%.2f_%s_ellipse_sc_2' % (len(fit_roi_list), fit_thr, fit_desc)
             pl.savefig(os.path.join(rfdir, '%s.png' % figname))
             print figname
             pl.close()
@@ -1767,18 +1756,9 @@ def fit_2d_receptive_fields(animalid, session, fov, run, traceid,
         except Exception as e:
             traceback.print_exc()
             print("Error plotting RFs to screen coords.")
-            
-        #%%
-       
+        #%%       
     print("DONE! :)")
-   #if int(session) < 20190511:
-    #    rois = get_roiid_from_traceid(animalid, session, fov, run_type='gratings', traceid=traceid)
-    #else:
-    #rois = get_roiid_from_traceid(animalid, session, fov, run_type='rfs', traceid=traceid)
-    #masks, zimg = load_roi_masks(animalid, session, fov, rois=rois, rootdir=rootdir)
-    
-    #fovinfo = get_rf_to_fov_info(masks, fitdf, zimg, rfdir=rfdir, create_new=do_fits)
-  
+ 
     return fit_results, fit_params #fovinfo
 
 #%%
@@ -1863,10 +1843,10 @@ def extract_options(options):
 #%%
 
 rootdir = '/n/coxfs01/2p-data'
-animalid = 'JC083' #'JC097' #'JC084' #'JC059'
-session = '20190510' #'20190623' #'20190522' #'20190227'
+animalid = 'JC085' #'JC097' #'JC084' #'JC059'
+session = '20190622' #'20190623' #'20190522' #'20190227'
 fov = 'FOV1_zoom2p0x' #'FOV4_zoom4p0x'
-run = 'combined_gratings_static'
+run = 'rfs' #'combined_s_static'
 traceid = 'traces001' #'traces001'
 #segment = False
 #visual_area = 'V1'
@@ -1879,7 +1859,7 @@ fit_thr = 0.5
 post_stimulus_sec = 0.5
 
 options = ['-i', animalid, '-S', session, '-A', fov, '-R', run, '-t', traceid,
-           '--plot', '--new', '-p', post_stimulus_sec]
+           '--pretty', '--new', '-p', post_stimulus_sec]
 
 #if segment:
 #    options.extend(['--segment', '-V', visual_area])

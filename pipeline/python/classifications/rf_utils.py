@@ -51,8 +51,10 @@ def compare_rf_size(df, cdf=False, ax=None, alpha=1, lw=2,
 # ------------------------------------------------------------------------------------
 def aggregate_rf_dataframes(filter_by, fit_desc=None, scale_sigma=True, fit_thr=0.5, traceid='traces001',
                             fov_type='zoom2p0x', state='awake', stimulus='rfs', 
-                            excluded_sessions = ['JC110_20191004_FOV1_zoom2p0x','JC080_20190602_FOV1_zoom2p0x',
-                                                 'JC113_20191108_FOV1_zoom2p0x', 'JC113_20191108_FOV2_zoom2p0x']):
+                            excluded_sessions = ['JC110_20191004_FOV1_zoom2p0x',
+                                                 'JC080_20190602_FOV1_zoom2p0x',
+                                                 'JC113_20191108_FOV1_zoom2p0x', 
+                                                 'JC113_20191108_FOV2_zoom2p0x']):
     
     from pipeline.python.classifications import aggregate_data_stats as aggr
                             
@@ -142,12 +144,14 @@ def aggregate_rf_data(rf_dpaths, fit_desc=None, traceid='traces001', fit_thr=0.5
     and gets fit results only for those cells that are good/robust fits based on bootstrap analysis.
     '''
     from pipeline.python.retinotopy import fit_2d_rfs as fitrf
+    from pipeline.python.classifications import evaluate_receptivefield_fits as evalrf
 
 
     df_list = []
     for (visual_area, animalid, session, fovnum, experiment), g in rf_dpaths.groupby(['visual_area', 'animalid', 'session', 'fovnum', 'experiment']):
         datakey = '%s_%s_fov%i' % (session, animalid, fovnum) #'-'.join([animalid, session, fovnum])
         #print(datakey)
+        fov = 'FOV%i_zoom2p0x' % fovnum
         try:
             #### Load evaluation results (bootstrap analysis of each fit paramater)
             curr_rfname = experiment if int(session)>=20190511 else 'gratings'
@@ -160,7 +164,7 @@ def aggregate_rf_data(rf_dpaths, fit_desc=None, traceid='traces001', fit_thr=0.5
 #                eval_results = pkl.load(f)
 
             #### Load eval results 
-            eval_results, eval_params = fitrf.load_eval_results(
+            eval_results, eval_params = evalrf.load_eval_results(
                                                 animalid, session, fov,
                                                 experiment=curr_rfname,
                                                 traceid=traceid, 
@@ -184,18 +188,21 @@ def aggregate_rf_data(rf_dpaths, fit_desc=None, traceid='traces001', fit_thr=0.5
 
             scale_sigma = fit_params['scale_sigma']
             sigma_scale = fit_params['sigma_scale']
-            rfit_df = fitrf.rfits_to_df(fit_results['fit_results'], 
+            rfit_df = fitrf.rfits_to_df(fit_results, 
                             scale_sigma=scale_sigma, 
                             sigma_scale=sigma_scale,
-                            row_vals=fit_results['row_vals'], 
-                            col_vals=fit_results['col_vals'], 
+                            row_vals=fit_params['row_vals'], 
+                            col_vals=fit_params['col_vals'], 
                             roi_list=fit_rois)
 
             #### Identify cells with measured params within 95% CI of bootstrap distN
             param_list = [param for param in rfit_df.columns if param != 'r2']
             pass_rois = get_good_fits(rfit_df, eval_results, param_list=param_list)
+            reliable_rois = evalrf.get_reliable_fits(eval_results['pass_cis'],
+                                                     pass_criterion='all')
             if verbose:
                 print("[%s] %s: %i of %i fit rois pass for all params" % (visual_area, datakey, len(pass_rois), len(fit_rois)))
+                print("...... : %i of %i fit rois passed as reliiable" % (len(reliable_rois), len(pass_rois)))
 
             #### Create dataframe with params only for good fit cells
             passdf = rfit_df.loc[pass_rois].copy()
