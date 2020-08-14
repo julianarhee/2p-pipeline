@@ -12,7 +12,7 @@ import traceback
 # General stats
 # ------------------------------------------------------------------------------------
 
-def compare_rf_size(df, cdf=False, ax=None, alpha=1, lw=2,
+def compare_rf_size(df, metric='avg_size', cdf=False, ax=None, alpha=1, lw=2,
                    area_colors=None, visual_areas=['V1', 'Lm', 'Li']):
     if area_colors is None:
         visual_areas = ['V1', 'Lm', 'Li']
@@ -27,7 +27,7 @@ def compare_rf_size(df, cdf=False, ax=None, alpha=1, lw=2,
     for visual_area in visual_areas:
         nrats = len(df[df['visual_area']==visual_area]['animalid'].unique())
         ncells_total = df[df['visual_area']==visual_area].shape[0]
-        values = df[df['visual_area']==visual_area]['avg_size'].values
+        values = df[df['visual_area']==visual_area]['%s' % metric].values
         weights = np.ones_like(values)/float(len(values))
         ax.hist(values, 
                 cumulative=cdf,
@@ -37,7 +37,7 @@ def compare_rf_size(df, cdf=False, ax=None, alpha=1, lw=2,
                 normed=0, weights=weights)
     ax.legend(bbox_to_anchor=(1.05, 1), loc=2, borderaxespad=0., fontsize=8)
     #sns.despine(ax=ax, trim=True, offset=2)
-    ax.set_xlabel('average size (deg)')
+    ax.set_xlabel(metric) #'average size (deg)')
     if cdf:
         ax.set_ylabel('CDF')
     else:
@@ -50,6 +50,7 @@ def compare_rf_size(df, cdf=False, ax=None, alpha=1, lw=2,
 # Data loading
 # ------------------------------------------------------------------------------------
 def aggregate_rf_dataframes(filter_by, fit_desc=None, scale_sigma=True, fit_thr=0.5, traceid='traces001',
+                            reliable_only=True,  
                             fov_type='zoom2p0x', state='awake', stimulus='rfs', 
                             excluded_sessions = ['JC110_20191004_FOV1_zoom2p0x',
                                                  'JC080_20190602_FOV1_zoom2p0x',
@@ -137,7 +138,7 @@ def get_fit_dpaths(dsets, traceid='traces001', fit_desc=None, excluded_sessions=
 
 def aggregate_rf_data(rf_dpaths, fit_desc=None, traceid='traces001', fit_thr=0.5, 
                       scale_sigma=True, sigma_scale=2.35, verbose=False, 
-                      response_type='None',
+                      response_type='None', reliable_only=True,
                       rootdir='/n/coxfs01/2p-data'):
     '''
     Combines fit_results.pkl(fit from data) and evaluation_results.pkl (evaluated fits via bootstrap)
@@ -205,7 +206,8 @@ def aggregate_rf_data(rf_dpaths, fit_desc=None, traceid='traces001', fit_thr=0.5
                 print("...... : %i of %i fit rois passed as reliiable" % (len(reliable_rois), len(pass_rois)))
 
             #### Create dataframe with params only for good fit cells
-            passdf = rfit_df.loc[pass_rois].copy()
+            keep_rois = reliable_rois if reliable_only else pass_rois
+            passdf = rfit_df.loc[keep_rois].copy()
             # "un-scale" size, if flagged
             if not scale_sigma:
                 sigma_x = passdf['sigma_x']/sigma_scale
@@ -213,13 +215,13 @@ def aggregate_rf_data(rf_dpaths, fit_desc=None, traceid='traces001', fit_thr=0.5
                 passdf['sigma_x'] = sigma_x
                 passdf['sigma_y'] = sigma_y
 
-            tmpmeta = pd.DataFrame({'cell': pass_rois,
-                                    'datakey': [datakey for _ in np.arange(0, len(pass_rois))],
-                                    'animalid': [animalid for _ in np.arange(0, len(pass_rois))],
-                                    'session': [session for _ in np.arange(0, len(pass_rois))],
-                                    'fovnum': [fovnum for _ in np.arange(0, len(pass_rois))],
-                                    'visual_area': [visual_area for _ in np.arange(0, len(pass_rois))],
-                                    'experiment': [experiment for _ in np.arange(0, len(pass_rois))]}, index=passdf.index)
+            tmpmeta = pd.DataFrame({'cell': keep_rois,
+                                    'datakey': [datakey for _ in np.arange(0, len(keep_rois))],
+                                    'animalid': [animalid for _ in np.arange(0, len(keep_rois))],
+                                    'session': [session for _ in np.arange(0, len(keep_rois))],
+                                    'fovnum': [fovnum for _ in np.arange(0, len(keep_rois))],
+                                    'visual_area': [visual_area for _ in np.arange(0, len(keep_rois))],
+                                    'experiment': [experiment for _ in np.arange(0, len(keep_rois))]}, index=passdf.index)
 
             fitdf = pd.concat([passdf, tmpmeta], axis=1).reset_index(drop=True)
             df_list.append(fitdf)
@@ -232,7 +234,18 @@ def aggregate_rf_data(rf_dpaths, fit_desc=None, traceid='traces001', fit_thr=0.5
     rfdf = pd.concat(df_list, axis=0) #.reset_index(drop=True)
 
     # Include average RF size (average of minor/major axes of fit ellipse)
-    rfdf['avg_size'] = rfdf[['sigma_x', 'sigma_y']].mean(axis=1)
+    if scale_sigma:
+        rfdf = rfdf.rename(columns={'sigma_x': 'fwhm_x', 'sigma_y': 'fwhm_y'})
+        rfdf['std_x'] = rfdf['fwhm_x']/2.35
+        rfdf['std_y'] = rfdf['fwhm_y']/2.35
+    else:
+        rfdf = rfdf.rename(columns={'sigma_x': 'std_x', 'sigma_y': 'std_y'})
+        rfdf['fwhm_x'] = rfdf['std_x']*2.35
+        rfdf['fwhm_y'] = rfdf['std_y']*2.35
+
+    rfdf['fwhm_avg'] = rfdf[['fwhm_x', 'fwhm_y']].mean(axis=1)
+    rfdf['std_avg'] = rfdf[['std_x', 'std_y']].mean(axis=1)
+    rfdf['area'] = np.pi * (rfdf['std_x'] * rfdf['std_y'])
 
     return rfdf
 
