@@ -64,7 +64,7 @@ def rfits_to_df(fitr, row_vals=[], col_vals=[], roi_list=None,
                                'y0': [fitr[r]['y0'] for r in roi_list],
                                'sigma_x': [fitr[r]['sigma_x'] for r in roi_list],
                                'sigma_y': [fitr[r]['sigma_y'] for r in roi_list],
-                               'theta': [fitr[r]['theta'] for r in roi_list],
+                               'theta': [fitr[r]['theta'] % (2*np.pi) for r in roi_list],
                                'r2': [fitr[r]['r2'] for r in roi_list]},
                               index=roi_list)
 
@@ -509,8 +509,8 @@ def do_2d_fit(rfmap, nx=None, ny=None, verbose=False):
         else:
             success = True
             # modulo theta
-            mod_theta = popt[5] % np.pi
-            popt[5] = mod_theta
+            #mod_theta = popt[5] % np.pi
+            #popt[5] = mod_theta
             
     except Exception as e:
         if verbose:
