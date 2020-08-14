@@ -1392,11 +1392,9 @@ def fit_rfs(avg_resp_by_cond, fit_params={}, #row_vals=[], col_vals=[], fitparam
         if roi_fit_results != {}:
             fit_results[rid] = roi_fit_results
         #%
-
     xi = np.arange(0, len(col_vals))
     yi = np.arange(0, len(row_vals))
     xx, yy = np.meshgrid(xi, yi)
-
         
     with open(rf_results_fpath, 'wb') as f:
         pkl.dump(fit_results, f, protocol=pkl.HIGHEST_PROTOCOL)

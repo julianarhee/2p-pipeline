@@ -241,6 +241,8 @@ def run_bootstrap_evaluation(estats, fit_params,
     bootdata['y0'] = yy
     bootdata['sigma_x'] = sigx * sigma_scale
     bootdata['sigma_y'] = sigy * sigma_scale
+    theta_vs = bootdata['theta'].values.copy()
+    bootdata['theta'] = theta_vs % (2*np.pi)
     
     # Calculate confidence intervals
     bootcis = get_cis_for_params(bootdata, ci=ci)
@@ -905,7 +907,7 @@ def evaluate_rfs(estats, fit_params,
     keys = [k for k in inspect.getargspec(evaluate_rfs).args if k not in ['estats', 'fit_params']]
     opts_update = dict((k, v) for k, v in optsdict.items() if k in keys)
     #if os.path.exists(eval_params_fpath):
-    print(keys)
+    #print(keys)
     try:
         eval_params = load_params(eval_params_fpath)
         for k, v in opts_update.items():
