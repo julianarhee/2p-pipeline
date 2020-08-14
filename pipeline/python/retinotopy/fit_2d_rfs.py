@@ -1307,7 +1307,7 @@ def load_fit_results(animalid, session, fov, experiment='rfs',
         rfname = 'gratings' if int(session) < 20190511 else experiment
         rfname = rfname.split('_')[1] if 'combined' in rfname else rfname
 
-        print("... >>> (fitrfs) Loading results: %s (%s)" % (rfname, fit_desc))
+        #print("... >>> (fitrfs) Loading results: %s (%s)" % (rfname, fit_desc))
         rfdir = glob.glob(os.path.join(rootdir, animalid, session, fov, 
                         '*%s_*' % rfname, #experiment
                         'traces', '%s*' % traceid, 'receptive_fields', 
