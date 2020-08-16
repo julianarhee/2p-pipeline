@@ -199,6 +199,17 @@ def plot_roi_contours(zproj, cnts, clip_limit=0.01, ax=None,
         ax.imshow(orig)
         
 #%%
+def plot_neuropil_masks(masks_soma, masks_np, zimg, ax=None):
+    if ax is None:
+        fig, ax = pl.subplots()
+    
+    ax.imshow(zimg, cmap='gray', alpha=0.5)
+    ax.imshow(masks_np.sum(axis=0), cmap='Greens', alpha=0.4)
+    ax.imshow(masks_soma.sum(axis=0), cmap='Reds', alpha=0.2)
+    
+    return ax
+
+#%%
 def save_roi_params(RID, evalparams=None, keep_good_rois=True, excluded_tiffs=[], rootdir=''):
     roiparams = dict()
     rid_dir = RID['DST']
