@@ -320,12 +320,12 @@ def do_mannwhitney(mdf, metric='I_rs', multi_comp_test='holm'):
     return results
 
 
-def annotate_stats_areas(statresults, ax, lw=1, color='k', 
+def annotate_stats_areas(statresults, ax, lw=1, color='k', offset_v=0.1, 
                          visual_areas=['V1', 'Lm', 'Li']):
     
     y_ht = round(ax.get_ylim()[-1], 1)*1.2
     print(y_ht)
-    offset = y_ht*0.1
+    offset = y_ht*offset_v #0.1
     for ci, cpair in enumerate(statresults):
         if cpair[1]:
             v1, v2 = cpair[0]
