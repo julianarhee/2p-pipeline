@@ -139,8 +139,8 @@ def get_metadata(traceid='traces001', filter_by='most_cells', stimulus=None, sti
             return dsets[dsets['experiment'].isin(['rfs', 'rfs10'])]
         else:
             return dsets[dsets['experiment'].isin([stimulus])]
-        
-    return dsets
+    else:        
+        return dsets
 
 def get_gratings_datasets(filter_by='most_cells', excluded_sessions=[], as_dict=True):
 
@@ -215,6 +215,7 @@ def get_rf_datasets(filter_by='drop_repeats', excluded_sessions=[], as_dict=True
     
     elif filter_by=='drop_repeats':
         # Sessions with repeat FOVs
+        print("droppin repeats")
         v1_repeats = ['20190501_JC076', 
                       '20190507_JC083', '20190510_JC083', #'20190511_JC083']
                       '20190615_JC097_fov1', '20190615_JC097_fov2', '20190615_JC097_fov3',
@@ -257,8 +258,8 @@ def get_rf_datasets(filter_by='drop_repeats', excluded_sessions=[], as_dict=True
         
     if as_dict:
         return session_dict
-    
-    return included_sessions
+    else: 
+        return included_sessions
     
 # ===============================================================
 # Plotting
@@ -346,19 +347,28 @@ def get_counts_for_legend(df, area_colors=None, markersize=10, marker='_',
 
 
     # Get counts
-    counts = df.groupby(['visual_area', 'animalid', 'datakey'])['cell'].count().reset_index()
-    counts.rename(columns={'cell': 'n_cells'}, inplace=True)
+    if 'cell' in df.columns:
+        counts = df.groupby(['visual_area', 'animalid', 'datakey'])['cell'].count().reset_index()
+        counts.rename(columns={'cell': 'n_cells'}, inplace=True)
+    else:
+        counts = df.groupby(['visual_area', 'animalid', 'datakey']).count().reset_index()
 
     # Get counts of samples for legend
     n_rats = dict((v, len(g['animalid'].unique())) for v, g in counts.groupby(['visual_area']))
     n_fovs = dict((v, len(g[['datakey']].drop_duplicates())) for v, g in counts.groupby(['visual_area']))
-    n_cells = dict((v, g['n_cells'].sum()) for v, g in counts.groupby(['visual_area']))
+    if 'cell' in df.columns:
+        n_cells = dict((v, g['n_cells'].sum()) for v, g in counts.groupby(['visual_area']))
+        legend_elements = [Line2D([0], [0], marker='_', markersize=10, \
+                                  lw=1, color=area_colors[v], markerfacecolor=area_colors[v],
+                                  label='%s (n=%i rats, %i fovs, %i cells)' % (v, n_rats[v], n_fovs[v], n_cells[v]))\
+                           for v in visual_areas]
+    else:
+        legend_elements = [Line2D([0], [0], marker='_', markersize=10, \
+                                  lw=1, color=area_colors[v], markerfacecolor=area_colors[v],
+                                  label='%s (n=%i rats, %i fovs)' % (v, n_rats[v], n_fovs[v]))\
+                           for v in visual_areas]
 
-    legend_elements = [Line2D([0], [0], marker='_', markersize=10, \
-                              lw=1, color=area_colors[v], markerfacecolor=area_colors[v],
-                              label='%s (n=%i rats, %i fovs, %i cells)' % (v, n_rats[v], n_fovs[v], n_cells[v]))\
-                       for v in visual_areas]
-    
+        
     return legend_elements
 
 # ===============================================================

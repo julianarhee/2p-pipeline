@@ -63,6 +63,7 @@ def aggregate_rf_dataframes(filter_by, fit_desc=None, scale_sigma=True, fit_thr=
     #### Get metadata
     dsets = aggr.get_metadata(traceid=traceid, fov_type=fov_type, state=state, 
                                   filter_by=filter_by, stimulus='rfs')
+    
     rf_dsets = dsets[dsets['experiment'].isin(['rfs', 'rfs10'])].copy()
 
     #### Check for any datasets that need RF fits
