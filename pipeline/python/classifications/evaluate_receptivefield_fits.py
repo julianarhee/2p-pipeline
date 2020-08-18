@@ -1196,6 +1196,8 @@ def regr_rf_fov(fovcoords, fit_results, fit_params, eval_results,
                 pass_criterion='all', data_id='ID', 
                 deviant_color='magenta', marker='o', 
                 marker_size=20, fill_marker=True):
+    print("~regressing rf on fov~")
+
     reliable_rois = get_reliable_fits(eval_results['pass_cis'], pass_criterion=pass_criterion)
 
     #%% Get measured fits
