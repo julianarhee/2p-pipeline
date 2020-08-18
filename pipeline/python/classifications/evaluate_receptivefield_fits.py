@@ -491,6 +491,8 @@ def do_regr_on_fov_cis(bootdata, bootcis, posdf, cond='azimuth',
     fov_pos = posdf['%s_fov' % axname][roi_list].values
     rf_pos = posdf['%s_rf' % axname][roi_list].values 
     fitv, regr = fit_linear_regr(fov_pos, rf_pos, return_regr=True)
+    regr_info = {'regr': regr, 'fitv': fitv, 'xv': fov_pos, 'yv': rf_pos}
+
     #ax.plot(fov_pos, fitv, 'r:')
     eq_str = 'y=%.2fx + %.2f' % (regr.coef_[0], regr.intercept_[0])
     ax.set_title(eq_str, loc='left', fontsize=12)
@@ -539,7 +541,7 @@ def do_regr_on_fov_cis(bootdata, bootcis, posdf, cond='azimuth',
 
     print("[%s] N deviants: %i (of %i reliable fits) | %i bad fits" % (cond, len(deviants), len(roi_list), len(bad_fits)))
  
-    return fig, regr_cis, deviants, bad_fits
+    return fig, regr_info, regr_cis, deviants, bad_fits
 
 #%%
 
@@ -752,19 +754,28 @@ def compare_regr_to_boot_params(eval_results, posdf, xlim=None, ylim=None,
     filter_str = '_filter-weird' if filter_weird else ''
 
     for cond in ['azimuth', 'elevation']:
-        fig, regci, deviants, bad_fits = do_regr_on_fov_cis(bootdata, bootcis, posdf, cond=cond,
+        fig, regr, regci, deviants, bad_fits = do_regr_on_fov_cis(bootdata, bootcis,
+                                                        posdf, cond=cond,
                                                         roi_list=reliable_rois,
                                                         deviant_color=deviant_color,
                                                         fill_marker=fill_marker,
                                                         marker=marker, marker_size=marker_size,
                                                         xaxis_lim=xlim) #xaxis_lim)
                                                         #plot_all_cis=plot_all_cis, filter_weird=filter_weird, )
+        # Get some stats from linear regr
+        rmse = np.sqrt(skmetrics.mean_squared_error(regr['yv'], regr['fitv']))
+        r2 = skmetrics.r2_score(regr['yv'], regr['fitv'])
+        pearson_p, pearson_r = spstats.pearsonr(regr['xv'], regr['yv'])
 
         pass_rois = [i for i in fit_rois if i not in bad_fits]
         reg_results[cond] = {'cis': [tuple(ci) for ci in regci], 
                             'deviants': deviants, 
                             'bad_fits': bad_fits, 
-                            'pass_rois': pass_rois}
+                            'pass_rois': pass_rois,
+                            'regr_coef': float(regr['regr'].coef_[0]), #r_coef,
+                            'regr_int': float(regr['regr'].intercept_[0]),
+                            'regr_R2': r2, 'regr_RMSE': rmse, 
+                            'regr_pearson_p': pearson_p, 'regr_pearson_r': pearson_r}
  
         label_figure(fig, data_id)
         pl.savefig(os.path.join(outdir, 'VF2RF_regr_deviants_%s%s.svg' % (cond, filter_str)))
@@ -1233,7 +1244,7 @@ def regr_rf_fov(fovcoords, fit_results, fit_params, eval_results,
 #                                 ci=ci, rfdir=rfdir)    
 ##    with open(os.path.join(rfdir, 'evaluation', 'deviants_bothconds.json'), 'w') as f:
 #        json.dump(deviants, f, indent=4)
-    print('%i reliable of %i fit (thr>.5)' % (len(reg_results['reliable_rois']), len(meas_df)))
+    print('%i reliable of %i fit (thr>.5) | regr R2=%.2f' % (len(reg_results['reliable_rois']), len(meas_df), reg_results['azimuth']['regr_R2']))
 
     return reg_results, posdf #deviants
 
