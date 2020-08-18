@@ -246,6 +246,9 @@ def get_rf_datasets(filter_by='drop_repeats', excluded_sessions=[], as_dict=True
         excluded_sessions.extend(excl)
     excluded_sessions = list(set(excluded_sessions))
 
+
+    print("[filter_by=%s] Excluding %i total repeats" % (str(filter_by), len(excluded_sessions)))
+
     if return_excluded:
         return excluded_sessions
     
@@ -356,7 +359,7 @@ def get_counts_for_legend(df, area_colors=None, markersize=10, marker='_',
     # Get counts of samples for legend
     n_rats = dict((v, len(g['animalid'].unique())) for v, g in counts.groupby(['visual_area']))
     n_fovs = dict((v, len(g[['datakey']].drop_duplicates())) for v, g in counts.groupby(['visual_area']))
-    if 'cell' in df.columns:
+    if 'cell' in df.columns.tolist():
         n_cells = dict((v, g['n_cells'].sum()) for v, g in counts.groupby(['visual_area']))
         legend_elements = [Line2D([0], [0], marker='_', markersize=10, \
                                   lw=1, color=area_colors[v], markerfacecolor=area_colors[v],
