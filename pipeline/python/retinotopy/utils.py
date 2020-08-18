@@ -33,7 +33,7 @@ import glob
 #from mpl_toolkits.axes_grid1 import make_axes_locatable
 import scipy as sp
 import pandas as pd
-
+import seaborn as sns
 
 from pipeline.python.utils import natural_keys, label_figure, replace_root, convert_range, get_screen_dims
 #from matplotlib.patches import Ellipse, Rectangle
@@ -58,8 +58,29 @@ import cPickle as pkl
 # -----------------------------------------------------------------------------
 
 # preprocessing ---------------
+def load_traces(animalid, session, fov, run='retino_run1', analysisid='analysis002',
+                trace_type='raw', rootdir='/n/coxfs01/2p-data'):
+    print("... loading traces (%s)" % trace_type)
+    retinoid_path = glob.glob(os.path.join(rootdir, animalid, session, fov, '%s*' % run,
+                                'retino_analysis', 'analysisids_*.json'))[0]
+    with open(retinoid_path, 'r') as f:
+        RIDS = json.load(f)
+    eligible = [r for r, res in RIDS.items() if res['PARAMS']['roi_type']!='pixels']
+    if analysisid not in eligible:
+        print("Specified ID <%s> not eligible. Selecting 1st of %s" 
+                    % (analysisid, str(eligible)))
+        analysisid = eligible[0]
 
-def load_retino_traces(retino_dpath, scaninfo, trace_type='corrected', temporal_ds=None, frame_rate=44.65):
+    analysis_dir = RIDS[analysisid]['DST']
+    retino_dpath = os.path.join(analysis_dir, 'traces', 'extracted_traces.h5')
+    scaninfo = get_protocol_info(animalid, session, fov, run=run)
+    temporal_ds = RIDS[analysisid]['PARAMS']['downsample_factor']
+    traces = load_traces_from_file(retino_dpath, scaninfo, trace_type=trace_type, 
+                                    temporal_ds=temporal_ds)
+    return traces
+
+
+def load_traces_from_file(retino_dpath, scaninfo, trace_type='corrected', temporal_ds=None, frame_rate=44.65):
     '''
     Loads ./traces/extracted_traces.h5 (contains data for each tif file).
     Pre-processes raw extracted traces by adding back in neuropil offsets and F0 offset from drift correction.
@@ -73,12 +94,13 @@ def load_retino_traces(retino_dpath, scaninfo, trace_type='corrected', temporal_
     try:
         tfile = h5py.File(retino_dpath, 'r')
         for condition, trialnums in trials_by_cond.items():
-            print("... loading cond: %s" % condition)
+            #print("... loading cond: %s" % condition)
             dlist = tuple([process_data(tfile, trialnum, trace_type=trace_type, frame_rate=frame_rate, stim_freq=stim_freq) for trialnum in trialnums])
             dfcat = pd.concat(dlist)
             df_rowix = dfcat.groupby(dfcat.index)
             meandf = df_rowix.mean()
             if temporal_ds is not None:
+                #print("Temporal ds: %.2f" % temporal_ds)
                 meandf = downsample_array(meandf, temporal_ds=temporal_ds)
             traces[condition] = meandf
     except Exception as e:
@@ -131,7 +153,7 @@ def temporal_downsample(trace, windowsz):
 
         
 def downsample_array(roi_trace, temporal_ds=5):
-    print('Performing temporal smoothing on traces...')
+    #print('Performing temporal smoothing on traces...')
     windowsz = int(temporal_ds)
     smooth_roi_trace = roi_trace.apply(temporal_downsample, args=(windowsz,), axis=0)
     return smooth_roi_trace
@@ -304,7 +326,7 @@ def average_retino_traces(RID, mwinfo, runinfo, tiff_fpaths, masks, output_dir='
 
 
 # Masks
-def load_retinoanalysis(run_dir, traceid):
+def load_retinoanalysis(run_dir, traceid, verbose=False):
     run = os.path.split(run_dir)[-1]
     trace_dir = os.path.join(run_dir, 'retino_analysis')
     tracedict_path = os.path.join(trace_dir, 'analysisids_%s.json' % run)
@@ -318,15 +340,55 @@ def load_retinoanalysis(run_dir, traceid):
             tmptids = json.load(f)
         roi_id = tmptids[traceid]['PARAMS']['roi_id']
         analysis_id = [t for t, v in tracedict.items() if v['PARAMS']['roi_type']=='manual2D_circle' and v['PARAMS']['roi_id'] == roi_id][0]
-        print("Corresponding ANALYSIS ID (for %s with %s) is: %s" % (traceid, roi_id, analysis_id))
+        if verbose:
+            print("Corresponding ANALYSIS ID (for %s with %s) is: %s" % (traceid, roi_id, analysis_id))
 
     else:
         analysis_id = traceid 
     TID = tracedict[analysis_id]
-    pp.pprint(TID)
+    if verbose:
+        pp.pprint(TID)
     return TID
 
- 
+def load_soma_and_np_masks(RETID):
+
+    # Get ROIID and projection image
+    roiid = RETID['PARAMS']['roi_id']
+    ds_factor = int(RETID['PARAMS']['downsample_factor'])
+    
+
+    zimg = load_fov_image(RETID)
+    d1, d2 = zimg.shape
+
+    # Get roi extraction info
+    session_dir = RETID['DST'].split('FOV')[0]
+    rid_fpath = glob.glob(os.path.join(session_dir, 'ROIs', 'rids*.json'))[0]
+    with open(rid_fpath, 'r') as f:
+        rids = json.load(f)
+    reffile = rids[roiid]['PARAMS']['options']['ref_file']
+
+    # Load masks
+    retino_dpath = os.path.join(RETID['DST'], 'traces', 'extracted_traces.h5')
+    tfile = h5py.File(retino_dpath, 'r')
+
+    # Reshape masks
+    masks_np = tfile['File%03d' % int(reffile)]['np_masks'][:].T
+    masks_soma = tfile['File%03d' % int(reffile)]['masks'][:].copy()
+    #print("NP masks:", masks_np.shape)
+
+    nrois_total, _ = masks_soma.shape
+    masks_np = np.reshape(masks_np, (nrois_total, d1, d2))
+    masks_np[masks_np>0] = 1
+
+    masks_soma = np.reshape(masks_soma, (nrois_total, d1, d2))
+    masks_soma[masks_soma>0] = 1
+    #print(masks_soma.shape)
+
+    #print( tfile['File%03d' % int(reffile)].keys())
+    
+    return masks_soma, masks_np, zimg
+
+
 def load_roi_masks(session_dir, RID):
     assert RID['PARAMS']['roi_type'] != 'pixels', "ROI type for analysis should not be pixels. This is: %s" % RID['PARAMS']['roi_type']
     print 'Getting masks'
@@ -608,10 +670,8 @@ def format_retino_traces(data_fpath, info=None, trace_type='corrected'):
 def get_protocol_info(animalid, session, fov, run='retino_run1', rootdir='/n/coxfs01/2p-data'):
     
     run_dir = os.path.join(rootdir, animalid, session, fov, run)
-    mw_fpath = glob.glob(os.path.join(run_dir, 'paradigm', 'files', 'parsed*.json'))[0]
-    with open(mw_fpath, 'r') as f:
-        mwinfo = json.load(f)
-    
+    mwinfo = load_mw_info(animalid, session, fov, run, rootdir=rootdir)
+   
     si_fpath = glob.glob(os.path.join(run_dir, '*.json'))[0]
     with open(si_fpath, 'r') as f:
         scaninfo = json.load(f)
@@ -619,7 +679,7 @@ def get_protocol_info(animalid, session, fov, run='retino_run1', rootdir='/n/cox
     conditions = list(set([cdict['stimuli']['stimulus'] for trial_num, cdict in mwinfo.items()]))
     trials_by_cond = dict((cond, [int(k) for k, v in mwinfo.items() if v['stimuli']['stimulus']==cond]) \
                            for cond in conditions)
-    print(trials_by_cond)
+    #print(trials_by_cond)
     n_frames = scaninfo['nvolumes']
     fr = scaninfo['frame_rate']
         
@@ -657,6 +717,17 @@ def get_protocol_info(animalid, session, fov, run='retino_run1', rootdir='/n/cox
 
 
     return scaninfo
+
+def load_mw_info(animalid, session, fov, run_name, rootdir='/n/coxfs01/2p-data'):
+    parsed_fpaths = glob.glob(os.path.join(rootdir, animalid, session, fov, 
+                                    '%s*' % run_name, 
+                                    'paradigm', 'files', 'parsed_trials*.json'))
+    assert len(parsed_fpaths)==1, "Unable to find correct parsed trials path: %s" % str(parsed_fpaths)
+    with open(parsed_fpaths[0], 'r') as f:
+        mwinfo = json.load(f)
+
+    return mwinfo
+
 
 
 def get_retino_stimulus_info(mwinfo, runinfo):
@@ -759,91 +830,25 @@ def get_interp_positions(condname, mwinfo, stiminfo, trials_by_cond):
 
     return stim_positions, stim_tstamps
 
-
-#%%
-#def get_screen_info(animalid, session, fov=None, interactive=True, rootdir='/n/coxfs01/2p-data'):
-#    
-#    print("... Getting screen info")    
-#    screen = {}
-#    
-#    try:
-#        # Get bounding box values from epi:
-#        epi_session_paths = sorted(glob.glob(os.path.join(rootdir, animalid, 'epi_maps', '20*')), key=natural_keys)
-#        epi_sessions = sorted([os.path.split(s)[-1].split('_')[0] for s in epi_session_paths], key=natural_keys)
-#        #print("Found epi sessions: %s" % str(epi_sessions))
-#        if len(epi_sessions) > 0:
-#            epi_sesh = [datestr for datestr in sorted(epi_sessions, key=natural_keys) if int(datestr) <= int(session)][-1] # Use most recent session
-#            print("Most recent: %s" % str(epi_sesh))
-#
-#            epi_fpaths = glob.glob(os.path.join(rootdir, animalid, 'epi_maps', '*%s*' % epi_sesh, 'screen_boundaries*.json'))
-#            if len(epi_fpaths) == 0:
-#                epi_fpaths = glob.glob(os.path.join(rootdir, animalid, 'epi_maps', '*%s*' % epi_sesh, '*', 'screen_boundaries*.json'))
-#
-#        else:
-#            #print("No EPI maps found for session: %s * (using tmp session boundaries file)" % session)
-#            epi_fpaths = glob.glob(os.path.join(rootdir, animalid, 'epi_maps', 'screen_boundaries*.json'))
-#        
-#        assert len(epi_fpaths) > 0, "No epi screen info found!"
-#        
-#        # Each epi run should have only 2 .json files (1 for each condition):
-#        if len(epi_fpaths) > 2:
-#            print("-- found %i screen boundaries files: --" % len(epi_fpaths))
-#            repeat_epi_sessions = sorted(list(set( [os.path.split(s)[0] for s in epi_fpaths] )), key=natural_keys)
-#            for ei, repeat_epi in enumerate(sorted(repeat_epi_sessions, key=natural_keys)):
-#                print(ei, repeat_epi)
-#            if interactive:
-#                selected_epi = input("Select IDX of epi run to use: ")
-#            else:
-#                assert fov is not None, "ERROR: not interactive, but no FOV specified and multiple epis for session %s" % session
-#                
-#                selected_fovs = [fi for fi, epi_session_name in enumerate(repeat_epi_sessions) if fov in epi_session_name]
-#                print("Found FOVs: %s" % str(selected_fovs))
-#
-#                if len(selected_fovs) == 0:
-#                    selected_epi = sorted(selected_fovs, key=natural_keys)[-1]
-#                else:
-#                    selected_epi = selected_fovs[0]
-#                
-#            epi_fpaths = [s for s in epi_fpaths if repeat_epi_sessions[selected_epi] in s]
-#        
-#        #print("-- getting screen info from:", epi_fpaths)
-#        
-#        for epath in epi_fpaths:
-#            with open(epath, 'r') as f:
-#                epi = json.load(f)
-#            print("getting screen info") 
-#            screen['azimuth'] = 59.7782*2. #epi['screen_params']['screen_size_x_degrees']
-#            screen['elevation'] = 33.6615*2. #epi['screen_params']['screen_size_t_degrees']
-#            screen['resolution'] = [1920, 1080] ##[epi['screen_params']['screen_size_x_pixels'], epi['screen_params']['screen_size_y_pixels']]
-#
-#            if 'screen_boundaries' in epi.keys():
-#                if 'boundary_left_degrees' in epi['screen_boundaries'].keys():
-#                    screen['bb_left'] = epi['screen_boundaries']['boundary_left_degrees']
-#                    screen['bb_right'] = epi['screen_boundaries']['boundary_right_degrees']
-#                elif 'boundary_down_degrees' in epi['screen_boundaries'].keys():
-#                    screen['bb_lower'] = epi['screen_boundaries']['boundary_down_degrees']
-#                    screen['bb_upper'] = epi['screen_boundaries']['boundary_up_degrees']
-#            
-#            else:
-#                screen['bb_lower'] = -1*screen['elevation']/2.0
-#                screen['bb_upper'] = screen['elevation']/2.0
-#                screen['bb_left']  = -1*screen['azimuth']/2.0
-#                screen['bb_right'] = screen['azimuth']/2.0
-#
-#        #print("*********************************")
-#        #pp.pprint(screen)
-#        #print("*********************************")
-#      
-#    except Exception as e:
-#        traceback.print_exc()
-#        
-#    return screen
-
-#%%
-
 # -----------------------------------------------------------------------------
 # plotting
 # -----------------------------------------------------------------------------
+# Load colormap
+
+def get_retino_legends(cmap_name='nic_edge', zero_center=True, return_cmap=False,
+                    cmap_dir='/n/coxfs01/julianarhee/aggregate-visual-areas/colormaps', 
+                    dst_dir='/n/coxfs01/julianarhee/aggregate-visual-areas/retinotopy'):
+    #colormap = 'nic_Edge'
+    #cmapdir = os.path.join(aggr_dir, 'colormaps')
+    cdata = np.loadtxt(os.path.join(cmap_dir, cmap_name) + ".txt")
+    cmap_phase = LinearSegmentedColormap.from_list('my_colormap', cdata[::-1])
+    screen = make_legends(cmap=cmap_phase, cmap_name=cmap_name, zero_center=zero_center,
+                            dst_dir=dst_dir)
+    if return_cmap:
+        return screen, cmap_phase
+    else:
+        return screen
+    
 def load_fov_image(RETID):
     
     ds_factor = int(RETID['PARAMS']['downsample_factor'])
@@ -858,7 +863,7 @@ def load_fov_image(RETID):
     if ds_factor is not None:
         zimg = block_mean(zimg, int(ds_factor))
 
-    print("FOV size: %s (downsample factor=%i)" % (str(zimg.shape), ds_factor))
+    print("... FOV size: %s (downsample factor=%i)" % (str(zimg.shape), ds_factor))
     
     return zimg
 
@@ -882,10 +887,10 @@ def create_legend(screen, zero_center=False):
     return az_screen, el_screen
 
 
-def save_legend(az_screen, cmap, cmap_name='cmap_name', cond='cond', outdir='/tmp'):
+def save_legend(az_screen, cmap, cmap_name='cmap_name', cond='cond', dst_dir='/tmp'):
     screen_min = int(round(az_screen.min()))
     screen_max = int(round(az_screen.max()))
-    print("min/max:", screen_min, screen_max)
+    #print("min/max:", screen_min, screen_max)
     
     fig, ax = pl.subplots()
     im = ax.imshow(az_screen, cmap=cmap)
@@ -905,7 +910,7 @@ def save_legend(az_screen, cmap, cmap_name='cmap_name', cond='cond', outdir='/tm
     
     else:
         max_y = screen_max*2.0 if screen_min < 0 else screen_max
-        print(az_screen.shape)
+        #print(az_screen.shape)
         ax.set_yticks(np.linspace(0, min(az_screen.shape), 5))
         ax.set_yticklabels([int(round(i)) for i in np.linspace(screen_min, screen_max, 5)][::-1])
 
@@ -918,19 +923,19 @@ def save_legend(az_screen, cmap, cmap_name='cmap_name', cond='cond', outdir='/tm
     pl.colorbar(im)
 
     figname = '%s_pos_%s_LEGEND_abs' % (cond, cmap_name)
-    pl.savefig(os.path.join(outdir, '%s.svg' % figname))
+    pl.savefig(os.path.join(dst_dir, '%s.svg' % figname))
 
-    print(outdir, figname)
+    print(dst_dir, figname)
     return
 
 def make_legends(cmap='nipy_spectral', cmap_name='nipy_spectral', zero_center=False,
-                 outdir='/n/coxfs01/julianarhee/aggregate-data/retinotopy'):
+                 dst_dir='/n/coxfs01/julianarhee/aggregate-data/retinotopy'):
 
     screen = get_screen_dims()
     azi_legend, alt_legend = create_legend(screen, zero_center=zero_center)
     
-    save_legend(azi_legend, cmap=cmap, cmap_name=cmap_name, cond='azimuth', outdir=outdir)
-    save_legend(alt_legend, cmap=cmap, cmap_name=cmap_name, cond='elevation', outdir=outdir)
+    save_legend(azi_legend, cmap=cmap, cmap_name=cmap_name, cond='azimuth', dst_dir=dst_dir)
+    save_legend(alt_legend, cmap=cmap, cmap_name=cmap_name, cond='elevation', dst_dir=dst_dir)
     
     screen.update({'azi_legend': azi_legend,
                    'alt_legend': alt_legend})
@@ -951,4 +956,33 @@ def plot_roi_traces_by_cond(roi_traces, stiminfo):
             
     return fig
 
-
+def plot_some_example_traces(soma_traces, np_traces, plot_rois=[],
+                            dst_dir='/tmp', data_id='dataid'):
+    if not os.path.exists(os.path.join(dst_dir, 'example_traces')):
+        os.makedirs(os.path.join(dst_dir, 'example_traces'))
+    
+    for rid in plot_rois: #sorted_rois_soma[0:3]:
+        fig, axn = pl.subplots(4, 1, sharex=True, sharey=True, figsize=(5, 6))
+        for ai, (ax, cond) in enumerate(zip(axn.flat, ['left', 'right', 'top', 'bottom'])):
+            ax = plot_example_traces(soma_traces, np_traces, rid=rid, cond=cond, ax=ax)
+            if ai==0:
+                ax.legend(bbox_to_anchor=(1, 1))
+            ax.set_title(cond, loc='left', fontsize=12)
+        pl.subplots_adjust(left=0.1, right=0.75, hspace=0.5, top=0.9)
+        sns.despine(trim=True)
+        pl.suptitle('RID %i' % rid)
+        
+        label_figure(fig, data_id)
+        pl.savefig(os.path.join(dst_dir, 'example_traces', 
+                                    'np_v_soma_roi%05d.svg' % int(rid+1)))
+        return
+        
+def plot_example_traces(soma_traces, np_traces, rid=0, cond='right',
+                       soma_color='k', np_color='r', ax=None):
+    
+    if ax is None:
+        fig, ax = pl.subplots()
+    ax.plot(soma_traces[cond][rid], soma_color, label='soma')
+    ax.plot(np_traces[cond][rid], np_color, label='neuropil')
+    
+    return ax
