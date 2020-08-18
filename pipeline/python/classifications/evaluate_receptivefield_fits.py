@@ -1094,6 +1094,8 @@ def do_rf_fits_and_evaluation(animalid, session, fov, rfname=None,
                               reload_data=False, create_stats=False,
                               rootdir='/n/coxfs01/2p-data', opts=None):
 
+    print("deviant col: %s" % deviant_color)
+
     from pipeline.python.classifications import experiment_classes as util
 #    rfname= 'rfs' 
 #    do_fits =False
