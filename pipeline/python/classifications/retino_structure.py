@@ -28,66 +28,66 @@ from pipeline.python.utils import natural_keys, label_figure
 from pipeline.python.retinotopy import fit_2d_rfs as fitrf
 from pipeline.python.classifications import evaluate_receptivefield_fits as evalrfs
 
-def get_excluded_datasets(filter_by='drop_repeats', excluded_sessions=[]):
-
-    # Blobs runs w/ incorrect stuff
-    always_exclude = ['20190426_JC078']
-
-    if filter_by is None:
-        v1_repeats = []
-        lm_repeats = []
-        li_repeats = []
-    
-    elif filter_by=='drop_repeats':
-        # Sessions with repeat FOVs
-        v1_repeats = ['20190501_JC076', 
-                      '20190507_JC083', '20190510_JC083', #'20190511_JC083']
-                      '20190615_JC097',
-                      '20191004_JC110_fov2']
- 
-        lm_repeats = ['20190426_JC078', '20190504_JC078', '20190430_JC078', 
-                      '20190506_JC080', 
-                      '20190508_JC083', '20190512_JC083', #'20190517_JC083']
-                      '20190615_JC097',
-                      '20191108_JC113']
-       
-        li_repeats = ['20190422_JC076',
-                      '20190602_JC091',  
-                      '20190606_JC091', 
-                      #'20190527_JC092',
-                      '20190609_JC099',
-                      '20191012_JC113_fov1',
-                      '20191012_JC113_fov2', '20191017_JC113',
-                      '20191104_JC117_fov1',
-                      '20191106_JC120_fov1']
-
-       
-    also_exclude = [v1_repeats, lm_repeats, li_repeats]
-
-    for excl in also_exclude:
-        excluded_sessions.extend(excl)
-    excluded_sessions = list(set(excluded_sessions))
-
-    return excluded_sessions
-
-
-def get_metadata(traceid='traces001', fov_type='zoom2p0x', state='awake',
-                    filter_by='drop_repeats',
-                    aggregate_dir='/n/coxfs01/julianarhee/aggregate-visual-areas'):
-       
-    # Get all datasets
-    sdata = aggr.get_aggregate_info(traceid=traceid, fov_type=fov_type, state=state,
-                             aggregate_dir=aggregate_dir)
-
-    # Filter excluded datasets
-    excluded_sessions = get_excluded_datasets(filter_by=filter_by)
-
-    dsets = pd.concat([g for v, g in sdata.groupby(['visual_area', 'animalid', 'session', 'fovnum']) \
-            if '%s_%s' % (v[2], v[1]) not in excluded_sessions \
-            and '%s_%s_fov%i' % (v[2], v[1], v[3]) not in excluded_sessions])
-
-    return dsets.drop_duplicates()
-
+#def get_excluded_datasets(filter_by='drop_repeats', excluded_sessions=[]):
+#
+#    # Blobs runs w/ incorrect stuff
+#    always_exclude = ['20190426_JC078']
+#
+#    if filter_by is None:
+#        v1_repeats = []
+#        lm_repeats = []
+#        li_repeats = []
+#    
+#    elif filter_by=='drop_repeats':
+#        # Sessions with repeat FOVs
+#        v1_repeats = ['20190501_JC076', 
+#                      '20190507_JC083', '20190510_JC083', #'20190511_JC083']
+#                      '20190615_JC097',
+#                      '20191004_JC110_fov2']
+# 
+#        lm_repeats = ['20190426_JC078', '20190504_JC078', '20190430_JC078', 
+#                      '20190506_JC080', 
+#                      '20190508_JC083', '20190512_JC083', #'20190517_JC083']
+#                      '20190615_JC097',
+#                      '20191108_JC113']
+#       
+#        li_repeats = ['20190422_JC076',
+#                      '20190602_JC091',  
+#                      '20190606_JC091', 
+#                      #'20190527_JC092',
+#                      '20190609_JC099',
+#                      '20191012_JC113_fov1',
+#                      '20191012_JC113_fov2', '20191017_JC113',
+#                      '20191104_JC117_fov1',
+#                      '20191106_JC120_fov1']
+#
+#       
+#    also_exclude = [v1_repeats, lm_repeats, li_repeats]
+#
+#    for excl in also_exclude:
+#        excluded_sessions.extend(excl)
+#    excluded_sessions = list(set(excluded_sessions))
+#
+#    return excluded_sessions
+#
+#
+#def get_metadata(traceid='traces001', fov_type='zoom2p0x', state='awake',
+#                    filter_by='drop_repeats',
+#                    aggregate_dir='/n/coxfs01/julianarhee/aggregate-visual-areas'):
+#       
+#    # Get all datasets
+#    sdata = aggr.get_aggregate_info(traceid=traceid, fov_type=fov_type, state=state,
+#                             aggregate_dir=aggregate_dir)
+#
+#    # Filter excluded datasets
+#    excluded_sessions = get_excluded_datasets(filter_by=filter_by)
+#
+#    dsets = pd.concat([g for v, g in sdata.groupby(['visual_area', 'animalid', 'session', 'fovnum']) \
+#            if '%s_%s' % (v[2], v[1]) not in excluded_sessions \
+#            and '%s_%s_fov%i' % (v[2], v[1], v[3]) not in excluded_sessions])
+#
+#    return dsets.drop_duplicates()
+#
 
 def create_deviant_dataframe(dsets, traceid='traces001', n_processes=1,
                              response_type='dff', fit_thr=0.50, ci=0.95,
