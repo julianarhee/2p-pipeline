@@ -49,8 +49,9 @@ def compare_rf_size(df, metric='avg_size', cdf=False, ax=None, alpha=1, lw=2,
 # ------------------------------------------------------------------------------------
 # Data loading
 # ------------------------------------------------------------------------------------
-def aggregate_rf_dataframes(filter_by, fit_desc=None, scale_sigma=True, fit_thr=0.5, traceid='traces001',
-                            reliable_only=True,  
+def aggregate_rf_dataframes(filter_by, fit_desc=None, scale_sigma=True, fit_thr=0.5, 
+                            traceid='traces001',
+                            reliable_only=True, verbose=False,
                             fov_type='zoom2p0x', state='awake', stimulus='rfs', 
                             excluded_sessions = ['JC110_20191004_FOV1_zoom2p0x',
                                                  'JC080_20190602_FOV1_zoom2p0x',
@@ -71,8 +72,9 @@ def aggregate_rf_dataframes(filter_by, fit_desc=None, scale_sigma=True, fit_thr=
                                               excluded_sessions=excluded_sessions)
 
     #### Get RF dataframe for all datasets (filter to include only good fits)
-    all_df = aggregate_rf_data(rf_dpaths, scale_sigma=scale_sigma, verbose=False,
-                                          fit_desc=fit_desc, traceid=traceid)
+    all_df = aggregate_rf_data(rf_dpaths, scale_sigma=scale_sigma, verbose=verbose,
+                                reliable_only=reliable_only,
+                                fit_desc=fit_desc, traceid=traceid)
     all_df.groupby(['visual_area', 'experiment'])['datakey'].count()
 
     #### Filter for good fits only
@@ -157,13 +159,6 @@ def aggregate_rf_data(rf_dpaths, fit_desc=None, traceid='traces001', fit_thr=0.5
         try:
             #### Load evaluation results (bootstrap analysis of each fit paramater)
             curr_rfname = experiment if int(session)>=20190511 else 'gratings'
-#            eval_dpaths = glob.glob(os.path.join(rootdir, animalid, session, 'FOV%i_zoom2p0x' % fovnum, 
-#                                                 '*%s_*' % curr_rfname, 'traces', '%s*' % traceid, 
-#                                                 'receptive_fields', fit_desc, 'evaluation', 'evaluation_results.pkl'))
-#            assert len(eval_dpaths)==1, "%s: Evaluation not found: %s" % (datakey, str(eval_dpaths))
-#            eval_dpath = eval_dpaths[0]
-#            with open(eval_dpath, 'rb') as f:
-#                eval_results = pkl.load(f)
 
             #### Load eval results 
             eval_results, eval_params = evalrf.load_eval_results(
@@ -176,9 +171,6 @@ def aggregate_rf_data(rf_dpaths, fit_desc=None, traceid='traces001', fit_thr=0.5
                 continue
             
             #### Load fit results from measured
-            #fpath = g['path'].values[0]
-            #with open(fpath,'rb') as f:
-            #    fit_results = pkl.load(f)
             fit_results, fit_params = fitrf.load_fit_results(
                                                 animalid, session, fov,
                                                 experiment=curr_rfname,
@@ -198,8 +190,10 @@ def aggregate_rf_data(rf_dpaths, fit_desc=None, traceid='traces001', fit_thr=0.5
                             roi_list=fit_rois)
 
             #### Identify cells with measured params within 95% CI of bootstrap distN
+            pass_rois = rfit_df[rfit_df['r2']>fit_thr].index.tolist()
             param_list = [param for param in rfit_df.columns if param != 'r2']
-            pass_rois = get_good_fits(rfit_df, eval_results, param_list=param_list)
+            # Note: get_good_fits(rfit_df, eval_results, param_list=param_list) returns same
+            # as reliable_rois, since checks if all params within 95% CI
             reliable_rois = evalrf.get_reliable_fits(eval_results['pass_cis'],
                                                      pass_criterion='all')
             if verbose:
