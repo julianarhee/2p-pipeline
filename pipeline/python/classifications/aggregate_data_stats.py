@@ -309,7 +309,7 @@ def do_mannwhitney(mdf, metric='I_rs', multi_comp_test='holm'):
             interp_str = '... Same distribution (fail to reject H0)'
         else:
             interp_str = '... Different distribution (reject H0)'
-        print('[%s] Statistics=%.3f, p=%.3f, %s' % (str(mp), stat, p, interp_str))
+        # print('[%s] Statistics=%.3f, p=%.3f, %s' % (str(mp), stat, p, interp_str))
 
         pvalues.append(p)
 
@@ -319,22 +319,26 @@ def do_mannwhitney(mdf, metric='I_rs', multi_comp_test='holm'):
     results = []
     for mp, rej, pv in zip(mpairs, reject, pvals_corrected):
         results.append((mp, rej, pv))
-    
+        print('[%s] p=%.3f (%s), reject H0=%s' % (str(mp), pv, multi_comp_test, rej))
+
     return results
 
 
-def annotate_stats_areas(statresults, ax, lw=1, color='k', offset_v=0.1, 
+def annotate_stats_areas(statresults, ax, lw=1, color='k', 
+                        y_loc=None, offset=0.1, 
                          visual_areas=['V1', 'Lm', 'Li']):
-    
-    y_ht = round(ax.get_ylim()[-1], 1)*1.2
-    print(y_ht)
-    offset = y_ht*offset_v #0.1
+   
+    if y_loc is None:
+        y_loc = round(ax.get_ylim()[-1], 1)*1.2
+        #print(y_ht)
+        offset = y_loc*offset #0.1
+
     for ci, cpair in enumerate(statresults):
         if cpair[1]:
             v1, v2 = cpair[0]
             x1 = visual_areas.index(v1)
             x2 = visual_areas.index(v2)
-            y1 = y_ht+(ci*offset)
+            y1 = y_loc+(ci*offset)
             y2 = y1
             ax.plot([x1,x1, x2, x2], [y1, y2, y2, y1], linewidth=lw, color=color)
 
