@@ -402,7 +402,8 @@ def visualize_bootstrapped_params(bdata, sorted_rois=[], sorted_values=[], nplot
 
        
 #%%
-from sklearn.linear_model import LinearRegression
+from sklearn.linear_model import LinearRegression, Ridge, Lasso
+from sklearn.model_selection import train_test_split
 import scipy.stats as spstats
 import sklearn.metrics as skmetrics #import mean_squared_error
 
@@ -431,7 +432,7 @@ def regplot(x, y, data=None, x_estimator=None, x_bins=None, x_ci="ci",
     return ax, plotter
 
 def do_regr_on_fov_cis(bootdata, bootcis, posdf, cond='azimuth',
-                   roi_list=[], xaxis_lim=None, ci=.95, 
+                   roi_list=[], xaxis_lim=None, ci=.95,  model='ridge', 
                    deviant_color='dodgerblue', marker='o', marker_size=20,
                    plot_boot_med=False, fill_marker=True):
 
@@ -490,7 +491,7 @@ def do_regr_on_fov_cis(bootdata, bootcis, posdf, cond='azimuth',
   
     fov_pos = posdf['%s_fov' % axname][roi_list].values
     rf_pos = posdf['%s_rf' % axname][roi_list].values 
-    fitv, regr = fit_linear_regr(fov_pos, rf_pos, return_regr=True)
+    fitv, regr = fit_linear_regr(fov_pos, rf_pos, return_regr=True, model=model)
     regr_info = {'regr': regr, 'fitv': fitv, 'xv': fov_pos, 'yv': rf_pos}
 
     #ax.plot(fov_pos, fitv, 'r:')
@@ -605,8 +606,15 @@ def plot_regr_and_cis(eval_results, posdf, cond='azimuth', ci=.95, xaxis_lim=120
             
     return ax
 
-def fit_linear_regr(xvals, yvals, return_regr=False):
-    regr = LinearRegression()
+def fit_linear_regr(xvals, yvals, return_regr=False, model='ridge'):
+    if model=='ridge':
+        regr = Ridge()
+    elif model=='Lasso':
+        regr = Lasso()
+    else:
+        model = 'ols'
+        regr = LinearRegression()
+
     if len(xvals.shape) == 1:
         xvals = np.array(xvals).reshape(-1, 1)
         yvals = np.array(yvals).reshape(-1, 1)
@@ -625,11 +633,11 @@ def fit_linear_regr(xvals, yvals, return_regr=False):
         return fitv.reshape(-1)
 
 
-def plot_linear_regr(xv, yv, ax=None, 
+def plot_linear_regr(xv, yv, ax=None,  model='ridge', 
                      marker='o', marker_size=30, alpha=1.0, marker_color='k',
                      linestyle='_', linecolor='r'):
     try:
-        fitv, regr = fit_linear_regr(xv, yv, return_regr=True)
+        fitv, regr = fit_linear_regr(xv, yv, return_regr=True, model=model)
     except Exception as e:
         traceback.print_exc()
         print("... no lin fit")
@@ -644,7 +652,7 @@ def plot_linear_regr(xv, yv, ax=None,
     print('[%s] Variance score: %.2f' % (cond, r2))
     
     ax.scatter(xv, yv, c=marker_color, marker=marker, s=marker_size, alpha=alpha)
-    ax.plot(xv, fitv, linestyle, color=linecolor)
+    ax.plot(xv, fitv, linestyle, color=linecolor, label=model)
     ax.set_xlim([0, 1200])
     #ax.set_ylim()    
     eq_str = 'y=%.2fx + %.2f' % (regr.coef_[0], regr.intercept_[0])
@@ -658,7 +666,7 @@ def plot_linear_regr(xv, yv, ax=None,
     return regr
 
 
-def plot_linear_regr_by_condition(posdf, meas_df,):
+def plot_linear_regr_by_condition(posdf, meas_df, model='ridge'):
     
     #posdf = posdf.loc[meas_df.index]
     fig, axes = pl.subplots(2, 3, figsize=(10, 6))
@@ -668,7 +676,7 @@ def plot_linear_regr_by_condition(posdf, meas_df,):
         yv = posdf['%s_rf' % axname].values
         xv = posdf['%s_fov' % axname].values    
         try:
-            fitv, regr = fit_linear_regr(xv, yv, return_regr=True)
+            fitv, regr = fit_linear_regr(xv, yv, return_regr=True, model=model)
         except Exception as e:
             traceback.print_exc()
             print("Error fitting cond %s" % cond)
@@ -710,11 +718,17 @@ def plot_linear_regr_by_condition(posdf, meas_df,):
         ax.scatter(r2_vals, abs(residuals), c='k', alpha=0.5)
         ax.set_xlabel('r2')
         ax.set_ylabel('abs(residuals)')
-        
-        testregr = LinearRegression()
-        testregr.fit(r2_vals.reshape(-1, 1), residuals.reshape(-1, 1)) #, yv)
-        r2_dist_corr = testregr.predict(r2_vals.reshape(-1, 1))
-        ax.plot(r2_vals, r2_dist_corr, 'r')
+       
+        if model=='ridge':
+            regr = Ridge()
+        elif model=='Lasso':
+            regr = Lasso()
+        else:
+            model = 'ols'
+            regr = LinearRegression()
+        regr.fit(r2_vals.reshape(-1, 1), residuals.reshape(-1, 1)) #, yv)
+        r2_dist_corr = regr.predict(r2_vals.reshape(-1, 1))
+        ax.plot(r2_vals, r2_dist_corr, 'r', label=model)
         #sns.despine(offset=1, trim=True, ax=ax)
         r, p = spstats.pearsonr(r2_vals.values, np.abs(residuals))
         corr_str2 = 'pearson=%.2f (p=%.2f)' % (r, p)
@@ -728,7 +742,7 @@ def plot_linear_regr_by_condition(posdf, meas_df,):
 #%%
 
 def compare_regr_to_boot_params(eval_results, posdf, xlim=None, ylim=None, 
-                                pass_criterion='all',
+                                pass_criterion='all', model='ridge', 
                                 deviant_color='dodgerblue', marker='o',
                                 marker_size=20, fill_marker=True,
                                 outdir='/tmp', data_id='DATAID',
@@ -756,6 +770,7 @@ def compare_regr_to_boot_params(eval_results, posdf, xlim=None, ylim=None,
     for cond in ['azimuth', 'elevation']:
         fig, regr, regci, deviants, bad_fits = do_regr_on_fov_cis(bootdata, bootcis,
                                                         posdf, cond=cond,
+                                                        model=model, 
                                                         roi_list=reliable_rois,
                                                         deviant_color=deviant_color,
                                                         fill_marker=fill_marker,
@@ -765,7 +780,7 @@ def compare_regr_to_boot_params(eval_results, posdf, xlim=None, ylim=None,
         # Get some stats from linear regr
         rmse = np.sqrt(skmetrics.mean_squared_error(regr['yv'], regr['fitv']))
         r2 = skmetrics.r2_score(regr['yv'], regr['fitv'])
-        pearson_p, pearson_r = spstats.pearsonr(regr['xv'], regr['yv'])
+        pearson_r, pearson_p = spstats.pearsonr(regr['xv'], regr['yv'])
 
         pass_rois = [i for i in fit_rois if i not in bad_fits]
         reg_results[cond] = {'cis': [tuple(ci) for ci in regci], 
@@ -1086,7 +1101,7 @@ def do_rf_fits_and_evaluation(animalid, session, fov, rfname=None,
                               n_resamples=10, n_bootstrap_iters=1000, 
                               post_stimulus_sec=0., 
                               sigma_scale=2.35, scale_sigma=True,
-                              ci=0.95, pass_criterion='all',
+                              ci=0.95, pass_criterion='all', model='ridge', 
                               plot_boot_distns=True, plot_pretty_rfs=False, 
                               deviant_color='dodgerblue', filter_weird=False, 
                               plot_all_cis=False,
@@ -1198,15 +1213,17 @@ def do_rf_fits_and_evaluation(animalid, session, fov, rfname=None,
 
     fovcoords = exp.get_roi_coordinates()
     marker_size=30; fill_marker=True; marker='o';
-    reg_results, posdf = regr_rf_fov(fovcoords, fit_results, fit_params, eval_results, data_id=data_id,
-                                     pass_criterion=pass_criterion, marker=marker, marker_size=marker_size, 
+    reg_results, posdf = regr_rf_fov(fovcoords, fit_results, fit_params, eval_results, 
+                                     data_id=data_id,
+                                     pass_criterion=pass_criterion, model=model,
+                                      marker=marker, marker_size=marker_size, 
                                      fill_marker=fill_marker, deviant_color=deviant_color)
     
     return eval_results, eval_params
 
 
 def regr_rf_fov(fovcoords, fit_results, fit_params, eval_results, 
-                pass_criterion='all', data_id='ID', 
+                model='ridge', pass_criterion='all', data_id='ID', 
                 deviant_color='magenta', marker='o', 
                 marker_size=20, fill_marker=True):
     print("~regressing rf on fov~")
@@ -1226,7 +1243,8 @@ def regr_rf_fov(fovcoords, fit_results, fit_params, eval_results,
                           'ml_pos': 'xpos_fov', 'ap_pos': 'ypos_fov'})
 
     evaldir = os.path.join(fit_params['rfdir'], 'evaluation')
-    fig = plot_linear_regr_by_condition( posdf.loc[reliable_rois], meas_df.loc[reliable_rois])
+    fig = plot_linear_regr_by_condition( posdf.loc[reliable_rois], 
+                                         meas_df.loc[reliable_rois], model=model)
     pl.subplots_adjust(top=0.9, bottom=0.1, hspace=0.5)
     label_figure(fig, data_id)
     pl.savefig(os.path.join(evaldir, 'RFpos_v_FOVpos_split_axes_reliable_cells_.svg'))   
@@ -1235,7 +1253,7 @@ def regr_rf_fov(fovcoords, fit_results, fit_params, eval_results,
     #%% Compare regression fit to bootstrapped params 
     reg_results = compare_regr_to_boot_params(eval_results, posdf, 
                                             outdir=evaldir, data_id=data_id, 
-                                            pass_criterion=pass_criterion,
+                                            pass_criterion=pass_criterion, model=model, 
                                             deviant_color=deviant_color, marker=marker,
                                             marker_size=marker_size, fill_marker=fill_marker)
                                             #filter_weird=filter_weird, plot_all_cis=plot_all_cis 
