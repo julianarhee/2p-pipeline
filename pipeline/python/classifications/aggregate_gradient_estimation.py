@@ -45,6 +45,12 @@ from matplotlib.colors import LinearSegmentedColormap
 from scipy.ndimage.morphology import binary_dilation
 from scipy.interpolate import SmoothBivariateSpline
 
+from sklearn.linear_model import LinearRegression, Ridge, Lasso
+#from sklearn.model_selection import train_test_split
+import scipy.stats as spstats
+import sklearn.metrics as skmetrics #import mean_squared_error
+
+
 #%%
 # Functions for dilating and smoothing masks
 # ---------------------------------------------------------------
@@ -486,24 +492,26 @@ def plot_projected_vs_retino_positions(projections, fit_results,
 
     regr_az = fit_results['regr_az']
     regr_el = fit_results['regr_el']
+    
+    regr_model = fit_results['model']
 
     fig, axn = pl.subplots(1,2, figsize=(12, 5))
     ax=axn[0]
     #sns.regplot(proj_az, ret_az, ax=ax, scatter=False, color='k')
     ax.scatter(proj_az[0::spacing], ret_az[0::spacing], marker='.', lw=0, color='k', s=1)
     n_points_plot = len(proj_az[0::spacing])
-    ax.plot(proj_az[0::spacing], fitv_az[0::spacing], c=regr_color)
-    linfit_str = 'y = %.2fx + %.2f' % (float(regr_az.coef_), float(regr_az.intercept_)) 
-    ax.set_title(linfit_str, color=regr_color)
+    linfit_str = '(%s) y=%.2fx+%.2f' % (regr_model, float(regr_az.coef_), float(regr_az.intercept_)) 
+    ax.plot(proj_az[0::spacing], fitv_az[0::spacing], c=regr_color, label=linfit_str)
+    ax.set_title('Azimuth', loc='left') #linfit_str, color=regr_color)
     ax.set_ylabel('azimuth (deg)', fontsize=12)
     ax.set_xlabel('projected pos (um)', fontsize=12)
             
     ax=axn[1]
     #sns.regplot(proj_el, ret_el, ax=ax, scatter=False, color='k')
     ax.scatter(proj_el[0::spacing], ret_el[0::spacing], marker='.', lw=0, color='k', s=1)
-    ax.plot(proj_el[0::spacing], fitv_el[0::spacing], c=regr_color)
-    linfit_str = 'y = %.2fx + %.2f' % (float(regr_el.coef_), float(regr_el.intercept_)) 
-    ax.set_title(linfit_str, color=regr_color)
+    linfit_str = '(%s) y=%.2fx+%.2f' % (regr_model, float(regr_el.coef_), float(regr_el.intercept_)) 
+    ax.plot(proj_el[0::spacing], fitv_el[0::spacing], c=regr_color, label=linfit_str)
+    ax.set_title('Elevation', loc='left') #linfit_str, color=regr_color)
     ax.set_ylabel('altitude (deg)', fontsize=12)
     ax.set_xlabel('projected pos (um)', fontsize=12)
 
@@ -525,7 +533,7 @@ fov = 'FOV1_zoom2p0x'
 retinorun = 'retino_run1'
 
 mag_thr=0.01 #if trace_type == 'neuropil' else 0.02
-pass_criterion='all_conditions' #all_conds_pass = True
+pass_criterion='all' #all_conds_pass = True
 plot_examples = True
 
 # plotting
@@ -562,27 +570,32 @@ def extract_options(options):
     parser.add_option('--new', action='store_true', dest='create_new', default=False, \
                       help="Flag to refit all rois")
 
-    # pretty plotting options
+    # data filtering 
     parser.add_option('--thr', action='store', dest='mag_thr', 
             default=0.01, help="magnitude-ratio thr (default: 0.01)")
     parser.add_option('-p', '--crit', action='store', dest='pass_criterion', 
-            default='all_conditions', 
-            help="Criterion for passing cells as responsive (default: all_conditions)")
+            default='all', 
+            help="Criterion for passing cells as responsive (default: 'all', can by 'any' or None)")
     parser.add_option('--plot-examples', action='store_true', dest='plot_examples', 
             default=False, help="Flag to plot top 3 examples cell traces")
 
+    # plotting
     parser.add_option('--cmap', action='store_true', dest='cmap', 
             default='nic_Edge', help="Colormap (default: nic_Edge)")
-
-    parser.add_option('-s', '--spatial', action='store', dest='spatial_smooth_fwhm', 
-            default=7.0, help="FWHM for spatial smoothing (default: 7)")
-    parser.add_option('-d', '--dilate', action='store', dest='dilate_um', 
-            default=10.0, help="Desired radius for dilation (default: 10.0 um)")
     parser.add_option('--plot-spacing', action='store', dest='regr_plot_spacing', 
             default=200, help="Plot every N points for regression (default: 200)")
     parser.add_option('-c', '--plot-color', action='store', dest='regr_line_color', 
             default='magenta', help="Plot color for regression line (default: magenta)")
 
+    
+    parser.add_option('-s', '--spatial', action='store', dest='spatial_smooth_fwhm', 
+            default=7.0, help="FWHM for spatial smoothing (default: 7)")
+    parser.add_option('-d', '--dilate', action='store', dest='dilate_um', 
+            default=10.0, help="Desired radius for dilation (default: 10.0 um)")
+    parser.add_option('-M', '--model', action='store', dest='regr_model', 
+            default='ridge', help="Desired radius for dilation (default: ridge)")
+
+    
     (options, args) = parser.parse_args(options)
 
     return options
@@ -609,7 +622,9 @@ def main(options):
     regr_plot_spacing=int(opts.regr_plot_spacing)
     regr_line_color=opts.regr_line_color 
     zero_center=True
-    
+   
+    regr_model = opts.regr_model
+
     #%% Load data metainfo
     run_dir = os.path.join(rootdir, animalid, session, fov, retinorun)
     RETID = ret_utils.load_retinoanalysis(run_dir, traceid)
@@ -673,8 +688,10 @@ def main(options):
     sorted_rois_soma = np.argsort(mean_magratio_values_soma)[::-1]
 
     # Filter out bad cells
-    if pass_criterion=='all_conditions': 
+    if pass_criterion=='all': 
         roi_list = [i for i in magratios_soma.index if all(magratios_soma.loc[i] > mag_thr)]
+    elif pass_criterion=='any': 
+        roi_list = [i for i in magratios_soma.index if any(magratios_soma.loc[i] > mag_thr)]
     else:
         roi_list = magratios_soma.index.tolist()
     print("... %i out of %i cells pass mag-ratio thr (thr>%.2f)" 
@@ -833,31 +850,44 @@ def main(options):
     figname = 'test_projections__dilate-center-%i_spatial-smooth-%i_%s' % (kernel_size, spatial_smooth_fwhm, plot_str)
     pl.savefig(os.path.join(curr_dst_dir, '%s.svg' % figname))
 
-
-    #%% ## Fit linear
-    proj_az = projections['proj_az']
-    proj_el = projections['proj_el']
-    ret_az = projections['retino_az']
-    ret_el = projections['retino_el']
+    #%% ## Fit linear  
+    proj_fit_results = {}
+    d_list = []
+    for i, cond in enumerate(['az', 'el']):
+        xv = projections['proj_%s' % cond]
+        yv = projections['retino_%s' % cond]
+        fitv, regr = evalrf.fit_linear_regr(xv, yv, return_regr=True, model=regr_model)
      
-    fitv_az, regr_az = evalrf.fit_linear_regr(proj_az, ret_az, return_regr=True)
-    fitv_el, regr_el = evalrf.fit_linear_regr(proj_el, ret_el, return_regr=True)
-    # rmse = np.sqrt(skmetrics.mean_squared_error(yv, fitv))
-    # r2 = skmetrics.r2_score(yv, fitv)
-    # pearson_p, pearson_r = spstats.pearsonr(xv, yv)
+        rmse = np.sqrt(skmetrics.mean_squared_error(yv, fitv))
+        r2 = skmetrics.r2_score(yv, fitv)
+        pearson_r, pearson_p = spstats.pearsonr(xv, yv) 
 
-    proj_fit_results = {'fitv_az': fitv_az, 'fitv_el': fitv_el,
-                        'regr_az': regr_az, 'regr_el': regr_el,
-                        'projections': projections}
+        proj_fit_results.update({'fitv_%s' % cond: fitv, 
+                                 'regr_%s' % cond: regr})
+
+        d_ = pd.DataFrame({'cond': cond, 
+                          'R2': r2,
+                          'RMSE': rmse,
+                          'pearson_p': pearson_p,
+                          'pearson_r': pearson_r,
+                          'coefficient': float(regr.coef_), 
+                          'intercept': float(regr.coef_)}, index=[i])
+        d_list.append(d_)
+
+    regr_df = pd.concat(d_list, axis=0)
+    proj_fit_results.update({'projections': projections, 
+                             'model': regr_model,
+                             'regr_df': regr_df})
+
     proj_fpath = os.path.join(curr_dst_dir, 'projection_results.pkl')
     with open(proj_fpath, 'wb') as f:
         pkl.dump(proj_fit_results, f, protocol=pkl.HIGHEST_PROTOCOL)
     print(proj_fpath)
         
     #%% Plot linear fit
-
     fig = plot_projected_vs_retino_positions(projections, proj_fit_results,
-                                             spacing=regr_plot_spacing, regr_color=regr_line_color)
+                                             spacing=regr_plot_spacing, 
+                                             regr_color=regr_line_color)
 
     label_figure(fig, data_id)
     pl.subplots_adjust(left=0.1, wspace=0.5)
