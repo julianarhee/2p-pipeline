@@ -134,7 +134,7 @@ def load_metadata(rootdir='/n/coxfs01/2p-data', aggregate_dir='/n/coxfs01/julian
 #
 
 if EXP=='retino':
-    meta_list = get_retino_metadata(animalids=['JC084'], traceid=traceid)
+    meta_list = get_retino_metadata(traceid=traceid)
 else:
     meta_list = load_metadata(experiment=EXP)
 
