@@ -869,7 +869,7 @@ def load_fov_image(RETID):
 
 def create_legend(screen, zero_center=False):
     screen_x = screen['azimuth_deg']
-    screen_y = screen['altitude_deg']
+    screen_y = screen['azimuth_deg'] #screen['altitude_deg']
 
     x = np.linspace(0, 2*np.pi, int(round(screen_x)))
     y = np.linspace(0, 2*np.pi, int(round(screen_y)) )
@@ -881,13 +881,15 @@ def create_legend(screen, zero_center=False):
     newmin = -0.5*screen_x if zero_center else 0
     newmax = 0.5*screen_x if zero_center else screen_x
     
-    az_screen = convert_range(az_legend, newmin=newmin, newmax=newmax, oldmin=0, oldmax=2*np.pi)
-    el_screen = convert_range(el_legend, newmin=newmin, newmax=newmax, oldmin=0, oldmax=2*np.pi)
+    az_screen = convert_range(az_legend, newmin=newmin, newmax=newmax, 
+                                oldmin=0, oldmax=2*np.pi)
+    el_screen = convert_range(el_legend, newmin=newmin, newmax=newmax, 
+                                oldmin=0, oldmax=2*np.pi)
 
     return az_screen, el_screen
 
 
-def save_legend(az_screen, cmap, cmap_name='cmap_name', cond='cond', dst_dir='/tmp'):
+def save_legend(az_screen, screen, cmap, cmap_name='cmap_name', cond='cond', dst_dir='/tmp'):
     screen_min = int(round(az_screen.min()))
     screen_max = int(round(az_screen.max()))
     #print("min/max:", screen_min, screen_max)
@@ -895,12 +897,19 @@ def save_legend(az_screen, cmap, cmap_name='cmap_name', cond='cond', dst_dir='/t
     fig, ax = pl.subplots()
     im = ax.imshow(az_screen, cmap=cmap)
     #ax.invert_xaxis()
-    
+   
+    # Max value is twice the 0-centered value, or just the full value if not 0-cent
+    max_v = screen['azimuth_deg'] #az_screen.max()*2.0 if screen_min < 0 else az_screen.max() #screen_max
+  
+    # Get actual screen edges
+    midp = max_v/2.
+    yedge_from_bottom = midp + screen['altitude_deg']/2.
+    yedge_from_top = midp - screen['altitude_deg']/2.
+    screen_edges_y = (-screen['altitude_deg']/2., screen['altitude_deg']/2.)
+
     if cond=='azimuth':
-        max_x = screen_max*2.0 if screen_min < 0 else screen_max
-        
-        #print(ax.get_xlim())
-        ax.set_xticks(np.linspace(0, max_x, 5))
+
+        ax.set_xticks(np.linspace(0, max_v, 5))
         ax.set_xticklabels([int(round(i)) for i in np.linspace(screen_min, screen_max, 5)][::-1])
 
         ax.set_yticks([])
@@ -909,18 +918,23 @@ def save_legend(az_screen, cmap, cmap_name='cmap_name', cond='cond', dst_dir='/t
         ax.set_xlim(ax.get_xlim()[::-1])
     
     else:
-        max_y = screen_max*2.0 if screen_min < 0 else screen_max
-        #print(az_screen.shape)
-        ax.set_yticks(np.linspace(0, min(az_screen.shape), 5))
-        ax.set_yticklabels([int(round(i)) for i in np.linspace(screen_min, screen_max, 5)][::-1])
 
+        ax.set_yticks(np.linspace(0, min(az_screen.shape), 5))
+        ax.set_yticklabels([int(round(i)) for i in np.linspace(screen_min, screen_max, 5)])
         ax.set_xticks([])
         ax.set_xticklabels([])
         ax.tick_params(axis='y', length=0)
-        ax.set_ylim(ax.get_ylim()[::-1])
-        ax.set_frame_on(False)
 
-    pl.colorbar(im)
+        #ax.axhline(y=yedge_from_bottom, color='w', lw=2)
+        #ax.axhline(y=yedge_from_top, color='w', lw=2)
+        #print(screen_edges_y)
+        ax.set_ylim(ax.get_ylim()[::-1])
+
+    ax.axhline(y=yedge_from_bottom, color='w', lw=2)
+    ax.axhline(y=yedge_from_top, color='w', lw=2)
+
+    ax.set_frame_on(False)
+    pl.colorbar(im, ax=ax, shrink=0.7)
 
     figname = '%s_pos_%s_LEGEND_abs' % (cond, cmap_name)
     pl.savefig(os.path.join(dst_dir, '%s.svg' % figname))
@@ -934,8 +948,10 @@ def make_legends(cmap='nipy_spectral', cmap_name='nipy_spectral', zero_center=Fa
     screen = get_screen_dims()
     azi_legend, alt_legend = create_legend(screen, zero_center=zero_center)
     
-    save_legend(azi_legend, cmap=cmap, cmap_name=cmap_name, cond='azimuth', dst_dir=dst_dir)
-    save_legend(alt_legend, cmap=cmap, cmap_name=cmap_name, cond='elevation', dst_dir=dst_dir)
+    save_legend(azi_legend, screen, cmap=cmap, 
+                    cmap_name=cmap_name, cond='azimuth', dst_dir=dst_dir)
+    save_legend(alt_legend, screen, cmap=cmap, 
+                    cmap_name=cmap_name, cond='elevation', dst_dir=dst_dir)
     
     screen.update({'azi_legend': azi_legend,
                    'alt_legend': alt_legend})
