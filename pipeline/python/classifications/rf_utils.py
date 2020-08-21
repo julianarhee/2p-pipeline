@@ -6,6 +6,8 @@ import numpy as np
 import pandas as pd
 import pylab as pl
 import cPickle as pkl
+import scipy.stats as spstats
+import seaborn as sns
 import traceback
 
 # ------------------------------------------------------------------------------------
@@ -549,6 +551,59 @@ def update_rfparams(rfparams):
     
     return rfparams
 
+def pairwise_compare_single_metric(comdf, curr_metric='avg_size', 
+                                    c1='rfs', c2='rfs10', compare_var='experiment',
+                                    ax=None, marker='o', visual_areas=['V1', 'Lm', 'Li'],
+                                    area_colors=None):
+    assert 'datakey' in comdf.columns, "Need a sorter, 'datakey' not found."
+
+    if area_colors is None:
+        visual_areas = ['V1', 'Lm', 'Li']
+        colors = ['magenta', 'orange', 'dodgerblue'] #sns.color_palette(palette='colorblind') #, n_colors=3)
+        area_colors = {'V1': colors[0], 'Lm': colors[1], 'Li': colors[2]}
+
+
+    offset = 0.25
+    
+    if ax is None:
+        fig, ax = pl.subplots(figsize=(5,4), dpi=dpi)
+        fig.patch.set_alpha(0)
+        ax.patch.set_alpha(0)
+    
+    # Plot paired values
+    aix=0
+    for ai, visual_area in enumerate(visual_areas):
+
+        plotdf = comdf[comdf['visual_area']==visual_area]
+        a_vals = plotdf[plotdf[compare_var]==c1].sort_values(by='datakey')[curr_metric].values
+        b_vals = plotdf[plotdf[compare_var]==c2].sort_values(by='datakey')[curr_metric].values
+
+        by_exp = [(a, e) for a, e in zip(a_vals, b_vals)]
+        for pi, p in enumerate(by_exp):
+            ax.plot([aix-offset, aix+offset], p, marker=marker, color=area_colors[visual_area], 
+                    alpha=1, lw=0.5,  zorder=0, markerfacecolor=None, markeredgecolor=area_colors[visual_area])
+        tstat, pval = spstats.ttest_rel(a_vals, b_vals)
+        print("%s: (t-stat:%.2f, p=%.2f)" % (visual_area, tstat, pval))
+        aix = aix+1
+
+    # Plot average
+    sns.barplot("visual_area", curr_metric, data=comdf, 
+                hue=compare_var, #zorder=0,
+                ax=ax, order=visual_areas,
+                errcolor="k", edgecolor=('k', 'k', 'k'), facecolor=(1,1,1,0), linewidth=2.5)
+    ax.legend_.remove()
+
+    set_split_xlabels(ax, a_label=c1, b_label=c2)
+    
+    return ax
+
+def set_split_xlabels(ax, offset=0.25, a_label='rfs', b_label='rfs10'):
+    ax.set_xticks([0-offset, 0+offset, 1-offset, 1+offset, 2-offset, 2+offset])
+    ax.set_xticklabels([a_label, b_label, a_label, b_label, a_label, b_label])
+    ax.set_xlabel('')
+    ax.tick_params(axis='x', size=0)
+    sns.despine(bottom=True, offset=4)
+    return ax
 
 # ------------------------------------------------------------------------------------
 # Coordinate remapping
