@@ -505,7 +505,8 @@ def plot_projected_vs_retino_positions(projections, fit_results,
     ax.set_title('Azimuth', loc='left') #linfit_str, color=regr_color)
     ax.set_ylabel('azimuth (deg)', fontsize=12)
     ax.set_xlabel('projected pos (um)', fontsize=12)
-            
+    ax.legend()
+
     ax=axn[1]
     #sns.regplot(proj_el, ret_el, ax=ax, scatter=False, color='k')
     ax.scatter(proj_el[0::spacing], ret_el[0::spacing], marker='.', lw=0, color='k', s=1)
@@ -514,6 +515,7 @@ def plot_projected_vs_retino_positions(projections, fit_results,
     ax.set_title('Elevation', loc='left') #linfit_str, color=regr_color)
     ax.set_ylabel('altitude (deg)', fontsize=12)
     ax.set_xlabel('projected pos (um)', fontsize=12)
+    ax.legend()
 
     return fig
 
@@ -871,7 +873,7 @@ def main(options):
                           'pearson_p': pearson_p,
                           'pearson_r': pearson_r,
                           'coefficient': float(regr.coef_), 
-                          'intercept': float(regr.coef_)}, index=[i])
+                          'intercept': float(regr.intercept_)}, index=[i])
         d_list.append(d_)
 
     regr_df = pd.concat(d_list, axis=0)
