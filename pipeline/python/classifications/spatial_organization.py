@@ -39,7 +39,7 @@ from pipeline.python.classifications import evaluate_receptivefield_fits as eval
 
 from pipeline.python.coregistration import align_fov as coreg
 
-%matplotlib inline
+#%matplotlib inline
 
 #%%
 def spatially_sort_compare_position(fovcoords, posdf, transform=True):
@@ -397,8 +397,9 @@ fit_thr = 0.5
 
 def sort_roi_vs_rf_position(animalid, session, fov, traceid='traces001', 
                                 rfname='rfs', response_type='dff', 
-                                convert_um=True, transform_fov=True, plot=True,
+                                convert_um=True, transform_fov=True,
                                 create_new=True, rootdir='/n/coxfs01/2p-data'):
+    
     exp = util.ReceptiveFields(rfname, animalid, session, fov, 
                                traceid=traceid, trace_type='corrected')    
     # Load ROI masks
@@ -419,7 +420,7 @@ def sort_roi_vs_rf_position(animalid, session, fov, traceid='traces001',
     nrois_total = fovcoords['roi_positions'].shape[0]
     
     # Convert fit reusults to dataframe
-    rfdf = fitrf.rfits_to_df(fit_results['fit_results'], 
+    rfdf = fitrf.rfits_to_df(fit_results, 
                         row_vals=fit_params['row_vals'], col_vals=fit_params['col_vals'],
                         scale_sigma=scale_sigma, sigma_scale=sigma_scale) 
     fitdf = rfdf[rfdf['r2']>fit_thr]
@@ -446,25 +447,98 @@ def sort_roi_vs_rf_position(animalid, session, fov, traceid='traces001',
     plot_str = '%s_microns' % plot_str if convert_um else plot_str
      
     #% Plot spatially ordered rois
-    if plot: 
-        print("... plotting: %s" % plot_str)
+    #if plot: 
+    print("... plotting: %s" % plot_str)
 
-        fig = plot_sorted_roi_position(fovcoords, posdf, label_rois=True,
-                                transform_fov=transform_fov, convert_um=convert_um)
-        label_figure(fig, data_id)
-        figname = 'spatially_sorted_rois_RFpos_VFpos_%s__%s_labeled' % (rfname, plot_str)
-        pl.savefig(os.path.join(rfdir, '%s.svg' % figname))
-        pl.close()
+    fig = plot_sorted_roi_position(fovcoords, posdf, label_rois=True,
+                            transform_fov=transform_fov, convert_um=convert_um)
+    label_figure(fig, data_id)
+    figname = 'spatially_sorted_rois_RFpos_VFpos_%s__%s_labeled' % (rfname, plot_str)
+    pl.savefig(os.path.join(rfdir, '%s.svg' % figname))
+    pl.close()
 
-        fig = plot_sorted_roi_position(fovcoords, posdf, label_rois=False,
-                                transform_fov=transform_fov, convert_um=convert_um)
-        label_figure(fig, data_id)
-        figname = 'spatially_sorted_rois_RFpos_VFpos_%s__%s' % (rfname, plot_str)
-        pl.savefig(os.path.join(rfdir, '%s.svg' % figname))
-
-
+    fig = plot_sorted_roi_position(fovcoords, posdf, label_rois=False,
+                            transform_fov=transform_fov, convert_um=convert_um)
+    label_figure(fig, data_id)
+    figname = 'spatially_sorted_rois_RFpos_VFpos_%s__%s' % (rfname, plot_str)
+    pl.savefig(os.path.join(rfdir, '%s.svg' % figname))
 
 
 
-# %%
-%
+rootdir = '/n/coxfs01/2p-data'
+animalid = 'JC084'
+session = '20190522'
+fov = 'FOV1_zoom2p0x'
+traceid = 'traces001'
+rfname = 'rfs'
+response_type = 'dff'
+
+scale_sigma=True
+sigma_scale = 2.35
+fit_thr = 0.5
+
+
+
+def extract_options(options):
+    
+    parser = optparse.OptionParser()
+
+    parser.add_option('-D', '--root', action='store', dest='rootdir', 
+                      default='/n/coxfs01/2p-data',\
+                      help='data root dir [default: /n/coxfs01/2pdata]')
+    parser.add_option('-i', '--animalid', action='store', dest='animalid', 
+                        default='', help='Animal ID')
+
+    # Set specific session/run for current animal:
+    parser.add_option('-S', '--session', action='store', dest='session', default='', \
+                      help='session dir (format: YYYMMDD_ANIMALID')
+    parser.add_option('-A', '--fov', action='store', dest='fov', default='FOV1_zoom2p0x', \
+                      help="acquisition folder (ex: 'FOV1_zoom3x') [default: FOV1_zoom2p0x]")
+    parser.add_option('-R', '--run', action='store', dest='rfname', default='rfs', \
+                      help="name of rf run (default: rfs")
+    parser.add_option('-t', '--traceid', action='store', dest='traceid', default='traces001', \
+                      help="name of traces ID [default: traces001]")
+       
+    parser.add_option('--new', action='store_true', dest='create_new', default=False, \
+                      help="Flag to refit all rois")
+
+    # data filtering 
+    parser.add_option('-d', '--resp-type', action='store', dest='response_type', 
+            default='dff', help="response type for RF fits (default: dff)")
+    parser.add_option('--no-transform', action='store_false', dest='transform_fov', 
+            default=True, help="flag to NOT transform fov to natural coords")
+    parser.add_option('--pixels', action='store_false', dest='convert_um', 
+            default=True, help="flag to use pixel coords instead of microns")
+   
+    (options, args) = parser.parse_args(options)
+
+    return options
+
+
+
+def main(options):
+
+    opts = extract_options(options)
+    rootdir=opts.rootdir
+    animalid=opts.animalid
+    session=opts.session
+    fov=opts.fov
+    rfname=opts.rfname
+    traceid=opts.traceid
+
+    response_type=opts.response_type
+
+    transform_fov = opts.transform_fov
+    convert_um = opts.convert_um
+    create_new = opts.create_new
+
+    sort_roi_vs_rf_position(animalid, session, fov, traceid=traceid, 
+                                rfname=rfname, response_type=response_type, 
+                                convert_um=convert_um, transform_fov=transform_fov, 
+                                create_new=create_new, rootdir=rootdir)
+
+#
+if __name__ == '__main__':
+    main(sys.argv[1:])
+
+
