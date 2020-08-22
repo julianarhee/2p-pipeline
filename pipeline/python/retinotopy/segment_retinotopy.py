@@ -6,7 +6,7 @@ Created on Sat Apr 13 12:06:11 2019
 @author: julianarhee
 """
 
-
+#%%
 import os
 import glob
 import json
@@ -74,9 +74,9 @@ def plot_filtered_maps(cond, currmags_map, currphase_map_c, mag_thr):
 #%%
 
 rootdir = '/n/coxfs01/2p-data'
-animalid = 'JC090' # 'JC076' #'JC091' #'JC059'
-session = '20190604' #'20190420' #20190623' #'20190227'
-fov = 'FOV3_zoom2p0x' #'FOV1_zoom2p0x' #'FOV4_zoom4p0x'
+animalid = 'JC084' # 'JC076' #'JC091' #'JC059'
+session = '20190522' #'20190420' #20190623' #'20190227'
+fov = 'FOV1_zoom2p0x' #'FOV1_zoom2p0x' #'FOV4_zoom4p0x'
 run = 'retino_run1'
 traceid = 'analysis001' #'traces001'
 visual_area = ''
@@ -91,7 +91,6 @@ else:
 run_dir = os.path.join(rootdir, animalid, session, fov, run)
 #traceid_dir = glob.glob(os.path.join(fov_dir, run, traces_subdir, '%s*' % traceid))[0]
 
-
 retinoid, RID = rutils.load_retino_analysis_info(animalid, session, fov, run, traceid, use_pixels=True, rootdir=rootdir)
 
 data_identifier = '|'.join([animalid, session, fov, run, retinoid, visual_area])
@@ -102,13 +101,14 @@ print("*** Dataset: %s ***" % data_identifier)
 #%%
     
 # Get processed retino data:
-processed_dir = glob.glob(os.path.join(run_dir, 'retino_analysis', '%s*' % retinoid))[0]
-processed_fpaths = glob.glob(os.path.join(processed_dir, 'files', '*.h5'))
+retinoid_dir = glob.glob(os.path.join(run_dir, 'retino_analysis', '%s*' % retinoid))[0]
+processed_fpaths = glob.glob(os.path.join(retinoid_dir, 'files', '*.h5'))
 print("Found %i processed retino runs." % len(processed_fpaths))
 
 
 # Get condition info for trials:
-conditions_fpath = glob.glob(os.path.join(run_dir, 'paradigm', 'files', 'parsed_trials*.json'))[0]
+conditions_fpath = glob.glob(os.path.join(run_dir, \
+    'paradigm', 'files', 'parsed_trials*.json'))[0]
 with open(conditions_fpath, 'r') as f:
     mwinfo = json.load(f)
 
@@ -141,10 +141,21 @@ elev_cutoff = screen_top / screen_right
 
 
 #%%
+reload(rutils)
 
+print(run)
+
+tiff_fpaths = glob.glob(os.path.join(RID['PARAMS']['tiff_source'], '*.tif'))
+scaninfo = rutils.get_protocol_info(animalid, session, fov, run=run)
+mwinfo = rutils.load_mw_info(animalid, session, fov, run)
+
+avg_traces = rutils.get_condition_averaged_traces(RID, retinoid_dir, mwinfo,
+                                                  scaninfo, tiff_fpaths)
 
 fit, magratio, phase, trials_by_cond = rutils.trials_to_dataframes(processed_fpaths, conditions_fpath)
 
+#%%
+trials_by_cond
 
 #%%
 
@@ -175,9 +186,9 @@ axes[1,0].imshow(delay_az, cmap='nipy_spectral', vmin=-np.pi, vmax=np.pi)
 axes[1,1].imshow(delay_el, cmap='nipy_spectral', vmin=-np.pi, vmax=np.pi)
 
 cbar1_orientation='horizontal'
-cbar1_axes = [0.35, 0.9, 0.1, 0.05]
+cbar1_axes = [0.35, 0.85, 0.1, 0.1]
 cbar2_orientation='vertical'
-cbar2_axes = [0.75, 0.9, 0.1, 0.05]
+cbar2_axes = [0.75, 0.85, 0.1, 0.1]
 
 cbaxes = fig.add_axes(cbar1_axes) 
 cb = pl.colorbar(im1, cax = cbaxes, orientation=cbar1_orientation)  
@@ -198,8 +209,8 @@ for ax in axes.flat:
     ax.axis('off')
     
 label_figure(fig, data_identifier)
-figname = 'absolute_and_delay_maps_magthr_%.3f' % mag_thr
-pl.savefig(os.path.join(processed_dir, 'figures', '%s.png' % figname))
+figname = 'acquisview_absolute_and_delay_maps_magthr_%.3f' % mag_thr
+pl.savefig(os.path.join(run_dir, 'retino_analysis', 'absolute_maps', '%s.png' % figname))
 
 
 
@@ -257,9 +268,9 @@ ax.imshow(surface_img, cmap='gray')
 im2 = ax.imshow(absolute_el, cmap='nipy_spectral', vmin=-np.pi, vmax=np.pi, alpha=0.7, origin='upper')
 
 cbar1_orientation='horizontal'
-cbar1_axes = [0.37, 0.65, 0.1, 0.07]
+cbar1_axes = [0.37, 0.85, 0.1, 0.1]
 cbar2_orientation='vertical'
-cbar2_axes = [0.8, 0.65, 0.1, 0.07]
+cbar2_axes = [0.8, 0.85, 0.1, 0.1]
 
 
 cnorm = mpl.colors.Normalize(vmin=vmin, vmax=vmax)
@@ -270,6 +281,9 @@ scalarmap.set_array(bounds)
 
 cbar1_ax = fig.add_axes(cbar1_axes)
 cbar1 = fig.colorbar(im1, cax=cbar1_ax, orientation=cbar1_orientation)
+cbar1.ax.axhline(y=cbar2.norm(-np.pi*elev_cutoff), color='w', lw=1)
+cbar1.ax.axhline(y=cbar2.norm(np.pi*elev_cutoff), color='w', lw=1)
+
 cbar1.ax.axis('off')
 
 cbar2_ax = fig.add_axes(cbar2_axes)
@@ -287,8 +301,9 @@ for ax in axes.flat:
     ax.axis('off')
 
 label_figure(fig, data_identifier)
-figname = 'absolute_maps_magthr_%.3f' % mag_thr
-pl.savefig(os.path.join(processed_dir, 'figures', '%s.png' % figname))
+figname = 'acquisview_absolute_maps_magthr_%.3f' % mag_thr
+pl.savefig(os.path.join(run_dir, 'retino_analysis', 'absolute_maps', '%s.png' % figname))
 
 
 
+# %%
