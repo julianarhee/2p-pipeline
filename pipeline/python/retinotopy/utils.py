@@ -80,7 +80,7 @@ def load_traces(animalid, session, fov, run='retino_run1', analysisid='analysis0
     return traces
 
 
-def load_traces_from_file(retino_dpath, scaninfo, trace_type='corrected', temporal_ds=None, frame_rate=44.65):
+def load_traces_from_file(retino_dpath, scaninfo, trace_type='corrected', temporal_ds=None):
     '''
     Loads ./traces/extracted_traces.h5 (contains data for each tif file).
     Pre-processes raw extracted traces by adding back in neuropil offsets and F0 offset from drift correction.
@@ -219,7 +219,8 @@ def block_mean(ar, fact):
     return res
 
 def get_condition_averaged_traces(RID, retinoid_dir, mwinfo, runinfo, tiff_fpaths, create_new=False):
-
+    '''This only works for roi_type NOT pixels (otherwise creates ridick huge files
+    '''
     # Set output dir:
     output_dir = os.path.join(retinoid_dir,'traces')
     if not os.path.exists(output_dir):
@@ -228,12 +229,13 @@ def get_condition_averaged_traces(RID, retinoid_dir, mwinfo, runinfo, tiff_fpath
 
     avg_trace_fpath = os.path.join(output_dir, 'averaged_roi_traces.pkl')
     redo=False
-    if os.path.exists(avg_trace_fpath) and create_new is False:
+    if os.path.exists(avg_trace_fpath) or create_new is False:
         try:
             with open(avg_trace_fpath, 'rb') as f:
                 traces = pkl.load(f)
         except Exception as e:
             redo=True
+
     if create_new or redo:
         acquisition_dir = os.path.split(retinoid_dir.split('/retino_analysis')[0])[0]
         session_dir = os.path.split(acquisition_dir)[0]
@@ -361,11 +363,19 @@ def load_soma_and_np_masks(RETID):
     d1, d2 = zimg.shape
 
     # Get roi extraction info
-    session_dir = RETID['DST'].split('FOV')[0]
-    rid_fpath = glob.glob(os.path.join(session_dir, 'ROIs', 'rids*.json'))[0]
-    with open(rid_fpath, 'r') as f:
-        rids = json.load(f)
-    reffile = rids[roiid]['PARAMS']['options']['ref_file']
+#    session_dir = RETID['DST'].split('FOV')[0]
+#    rid_fpath = glob.glob(os.path.join(session_dir, 'ROIs', 'rids*.json'))[0]
+#    with open(rid_fpath, 'r') as f:
+#        rids = json.load(f)
+#    reffile = rids[roiid]['PARAMS']['options']['ref_file']
+#
+    # Get reference file for run
+    rdir, procid = RETID['SRC'].split('/processed/')
+    pid = procid.split('_')[0]
+    pidpath = glob.glob(os.path.join(rdir, 'processed', 'pids_*.json'))[0]
+    with open(pidpath, 'r') as f:
+        pids = json.load(f)
+    reffile = pids[pid]['PARAMS']['motion']['ref_file']
 
     # Load masks
     retino_dpath = os.path.join(RETID['DST'], 'traces', 'extracted_traces.h5')
@@ -511,6 +521,10 @@ def do_fft_analysis(avg_traces, sorted_idxs, stim_freq_idx):
 # -----------------------------------------------------------------------------
 # Data formatting
 # -----------------------------------------------------------------------------
+
+#def average_trial_dataframes(df, trials_by_cond, is_circular=False):
+#    for 
+
 
 def trials_to_dataframes(processed_fpaths, conditions_fpath):
     
