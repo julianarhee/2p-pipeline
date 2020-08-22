@@ -842,6 +842,12 @@ def main(options):
     pl.savefig(os.path.join(curr_dst_dir, '%s.svg' % figname))
     print('-- [f] %s' % figname)
 
+    # Save gradients
+    gradients = {'az': grad_az, 'el': grad_el}
+    grad_fpath = os.path.join(curr_dst_dir, 'gradients.pkl')
+    with open(grad_fpath, 'wb') as f:
+        pkl.dump(gradients, f, protocol=pkl.HIGHEST_PROTOCOL)
+
     #%% ## Calculate gradients and projec to get mean
     projections = get_projection_points(grad_az, grad_el)
 
