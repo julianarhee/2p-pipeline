@@ -54,7 +54,47 @@ import sklearn.metrics as skmetrics #import mean_squared_error
 #%%
 # Functions for dilating and smoothing masks
 # ---------------------------------------------------------------
+from scipy.interpolate import SmoothBivariateSpline
+
 def fill_and_smooth_nans(img):
+
+    y, x = np.meshgrid(np.arange(0, img.shape[1]), np.arange(0, img.shape[0]))
+    x = x.astype(float)
+    y = y.astype(float)
+    z = img.copy()
+    
+    xx = x.copy()
+    yy = y.copy()
+    xx[np.isnan(z)] = np.nan
+    yy[np.isnan(z)] = np.nan
+
+    xx=xx.ravel()
+    xx=(xx[~np.isnan(xx)])
+    yy=yy.ravel()
+    yy=(yy[~np.isnan(yy)])
+    zz=z.ravel()
+    zz=(zz[~np.isnan(zz)])
+
+#     xnew = np.arange(xx.min(), xx.max()+1) #np.arange(9,11.5, 0.01)
+#     ynew = np.arange(yy.min(), yy.max()+1) #np.arange(10.5,15, 0.01)
+
+#     f = SmoothBivariateSpline(xx,yy,zz,kx=1,ky=1)
+#     znew=np.transpose(f(xnew, ynew)).T
+
+    xnew = np.arange(x.ravel().min(), x.ravel().max()+1) #np.arange(9,11.5, 0.01)
+    ynew = np.arange(y.ravel().min(), y.ravel().max()+1) #np.arange(10.5,15, 0.01)
+    
+    #print(xnew.min(), xnew.max())
+    
+    f = SmoothBivariateSpline(xx,yy,zz,kx=1,ky=1)
+    znew=f(xnew, ynew) #).T
+    
+    znew[np.isnan(z)] = np.nan
+    
+    #print(z.shape, znew.shape)
+    return znew #.T #a
+
+def fill_and_smooth_nans_missing(img):
     '''
     Smooths image and fills over NaNs. Useful for dealing with holes from neuropil masks
     '''
@@ -109,6 +149,7 @@ def dilate_mask_centers(maskcenters, kernel_size=9):
 def mask_rois(masks, value_array, mask_thr=0.1, return_array=False):
     '''
     Assign a value to each mask (value_array should match N masks).
+    value_array:  indices should be RIDs, these ixs are used to index into masks.
     '''
     nrois, d1, d2 = masks.shape
     dims = (d1, d2)
@@ -124,9 +165,11 @@ def mask_rois(masks, value_array, mask_thr=0.1, return_array=False):
 
     return value_mask
 
-def mask_with_overlaps_averaged(dilated_masks, value_array, mask_thr=0.1):
+def mask_with_overlaps_averaged(dilated_masks, value_array, mask_thr=0.1,
+                                is_circular=False, vmin=-np.pi, vmax=np.pi):
     '''
     Assign value to masks, but average any masks where they are overlapping.
+    value_array:  indices should be RIDs, these ixs are used to index into masks.
     '''
     nrois_total, d1, d2 = dilated_masks.shape
     #print("dilated: %i" % nrois_total) 
@@ -151,7 +194,7 @@ def mask_with_overlaps_averaged(dilated_masks, value_array, mask_thr=0.1):
     return avg_mask
 
 def get_phase_masks(masks, phases, average_overlap=True, roi_list=None, 
-                    use_cont=True, mask_thr=0.01):
+                    use_cont=True, mask_thr=0.01, is_circular=True):
     '''
     Create masks with assigned phase values (converted as specfied).
     To create continueous maps, use_cont=True.
@@ -168,6 +211,7 @@ def get_phase_masks(masks, phases, average_overlap=True, roi_list=None,
     if use_cont:
         elev = (phases_cont['bottom'] - phases_cont['top']) / 2.
         azim = (phases_cont['left'] - phases_cont['right']) / 2.
+        vmin, vmax = (-np.pi, np.pi)
     else:
         # Get absolute maps:
         elev = (phases['bottom'] - phases['top']) / 2.
@@ -181,10 +225,14 @@ def get_phase_masks(masks, phases, average_overlap=True, roi_list=None,
 
         azim = copy.copy(azim_c)
         elev = copy.copy(elev_c)
+
+        vmin, vmax = (0, 2*np.pi)
         
     if average_overlap:
-        azim_phase = mask_with_overlaps_averaged(masks, azim[roi_list], mask_thr=mask_thr)
-        elev_phase = mask_with_overlaps_averaged(masks, elev[roi_list], mask_thr=mask_thr)
+        azim_phase = mask_with_overlaps_averaged(masks, azim[roi_list], mask_thr=mask_thr,
+                                                is_circular=is_circular, vmin=vmin, vmax=vmax)
+        elev_phase = mask_with_overlaps_averaged(masks, elev[roi_list], mask_thr=mask_thr,
+                                                is_circular=is_circular, vmin=vmin, vmax=vmax)
     else:
         azim_phase = mask_rois(masks, azim[roi_list], mask_thr=mask_thr)
         elev_phase = mask_rois(masks, elev[roi_list], mask_thr=mask_thr)   
@@ -200,6 +248,7 @@ def plot_retinomap_processing(azim_phase_soma, azim_phase_np, azim_smoothed, az_
     Plot all steps, from soma and NP masks, to dilating/smoothing/etc.
     '''
     # Create masks for plotting
+    # Mask images for plotting
     azim_phase_mask_np = np.ma.masked_where(azim_phase_np==-100, azim_phase_np)
     elev_phase_mask_np = np.ma.masked_where(elev_phase_np==-100, elev_phase_np)
 
@@ -269,13 +318,18 @@ def calculate_gradients(img):
     abs_gd = np.arctan2(gdy, gdx) # np.arctan2(abs_gdy, abs_gdx) # [-pi, pi]
 
     # Get mean direction
-    #mean_dir = np.rad2deg(np.arctan2(gdy.mean(), gdx.mean())) # TODO why this diff
+    #mean_dir = np.rad2deg(np.arctan2(gdy.mean(), gdx.mean())) 
+#    mean_dir = np.rad2deg(spstats.circmean([np.arctan2(gy, gx) 
+#                         for gy, gx in zip(gdy.ravel(), gdx.ravel())],
+#                         low=-np.pi, high=np.pi)) # TODO why this diff
     mean_dir = np.rad2deg(spstats.circmean([np.arctan2(gy, gx) 
-                         for gy, gx in zip(gdy.ravel(), gdx.ravel())],
-                         low=-np.pi, high=np.pi)) # TODO why this diff
+                         for gy, gx in zip(gdy.ravel(), gdx.ravel()) \
+                                 if ((not np.isnan(gy)) and (not np.isnan(gx)))],
+                         low=-np.pi, high=np.pi))
+
 
     # Get unit vector
-    avg_gradient = spstats.circmean(abs_gd, low=-np.pi, high=np.pi) #.mean()
+    avg_gradient = spstats.circmean(abs_gd[~np.isnan(abs_gd)], low=-np.pi, high=np.pi) 
     dirvec = (np.cos(avg_gradient), np.sin(avg_gradient))
     vhat = dirvec / np.linalg.norm(dirvec)
 
@@ -323,7 +377,9 @@ def plot_gradients(grad_, ax=None, draw_interval=3,
               scale_units='xy', angles='xy', pivot='mid', units='width',
               headwidth=headwidth)
 
-    avg_dir_grad = np.rad2deg(grad_['direction'].mean())
+    gdir_ = grad_['direction'].copy()
+    gmean = spstats.circmean(gdir_[~np.isnan(gdir_)], low=-np.pi, high=np.pi)
+    avg_dir_grad = np.rad2deg(gmean) #np.rad2deg(grad_['direction'].mean())
     ax.set(aspect=1, title="Mean: %.2f\n(dir: %.2f)" % (mean_dir, avg_dir_grad))
 
     return ax
@@ -497,11 +553,10 @@ def plot_projected_vs_retino_positions(projections, fit_results,
 
     fig, axn = pl.subplots(1,2, figsize=(12, 5))
     ax=axn[0]
-    #sns.regplot(proj_az, ret_az, ax=ax, scatter=False, color='k')
     ax.scatter(proj_az[0::spacing], ret_az[0::spacing], marker='.', lw=0, color='k', s=1)
-    n_points_plot = len(proj_az[0::spacing])
-    linfit_str = '(%s) y=%.2fx+%.2f' % (regr_model, float(regr_az.coef_), float(regr_az.intercept_)) 
-    ax.plot(proj_az[0::spacing], fitv_az[0::spacing], c=regr_color, label=linfit_str)
+    r2_v = skmetrics.r2_score(ret_az[~np.isnan(ret_az)], fitv_az)
+    lfit_str = '(%s) y=%.2fx+%.2f, R2=%.2f' % (regr_model, float(regr_az.coef_), float(regr_az.intercept_), r2_v) 
+    ax.plot(proj_az[~np.isnan(ret_az)], fitv_az, c=regr_color, label=lfit_str)
     ax.set_title('Azimuth', loc='left') #linfit_str, color=regr_color)
     ax.set_ylabel('azimuth (deg)', fontsize=12)
     ax.set_xlabel('projected pos (um)', fontsize=12)
@@ -510,8 +565,9 @@ def plot_projected_vs_retino_positions(projections, fit_results,
     ax=axn[1]
     #sns.regplot(proj_el, ret_el, ax=ax, scatter=False, color='k')
     ax.scatter(proj_el[0::spacing], ret_el[0::spacing], marker='.', lw=0, color='k', s=1)
-    linfit_str = '(%s) y=%.2fx+%.2f' % (regr_model, float(regr_el.coef_), float(regr_el.intercept_)) 
-    ax.plot(proj_el[0::spacing], fitv_el[0::spacing], c=regr_color, label=linfit_str)
+    r2_v = skmetrics.r2_score(ret_el[~np.isnan(ret_el)], fitv_el)
+    lfit_str = '(%s) y=%.2fx+%.2f, R2=%.2f' % (regr_model, float(regr_el.coef_), float(regr_el.intercept_), r2_v) 
+    ax.plot(proj_el[~np.isnan(ret_el)], fitv_el, c=regr_color, label=lfit_str)
     ax.set_title('Elevation', loc='left') #linfit_str, color=regr_color)
     ax.set_ylabel('altitude (deg)', fontsize=12)
     ax.set_xlabel('projected pos (um)', fontsize=12)
@@ -763,13 +819,16 @@ def main(options):
     vmax = np.pi if use_cont else 2*np.pi
 
     # Assign phase value to dilated masks
-    azim_phase_np, elev_phase_np = get_phase_masks(dilated_masks, phases_np, average_overlap=average_overlap, 
-                                                   roi_list=None, use_cont=use_cont, mask_thr=mask_thr)
+    azim_phase_np, elev_phase_np = get_phase_masks(dilated_masks, phases_np, 
+                                                   average_overlap=average_overlap, 
+                                                   roi_list=roi_list, #None, 
+                                                   use_cont=use_cont, mask_thr=mask_thr)
 
-    azim_phase_soma, elev_phase_soma = get_phase_masks(masks_soma, phases_soma, average_overlap=average_overlap, 
-                                                       roi_list=roi_list, use_cont=use_cont, mask_thr=mask_thr)
+    azim_phase_soma, elev_phase_soma = get_phase_masks(masks_soma, phases_soma, 
+                                                    average_overlap=average_overlap, 
+                                                    roi_list=roi_list, 
+                                                    use_cont=use_cont, mask_thr=mask_thr)
 
-    # Mask images for plotting
     #%% Resize image 
     pixel_size = putils.get_pixel_size()
     pixel_size = (pixel_size[0]*ds_factor, pixel_size[1]*ds_factor)
@@ -785,7 +844,7 @@ def main(options):
         print("ABORT.")
         #azim_smoothed = cv2.resize(azim_smoothed, (new_d1, new_d2))
         #elev_smoothed = cv2.resize(elev_smoothed, (new_d1, new_d2))    
-    azim_smoothed = fill_and_smooth_nans(azim_smoothed)
+    azim_smoothed = fill_and_smooth_nans(azim_smoothed) # This should NOT resize img
     elev_smoothed = fill_and_smooth_nans(elev_smoothed)
 
     #%% Transform FOV to match widefield
@@ -831,14 +890,14 @@ def main(options):
     plot_str = 'degrees' if plot_degrees else ''
     fig = plot_retinomap_gradients(grad_az, grad_el, cmap=cmap_phase)
     putils.label_figure(fig, data_id)
-    figname = 'gradients_dilate-center-%i_spatial-smooth-%i_%s' % (kernel_size, spatial_smooth_fwhm, plot_str)
+    figname = 'gradients_dilate-center-%i_spatial-smooth-%i_%s_circ_magthr-%.2f' % (kernel_size, spatial_smooth_fwhm, plot_str, mag_thr)
     pl.savefig(os.path.join(curr_dst_dir, '%s.svg' % figname))
     print('-- [f] %s' % figname)
 
     fig = plot_unit_vectors(grad_az, grad_el)
     label_figure(fig, data_id)
     pl.subplots_adjust(left=0.1, wspace=0.5)
-    figname = 'gradient_unitvec__dilate-center-%i_spatial-smooth-%i_%s' % (kernel_size, spatial_smooth_fwhm, plot_str)
+    figname = 'gradient_unitvec__dilate-center-%i_spatial-smooth-%i_%s_circ_magthr-%.2f' % (kernel_size, spatial_smooth_fwhm, plot_str, mag_thr)
     pl.savefig(os.path.join(curr_dst_dir, '%s.svg' % figname))
     print('-- [f] %s' % figname)
 
@@ -855,15 +914,17 @@ def main(options):
     fig = test_plot_projections(projections, ncyc=10, startcyc=50, imshape=(d1,d2))
     label_figure(fig, data_id)
     pl.subplots_adjust(left=0.1, wspace=0.5)
-    figname = 'test_projections__dilate-center-%i_spatial-smooth-%i_%s' % (kernel_size, spatial_smooth_fwhm, plot_str)
+    figname = 'test_projections__dilate-center-%i_spatial-smooth-%i_%s_circ_magthr-%.2f' % (kernel_size, spatial_smooth_fwhm, plot_str, mag_thr)
     pl.savefig(os.path.join(curr_dst_dir, '%s.svg' % figname))
 
     #%% ## Fit linear  
     proj_fit_results = {}
     d_list = []
     for i, cond in enumerate(['az', 'el']):
-        xv = projections['proj_%s' % cond]
-        yv = projections['retino_%s' % cond]
+        xv = projections['proj_%s' % cond].copy()
+        yv = projections['retino_%s' % cond].copy()
+        xv = xv[~np.isnan(yv)]
+        yv = yv[~np.isnan(yv)]
         fitv, regr = evalrf.fit_linear_regr(xv, yv, return_regr=True, model=regr_model)
      
         rmse = np.sqrt(skmetrics.mean_squared_error(yv, fitv))
@@ -899,7 +960,7 @@ def main(options):
 
     label_figure(fig, data_id)
     pl.subplots_adjust(left=0.1, wspace=0.5)
-    figname = 'Proj_versus_Retinopos__dilate-center-%i_spatial-smooth-%i_%s' % (kernel_size, spatial_smooth_fwhm, plot_str)
+    figname = 'Proj_versus_Retinopos__dilate-center-%i_spatial-smooth-%i_%s_circ_magthr-%.2f' % (kernel_size, spatial_smooth_fwhm, plot_str, mag_thr)
     pl.savefig(os.path.join(curr_dst_dir, '%s.svg' % figname))
 
 
