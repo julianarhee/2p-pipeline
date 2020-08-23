@@ -703,6 +703,14 @@ def main(options):
         os.makedirs(curr_dst_dir)
     print("--- Saving output to:\n %s" % curr_dst_dir)
 
+    # Move old stuff
+    old_dir = os.path.join(curr_dst_dir, 'tests')
+    if not os.path.exists(old_dir):
+        os.makedirs(old_dir)
+    oldimgs = [i for i in os.listdir(curr_dst_dir) if i.endswith('.svg') or i.endswith('.png')]
+    for i in oldimgs:
+        shutil.move(os.path.join(curr_dst_dir, i), os.path.join(old_dir, i))
+
     # Load colormap
     screen, cmap_phase = ret_utils.get_retino_legends(cmap_name=cmap_name, 
                                                       zero_center=zero_center,
@@ -746,10 +754,11 @@ def main(options):
     sorted_rois_soma = np.argsort(mean_magratio_values_soma)[::-1]
 
     # Filter out bad cells
+    conds = [c for c in magratios_soma.columns if c!='blank']
     if pass_criterion=='all': 
-        roi_list = [i for i in magratios_soma.index if all(magratios_soma.loc[i] > mag_thr)]
+        roi_list = [i for i in magratios_soma.index if all(magratios_soma[conds].loc[i] > mag_thr)]
     elif pass_criterion=='any': 
-        roi_list = [i for i in magratios_soma.index if any(magratios_soma.loc[i] > mag_thr)]
+        roi_list = [i for i in magratios_soma.index if any(magratios_soma[conds].loc[i] > mag_thr)]
     else:
         roi_list = magratios_soma.index.tolist()
     print("... %i out of %i cells pass mag-ratio thr (thr>%.2f)" 
@@ -862,7 +871,7 @@ def main(options):
                                    cmap=cmap_phase, vmin=vmin, vmax=vmax, 
                                    spatial_smooth_fwhm=spatial_smooth_fwhm)
     putils.label_figure(fig, data_id)
-    figname = 'soma-v-neuropil_dilate-center-%i_spatial-smooth-%i' % (kernel_size, spatial_smooth_fwhm)
+    figname = 'soma-v-neuropil_dilate-center-%i_spatial-smooth-%i_magthr-%.2f-%s' % (kernel_size, spatial_smooth_fwhm, mag_thr, pass_criterion)
     pl.savefig(os.path.join(curr_dst_dir, '%s.png' % figname))
 
     #%% ## Calculate gradient on retino map
@@ -914,22 +923,27 @@ def main(options):
     fig = test_plot_projections(projections, ncyc=10, startcyc=50, imshape=(d1,d2))
     label_figure(fig, data_id)
     pl.subplots_adjust(left=0.1, wspace=0.5)
-    figname = 'test_projections__dilate-center-%i_spatial-smooth-%i_%s_circ_magthr-%.2f' % (kernel_size, spatial_smooth_fwhm, plot_str, mag_thr)
+    figname = 'test_projections__dilate-center-%i_spatial-smooth-%i_%s_circ_magthr-%.2f-%s' % (kernel_size, spatial_smooth_fwhm, plot_str, mag_thr, pass_criterion)
     pl.savefig(os.path.join(curr_dst_dir, '%s.svg' % figname))
 
     #%% ## Fit linear  
     proj_fit_results = {}
     d_list = []
+    di = 0
     for i, cond in enumerate(['az', 'el']):
-        xv = projections['proj_%s' % cond].copy()
-        yv = projections['retino_%s' % cond].copy()
-        xv = xv[~np.isnan(yv)]
-        yv = yv[~np.isnan(yv)]
-        fitv, regr = evalrf.fit_linear_regr(xv, yv, return_regr=True, model=regr_model)
+        proj_v = projections['proj_%s' % cond].copy()
+        ret_v = projections['retino_%s' % cond].copy()
+        #xv = xv[~np.isnan(yv)]
+        #yv = yv[~np.isnan(yv)]
+        fitv, regr = evalrf.fit_linear_regr(proj_v[~np.isnan(ret_v)], 
+                                            ret_v[~np.isnan(ret_v)],
+                                            return_regr=True, model=regr_model)
      
-        rmse = np.sqrt(skmetrics.mean_squared_error(yv, fitv))
-        r2 = skmetrics.r2_score(yv, fitv)
-        pearson_r, pearson_p = spstats.pearsonr(xv, yv) 
+        rmse = np.sqrt(skmetrics.mean_squared_error(ret_v[~np.isnan(ret_v)], fitv))
+        r2 = skmetrics.r2_score(ret_v[~np.isnan(ret_v)], fitv)
+        pearson_r, pearson_p = spstats.pearsonr(proj_v[~np.isnan(ret_v)], ret_v[~np.isnan(ret_v)]) 
+        slope = float(regr.coef_)
+        intercept = float(regr.intercept_)
 
         proj_fit_results.update({'fitv_%s' % cond: fitv, 
                                  'regr_%s' % cond: regr})
@@ -939,9 +953,13 @@ def main(options):
                           'RMSE': rmse,
                           'pearson_p': pearson_p,
                           'pearson_r': pearson_r,
-                          'coefficient': float(regr.coef_), 
-                          'intercept': float(regr.intercept_)}, index=[i])
+                          'coefficient': slope, # float(regr.coef_), 
+                          'intercept': intercept, #float(regr.intercept_)
+                          }, index=[di])
+        print("~~~regr results: y = %.2f + %.2f (R2=%.2f)" % (slope, intercept, r2))
+
         d_list.append(d_)
+        di += 1
 
     regr_df = pd.concat(d_list, axis=0)
     proj_fit_results.update({'projections': projections, 
@@ -960,7 +978,7 @@ def main(options):
 
     label_figure(fig, data_id)
     pl.subplots_adjust(left=0.1, wspace=0.5)
-    figname = 'Proj_versus_Retinopos__dilate-center-%i_spatial-smooth-%i_%s_circ_magthr-%.2f' % (kernel_size, spatial_smooth_fwhm, plot_str, mag_thr)
+    figname = 'Proj_versus_Retinopos__dilate-center-%i_spatial-smooth-%i_%s_circ_magthr-%.2f-%s' % (kernel_size, spatial_smooth_fwhm, plot_str, mag_thr, pass_criterion)
     pl.savefig(os.path.join(curr_dst_dir, '%s.svg' % figname))
 
 
