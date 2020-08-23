@@ -707,7 +707,7 @@ def main(options):
     old_dir = os.path.join(curr_dst_dir, 'tests')
     if not os.path.exists(old_dir):
         os.makedirs(old_dir)
-    oldimgs = [i for i in os.listdir(curr_dst_dir) if i.endswith('.svg') or i.endswith('.png')]
+    oldimgs = [i for i in os.listdir(curr_dst_dir) if os.path.splitext(i)[1] in ['.svg','.png', '.pkl']]
     for i in oldimgs:
         shutil.move(os.path.join(curr_dst_dir, i), os.path.join(old_dir, i))
 
