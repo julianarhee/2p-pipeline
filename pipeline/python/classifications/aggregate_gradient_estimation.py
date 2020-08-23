@@ -916,6 +916,12 @@ def main(options):
     with open(grad_fpath, 'wb') as f:
         pkl.dump(gradients, f, protocol=pkl.HIGHEST_PROTOCOL)
 
+    uvectors = {'az': grad_az['vhat'], 'el': grad_el['vhat']}
+    vec_fpath = os.path.join(curr_dst_dir, 'vectors.pkl')
+    with open(vec_fpath, 'wb') as f:
+        pkl.dump(uvectors, f, protocol=pkl.HIGHEST_PROTOCOL)
+
+
     #%% ## Calculate gradients and projec to get mean
     projections = get_projection_points(grad_az, grad_el)
 
