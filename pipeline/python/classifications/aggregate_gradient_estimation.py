@@ -871,7 +871,7 @@ def main(options):
                                    cmap=cmap_phase, vmin=vmin, vmax=vmax, 
                                    spatial_smooth_fwhm=spatial_smooth_fwhm)
     putils.label_figure(fig, data_id)
-    figname = 'soma-v-neuropil_dilate-center-%i_spatial-smooth-%i_magthr-%.2f-%s' % (kernel_size, spatial_smooth_fwhm, mag_thr, pass_criterion)
+    figname = 'soma_neuropil_dilate-%i_smooth-%i_magthr-%.2f-%s' % (kernel_size, spatial_smooth_fwhm, mag_thr, pass_criterion)
     pl.savefig(os.path.join(curr_dst_dir, '%s.png' % figname))
 
     #%% ## Calculate gradient on retino map
@@ -899,14 +899,14 @@ def main(options):
     plot_str = 'degrees' if plot_degrees else ''
     fig = plot_retinomap_gradients(grad_az, grad_el, cmap=cmap_phase)
     putils.label_figure(fig, data_id)
-    figname = 'gradients_dilate-center-%i_spatial-smooth-%i_%s_circ_magthr-%.2f' % (kernel_size, spatial_smooth_fwhm, plot_str, mag_thr)
+    figname = 'gradients_dilate-%i_smooth-%i_%s_circ_magthr-%.2f-%s' % (kernel_size, spatial_smooth_fwhm, plot_str, mag_thr, pass_criterion)
     pl.savefig(os.path.join(curr_dst_dir, '%s.svg' % figname))
     print('-- [f] %s' % figname)
 
     fig = plot_unit_vectors(grad_az, grad_el)
     label_figure(fig, data_id)
     pl.subplots_adjust(left=0.1, wspace=0.5)
-    figname = 'gradient_unitvec__dilate-center-%i_spatial-smooth-%i_%s_circ_magthr-%.2f' % (kernel_size, spatial_smooth_fwhm, plot_str, mag_thr)
+    figname = 'unitvec_dilate-%i_smooth-%i_%s_circ_magthr-%.2f-%s' % (kernel_size, spatial_smooth_fwhm, plot_str, mag_thr, pass_criterion)
     pl.savefig(os.path.join(curr_dst_dir, '%s.svg' % figname))
     print('-- [f] %s' % figname)
 
@@ -978,7 +978,7 @@ def main(options):
 
     label_figure(fig, data_id)
     pl.subplots_adjust(left=0.1, wspace=0.5)
-    figname = 'Proj_versus_Retinopos__dilate-center-%i_spatial-smooth-%i_%s_circ_magthr-%.2f-%s' % (kernel_size, spatial_smooth_fwhm, plot_str, mag_thr, pass_criterion)
+    figname = 'Proj_versus_Retinopos__dilate-%i_smooth-%i_%s_circ_magthr-%.2f-%s' % (kernel_size, spatial_smooth_fwhm, plot_str, mag_thr, pass_criterion)
     pl.savefig(os.path.join(curr_dst_dir, '%s.svg' % figname))
 
 
