@@ -970,6 +970,11 @@ def main(options):
     with open(proj_fpath, 'wb') as f:
         pkl.dump(proj_fit_results, f, protocol=pkl.HIGHEST_PROTOCOL)
     print(proj_fpath)
+    
+    df_fpath = os.path.join(curr_dst_dir, 'projections.pkl')
+    p_df = {'regr_df': regr_df}
+    with open(df_fpath, 'wb') as f:
+        pkl.dump(p_df, f, protocol=pkl.HIGHEST_PROTOCOL)
         
     #%% Plot linear fit
     fig = plot_projected_vs_retino_positions(projections, proj_fit_results,
