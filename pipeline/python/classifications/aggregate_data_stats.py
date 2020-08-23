@@ -269,9 +269,9 @@ def get_rf_datasets(filter_by='drop_repeats', excluded_sessions=[], as_dict=True
 # ===============================================================
 from matplotlib.lines import Line2D
 
-def annotateBars(row, ax, fontsize=12): 
+def annotateBars(row, ax, fontsize=12, fmt='%.2f'): 
     for p in ax.patches:
-        ax.annotate("%.2f" % p.get_height(), (p.get_x() + p.get_width() / 2., 0.), #p.get_height()),
+        ax.annotate(fmt % p.get_height(), (p.get_x() + p.get_width() / 2., 0.), #p.get_height()),
                     ha='center', va='center', fontsize=fontsize, color='k', 
                     rotation=0, xytext=(0, 20),
              textcoords='offset points')
