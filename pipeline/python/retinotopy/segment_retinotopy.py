@@ -74,22 +74,16 @@ def plot_filtered_maps(cond, currmags_map, currphase_map_c, mag_thr):
 #%%
 
 rootdir = '/n/coxfs01/2p-data'
-animalid = 'JC084' # 'JC076' #'JC091' #'JC059'
-session = '20190522' #'20190420' #20190623' #'20190227'
+animalid = 'JC091' # 'JC076' #'JC091' #'JC059'
+session = '20190607' #'20190420' #20190623' #'20190227'
 fov = 'FOV1_zoom2p0x' #'FOV1_zoom2p0x' #'FOV4_zoom4p0x'
 run = 'retino_run1'
 traceid = 'analysis001' #'traces001'
 visual_area = ''
 
-if 'retino' in run:
-    traces_subdir = 'retino_analysis'
-    is_retino = True
-else:
-    traces_subdir = 'traces'
-    is_retino = False
-    
+
+   
 run_dir = os.path.join(rootdir, animalid, session, fov, run)
-#traceid_dir = glob.glob(os.path.join(fov_dir, run, traces_subdir, '%s*' % traceid))[0]
 
 retinoid, RID = rutils.load_retino_analysis_info(animalid, session, fov, run, traceid, use_pixels=True, rootdir=rootdir)
 
@@ -97,16 +91,17 @@ data_identifier = '|'.join([animalid, session, fov, run, retinoid, visual_area])
 print("*** Dataset: %s ***" % data_identifier)
 
 
-
-#%%
-    
-# Get processed retino data:
-retinoid_dir = glob.glob(os.path.join(run_dir, 'retino_analysis', '%s*' % retinoid))[0]
+#%% # Get processed retino data:
+retinoid_dir = RID['DST'] #glob.glob(os.path.join(run_dir, 'retino_analysis', '%s*' % retinoid))[0]
 processed_fpaths = glob.glob(os.path.join(retinoid_dir, 'files', '*.h5'))
 print("Found %i processed retino runs." % len(processed_fpaths))
 
-
-# Get condition info for trials:
+absolute_maps_dir = os.path.join(run_dir, 'retino_analysis', 'absolute_maps')
+if not os.path.exists(absolute_maps_dir):
+    os.makedirs(absolute_maps_dir)
+    
+    
+#%% Get condition info for trials:
 conditions_fpath = glob.glob(os.path.join(run_dir, \
     'paradigm', 'files', 'parsed_trials*.json'))[0]
 with open(conditions_fpath, 'r') as f:
@@ -125,8 +120,7 @@ stiminfo, trials_by_cond = rutils.get_retino_stimulus_info(mwinfo, runinfo)
 print "Trials by condN:", trials_by_cond
 
 
-#%%
-
+#%% Get screen info
 
 # adjust elevation limit to show only monitor extent
 screen = get_screen_dims() 
@@ -141,16 +135,9 @@ elev_cutoff = screen_top / screen_right
 
 
 #%%
-reload(rutils)
-
-print(run)
-
-tiff_fpaths = glob.glob(os.path.join(RID['PARAMS']['tiff_source'], '*.tif'))
+# tiff_fpaths = glob.glob(os.path.join(RID['PARAMS']['tiff_source'], '*.tif'))
 scaninfo = rutils.get_protocol_info(animalid, session, fov, run=run)
 mwinfo = rutils.load_mw_info(animalid, session, fov, run)
-
-avg_traces = rutils.get_condition_averaged_traces(RID, retinoid_dir, mwinfo,
-                                                  scaninfo, tiff_fpaths)
 
 fit, magratio, phase, trials_by_cond = rutils.trials_to_dataframes(processed_fpaths, conditions_fpath)
 
@@ -159,7 +146,7 @@ trials_by_cond
 
 #%%
 
-mag_thr = 0.0025
+mag_thr = 0.004 # 0.0025
 d2 = runinfo['pixels_per_line']
 d1 = runinfo['lines_per_frame']
 
@@ -210,13 +197,12 @@ for ax in axes.flat:
     
 label_figure(fig, data_identifier)
 figname = 'acquisview_absolute_and_delay_maps_magthr_%.3f' % mag_thr
-pl.savefig(os.path.join(run_dir, 'retino_analysis', 'absolute_maps', '%s.png' % figname))
+pl.savefig(os.path.join(absolute_maps_dir, '%s.png' % figname))
 
 
 
 
-#%%
-# Load surface image to plot overlay:
+#%% Load surface image to plot overlay:
 #surface_fpath = glob.glob(os.path.join(rootdir, animalid, 'macro_maps', '*', '*urf*'))[0]
 #surface_img = cv2.imread(surface_fpath, -1)
 #print(surface_img.shape)
@@ -231,17 +217,14 @@ else:
     fov_imgs = glob.glob(os.path.join(run_dir, 'processed', 'processed*', 'mcorrected_*mean_deinterleaved',\
                                       'Channel%02d' % ch_num, 'File*', '*.tif'))
     
-    
 imlist = []
 for anat in fov_imgs:
     im = tf.imread(anat)
     imlist.append(im)
 surface_img = np.array(imlist).mean(axis=0)
 
-
 pl.figure()
 pl.imshow(surface_img, cmap='gray')
-
 if surface_img.shape[0] != absolute_az.shape[0]:
     reduce_factor = surface_img.shape[0] / absolute_az.shape[0]
     surface_img = block_reduce(surface_img, (2,2), func=np.mean)
