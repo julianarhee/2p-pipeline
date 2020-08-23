@@ -5,7 +5,7 @@
 #SBATCH -p cox # run on cox gpu to use correct env 
 #SBATCH -n 1 # one core
 #SBATCH -N 1 # on one node
-#SBATCH -t 0-0:30 # Running time of 3 hours
+#SBATCH -t 0-0:20 # Running time of 3 hours
 #SBATCH --mem 8192 #70656 # Memory request of 70 GB (set to 98304 if exceed lim)
 #SBATCH -o retinograd_%A_%a.out # Standard output
 #SBATCH -e retinograd_%A_%a.err # Standard error
@@ -49,7 +49,7 @@ echo "SESSION: ${SESSION}"
 #cd ${OUTDIR}
 
 # run processing on raw data
-python /n/coxfs01/2p-pipeline/repos/2p-pipeline/pipeline/python/classifications/aggregate_gradient_estimation.py -i $ANIMALID -S $SESSION -A $FOV -R $EXP -t $TRACEID -c magenta --plot-examples -p all_conditions --thr 0.01 #--fit --eval -n 8
+python /n/coxfs01/2p-pipeline/repos/2p-pipeline/pipeline/python/classifications/aggregate_gradient_estimation.py -i $ANIMALID -S $SESSION -A $FOV -R $EXP -t $TRACEID -c magenta --plot-examples -p any --thr 0.01 -M ridge #--fit --eval -n 8
 
 #python /n/coxfs01/2p-pipeline/repos/2p-pipeline/pipeline/python/classifications/evaluate_receptivefield_fits.py -i $ANIMALID -S $SESSION -A $FOV -R $EXP -t $TRACEID -M dff -p 0.5 -c magenta -n 1 --test
 
