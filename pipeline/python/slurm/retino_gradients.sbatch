@@ -49,7 +49,7 @@ echo "SESSION: ${SESSION}"
 #cd ${OUTDIR}
 
 # run processing on raw data
-python /n/coxfs01/2p-pipeline/repos/2p-pipeline/pipeline/python/classifications/aggregate_gradient_estimation.py -i $ANIMALID -S $SESSION -A $FOV -R $EXP -t $TRACEID -c magenta --plot-examples -p any --thr 0.01 -M ridge #--fit --eval -n 8
+python /n/coxfs01/2p-pipeline/repos/2p-pipeline/pipeline/python/classifications/aggregate_gradient_estimation.py -i $ANIMALID -S $SESSION -A $FOV -R $EXP -t $TRACEID -c magenta --plot-examples -p all --thr 0.015 -M ridge #--fit --eval -n 8
 
 #python /n/coxfs01/2p-pipeline/repos/2p-pipeline/pipeline/python/classifications/evaluate_receptivefield_fits.py -i $ANIMALID -S $SESSION -A $FOV -R $EXP -t $TRACEID -M dff -p 0.5 -c magenta -n 1 --test
 
