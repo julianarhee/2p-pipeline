@@ -474,10 +474,11 @@ def load_traces(animalid, session, fovnum, curr_exp, traceid='traces001',
     n_conditions = len(sdf['size'].unique())
 
     # Get responsive cells
-    responsive_cells, ncells_total = exp.get_responsive_cells(response_type=response_type,\
+    if responsive_test is not None:
+        responsive_cells, ncells_total = exp.get_responsive_cells(response_type=response_type,\
                                                               responsive_test=responsive_test,
                                                               responsive_thr=responsive_thr)
-    traces = exp.data.traces[responsive_cells]
+        traces = exp.data.traces[responsive_cells]
 
     return traces, labels, sdf
 
@@ -558,9 +559,11 @@ def load_aggregate_data(experiment, traceid='traces001', response_type='dff', ep
     data_outfile = get_aggregate_data_filepath(experiment, traceid=traceid, response_type=response_type, epoch=epoch,
                        responsive_test=responsive_test, responsive_thr=responsive_thr, n_stds=n_stds,
                        aggregate_dir=aggregate_dir)
-    print("...loading: %s" % data_outfile)
+    # print("...loading: %s" % data_outfile)
+
     with open(data_outfile, 'rb') as f:
         DATA = pkl.load(f)
+    print("...loading: %s" % data_outfile)
 
     return DATA
 

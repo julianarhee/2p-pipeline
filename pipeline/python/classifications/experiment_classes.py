@@ -461,7 +461,7 @@ def get_receptive_field_fits(animalid, session, fov, response_type='dff',
 # Generic "event"-based experiments
 # #############################################################################
 def get_responsive_cells(animalid, session, fov, run=None, traceid='traces001',
-                         response_type='dff',
+                         response_type='dff',create_new=False, n_processes=1,
                          responsive_test='ROC', responsive_thr=0.05, n_stds=2.5,
                          rootdir='/n/coxfs01/2p-data'):
         
@@ -472,26 +472,27 @@ def get_responsive_cells(animalid, session, fov, run=None, traceid='traces001',
 #                     responsive_test=responsive_test, responsive_thr=responsive_thr, 
 #                     rootdir=rootdir)
     traceid_dir =  glob.glob(os.path.join(rootdir, animalid, session, fov, run, 'traces', '%s*' % traceid))[0]        
-    stats_dir = os.path.join(traceid_dir, 'summary_stats', responsive_test)
-    stats_fpath = glob.glob(os.path.join(stats_dir, '*results*.pkl'))
-
     #print("-- stats: %s" % run)
     #print(stats_fpath)
     #print(stats_fpath)
-    if len(stats_fpath)==0:
-        return None, None
+    #if len(stats_fpath)==0:
+    #    return None, None
 
-    if len(stats_fpath)==0 and (('gratings' in run) or ('blobs' in run)):
+    if create_new and (('gratings' in run) or ('blobs' in run)):
         try:
             print("DOING BOOT - run: %s" % run) 
             bootstrap_roc_func(animalid, session, fov, traceid, run, trace_type='corrected', rootdir=rootdir,
-                        n_processes=1, plot_rois=True, n_iters=1000)
+                        n_processes=n_processes, plot_rois=True, n_iters=1000)
         except Exception as e:
             print("JK ERROR")
             print(e)
+
+    stats_dir = os.path.join(traceid_dir, 'summary_stats', responsive_test)
+    stats_fpath = glob.glob(os.path.join(stats_dir, '*results*.pkl'))
+
     try:
         #stats_fpath = glob.glob(os.path.join(stats_dir, '*results*.pkl'))
-        assert len(stats_fpath) > 0, "No stats results found for: %s" % stats_dir
+        assert len(stats_fpath) == 1, "Stats results paths: %s" % str(stats_fpath)
         with open(stats_fpath[0], 'rb') as f:
             print("... loading stats")
             rstats = pkl.load(f)
@@ -512,7 +513,7 @@ def get_responsive_cells(animalid, session, fov, run=None, traceid='traces001',
 def get_roi_stats(animalid, session, fov, exp_name=None, traceid='traces001', 
                   trace_type='corrected', response_type='dff',
                   responsive_test='ROC', responsive_thr=0.05, n_stds=2.5,
-                  rootdir='/n/coxfs01/2p-data'):
+                  rootdir='/n/coxfs01/2p-data', create_new=False, n_processes=1):
     rstats = None
     roi_list = None
     nrois_total = None
@@ -528,7 +529,8 @@ def get_roi_stats(animalid, session, fov, exp_name=None, traceid='traces001',
             rstats = pkl.load(f)
         roi_list, nrois_total = get_responsive_cells(animalid, session, fov, run=exp_name, traceid=traceid,
                                                      responsive_test=responsive_test, responsive_thr=responsive_thr,
-                                                     n_stds=n_stds, response_type=response_type, rootdir=rootdir)
+                                                     n_stds=n_stds, response_type=response_type, rootdir=rootdir, 
+                                                     create_new=create_new, n_processes=n_processes)
         #nrois_total = len(rstats.keys())
     except Exception as e:
         print e
@@ -687,7 +689,8 @@ class Session():
     
     
     def get_all_responsive_cells(self, traceid='traces001', response_type='dff',
-                                 responsive_test='ROC', responsive_thr=0.05, n_stds=2.5, fit_thr=0.5):
+                                 responsive_test='ROC', responsive_thr=0.05, n_stds=2.5, fit_thr=0.5,
+                                 n_processes=1):
         '''Get all cells that were "responsive" to something
         '''
         all_rois = []
@@ -698,18 +701,21 @@ class Session():
                                       self.fov, traceid=traceid)
                 roi_list, _ = exp.get_responsive_cells(response_type=response_type,
                                                        responsive_test=responsive_test, 
-                                                       fit_thr=fit_thr)
+                                                       fit_thr=fit_thr, create_new=create_new,
+                                                       n_processes=n_processes)
             elif 'gratings' in e:
                 exp = Gratings(self.animalid, self.session, self.fov, traceid=traceid)
                 roi_list, _ = exp.get_responsive_cells(response_type=response_type,
                                                        responsive_test=responsive_test, 
-                                                       responsive_thr=responsive_thr)
+                                                       responsive_thr=responsive_thr, 
+                                                       create_new=create_new, n_processes=n_processes)
             elif 'blobs' in e:
                 #print(traceid)
                 exp = Objects(self.animalid, self.session, self.fov, traceid=traceid)
                 roi_list, _ = exp.get_responsive_cells(response_type=response_type,
                                                        responsive_test=responsive_test, 
-                                                       responsive_thr=responsive_thr)
+                                                       responsive_thr=responsive_thr,
+                                                       create_new=create_new, n_processes=n_processes)
             else:
                 print("--> [%s] not implemented" % e)
                 continue
@@ -826,7 +832,7 @@ class Session():
     def get_grouped_stats(self, experiment_type, response_type='dff',
                           responsive_thr=0.01, responsive_test=None, n_stds=2.5,
                           update=True, get_grouped=True, make_equal=False,
-                          nframes_post=0.,
+                          nframes_post=0., create_new=False,
                           pretty_plots=False, n_processes=1, add_offset=True, 
                           traceid='traces001', trace_type='corrected',
                           rootdir='/n/coxfs01/2p-data'):
@@ -879,7 +885,9 @@ class Session():
                                                 n_stds=n_stds,
                                                 get_grouped=get_grouped, 
                                                 make_equal=make_equal,
-                                                nframes_post=nframes_post)
+                                                nframes_post=nframes_post,
+                                                create_new=create_new,
+                                                n_processes=n_processes)
                 if tmp_estats_dict is not None:
                     estats_dict.update({exp_name: tmp_estats_dict})
                 else:
@@ -1232,7 +1240,7 @@ class Experiment(object):
                     
 
     def get_responsive_cells(self, response_type='dff', responsive_test='ROC', 
-                                responsive_thr=0.05, n_stds=2.5):
+                                responsive_thr=0.05, n_stds=2.5, create_new=False, n_processes=1):
         print("... getting responsive cells (test: %s, thr: %.2f')" % (responsive_test, responsive_thr))
         assert ('blobs' in self.name) or ('gratings' in self.name and int(self.session) >= 20190511), "Incorrect call for event data analysis (expecting gratings or blobs)."
         try:
@@ -1240,7 +1248,8 @@ class Experiment(object):
                                             self.fov, run=self.name, 
                                             traceid=self.traceid, 
                                             responsive_test=responsive_test, 
-                                            responsive_thr=responsive_thr, n_stds=n_stds)
+                                            responsive_thr=responsive_thr, n_stds=n_stds,
+                                            create_new=create_new, n_processes=n_processes)
             assert roi_list is not None, "--- no stats on initial pass"
         except Exception as e:
             if responsive_test == 'nstds':
@@ -1257,7 +1266,7 @@ class Experiment(object):
 
     def get_stats(self, trace_type='corrected', response_type='dff', 
                     responsive_test=None, responsive_thr=0.05, n_stds=2.5, 
-                    n_processes=1, add_offset=True, 
+                    n_processes=1, add_offset=True, create_new=False,
                     make_equal=False, get_grouped=True,
                     nframes_post=0, **kwargs): 
         print("... [%s] Loading roi stats and cell list..." % self.name)
@@ -1273,7 +1282,8 @@ class Experiment(object):
             roi_list, nrois_total = self.get_responsive_cells(response_type=response_type, 
                                                               responsive_test=responsive_test, 
                                                  responsive_thr=responsive_thr,
-                                                 n_stds=n_stds)
+                                                 n_stds=n_stds,
+                                                 create_new=create_new, n_processes=n_processes)
             
             if roi_list is None:
                 print("--- NO STATS (%s)" % responsive_test)
@@ -1471,7 +1481,8 @@ class Gratings(Experiment):
             
         estats = self.get_stats(responsive_test=responsive_test, 
                                 responsive_thr=responsive_thr, n_stds=n_stds,
-                                add_offset=add_offset, nframes_post=nframes_post)
+                                add_offset=add_offset, nframes_post=nframes_post, 
+                                create_new=create_new, n_processes=n_processes)
        
         print("... FIT: doing bootstrap") 
 #        fitdf, fitparams, fitdata = osi.do_bootstrap_fits(estats.gdf, estats.sdf, roi_list=estats.rois, 
@@ -1525,13 +1536,14 @@ class Gratings(Experiment):
 
     def get_nonori_params(self, paramnames=['size', 'speed', 'sf'], response_type='dff',
                           responsive_test='nstds', responsive_thr=10, n_stds=2.5, 
-                          add_offset=True, nframes_post=0):
+                          add_offset=True, nframes_post=0, create_new=False, n_processes=1):
         '''Returns average response to each NON-ori config (averaged over oris)
         '''
         estats = self.get_stats(responsive_test=responsive_test, 
                                 responsive_thr=responsive_thr, 
                                 n_stds=n_stds, add_offset=add_offset,
-                                nframes_post=nframes_post)                
+                                nframes_post=nframes_post, 
+                                create_new=create_new, n_proceses=n_processes) 
         sdf = self.get_stimuli()
                 
         n_params = len(paramnames)        
@@ -1596,9 +1608,10 @@ class ReceptiveFields(Experiment):
         self.trace_type = trace_type
     
     def get_responsive_cells(self, response_type='dff', fit_thr=0.5, 
-                                reload_data=False, create_new=False, **kwargs):
+                                reload_data=False, create_new=False, n_processes=1, **kwargs):
         fit_results, fit_params = self.get_rf_fits(response_type=response_type, 
                                         fit_thr=fit_thr, reload_data=reload_data,
+                                        n_processes=n_processes,
                                         create_new=create_new, make_pretty_plots=False)
 
         roi_list = [r for r, res in fit_results.items() \
@@ -1611,7 +1624,7 @@ class ReceptiveFields(Experiment):
         
     def get_rf_fits(self, response_type='dff', fit_thr=0.5, make_pretty_plots=False,
                     scale_sigma=True, sigma_scale=2.35, reload_data=False,
-                    create_new=False, rootdir='/n/coxfs01/2p-data'):
+                    create_new=False, rootdir='/n/coxfs01/2p-data', n_processes=1):
         '''
         Loads or does RF 2d-gaussian fit.
         reload_data = set True to reprocess data arrays
@@ -1655,7 +1668,7 @@ class ReceptiveFields(Experiment):
                                                       sigma_scale=sigma_scale,
                                                       trace_type='corrected', 
                                                       response_type=response_type,
-                                                      rootdir=rootdir)
+                                                      rootdir=rootdir, n_processes=n_processes)
             except Exception as e:
                 print("*** [ERROR]: UNABLE TO GET RF FITS ***")
                 traceback.print_exc()
@@ -1674,7 +1687,8 @@ class ReceptiveFields(Experiment):
                     do_fits=False, return_all_rois=True,
                     create_new=False, # create stats.pkl anew
                     add_offset=True,
-                    reload_data=False,
+                    reload_data=False, 
+                    n_processes=1,
                     rootdir='/n/coxfs01/2p-data', **kwargs):
         '''
         return_all_rois will return all rois in grouped gdf.
@@ -1713,7 +1727,8 @@ class ReceptiveFields(Experiment):
                                                     fit_thr=fit_thr,
                                                     make_pretty_plots=plot_pretty_rfs,
                                                     create_new=do_fits,
-                                                    reload_data=reload_data)
+                                                    reload_data=reload_data, 
+                                                    n_processes=n_processes)
          
         if fit_results is None:
             #print("--- NO STATS (%s)" % response_type)
@@ -1784,7 +1799,7 @@ class ReceptiveFields(Experiment):
                       n_bootstrap_iters=1000, n_resamples=10, ci=0.95, 
                       plot_boot_distns=True, nframes_post=0,
                       transform_fov=True, sigma_scale=2.35, scale_sigma=True,
-                      do_fits=False, reload_data=False,
+                      do_fits=False, reload_data=False, n_processes=1,
                       create_new=False, rootdir='/n/coxfs01/2p-data'):
         
         from pipeline.python.classifications import evaluate_receptivefield_fits as evalrfs
@@ -1797,7 +1812,8 @@ class ReceptiveFields(Experiment):
                                 plot_pretty_rfs=False,
                                 do_fits=do_fits,
                                 reload_data=reload_data,
-                                create_new=reload_data) 
+                                create_new=reload_data,
+                                n_orocesses=n_processes) 
 
         data_id = '|'.join([self.animalid, self.session, self.fov, self.traceid, 
                             self.rois, self.trace_type, estats.fitinfo['fit_desc']])

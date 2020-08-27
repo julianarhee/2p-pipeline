@@ -1267,7 +1267,7 @@ def target_fov(avg_resp_by_cond, fitdf, screen, fit_roi_list=[], row_vals=[], co
         label_figure(fig, data_identifier)
         pl.savefig(os.path.join(target_fov_dir, 'compare_kde_weighted_fit_thr_%.2f.png' % (fit_thr) ))
         pl.close(fig)      
-
+m
     #%
 
     kde_results = target_screen_coords(wtcoords, screen, data_identifier=data_identifier, target_fov_dir=target_fov_dir)
@@ -1563,7 +1563,7 @@ def fit_2d_receptive_fields(animalid, session, fov, run, traceid,
                             ellipse_ec='w', ellipse_fc='none', ellipse_lw=2, 
                             plot_ellipse=True, scale_sigma=True, sigma_scale=2.35,
                             linecolor='darkslateblue', cmap='bone', legend_lw=2, 
-                            fit_thr=0.5, rootdir='/n/coxfs01/2p-data'):
+                            fit_thr=0.5, rootdir='/n/coxfs01/2p-data', n_processes=1):
 
     rows = 'ypos'; cols = 'xpos';
 
@@ -1825,6 +1825,9 @@ def extract_options(options):
 
     parser.add_option('--load', action='store_true', dest='reload_data', default=False, 
                       help="flag to reload/reprocess data arrays")
+    parser.add_option('-n', '--nproc', action='store', dest='n_processes', default=1, 
+                      help="N processes")
+
 
 
 
@@ -1887,6 +1890,7 @@ def main(options):
     make_pretty_plots = optsE.make_pretty_plots
     plot_format = optsE.plot_format
 
+    n_processes = int(optsE.n_processes)
 
     fit_results, fit_params = fit_2d_receptive_fields(animalid, session, fov, 
                                 run, traceid, 
@@ -1905,7 +1909,7 @@ def main(options):
                                 plot_ellipse=optsE.plot_ellipse,
                                 linecolor=optsE.linecolor, cmap=optsE.cmap, 
                                 legend_lw=optsE.legend_lw, 
-                                plot_format=plot_format)
+                                plot_format=plot_format, n_processes=n_processes)
     
     print("--- fit %i rois total ---" % (len(fit_results.keys())))
 
