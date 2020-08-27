@@ -52,7 +52,9 @@ def get_hits_and_fas(resp_stim, resp_bas):
     return p_hits, p_fas, crit_vals
 
 
-def load_experiment_data(experiment_name, animalid, session, fov, traceid, trace_type='corrected', rootdir='/n/coxfs01/2p-data'):
+def load_experiment_data(experiment_name, animalid, session, fov, traceid, 
+                        trace_type='corrected', rootdir='/n/coxfs01/2p-data'):
+    
     from pipeline.python.classifications import experiment_classes as util #utils as util
 
     if 'gratings' in experiment_name:
@@ -60,10 +62,11 @@ def load_experiment_data(experiment_name, animalid, session, fov, traceid, trace
     elif 'blobs' in experiment_name:
         exp = util.Objects(animalid, session, fov, traceid=traceid, rootdir=rootdir)
     else: 
-        exp = util.Experiment(experiment_name, animalid, session, fov, traceid) #, trace_type=trace_type)
-    exp.load(trace_type=trace_type)
-    
-    exp.data.traces, exp.data.labels = util.check_counts_per_condition(exp.data.traces, exp.data.labels)
+        exp = util.Experiment(experiment_name, animalid, session, fov, traceid) 
+    exp.load(trace_type='corrected') #trace_type)
+   
+    print("... loaded data") 
+    #exp.data.traces, exp.data.labels = util.check_counts_per_condition(exp.data.traces, exp.data.labels)
     gdf = resp.group_roidata_stimresponse(exp.data.traces, exp.data.labels)
     
     # Reformat/rename stimulus params:
@@ -81,9 +84,9 @@ def load_experiment_data(experiment_name, animalid, session, fov, traceid, trace
     all_params = [c for c in exp.data.sdf.columns if c not in excluded_params]
     tested_params = [c for c in all_params if len(exp.data.sdf[c].unique()) > 1]
     stim_params = dict((str(p), sorted(exp.data.sdf[p].unique())) for p in tested_params)
-    print("Tested stim params:")
-    for param, vals in stim_params.items():
-        print('%s: %i' % (param, len(vals)))
+    #print("Tested stim params:")
+    #for param, vals in stim_params.items():
+    #    print('%s: %i' % (param, len(vals)))
 
     return exp, gdf        
 
@@ -106,7 +109,9 @@ def calculate_roc_bootstrap(roi_df, n_iters=1000):
 
     # Shuffle values, group into stim and bas again
     shuff_auc = []
+    print("... getting shuffle")
     for i in range(n_iters):
+        print(i)
         X = shuffle(all_values.ravel())
         X = np.reshape(X, (n_conditions*2, n_trials))
         shuff_stim = X[0:n_conditions, :]
@@ -171,19 +176,19 @@ def plot_roc_bootstrap_results(roc_results):
     return fig
 
     
-def do_roc_bootstrap_mp(exp, gdf, n_iters=1000, n_processes=1, plot_rois=False,
+def do_roc_bootstrap_mp(gdf, dst_dir='/tmp', n_iters=1000, n_processes=1, plot_rois=False,
                         data_identifier='DATAID'):
     
     # Create output dirs:
-    traces_basedir = exp.source.split('/data_arrays/')[0]
-    output_dir = os.path.join(traces_basedir, 'summary_stats')
+    #traces_basedir = exp.source.split('/data_arrays/')[0]
+    #output_dir = os.path.join(traces_basedir, 'summary_stats')
     
-    roc_dir = os.path.join(output_dir, 'ROC')
-    if not os.path.exists(roc_dir):
-        os.makedirs(roc_dir)
+    #roc_dir = os.path.join(output_dir, 'ROC')
+    #if not os.path.exists(roc_dir):
+    #    os.makedirs(roc_dir)
 
     # create output dir for roi figures:
-    roi_figdir = os.path.join(roc_dir, 'rois')
+    roi_figdir = os.path.join(dst_dir, 'rois')
     if not os.path.exists(roi_figdir):
         os.makedirs(roi_figdir)
         
@@ -209,8 +214,8 @@ def do_roc_bootstrap_mp(exp, gdf, n_iters=1000, n_processes=1, plot_rois=False,
         
         curr_results = {}
         for roi in roi_list:
-            print roi
             roi_df = gdf.get_group(roi)
+            print(roi, roi_df.shape)
             roc_results = calculate_roc_bootstrap(roi_df, n_iters=n_iters)
             # PLOT:
             if plot_rois:
@@ -247,7 +252,7 @@ def do_roc_bootstrap_mp(exp, gdf, n_iters=1000, n_processes=1, plot_rois=False,
         print "Finished:", p
         p.join()
         
-    return results, roc_dir
+    return results, dst_dir
         
 
 def main(options):
@@ -256,30 +261,45 @@ def main(options):
     n_iters = int(opts.n_iterations)
     n_processes = int(opts.n_processes)
     plot_rois = opts.plot_rois
+    create_new = opts.create_new
     try:
         bootstrap_roc_func(opts.animalid, opts.session, opts.fov, opts.traceid, opts.experiment, 
-                            trace_type=opts.trace_type,
-                            rootdir=opts.rootdir, n_processes=n_processes, plot_rois=plot_rois, n_iters=n_iters)
+                            trace_type=opts.trace_type, create_new=create_new,
+                            rootdir=opts.rootdir, n_processes=n_processes, 
+                            plot_rois=plot_rois, n_iters=n_iters)
     except Exception as e:
         print(e)
     print("******DONE BOOTSTRAP ROC ANALYSIS.")
  
 
 def bootstrap_roc_func(animalid, session, fov, traceid, experiment, trace_type='corrected', rootdir='/n/coxfs01/2p-data',
-                        n_processes=1, plot_rois=True, n_iters=1000):
+                        n_processes=1, plot_rois=True, n_iters=1000, create_new=False):
  
 
-    print(".... starting boot.")#
-    exp, gdf = get_experiment_data(experiment, animalid, session, fov, traceid, 
-                         trace_type=trace_type, rootdir=rootdir)
-    
+    print(".... starting boot.", animalid, experiment, session, fov, traceid) #
+    exp, gdf = load_experiment_data(experiment, animalid, session, fov, traceid, 
+                                trace_type=trace_type, rootdir=rootdir) 
     data_identifier = '|'.join([animalid, session, fov, traceid, experiment, trace_type])
-
     print("... data id: %s" % data_identifier)
+
+    traces_basedir = exp.source.split('/data_arrays/')[0]
+    #output_dir = os.path.join(traces_basedir, 'summary_stats')
+   
+    #traces_basedir = glob.glob(os.path.join(rootdir, animalid, session, fov, 
+    #                                        'combined_%s*' % experiment,
+    #                                        'traces', '%s*' % traceid))[0]
+    stats_dir = os.path.join(traces_basedir, 'summary_stats')
+    roc_dir = os.path.join(stats_dir, 'ROC')
+    if not os.path.exists(roc_dir):
+        os.makedirs(roc_dir)
+
+    #raw_traces, labels, sdf, run_info = load_dataset(soma_fpath, trace_type='corrected')
+    # Each group is roi's trials x metrics
+    #gdf = resp.group_roidata_stimresponse(raw_traces.values, labels, return_grouped=True) 
 
     print("STARTING BOOTSTRAP ANALYSIS.")
     start_t = time.time()
-    results, roc_dir = do_roc_bootstrap_mp(exp, gdf, n_iters=n_iters, 
+    results, roc_dir = do_roc_bootstrap_mp(gdf, dst_dir=roc_dir, n_iters=n_iters, 
                                   n_processes=n_processes, plot_rois=plot_rois,
                                   data_identifier=data_identifier) 
     print("FINISHED CALCULATING ROC BOOTSTRAP ANALYSIS.")
@@ -342,7 +362,7 @@ def extract_options(options):
     parser.add_option('-E', '--exp', action='store', dest='experiment', default='', help="Name of experiment (stimulus type), e.g., rfs")
     parser.add_option('--default', action='store_true', dest='default', default='store_false', help="Use all DEFAULT params, for params not specified by user (no interactive)")
     parser.add_option('--slurm', action='store_true', dest='slurm', default=False, help="set if running as SLURM job on Odyssey")
-    parser.add_option('-t', '--trace-id', action='store', dest='traceid', default='', help="Trace ID for current trace set (created with set_trace_params.py, e.g., traces001, traces020, etc.)")
+    parser.add_option('-t', '--trace-id', action='store', dest='traceid', default='traces001', help="Trace ID for current trace set (created with set_trace_params.py, e.g., traces001, traces020, etc.)")
 
     parser.add_option('-n', '--nproc', action="store",
                       dest="n_processes", default=2, help="N processes [default: 1]")
@@ -352,6 +372,9 @@ def extract_options(options):
     parser.add_option('-N', '--niter', action="store",
                       dest="n_iterations", default=1000, help="N iterations for bootstrap [default: 1000]")
     parser.add_option('--plot', action='store_true', dest='plot_rois', default=False, help="set to plot results of each roi's analysis")
+
+    parser.add_option('--new', action='store_true', dest='create_new', default=False, help="set to run bootstrap roc anew")
+
 
     (options, args) = parser.parse_args(options)
 

@@ -471,18 +471,24 @@ def get_responsive_cells(animalid, session, fov, run=None, traceid='traces001',
 #                     trace_type=trace_type, response_type=response_type, 
 #                     responsive_test=responsive_test, responsive_thr=responsive_thr, 
 #                     rootdir=rootdir)
-    traceid_dir =  glob.glob(os.path.join(rootdir, animalid, session, fov, run, 'traces', '%s*' % traceid))[0]        
-    #print("-- stats: %s" % run)
-    #print(stats_fpath)
-    #print(stats_fpath)
-    #if len(stats_fpath)==0:
-    #    return None, None
+    traceid_dir =  glob.glob(os.path.join(rootdir, animalid, session, 
+                                    fov, run, 'traces', '%s*' % traceid))[0]        
 
     if create_new and (('gratings' in run) or ('blobs' in run)):
+        print("@@@ running anew, might take awhile @@@")
         try:
-            print("DOING BOOT - run: %s" % run) 
-            bootstrap_roc_func(animalid, session, fov, traceid, run, trace_type='corrected', rootdir=rootdir,
-                        n_processes=n_processes, plot_rois=True, n_iters=1000)
+            if responsive_test=='ROC':
+                print("DOING BOOT - run: %s" % run) 
+                bootstrap_roc_func(animalid, session, fov, traceid, run, 
+                            trace_type='corrected', rootdir=rootdir,
+                            n_processes=n_processes, plot_rois=True, n_iters=1000)
+            elif responsive_test=='nstds':
+                fdf = calculate_nframes_above_nstds(animalid, session, fov, run=run, 
+                            traceid=traceid, response_type=response_type, n_stds=n_stds,
+                            n_processes=n_processes, rootdir=rootdir, create_new=True)
+                #print(fdf.head())
+            print('@@@ finished responsivity test @@@')
+
         except Exception as e:
             print("JK ERROR")
             print(e)
@@ -507,9 +513,62 @@ def get_responsive_cells(animalid, session, fov, run=None, traceid='traces001',
     except Exception as e:
         print(e)
         traceback.print_exc()
-    
+
+    print("%i of %i cells responsive" % (len(roi_list), nrois_total))
+ 
     return roi_list, nrois_total
+   
+def calculate_nframes_above_nstds(animalid, session, fov, run=None, traceid='traces001',
+                         response_type='dff', n_stds=2.5, create_new=False,
+                         n_processes=1, rootdir='/n/coxfs01/2p-data'):
+
+    if 'combined' in run:
+        rname = run
+    else:
+        rname = 'combined_%s' % run
+
+    traceid_dir =  glob.glob(os.path.join(rootdir, animalid, session, 
+                                    fov, '%s*' % rname, 'traces', '%s*' % traceid))[0]        
+    stat_dir = os.path.join(traceid_dir, 'summary_stats', 'nstds')
+    if not os.path.exists(stat_dir):
+        os.makedirs(stat_dir) 
+    results_fpath = os.path.join(stat_dir, 'nstds_results.pkl')
     
+    calculate_frames = False
+    if  os.path.exists(results_fpath) and create_new is False:
+        try:
+            with open(results_fpath, 'rb') as f:
+                results = pkl.load(f)
+            assert results['nstds'] == n_stds, "... different nstds requested. Re-calculating"
+            framesdf = results['nframes_above']            
+        except Exception as e:
+            calculate_frames = True
+    else:
+        calculate_frames = True
+    
+    if calculate_frames:
+        print("Testing responsive (n_stds=%.2f)" % n_stds)
+        # Load data
+        soma_fpath = glob.glob(os.path.join(traceid_dir, 'data_arrays', 'np_subtracted.npz'))[0]
+        traces, labels, sdf, run_info = util.load_dataset(soma_fpath, 
+                                                trace_type=response_type, 
+                                                add_offset=True, 
+                                                make_equal=False) #make_equal)
+        #self.load(trace_type=trace_type, add_offset=add_offset)
+        ncells_total = traces.shape[-1]
+        
+        # Calculate N frames 
+        framesdf = pd.concat([resp.find_n_responsive_frames(traces[roi], labels, 
+                                n_stds=n_stds) for roi in range(ncells_total)], axis=1)
+        results = {'nframes_above': framesdf,
+                   'nstds': n_stds}
+        
+        with open(results_fpath, 'wb') as f:
+            pkl.dump(results, f, protocol=pkl.HIGHEST_PROTOCOL)
+            
+    return framesdf
+
+ 
 def get_roi_stats(animalid, session, fov, exp_name=None, traceid='traces001', 
                   trace_type='corrected', response_type='dff',
                   responsive_test='ROC', responsive_thr=0.05, n_stds=2.5,
@@ -1516,7 +1575,8 @@ class Gratings(Experiment):
     
 
     def evaluate_fits(self, bootresults, fitparams, goodness_thr=0.66, 
-                      make_plots=True, rootdir='/n/coxfs01/2p-data'):
+                      make_plots=True, create_new=False, 
+                      n_processes=1, rootdir='/n/coxfs01/2p-data'):
         rmetrics = None; goodrois = None;
 
         fit_desc = os.path.split(fitparams['directory'])[-1]
@@ -1799,7 +1859,7 @@ class ReceptiveFields(Experiment):
                       n_bootstrap_iters=1000, n_resamples=10, ci=0.95, 
                       plot_boot_distns=True, nframes_post=0,
                       transform_fov=True, sigma_scale=2.35, scale_sigma=True,
-                      do_fits=False, reload_data=False, n_processes=1,
+                      do_fits=False, reload_data=False, 
                       create_new=False, rootdir='/n/coxfs01/2p-data'):
         
         from pipeline.python.classifications import evaluate_receptivefield_fits as evalrfs

@@ -454,7 +454,8 @@ def get_counts_for_legend(df, area_colors=None, markersize=10, marker='_',
 # ===============================================================
 
 def load_traces(animalid, session, fovnum, curr_exp, traceid='traces001',
-               responsive_test='ROC', responsive_thr=0.05, response_type='dff', n_stds=2.5):
+               responsive_test='ROC', responsive_thr=0.05, response_type='dff', n_stds=2.5,
+                redo_stats=False, n_processes=1):
     
     # Load experiment neural data
     fov = 'FOV%i_zoom2p0x' % fovnum
@@ -477,7 +478,9 @@ def load_traces(animalid, session, fovnum, curr_exp, traceid='traces001',
     if responsive_test is not None:
         responsive_cells, ncells_total = exp.get_responsive_cells(response_type=response_type,\
                                                               responsive_test=responsive_test,
-                                                              responsive_thr=responsive_thr)
+                                                              responsive_thr=responsive_thr,
+                                                              create_new=redo_stats, 
+                                                              n_processes=n_processes)
         traces = exp.data.traces[responsive_cells]
 
     return traces, labels, sdf
@@ -545,7 +548,7 @@ def get_aggregate_data_filepath(experiment, traceid='traces001', response_type='
     data_dir = os.path.join(aggregate_dir, 'data-stats')
     sdata = get_aggregate_info(traceid=traceid)
     #### Get DATA
-    load_data = False
+    #load_data = False
     data_desc = 'aggr_%s_%s-%s_%s-thr-%.2f_%s' % (experiment, traceid, response_type, responsive_test, responsive_thr, epoch)
     data_outfile = os.path.join(data_dir, '%s.pkl' % data_desc)
 
@@ -556,8 +559,10 @@ def load_aggregate_data(experiment, traceid='traces001', response_type='dff', ep
                        responsive_test='ROC', responsive_thr=0.05, n_stds=0.0,
                        aggregate_dir='/n/coxfs01/julianarhee/aggregate-visual-areas'):
     
-    data_outfile = get_aggregate_data_filepath(experiment, traceid=traceid, response_type=response_type, epoch=epoch,
-                       responsive_test=responsive_test, responsive_thr=responsive_thr, n_stds=n_stds,
+    data_outfile = get_aggregate_data_filepath(experiment, traceid=traceid, 
+                        response_type=response_type, epoch=epoch,
+                        responsive_test=responsive_test, 
+                        responsive_thr=responsive_thr, n_stds=n_stds,
                        aggregate_dir=aggregate_dir)
     # print("...loading: %s" % data_outfile)
 
@@ -570,7 +575,7 @@ def load_aggregate_data(experiment, traceid='traces001', response_type='dff', ep
 
 def aggregate_and_save(experiment, traceid='traces001', response_type='dff', epoch='stimulus',
                        responsive_test='ROC', responsive_thr=0.05, n_stds=0.0, create_new=False,
-                       always_exclude=['20190426_JC078'],
+                       always_exclude=['20190426_JC078'], n_processes=1,
                        aggregate_dir='/n/coxfs01/julianarhee/aggregate-visual-areas'):
 
     #### Load mean trial info for responsive cells
@@ -581,9 +586,10 @@ def aggregate_and_save(experiment, traceid='traces001', response_type='dff', epo
     load_data = False
     
     #data_desc = '%s_%s-%s_%s-thr-%.2f_%s' % (experiment, traceid, response_type, responsive_test, responsive_thr, epoch)
-    data_outfile = get_aggregate_data_filepath(experiment, traceid=traceid, response_type=response_type, 
-                        epoch=epoch,
-                        responsive_test=responsive_test, responsive_thr=responsive_thr, n_stds=n_stds,
+    data_outfile = get_aggregate_data_filepath(experiment, traceid=traceid, 
+                        response_type=response_type, epoch=epoch,
+                        responsive_test=responsive_test, 
+                        responsive_thr=responsive_thr, n_stds=n_stds,
                         aggregate_dir=aggregate_dir)
     data_desc = os.path.splitext(os.path.split(data_outfile)[-1])[0]
 
@@ -612,7 +618,8 @@ def aggregate_and_save(experiment, traceid='traces001', response_type='dff', epo
             traces, labels, sdf = load_traces(animalid, session, fovnum, experiment, 
                                               traceid=traceid, response_type=trace_type,
                                               responsive_test=responsive_test, 
-                                              responsive_thr=responsive_thr, n_stds=n_stds)
+                                              responsive_thr=responsive_thr, n_stds=n_stds,
+                                              redo_stats=create_new, n_processes=n_processes)
             # Calculate mean trial metric
             metric = 'zscore' if response_type=='zscore' else 'mean'
             mean_responses = traces_to_trials(traces, labels, epoch=epoch, metric=response_type)
@@ -658,6 +665,11 @@ def extract_options(options):
                       default=['20190426_JC078'],
                       help="Datasets to exclude bec incorrect or overlap")
 
+    parser.add_option('-n', '--nproc', action='store', dest='n_processes', 
+                      default=1,
+                      help="N processes (default=1)")
+
+
     (options, args) = parser.parse_args(options)
 
     return options
@@ -682,10 +694,12 @@ def main(options):
     n_stds = float(opts.nstds_above)
     create_new = opts.create_new
     epoch = opts.epoch
+    n_processes = int(opts.n_processes)
     
     data_outfile = aggregate_and_save(experiment, traceid=traceid, response_type=response_type, epoch=epoch,
                                        responsive_test=responsive_test, n_stds=n_stds,
-                                       responsive_thr=responsive_thr, create_new=create_new)
+                                       responsive_thr=responsive_thr, create_new=create_new,
+                                        n_processes=n_processes)
     
     print("saved data.")
    

@@ -1267,7 +1267,7 @@ def target_fov(avg_resp_by_cond, fitdf, screen, fit_roi_list=[], row_vals=[], co
         label_figure(fig, data_identifier)
         pl.savefig(os.path.join(target_fov_dir, 'compare_kde_weighted_fit_thr_%.2f.png' % (fit_thr) ))
         pl.close(fig)      
-m
+
     #%
 
     kde_results = target_screen_coords(wtcoords, screen, data_identifier=data_identifier, target_fov_dir=target_fov_dir)
