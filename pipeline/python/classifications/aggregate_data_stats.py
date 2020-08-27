@@ -118,15 +118,21 @@ def get_metadata(traceid='traces001', filter_by='most_cells', stimulus=None, sti
                              aggregate_dir=aggregate_dir)
 
     if stimulus == 'gratings':
-        included_sessions = get_gratings_datasets(filter_by=filter_by, excluded_sessions=excluded_sessions,
+        included_sessions = get_gratings_datasets(filter_by=filter_by, 
+                                                 excluded_sessions=excluded_sessions,
                                                  as_dict=False)
         
     elif stimulus == 'rfs':
-        included_sessions = get_rf_datasets(filter_by=filter_by, excluded_sessions=excluded_sessions,
-                                           as_dict=False)
-        
+        included_sessions = get_rf_datasets(filter_by=filter_by, 
+                                            excluded_sessions=excluded_sessions,
+                                            as_dict=False)
+    elif stimulus == 'blobs':
+        included_sessions = get_blob_datasets(filter_by=filter_by, 
+                                            excluded_sessions=excluded_sessions,
+                                            as_dict=False)
+ 
     else:
-        print("Unknow stimulus <%s>. Select from: gratings, rfs, blobs, or all" % str(stimulus))
+        print("Unknow <%s>. Select from: gratings, rfs, blobs, or all" % str(stimulus))
         return None
     
     print("Selecting %i dsets" % len(included_sessions))
@@ -141,6 +147,71 @@ def get_metadata(traceid='traces001', filter_by='most_cells', stimulus=None, sti
             return dsets[dsets['experiment'].isin([stimulus])]
     else:        
         return dsets
+
+def get_blob_datasets(filter_by='unique_a', excluded_sessions=[], as_dict=True):
+
+    included_sessions = []
+    
+    # Blobs runs w/ incorrect stuff
+    always_exclude = ['20190426_JC078']
+    excluded_sessions.extend(always_exclude)
+
+    if filter_by is None:
+        v1_repeats = []
+        lm_repeats = []
+        li_repeats = []
+    else:
+        # Only sessions > 20190511 should have regular gratings
+        v1_include = ['20190511_JC083', 
+                      '20190522_JC084',
+                      '20190622_JC085',
+                      '20190613_JC097', '20190616_JC097', '20190617_JC097',
+                      '20191006_JC110']
+ 
+        lm_include = ['20190513_JC078', 
+                      '20190603_JC080', 
+                      #'20190512_JC083', # 20190517_JC083 slightly worse?
+                      '20190525_JC084',
+                      '20190627_JC091',
+                      '20190618_JC097']
+       
+        li_include = ['20190605_JC090',
+                      #'20190602_JC091', # 20190607_JC091 also good
+                      #'20190614_JC091', # 20190606_JC091 also good 
+                      '20191008_JC091',
+                      #'20190612_JC099', # 20190609_JC099 also good
+                      '20190617_JC099',
+                      '20191018_JC113',
+                      '20191105_JC117',
+                      '20191111_JC120']
+        
+        if filter_by == 'last':
+            lm_include.extend(['20190517_JC083'])
+            li_include.extend(['20190607_JC091', '20190614_JC091', '20190612_JC099'])
+
+        elif filter_by == 'first':
+            lm_include.extend(['20190512_JC083'])
+            li_include.extend(['20190602_JC091', '20190606_JC091', '20190609_JC099'])
+
+        elif filter_by == 'unique_a':
+            lm_include.extend(['20190512_JC083'])
+            li_include.extend(['20190602_JC091', '20190614_JC091', '20190612_JC099'])
+
+        else:
+            print("Filter <%s> UNKNOWN." % str(filter_by))
+            return None
+           
+    included_ = [v1_include, lm_include, li_include]
+
+    for incl in included_:
+        included_sessions.extend(incl)
+    included_sessions = [i for i in list(set(included_sessions)) if i not in excluded_sessions]
+
+    if as_dict:
+        return {'V1': v1_include, 'Lm': lm_include, 'Li': li_include}
+    
+    return included_sessions
+
 
 def get_gratings_datasets(filter_by='most_cells', excluded_sessions=[], as_dict=True):
 
@@ -474,7 +545,7 @@ def get_aggregate_data_filepath(experiment, traceid='traces001', response_type='
     sdata = get_aggregate_info(traceid=traceid)
     #### Get DATA
     load_data = False
-    data_desc = '%s_%s-%s_%s-thr-%.2f_%s' % (experiment, traceid, response_type, responsive_test, responsive_thr, epoch)
+    data_desc = 'aggr_%s_%s-%s_%s-thr-%.2f_%s' % (experiment, traceid, response_type, responsive_test, responsive_thr, epoch)
     data_outfile = os.path.join(data_dir, '%s.pkl' % data_desc)
 
     return data_outfile #print(data_desc)
@@ -507,9 +578,10 @@ def aggregate_and_save(experiment, traceid='traces001', response_type='dff', epo
     load_data = False
     
     #data_desc = '%s_%s-%s_%s-thr-%.2f_%s' % (experiment, traceid, response_type, responsive_test, responsive_thr, epoch)
-    data_outfile = get_aggregate_data_filepath(experiment, traceid=traceid, response_type=response_type, epoch=epoch,
-                       responsive_test=responsive_test, responsive_thr=responsive_thr, n_stds=n_stds,
-                       aggregate_dir=aggregate_dir)
+    data_outfile = get_aggregate_data_filepath(experiment, traceid=traceid, response_type=response_type, 
+                        epoch=epoch,
+                        responsive_test=responsive_test, responsive_thr=responsive_thr, n_stds=n_stds,
+                        aggregate_dir=aggregate_dir)
     data_desc = os.path.splitext(os.path.split(data_outfile)[-1])[0]
 
     if not os.path.exists(data_outfile):
