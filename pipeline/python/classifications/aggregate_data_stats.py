@@ -153,7 +153,7 @@ def get_blob_datasets(filter_by='unique_a', excluded_sessions=[], as_dict=True):
     included_sessions = []
     
     # Blobs runs w/ incorrect stuff
-    always_exclude = ['20190426_JC078']
+    always_exclude = ['20190426_JC078', '20191008_JC091']
     excluded_sessions.extend(always_exclude)
 
     if filter_by is None:
@@ -178,7 +178,7 @@ def get_blob_datasets(filter_by='unique_a', excluded_sessions=[], as_dict=True):
         li_include = ['20190605_JC090',
                       #'20190602_JC091', # 20190607_JC091 also good
                       #'20190614_JC091', # 20190606_JC091 also good 
-                      '20191008_JC091',
+                      #'20191008_JC091',
                       #'20190612_JC099', # 20190609_JC099 also good
                       '20190617_JC099',
                       '20191018_JC113',
