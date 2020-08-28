@@ -494,6 +494,7 @@ def get_responsive_cells(animalid, session, fov, run=None, traceid='traces001',
             print(e)
 
     stats_dir = os.path.join(traceid_dir, 'summary_stats', responsive_test)
+    assert os.path.exists(stats_dir), "Stats dir does not exist: %s" % stats_dir
     stats_fpath = glob.glob(os.path.join(stats_dir, '*results*.pkl'))
 
     try:
