@@ -111,7 +111,7 @@ def calculate_roc_bootstrap(roi_df, n_iters=1000):
     shuff_auc = []
     print("... getting shuffle")
     for i in range(n_iters):
-        print(i)
+        #print(i)
         X = shuffle(all_values.ravel())
         X = np.reshape(X, (n_conditions*2, n_trials))
         shuff_stim = X[0:n_conditions, :]
@@ -215,7 +215,6 @@ def do_roc_bootstrap_mp(gdf, dst_dir='/tmp', n_iters=1000, n_processes=1, plot_r
         curr_results = {}
         for roi in roi_list:
             roi_df = gdf.get_group(roi)
-            print(roi, roi_df.shape)
             roc_results = calculate_roc_bootstrap(roi_df, n_iters=n_iters)
             # PLOT:
             if plot_rois:
@@ -226,7 +225,8 @@ def do_roc_bootstrap_mp(gdf, dst_dir='/tmp', n_iters=1000, n_processes=1, plot_r
                 pl.close()
             curr_results[roi] = {'max_auc': np.max(roc_results['auc']),
                                 'pval': roc_results['pval']}
-                
+            print(roi, roi_df.shape)
+               
         out_q.put(curr_results)
         
         
