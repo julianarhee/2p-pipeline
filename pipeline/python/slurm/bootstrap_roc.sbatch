@@ -4,8 +4,8 @@
 #SBATCH -p cox # run on cox gpu to use correct env 
 #SBATCH -n 16 # one core
 #SBATCH -N 1 # on one node
-#SBATCH -t 0-12:00 # Running time of 3 hours
-#SBATCH --mem=98304 #-per-cpu=8192 #70656 # Memory request of 70 GB (inc to 98304)
+#SBATCH -t 0-6:00 # Running time of 3 hours
+#SBATCH --mem=49152 #-per-cpu=8192 #70656 # Memory request of 70 GB (inc to 98304)
 
 # load modules
 module load centos6/0.0.1-fasrc01
