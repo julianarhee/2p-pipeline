@@ -148,12 +148,14 @@ def get_metadata(traceid='traces001', filter_by='most_cells', stimulus=None, sti
     else:        
         return dsets
 
-def get_blob_datasets(filter_by='unique_a', excluded_sessions=[], as_dict=True):
+def get_blob_datasets(filter_by='first', has_gratings=False,
+                        excluded_sessions=[], as_dict=True):
 
     included_sessions = []
     
     # Blobs runs w/ incorrect stuff
-    always_exclude = ['20190426_JC078', '20191008_JC091']
+    always_exclude = ['20190426_JC078', # backlight test, but good for A/B
+                      '20191008_JC091'] # rf test
     excluded_sessions.extend(always_exclude)
 
     if filter_by is None:
@@ -162,15 +164,17 @@ def get_blob_datasets(filter_by='unique_a', excluded_sessions=[], as_dict=True):
         li_repeats = []
     else:
         # Only sessions > 20190511 should have regular gratings
-        v1_include = ['20190511_JC083', 
+        v1_include = [#'20190511_JC083',  only if has_gratings=True
                       '20190522_JC084',
                       '20190622_JC085',
-                      '20190613_JC097', '20190616_JC097', '20190617_JC097',
+                      '20190613_JC097', 
+                      '20190616_JC097', 
+                      '20190617_JC097',
                       '20191006_JC110']
  
-        lm_include = ['20190513_JC078', 
-                      '20190603_JC080', 
-                      #'20190512_JC083', # 20190517_JC083 slightly worse?
+        lm_include = [#'20190513_JC078', # only include if has_gratings=True
+                      #'20190603_JC080', # only include if has_gratings=True
+                      #'20190512_JC083', # OR, 20190517_JC083 slightly worse?
                       '20190525_JC084',
                       '20190627_JC091',
                       '20190618_JC097']
@@ -185,27 +189,60 @@ def get_blob_datasets(filter_by='unique_a', excluded_sessions=[], as_dict=True):
                       '20191105_JC117',
                       '20191111_JC120']
         
-        if filter_by == 'last':
-            lm_include.extend(['20190517_JC083'])
-            li_include.extend(['20190607_JC091', '20190614_JC091', '20190612_JC099'])
+        if filter_by=='last': #is False:
+            lm_include.extend(['20190517_JC083']) # 20190512_JC083
+            li_include.extend(['20190607_JC091',  # 20190602_JC091
+                               '20190614_JC091',  # 20190606_JC091 
+                               '20190612_JC099']) # 20190609_JC099
 
-        elif filter_by == 'first':
+        elif filter_by=='first': #default_take_first:
             lm_include.extend(['20190512_JC083'])
-            li_include.extend(['20190602_JC091', '20190606_JC091', '20190609_JC099'])
+            li_include.extend(['20190602_JC091', 
+                               '20190606_JC091', 
+                               '20190609_JC099'])
 
-        elif filter_by == 'unique_a':
-            lm_include.extend(['20190512_JC083'])
-            li_include.extend(['20190602_JC091', '20190614_JC091', '20190612_JC099'])
+#        elif filter_by == 'unique_a':
+#            lm_include.extend(['20190512_JC083'])
+#            li_include.extend(['20190602_JC091', 
+#                               '20190614_JC091', 
+#                               '20190612_JC099'])
 
         else:
             print("Filter <%s> UNKNOWN." % str(filter_by))
             return None
-           
-    included_ = [v1_include, lm_include, li_include]
+          
+    if has_gratings:
+        v1_include.extend(['20190511_JC083'])
 
+        lm_include.extend(['20190513_JC078',
+                           '20190603_JC080',
+                           '20190512_JC083']) # Also, 20190517_JC083
+    else:
+        # Sometimes, same FOV scanned twice, pick earlier/later
+        if filter_by=='first': #default_take_first:
+            v1_include.extend(['20190420_JC076',  # not 20190501_JC076
+                               '20190507_JC083']) # not 20190510_JC083
+            lm_include.extend(['20190504_JC078']) # not 20190509_JC078
+        else:
+            # pick the later one
+            v1_include.extend(['20190501_JC076',
+                               '20190510_JC083'])
+
+            lm_include.extend(['20190509_JC078'])
+        
+        # and add good dsets without gratings
+        lm_include.extend(['20190430_JC078',
+                           '20190506_JC080',
+                           '20190508_JC083'])
+        
+        li_include.extend(['20190502_JC076'])
+
+
+    included_ = [v1_include, lm_include, li_include]
     for incl in included_:
         included_sessions.extend(incl)
-    included_sessions = [i for i in list(set(included_sessions)) if i not in excluded_sessions]
+    included_sessions = [i for i in list(set(included_sessions)) \
+                                    if i not in excluded_sessions]
 
     if as_dict:
         return {'V1': v1_include, 'Lm': lm_include, 'Li': li_include}
