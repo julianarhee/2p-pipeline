@@ -15,6 +15,9 @@ parser = argparse.ArgumentParser(
     epilog = '''AUTHOR:\n\tJuliana Rhee''')
 parser.add_argument('-A', '--fov', dest='fov_type', action='store', default='zoom2p0x', help='FOV type (e.g., zoom2p0x)')
 parser.add_argument('-E', '--exp', dest='experiment_type', action='store', default='blobs', help='Experiment type (e.g., blobs)')
+parser.add_argument('-t', '--traceid', dest='traceid', action='store', default='traces001', help='traceid (default: traces001)')
+parser.add_argument('--check', dest='check_results', action='store_true', default=False, help='only run to check results, run missing')
+
 parser.add_argument('-e', '--email', dest='email', action='store', default='rhee@g.harvard.edu', help='Email to send log files')
 
 args = parser.parse_args()
@@ -56,6 +59,8 @@ ROOTDIR = '/n/coxfs01/2p-data'
 FOV = args.fov_type
 EXP = args.experiment_type
 email = args.email
+check_results = args.check_results
+traceid = args.traceid
 
 # Open log lfile
 sys.stdout = open('log/loginfo_%s.txt' % EXP, 'w')
@@ -97,14 +102,47 @@ def load_metadata(rootdir='/n/coxfs01/2p-data',
     return meta_list
 
 
+def check_results(rootdir='/n/coxfs01/2p-data', 
+                  aggregate_dir='/n/coxfs01/julianarhee/aggregate-visual-areas',
+                  experiment='', traceid='traces001', animalids=None):
+    sdata_fpath = os.path.join(aggregate_dir, 'dataset_info.pkl')
+    with open(sdata_fpath, 'rb') as f:
+        sdata = pkl.load(f)
+   
+    meta_list=[]
+    if animalids is not None:
+        print("ANIMALIDS: %s" % str(animalids))
+        sd = sdata[sdata['animalid'].isin(animalids)].copy()
+    else:
+        sd = sdata.copy()
+    sd = sd[sd['experiment']==experiment]
+    for (animalid, session, fov), g in sd.groupby(['animalid', 'session', 'fov']):
+        if experiment not in g['experiment'].values:
+            continue
+        datakey = '_'.join([session, animalid, fov]) 
+        #run_name = 'gratings' if int(session)<20190511 else e
+        roc_res = glob.glob(os.path.join(rootdir, animalid, session, fov, 
+                                        'combined_%s*' % experiment,
+                                        'traces', '%s*' % traceid, 'summary_stats', 
+                                        'ROC', 'significant_rois.json'))
+        if len(roc_res)==0:
+            print("-- no results: %s" % datakey)
+            meta_list.append(tuple([animalid, session, fov, experiment, traceid]))    
+   
+    return meta_list    
+
+
+
 #meta_list = [('JC084', '20190522', 'FOV1_zoom2p0x', 'blobs', 'traces001'), #] #,
 #             ('JC083', '20190511', 'FOV1_zoom2p0x', 'blobs', 'traces001')] #, 
 #             ('JC083', '20190508', 'FOV1_zoom2p0x', 'rfs', 'traces001'),
 #             ('JC084', '20190525', 'FOV1_zoom2p0x', 'rfs', 'traces001')]
 #
 
-
-meta_list = load_metadata(experiment=EXP) #, animalids=['JC085'])
+if check_results:
+    meta_list = check_results(experiment=EXP, traceid=traceid)
+else:
+    meta_list = load_metadata(experiment=EXP, traceid=traceid, animalids=['JC091'])
 
 if len(meta_list)==0:
     fatal("NO FOVs found.")
