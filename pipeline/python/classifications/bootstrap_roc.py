@@ -14,12 +14,12 @@ import optparse
 import sys
 import math
 import time
-import cPickle as pkl
+import itertools
 import json
 
 import matplotlib as mpl
 mpl.use('agg')
-
+import cPickle as pkl
 import numpy as np
 import pandas as pd
 import pylab as pl
@@ -33,23 +33,58 @@ from pipeline.python.classifications import test_responsivity as resp
 from pipeline.python.utils import label_figure, natural_keys
 
 def get_hits_and_fas(resp_stim, resp_bas):
+
+    # Get N configurations    
+    #curr_cfg_ixs = np.arange(0, len(resp_stim))
     
-    curr_cfg_ixs = range(resp_stim.shape[0])
-    n_conditions, n_trials = resp_stim.shape
-    min_val = resp_stim.min()
-    max_val = resp_stim.max()
-    
+    # Get N conditions
+    #n_conditions, n_trials = resp_stim.shape
+    n_conditions = len(resp_stim) #curr_cfg_ixs)
+ 
+    # Set criterion (range between min/max response)
+    min_val = min(list(itertools.chain(*resp_stim))) #resp_stim.min()
+    max_val = max(list(itertools.chain(*resp_stim))) #[r.max() for r in resp_stim]) #resp_stim.max() 
     crit_vals = np.linspace(min_val, max_val)
-    
-    p_hits = np.empty((len(curr_cfg_ixs), len(crit_vals)))
-    p_fas = np.empty((len(curr_cfg_ixs), len(crit_vals)))
-    for ci in range(n_conditions): #range(n_conditions):
-        p_hit = [sum(resp_stim[ci, :] > crit) / float(n_trials) for crit in crit_vals]
-        p_fa = [sum(resp_bas[ci, :] > crit) / float(n_trials) for crit in crit_vals]
-        p_hits[ci, :] = p_hit
-        p_fas[ci, :] = p_fa
-        
+   
+    # For each crit level, calculate p > crit (out of N trials)   
+    #p_hits = np.empty((n_conditions, len(crit_vals)))
+    #p_fas = np.empty((n_conditions, len(crit_vals)))
+    p_hits = np.array([[sum(rs > crit)/float(len(rs)) for crit in crit_vals] for rs in resp_stim])
+    p_fas = np.array([[sum(rs > crit)/float(len(rs)) for crit in crit_vals] for rs in resp_bas])
+    #print(n_conditions, len(crit_vals), p_hits.shape)
+#    for ci in np.arange(0, n_conditions):
+#        n_trials = float(len(resp_stim[ci]))
+#        p_hits = np.array([float(sum(rs > crit))/float(len(rs)) for crit in crit_vals] for rs in resp_stim])
+#        p_fas = [float(sum(resp_bas[ci] > crit)) / n_trials for crit in crit_vals]
+#        p_hits[ci, :] = p_hit
+#        p_fas[ci, :] = p_fa
+#        
     return p_hits, p_fas, crit_vals
+
+
+#def get_hits_and_fas(resp_stim, resp_bas):
+#
+#    # Get N configurations    
+#    curr_cfg_ixs = range(resp_stim.shape[0])
+#    
+#    # Get N conditions
+#    n_conditions, n_trials = resp_stim.shape
+#    
+#    # Set criterion (range between min/max response)
+#    min_val = resp_stim.min()
+#    max_val = resp_stim.max() 
+#    crit_vals = np.linspace(min_val, max_val)
+#   
+#    # For each crit level, calculate p > crit (out of N trials)   
+#    p_hits = np.empty((len(curr_cfg_ixs), len(crit_vals)))
+#    p_fas = np.empty((len(curr_cfg_ixs), len(crit_vals)))
+#    for ci in range(n_conditions): #range(n_conditions):
+#        p_hit = [sum(resp_stim[ci, :] > crit) / float(n_trials) for crit in crit_vals]
+#        p_fa = [sum(resp_bas[ci, :] > crit) / float(n_trials) for crit in crit_vals]
+#        p_hits[ci, :] = p_hit
+#        p_fas[ci, :] = p_fa
+#        
+#    return p_hits, p_fas, crit_vals
 
 
 def load_experiment_data(experiment_name, animalid, session, fov, traceid, 
@@ -92,11 +127,14 @@ def load_experiment_data(experiment_name, animalid, session, fov, traceid,
 
 def calculate_roc_bootstrap(roi_df, n_iters=1000):
 
-    resp_stim = np.vstack(roi_df.groupby(['config'])['stim_mean'].apply(np.array).values)
-    resp_bas = np.vstack(roi_df.groupby(['config'])['base_mean'].apply(np.array).values)
+    #resp_stim = np.vstack(roi_df.groupby(['config'])['stim_mean'].apply(np.array).values)
+    #resp_bas = np.vstack(roi_df.groupby(['config'])['base_mean'].apply(np.array).values)
+    resp_stim = [g.values for c, g in roi_df.groupby(['config'])['stim_mean']]
+    resp_bas = [g.values for c, g in roi_df.groupby(['config'])['base_mean']]
 
     # Generate ROC curve 
-    n_conditions, n_trials = resp_stim.shape
+    #n_conditions, n_trials = resp_stim.shape
+    n_conditions = len(resp_stim)
     p_hits, p_fas, crit_vals = get_hits_and_fas(resp_stim, resp_bas)
     true_auc = []
     for ci in range(n_conditions):
@@ -104,18 +142,31 @@ def calculate_roc_bootstrap(roi_df, n_iters=1000):
     max_true_auc = np.max(true_auc)
     
     #### Shuffle
-    all_values = np.vstack([resp_stim, resp_bas])
+    all_values = np.hstack([list(itertools.chain(*resp_stim)), list(itertools.chain(*resp_bas))])
+    #all_values = np.vstack([resp_stim, resp_bas])
     #print(all_values.shape)
 
     # Shuffle values, group into stim and bas again
+    ixs = [(ri,rs.shape[0]) if ri==0 else
+           (sum([r.shape[0] for r in resp_stim[0:ri]]), sum([r.shape[0] for r in resp_stim[0:ri]])+rs.shape[0]) \
+                for ri, rs in enumerate(resp_stim)]
+    last_ix = ixs[-1][1]
+    ixs2 = [(si+last_ix, ei+last_ix) for (si, ei) in ixs]
+    t1 =[all_values[si:ei] for (si, ei) in ixs]
+    t2 =[all_values[si:ei] for (si, ei) in ixs2]
+    assert all([len(s1)==len(b1) for s1, b1 in zip(t1, t2)]), "bad shuffle indices..."
+
     shuff_auc = []
     print("... getting shuffle")
     for i in range(n_iters):
-        #print(i)
-        X = shuffle(all_values.ravel())
-        X = np.reshape(X, (n_conditions*2, n_trials))
-        shuff_stim = X[0:n_conditions, :]
-        shuff_bas = X[n_conditions:, :]
+        #if i%20==0:
+        #    print('%i of %i' % ((i+1), n_iters))
+        X = shuffle(all_values) #.ravel())
+        #X = np.reshape(X, (n_conditions*2, n_trials))
+        #shuff_stim = X[0:n_conditions, :]
+        #shuff_bas = X[n_conditions:, :]
+        shuff_stim = [X[si:ei] for (si, ei) in ixs]
+        shuff_bas = [X[si:ei] for (si, ei) in ixs2]
         shuff_p_hits, shuff_p_fas, shuff_crit_vals = get_hits_and_fas(shuff_stim, shuff_bas)
         shuff_auc.append(np.max([-np.trapz(shuff_p_hits[ci, :], x=shuff_p_fas[ci, :]) for ci in range(n_conditions)]))
 
@@ -133,8 +184,9 @@ def calculate_roc_bootstrap(roi_df, n_iters=1000):
     return roc_results
 
 def plot_roc_bootstrap_results(roc_results):
-    n_conditions, n_trials = roc_results['resp_stim'].shape
-    
+    #n_conditions, n_trials = roc_results['resp_stim'].shape
+    n_conditions = len(roc_results['resp_stim'])
+ 
     p_fas = roc_results['p_fas']
     p_hits = roc_results['p_hits']
     true_auc = roc_results['auc']
