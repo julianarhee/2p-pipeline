@@ -491,7 +491,8 @@ def get_counts_for_legend(df, area_colors=None, markersize=10, marker='_',
 # ===============================================================
 
 def load_traces(animalid, session, fovnum, curr_exp, traceid='traces001',
-               responsive_test='ROC', responsive_thr=0.05, response_type='dff', n_stds=2.5,
+                response_type='dff', 
+                responsive_test='ROC', responsive_thr=0.05, n_stds=2.5,
                 redo_stats=False, n_processes=1):
     
     # Load experiment neural data
@@ -611,7 +612,7 @@ def load_aggregate_data(experiment, traceid='traces001', response_type='dff', ep
 
 
 def aggregate_and_save(experiment, traceid='traces001', response_type='dff', epoch='stimulus',
-                       responsive_test='ROC', responsive_thr=0.05, n_stds=0.0, create_new=False,
+                       responsive_test='ROC', responsive_thr=0.05, n_stds=2.5, create_new=False,
                        always_exclude=['20190426_JC078'], n_processes=1,
                        aggregate_dir='/n/coxfs01/julianarhee/aggregate-visual-areas'):
 
@@ -647,9 +648,7 @@ def aggregate_and_save(experiment, traceid='traces001', response_type='dff', epo
             if '%s_%s' % (session, animalid) in always_exclude:
                 continue
                 
-            if '%s_%s' % (session, animalid) in ['20190522_JC084', '20191008_JC091']:
-                continue
-                
+               
             # Load traces
             trace_type = 'df' if response_type=='zscore' else response_type
             traces, labels, sdf = load_traces(animalid, session, fovnum, experiment, 
@@ -661,8 +660,8 @@ def aggregate_and_save(experiment, traceid='traces001', response_type='dff', epo
             metric = 'zscore' if response_type=='zscore' else 'mean'
             mean_responses = traces_to_trials(traces, labels, epoch=epoch, metric=response_type)
 
-            DATA['%s' % datakey] = {'data': mean_responses,
-                                    'sdf': sdf}
+            DATA[datakey] = mean_responses #{'data': mean_responses,
+                                    #'sdf': sdf}
 
         # Save
         with open(data_outfile, 'wb') as f:
