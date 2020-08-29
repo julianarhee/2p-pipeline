@@ -587,7 +587,7 @@ def get_aggregate_data_filepath(experiment, traceid='traces001', response_type='
     sdata = get_aggregate_info(traceid=traceid)
     #### Get DATA
     #load_data = False
-    data_desc = 'aggr_%s_%s-%s_%s-thr-%.2f_%s' % (experiment, traceid, response_type, responsive_test, responsive_thr, epoch)
+    data_desc = 'aggr_%s_%s_%s-thr-%.2f_%s_%s' % (experiment, traceid, responsive_test, responsive_thr, response_type, epoch)
     data_outfile = os.path.join(data_dir, '%s.pkl' % data_desc)
 
     return data_outfile #print(data_desc)
