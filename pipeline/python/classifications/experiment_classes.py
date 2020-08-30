@@ -466,11 +466,6 @@ def get_responsive_cells(animalid, session, fov, run=None, traceid='traces001',
                          rootdir='/n/coxfs01/2p-data'):
         
     roi_list=None; nrois_total=None;
-#    #if responsive_test == 'ROC':
-#    stats_dir, stats_desc = create_stats_dir(animalid, session, fov, traceid=traceid, 
-#                     trace_type=trace_type, response_type=response_type, 
-#                     responsive_test=responsive_test, responsive_thr=responsive_thr, 
-#                     rootdir=rootdir)
     traceid_dir =  glob.glob(os.path.join(rootdir, animalid, session, 
                                     fov, run, 'traces', '%s*' % traceid))[0]        
 
@@ -484,7 +479,7 @@ def get_responsive_cells(animalid, session, fov, run=None, traceid='traces001',
                             n_processes=n_processes, plot_rois=True, n_iters=1000)
             elif responsive_test=='nstds':
                 fdf = calculate_nframes_above_nstds(animalid, session, fov, run=run, 
-                            traceid=traceid, response_type=response_type, n_stds=n_stds,
+                            traceid=traceid, n_stds=n_stds, #response_type=response_type, 
                             n_processes=n_processes, rootdir=rootdir, create_new=True)
                 #print(fdf.head())
             print('@@@ finished responsivity test @@@')
@@ -495,8 +490,18 @@ def get_responsive_cells(animalid, session, fov, run=None, traceid='traces001',
 
     stats_dir = os.path.join(traceid_dir, 'summary_stats', responsive_test)
     assert os.path.exists(stats_dir), "Stats dir does not exist: %s" % stats_dir
+    #results_str = '' % responsive_thr if responsive_test=='nstds' else ''
     stats_fpath = glob.glob(os.path.join(stats_dir, '*results*.pkl'))
+    #if len(stats_fpath)==0:
+    #    print("-- using old stats")
+    #    stats_dir = os.path.join(traceid_dir, 'summary_stats', '_%s' % responsive_test)
+    #    stats_fpath = glob.glob(os.path.join(stats_dir, '*results*.pkl'))
 
+    # move old dir
+    if create_new:
+        if os.path.exists(stats_dir):
+            old_dir = os.path.join(traceid_dir, 'summary_stats', '_%s' % responsive_test)
+            shutil.move(stats_dir, old_dir) 
     try:
         #stats_fpath = glob.glob(os.path.join(stats_dir, '*results*.pkl'))
         assert len(stats_fpath) == 1, "Stats results paths: %s" % str(stats_fpath)
@@ -520,7 +525,8 @@ def get_responsive_cells(animalid, session, fov, run=None, traceid='traces001',
     return roi_list, nrois_total
    
 def calculate_nframes_above_nstds(animalid, session, fov, run=None, traceid='traces001',
-                         response_type='dff', n_stds=2.5, create_new=False,
+                         #response_type='dff', 
+                        n_stds=2.5, create_new=False,
                          n_processes=1, rootdir='/n/coxfs01/2p-data'):
 
     if 'combined' in run:
@@ -533,7 +539,7 @@ def calculate_nframes_above_nstds(animalid, session, fov, run=None, traceid='tra
     stat_dir = os.path.join(traceid_dir, 'summary_stats', 'nstds')
     if not os.path.exists(stat_dir):
         os.makedirs(stat_dir) 
-    results_fpath = os.path.join(stat_dir, 'nstds_results.pkl')
+    results_fpath = os.path.join(stat_dir, 'nstds-%.2f_results.pkl' % n_stds)
     
     calculate_frames = False
     if  os.path.exists(results_fpath) and create_new is False:
@@ -552,7 +558,7 @@ def calculate_nframes_above_nstds(animalid, session, fov, run=None, traceid='tra
         # Load data
         soma_fpath = glob.glob(os.path.join(traceid_dir, 'data_arrays', 'np_subtracted.npz'))[0]
         traces, labels, sdf, run_info = util.load_dataset(soma_fpath, 
-                                                trace_type=response_type, 
+                                                trace_type='corrected', #response_type, 
                                                 add_offset=True, 
                                                 make_equal=False) #make_equal)
         #self.load(trace_type=trace_type, add_offset=add_offset)
@@ -584,12 +590,16 @@ def get_roi_stats(animalid, session, fov, exp_name=None, traceid='traces001',
                                               exp_name, 'traces', '%s*' % traceid))[0]
     try:
         curr_stats_dir = os.path.join(curr_traceid_dir, 'summary_stats', responsive_test)
-        stats_fpath = glob.glob(os.path.join(curr_stats_dir, '*results*.pkl'))
+        #results_str = '_thr-%.2f' % responsive_thr if responsive_test=='nstds' else ''
+        stats_fpath = glob.glob(os.path.join(stats_dir, '*results*.pkl'))
+        #stats_fpath = glob.glob(os.path.join(curr_stats_dir, '*results_*thr-%.2f%*.pkl' % responsive_thr))
         with open(stats_fpath[0], 'rb') as f:
             rstats = pkl.load(f)
         roi_list, nrois_total = get_responsive_cells(animalid, session, fov, run=exp_name, traceid=traceid,
-                                                     responsive_test=responsive_test, responsive_thr=responsive_thr,
-                                                     n_stds=n_stds, response_type=response_type, rootdir=rootdir, 
+                                                     responsive_test=responsive_test, 
+                                                     responsive_thr=responsive_thr,
+                                                     n_stds=n_stds, response_type=response_type, 
+                                                     rootdir=rootdir, 
                                                      create_new=create_new, n_processes=n_processes)
         #nrois_total = len(rstats.keys())
     except Exception as e:
@@ -1315,7 +1325,7 @@ class Experiment(object):
             if responsive_test == 'nstds':
                 print("... trying calculating nframes above/below nstd")
                 framesdf = self.calculate_nframes_above_nstds(n_stds=n_stds, 
-                                                                trace_type='dff')
+                                                                trace_type=response_type) #'dff')
                 roi_list = [roi for roi in framesdf.columns \
                                 if any(framesdf[roi] > responsive_thr)]
                 nrois_total = framesdf.shape[-1]
@@ -1382,7 +1392,7 @@ class Experiment(object):
         if not os.path.exists(output_dir):
             os.makedirs(output_dir)
             
-        results_fpath = os.path.join(output_dir, 'nstds_results.pkl')
+        results_fpath = os.path.join(output_dir, 'nstds-%.2f_results.pkl' % n_stds)
         
         calculate_frames = False
         if os.path.exists(results_fpath):
