@@ -315,7 +315,10 @@ def load_dataset(soma_fpath, trace_type='dff', add_offset=True,
         else:
             print("... loading saved data array (%s)." % trace_type)
             traces_dset = np.load(data_fpath)
-            traces = pd.DataFrame(traces_dset['data'][:])
+            traces = pd.DataFrame(traces_dset['data'][:]) 
+            f0 = pd.DataFrame(traces_dset['f0'][:]).mean().mean()
+            print("F0: %.2f" % f0)
+            traces = traces + f0
             labels_fpath = data_fpath.replace('%s.npz' % trace_type, 'labels.npz')
             labels_dset = np.load(labels_fpath)
             
