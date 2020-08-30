@@ -515,7 +515,12 @@ def load_traces(animalid, session, fovnum, curr_exp, traceid='traces001',
                 response_type='dff', 
                 responsive_test='ROC', responsive_thr=0.05, n_stds=2.5,
                 redo_stats=False, n_processes=1):
-    
+    '''
+    redo_stats: use carefully, will re-run responsivity test if True
+   
+    To return ALL selected cells, set responsive_test to None
+    '''
+
     # Load experiment neural data
     fov = 'FOV%i_zoom2p0x' % fovnum
     if curr_exp=='blobs':
@@ -535,11 +540,12 @@ def load_traces(animalid, session, fovnum, curr_exp, traceid='traces001',
 
     # Get responsive cells
     if responsive_test is not None:
-        responsive_cells, ncells_total = exp.get_responsive_cells(response_type=response_type,\
-                                                              responsive_test=responsive_test,
-                                                              responsive_thr=responsive_thr,
-                                                              create_new=redo_stats, 
-                                                              n_processes=n_processes)
+        responsive_cells, ncells_total = exp.get_responsive_cells(
+                                                response_type=response_type,\
+                                                responsive_test=responsive_test,
+                                                responsive_thr=responsive_thr,
+                                                create_new=redo_stats, 
+                                                n_processes=n_processes)
         traces = exp.data.traces[responsive_cells]
 
     return traces, labels, sdf
@@ -632,8 +638,10 @@ def load_aggregate_data(experiment, traceid='traces001', response_type='dff', ep
     return DATA
 
 
-def aggregate_and_save(experiment, traceid='traces001', response_type='dff', epoch='stimulus',
-                       responsive_test='ROC', responsive_thr=0.05, n_stds=2.5, create_new=False,
+def aggregate_and_save(experiment, traceid='traces001', 
+                       response_type='dff', epoch='stimulus',
+                       responsive_test='ROC', responsive_thr=0.05, n_stds=2.5, 
+                       create_new=False, redo_stats=False,
                        always_exclude=['20190426_JC078'], n_processes=1,
                        aggregate_dir='/n/coxfs01/julianarhee/aggregate-visual-areas'):
 
@@ -641,9 +649,7 @@ def aggregate_and_save(experiment, traceid='traces001', response_type='dff', epo
     data_dir = os.path.join(aggregate_dir, 'data-stats')
     sdata = get_aggregate_info(traceid=traceid)
     
-    #### Get DATA
-    load_data = False
-    
+    #### Get DATA   
     #data_desc = '%s_%s-%s_%s-thr-%.2f_%s' % (experiment, traceid, response_type, responsive_test, responsive_thr, epoch)
     data_outfile = get_aggregate_data_filepath(experiment, traceid=traceid, 
                         response_type=response_type, epoch=epoch,
@@ -652,11 +658,11 @@ def aggregate_and_save(experiment, traceid='traces001', response_type='dff', epo
                         aggregate_dir=aggregate_dir)
     data_desc = os.path.splitext(os.path.split(data_outfile)[-1])[0]
 
-    if not os.path.exists(data_outfile):
-        load_data = True
+    #if not os.path.exists(data_outfile):
+    #    load_data = True
     print(data_desc)
 
-    if load_data or create_new:
+    if create_new:
 
         print("Getting data: %s" % experiment)
         print("Saving data to %s" % data_outfile)
@@ -668,19 +674,21 @@ def aggregate_and_save(experiment, traceid='traces001', response_type='dff', epo
             datakey = '%s_%s_fov%i' % (session, animalid, fovnum)
             if '%s_%s' % (session, animalid) in always_exclude:
                 continue
-                
-               
+                 
             # Load traces
             trace_type = 'df' if response_type=='zscore' else response_type
-            traces, labels, sdf = load_traces(animalid, session, fovnum, experiment, 
-                                              traceid=traceid, response_type=trace_type,
+            traces, labels, sdf = load_traces(animalid, session, fovnum, 
+                                              experiment, traceid=traceid, 
+                                              response_type=trace_type,
                                               responsive_test=responsive_test, 
-                                              responsive_thr=responsive_thr, n_stds=n_stds,
-                                              redo_stats=create_new, n_processes=n_processes)
+                                              responsive_thr=responsive_thr, 
+                                              n_stds=n_stds,
+                                              redo_stats=redo_stats, 
+                                              n_processes=n_processes)
             # Calculate mean trial metric
             metric = 'zscore' if response_type=='zscore' else 'mean'
-            mean_responses = traces_to_trials(traces, labels, epoch=epoch, metric=response_type)
-
+            mean_responses = traces_to_trials(traces, labels, epoch=epoch, 
+                                                metric=response_type)
             DATA[datakey] = mean_responses #{'data': mean_responses,
                                     #'sdf': sdf}
 
@@ -708,7 +716,7 @@ def extract_options(options):
     parser.add_option('-t', '--traceid', action='store', dest='traceid', default='traces001', 
                       help="traceid (default: traces001)")
     parser.add_option('--test', action='store', dest='responsive_test', default='ROC', 
-                      help="responsive test (default: ROC)")
+                      help="responsive test (default: ROC, set to None if want all cells returned)")
     parser.add_option('--thr', action='store', dest='responsive_thr', default=0.05, 
                       help="responsive test thr (default: 0.05 for ROC)")
     parser.add_option('-d', '--response', action='store', dest='response_type', default='dff', 
@@ -725,6 +733,10 @@ def extract_options(options):
     parser.add_option('-n', '--nproc', action='store', dest='n_processes', 
                       default=1,
                       help="N processes (default=1)")
+    parser.add_option('--do-stats', action='store_true', dest='redo_stats', 
+                      default=False,
+                      help="Flag to redo tests for responsivity")
+
 
 
     (options, args) = parser.parse_args(options)
@@ -747,16 +759,22 @@ def main(options):
     traceid = opts.traceid
     response_type = opts.response_type
     responsive_test = opts.responsive_test
+    if responsive_test in ['None', 'none']:
+        responsive_test = None
     responsive_thr = float(opts.responsive_thr)
     n_stds = float(opts.nstds_above)
     create_new = opts.create_new
     epoch = opts.epoch
     n_processes = int(opts.n_processes)
-    
-    data_outfile = aggregate_and_save(experiment, traceid=traceid, response_type=response_type, epoch=epoch,
-                                       responsive_test=responsive_test, n_stds=n_stds,
-                                       responsive_thr=responsive_thr, create_new=create_new,
-                                        n_processes=n_processes)
+    redo_stats = opts.redo_stats 
+    data_outfile = aggregate_and_save(experiment, traceid=traceid, 
+                                       response_type=response_type, epoch=epoch,
+                                       responsive_test=responsive_test, 
+                                       n_stds=n_stds,
+                                       responsive_thr=responsive_thr, 
+                                       create_new=create_new,
+                                        n_processes=n_processes,
+                                        redo_stats=redo_stats)
     
     print("saved data.")
    
