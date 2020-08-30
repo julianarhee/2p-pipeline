@@ -401,6 +401,27 @@ def plot_mannwhitney(mdf, metric='I_rs', multi_comp_test='holm', ax=None):
 
 
 def do_mannwhitney(mdf, metric='I_rs', multi_comp_test='holm'):
+    '''
+    bonferroni : one-step correction
+
+    sidak : one-step correction
+
+    holm-sidak : step down method using Sidak adjustments
+
+    holm : step-down method using Bonferroni adjustments
+
+    simes-hochberg : step-up method (independent)
+
+    hommel : closed method based on Simes tests (non-negative)
+
+    fdr_bh : Benjamini/Hochberg (non-negative)
+
+    fdr_by : Benjamini/Yekutieli (negative)
+
+    fdr_tsbh : two stage fdr correction (non-negative)
+
+    fdr_tsbky : two stage fdr correction (non-negative)
+    '''
     visual_areas = ['V1', 'Lm', 'Li']
     mpairs = list(itertools.combinations(visual_areas, 2))
 
