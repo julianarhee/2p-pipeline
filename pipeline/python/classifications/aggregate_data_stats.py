@@ -250,7 +250,7 @@ def get_blob_datasets(filter_by='first', has_gratings=False,
     return included_sessions
 
 
-def get_gratings_datasets(filter_by='most_cells', excluded_sessions=[], as_dict=True):
+def get_gratings_datasets(filter_by='first', excluded_sessions=[], as_dict=True):
 
     included_sessions = []
     
@@ -264,7 +264,7 @@ def get_gratings_datasets(filter_by='most_cells', excluded_sessions=[], as_dict=
         lm_repeats = []
         li_repeats = []
     
-    elif filter_by=='most_cells':
+    else:
         # Only sessions > 20190511 should have regular gratings
         v1_include = ['20190511_JC083', 
                       '20190522_JC084',
@@ -274,23 +274,35 @@ def get_gratings_datasets(filter_by='most_cells', excluded_sessions=[], as_dict=
  
         lm_include = ['20190513_JC078', 
                       '20190603_JC080', 
-                      '20190512_JC083', # 20190517_JC083 slightly worse?
+                      #'20190512_JC083', # 20190517_JC083 slightly worse?
                       '20190525_JC084',
                       '20190627_JC091',
                       '20190618_JC097']
        
         li_include = ['20190605_JC090',
-                      '20190602_JC091', # 20190607_JC091 also good
-                      '20190614_JC091', # 20190606_JC091 also good 
+                      #'20190602_JC091', # 20190607_JC091 also good
+                      #'20190614_JC091', # 20190606_JC091 also good 
                       '20191008_JC091',
-                      '20190612_JC099', # 20190609_JC099 also good
+                      #'20190612_JC099', # 20190609_JC099 also good
                       '20190617_JC099',
                       '20191018_JC113',
                       '20191105_JC117',
                       '20191111_JC120']
-    else:
-        print("Filter <%s> UNKNOWN." % str(filter_by))
-        return None
+
+        if filter_by=='first':
+            lm_include.extend(['20190512_JC083'])
+            li_include.extend(['20190602_JC091',
+                               '20190606_JC091',
+                               '20190609_JC099']) 
+        else:
+            lm_include.extend(['20190517_JC083'])
+            li_include.extend(['20190607_JC091',
+                               '20190614_JC091',
+                               '20190612_JC099'])
+       
+    #else:
+    #    print("Filter <%s> UNKNOWN." % str(filter_by))
+    #    return None
        
     included_ = [v1_include, lm_include, li_include]
 
@@ -541,7 +553,7 @@ def load_traces(animalid, session, fovnum, curr_exp, traceid='traces001',
     # Get responsive cells
     if responsive_test is not None:
         responsive_cells, ncells_total = exp.get_responsive_cells(
-                                                response_type=response_type,\
+                                                #response_type=response_type,\
                                                 responsive_test=responsive_test,
                                                 responsive_thr=responsive_thr,
                                                 create_new=redo_stats, 

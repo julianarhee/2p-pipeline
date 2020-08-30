@@ -478,9 +478,11 @@ def get_responsive_cells(animalid, session, fov, run=None, traceid='traces001',
                             trace_type='corrected', rootdir=rootdir,
                             n_processes=n_processes, plot_rois=True, n_iters=1000)
             elif responsive_test=='nstds':
-                fdf = calculate_nframes_above_nstds(animalid, session, fov, run=run, 
-                            traceid=traceid, n_stds=n_stds, #response_type=response_type, 
-                            n_processes=n_processes, rootdir=rootdir, create_new=True)
+                fdf = calculate_nframes_above_nstds(animalid, session, fov, 
+                            run=run, traceid=traceid, n_stds=n_stds, 
+                            #response_type=response_type, 
+                            n_processes=n_processes, rootdir=rootdir, 
+                            create_new=True)
                 #print(fdf.head())
             print('@@@ finished responsivity test @@@')
 
@@ -595,12 +597,15 @@ def get_roi_stats(animalid, session, fov, exp_name=None, traceid='traces001',
         #stats_fpath = glob.glob(os.path.join(curr_stats_dir, '*results_*thr-%.2f%*.pkl' % responsive_thr))
         with open(stats_fpath[0], 'rb') as f:
             rstats = pkl.load(f)
-        roi_list, nrois_total = get_responsive_cells(animalid, session, fov, run=exp_name, traceid=traceid,
-                                                     responsive_test=responsive_test, 
-                                                     responsive_thr=responsive_thr,
-                                                     n_stds=n_stds, response_type=response_type, 
-                                                     rootdir=rootdir, 
-                                                     create_new=create_new, n_processes=n_processes)
+        roi_list, nrois_total = get_responsive_cells(animalid, session, fov, 
+                                                run=exp_name, traceid=traceid,
+                                                responsive_test=responsive_test, 
+                                                responsive_thr=responsive_thr,
+                                                n_stds=n_stds, 
+                                                response_type=response_type, 
+                                                rootdir=rootdir, 
+                                                create_new=create_new, 
+                                                n_processes=n_processes)
         #nrois_total = len(rstats.keys())
     except Exception as e:
         print e
@@ -1310,16 +1315,20 @@ class Experiment(object):
                     
 
     def get_responsive_cells(self, response_type='dff', responsive_test='ROC', 
-                                responsive_thr=0.05, n_stds=2.5, create_new=False, n_processes=1):
+                                responsive_thr=0.05, n_stds=2.5, 
+                                create_new=False, n_processes=1):
         print("... getting responsive cells (test: %s, thr: %.2f')" % (responsive_test, responsive_thr))
         assert ('blobs' in self.name) or ('gratings' in self.name and int(self.session) >= 20190511), "Incorrect call for event data analysis (expecting gratings or blobs)."
         try:
-            roi_list, nrois_total = get_responsive_cells(self.animalid, self.session, 
+            roi_list, nrois_total = get_responsive_cells(self.animalid, 
+                                            self.session, 
                                             self.fov, run=self.name, 
                                             traceid=self.traceid, 
                                             responsive_test=responsive_test, 
-                                            responsive_thr=responsive_thr, n_stds=n_stds,
-                                            create_new=create_new, n_processes=n_processes)
+                                            responsive_thr=responsive_thr, 
+                                            n_stds=n_stds,
+                                            create_new=create_new, 
+                                            n_processes=n_processes)
             assert roi_list is not None, "--- no stats on initial pass"
         except Exception as e:
             if responsive_test == 'nstds':
@@ -1349,11 +1358,13 @@ class Experiment(object):
         
         if responsive_test is not None:    
             print("filtering responsive cells: %s" % responsive_test)
-            roi_list, nrois_total = self.get_responsive_cells(response_type=response_type, 
-                                                              responsive_test=responsive_test, 
-                                                 responsive_thr=responsive_thr,
-                                                 n_stds=n_stds,
-                                                 create_new=create_new, n_processes=n_processes)
+            roi_list, nrois_total = self.get_responsive_cells(
+                                                response_type=response_type, 
+                                                responsive_test=responsive_test, 
+                                                responsive_thr=responsive_thr,
+                                                n_stds=n_stds,
+                                                create_new=create_new, 
+                                                n_processes=n_processes)
             
             if roi_list is None:
                 print("--- NO STATS (%s)" % responsive_test)
@@ -1541,9 +1552,14 @@ class Gratings(Experiment):
                    rootdir='/n/coxfs01/2p-data', n_processes=8, min_cfgs_above=2):
        
         print("... FIT: getting stats") 
-        rstats, roi_list, nrois_total = get_roi_stats(self.animalid, self.session, self.fov, traceid=self.traceid,
-                                                      exp_name=self.name, responsive_test=responsive_test, 
-                                                      responsive_thr=responsive_thr, n_stds=n_stds)
+        rstats, roi_list, nrois_total = get_roi_stats(self.animalid, self.session, 
+                                                    self.fov, traceid=self.traceid,
+                                                    exp_name=self.name, 
+                                                    responsive_test=responsive_test,
+                                                    responsive_thr=responsive_thr, 
+                                                    n_stds=n_stds, 
+                                                    create_new=create_new, 
+                                                    n_processes=n_processes)
         if responsive_test == 'nstds':
             statdf = rstats['nframes_above']
         else:
@@ -1655,15 +1671,6 @@ class Objects(Experiment):
         super(Objects, self).__init__('blobs', animalid, session, fov, traceid=traceid, rootdir=rootdir)
         self.experiment_type = 'blobs'
         
-#    def get_responsive_cells(self, responsive_test='ROC', responsive_thr=0.05):
-#        print("... getting responsive cells (test: %s, thr: %.2f')" % (responsive_test, responsive_thr))
-#        assert ('blobs' in self.name) or ('gratings' in self.name and int(self.session) >= 20190511), "Incorrect call for event data analysis (expecting gratings or blobs)."
-#        rstats, roi_list, nrois_total = get_roi_stats(self.animalid, self.session, self.fov, traceid=self.traceid,
-#                                                      exp_name=self.name, responsive_test=responsive_test)
-#        
-#        return rstats, roi_list, nrois_total
-
-
 
 #%%
 
