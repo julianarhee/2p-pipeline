@@ -558,6 +558,9 @@ def load_traces(animalid, session, fovnum, curr_exp, traceid='traces001',
                                                 responsive_thr=responsive_thr,
                                                 create_new=redo_stats, 
                                                 n_processes=n_processes)
+        #print("%i responsive" % len(responsive_cells))
+        if responsive_cells is None:
+            return None, None, None
         traces = exp.data.traces[responsive_cells]
 
     return traces, labels, sdf
@@ -680,7 +683,7 @@ def aggregate_and_save(experiment, traceid='traces001',
         print("Saving data to %s" % data_outfile)
 
         dsets = sdata[sdata['experiment']==experiment].copy()
-
+        no_stats = []
         DATA = {}
         for (animalid, session, fovnum), g in dsets.groupby(['animalid', 'session', 'fovnum']):
             datakey = '%s_%s_fov%i' % (session, animalid, fovnum)
@@ -697,6 +700,10 @@ def aggregate_and_save(experiment, traceid='traces001',
                                               n_stds=n_stds,
                                               redo_stats=redo_stats, 
                                               n_processes=n_processes)
+            if traces is None:
+                print("NO stats, rerun: %s" % datakey)
+                no_stats.append(datakey)
+                continue
             # Calculate mean trial metric
             metric = 'zscore' if response_type=='zscore' else 'mean'
             mean_responses = traces_to_trials(traces, labels, epoch=epoch, 
@@ -708,6 +715,10 @@ def aggregate_and_save(experiment, traceid='traces001',
         with open(data_outfile, 'wb') as f:
             pkl.dump(DATA, f, protocol=pkl.HIGHEST_PROTOCOL)
         print("Done!")
+
+    print("There were %i datasets without stats:" % len(no_stats))
+    for d in no_stats:
+        print(d)
 
     return data_outfile
 
