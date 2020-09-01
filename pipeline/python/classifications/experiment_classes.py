@@ -690,28 +690,31 @@ class Session():
         xpositions=[]; ypositions=[];
         for ex in ['blobs', 'gratings']:
             if ex not in self.experiment_list: #.keys():
-                print("[%s|%s] No exp exists for: %s" % (self.animalid, self.session, ex))
+                print("[%s|%s] not found: %s" % (self.animalid, self.session, ex))
                 continue
             if ex not in self.experiments.keys():
-                #expdict = self.load_data(experiment=ex, update_self=update_self)
-                #expdata = expdict[ex]
                 traceid = 'traces001' if self.traceid is None else self.traceid
                 if 'grating' in ex:
-                    exp = Gratings(self.animalid, self.session, self.fov, traceid)
+                    exp = Gratings(self.animalid, self.session, 
+                                    self.fov, traceid)
                 elif 'blob' in ex:
                     # TODO:  ficx this, not implemented
-                    exp = Objects(self.animalid, self.session, self.fov, traceid)
+                    exp = Objects(self.animalid, self.session, 
+                                    self.fov, traceid)
                 sdf = exp.get_stimuli()
             else:
                 expdata = self.experiments[ex]
                 sdf = expdata.data.sdf.copy()
-                
-            if ex == 'gratings': # deal with FF stimuli
+
+            if ex == 'gratings' and len(sdf['size'].unique())>1: 
+                # deal with FF stimuli
                 sdf = sdf[sdf['size']<200]
                 sdf.pop('luminance')
-            curr_xpos = sdf.dropna()['xpos'].unique()
+            #print(sdf.head(), sdf['xpos'].unique(), sdf['ypos'].unique())      
+
+            curr_xpos = sdf['xpos'].unique()
             assert len(curr_xpos)==1, "[%s] more than 1 xpos found! %s" % (ex, str(curr_xpos))
-            curr_ypos = sdf.dropna()['ypos'].unique()
+            curr_ypos = sdf['ypos'].unique()
             assert len(curr_ypos)==1, "[%s] more than 1 ypos found! %s" % (ex, str(curr_ypos))
             xpositions.append(float(curr_xpos))
             ypositions.append(float(curr_ypos))
