@@ -13,10 +13,12 @@ import cPickle as pkl
 parser = argparse.ArgumentParser(
     description = '''Look for XID files in session directory.\nFor PID files, run tiff-processing and evaluate.\nFor RID files, wait for PIDs to finish (if applicable) and then extract ROIs and evaluate.\n''',
     epilog = '''AUTHOR:\n\tJuliana Rhee''')
-parser.add_argument('-A', '--fov', dest='fov_type', action='store', default='zoom2p0x', help='FOV type (e.g., zoom2p0x)')
+parser.add_argument('-F', '--fov', dest='fov_type', action='store', default='zoom2p0x', help='FOV type (e.g., zoom2p0x)')
 parser.add_argument('-E', '--exp', dest='experiment_type', action='store', default='blobs', help='Experiment type (e.g., blobs)')
 parser.add_argument('-t', '--traceid', dest='traceid', action='store', default='traces001', help='traceid (default: traces001)')
 parser.add_argument('--check', dest='check_results', action='store_true', default=False, help='only run to check results, run missing')
+#parser.add_argument('-a', '--animalids', nargs='+', dest='animalids', action='store', default=[], help='1 animalid for test')
+
 
 parser.add_argument('-e', '--email', dest='email', action='store', default='rhee@g.harvard.edu', help='Email to send log files')
 
@@ -61,21 +63,25 @@ EXP = args.experiment_type
 email = args.email
 check_results = args.check_results
 traceid = args.traceid
+#animalids = args.animalids
+#print("Check:", check_results)
+
 
 # Open log lfile
 sys.stdout = open('log/loginfo_%s.txt' % EXP, 'w')
 
 def load_metadata(rootdir='/n/coxfs01/2p-data', 
                   aggregate_dir='/n/coxfs01/julianarhee/aggregate-visual-areas',
-                  experiment='', traceid='traces001', animalids=None):
+                  experiment='', traceid='traces001', animalids=[]):
 
     sdata_fpath = os.path.join(aggregate_dir, 'dataset_info.pkl')
     with open(sdata_fpath, 'rb') as f:
         sdata = pkl.load(f)
-   
+    print("[%s] Loading metadata..." % experiment)
+ 
     meta_list=[]
-    if animalids is not None:
-        print("ANIMALIDS: %s" % str(animalids))
+    if len(animalids) > 0:
+        print("ANIMALIDS:" % animalids)
         sd = sdata[sdata['animalid'].isin(animalids)].copy()
     else:
         sd = sdata.copy()
@@ -139,10 +145,12 @@ def check_results(rootdir='/n/coxfs01/2p-data',
 #             ('JC084', '20190525', 'FOV1_zoom2p0x', 'rfs', 'traces001')]
 #
 
-if check_results:
+if check_results is True:
+    print('checking')
     meta_list = check_results(experiment=EXP, traceid=traceid)
-else:
-    meta_list = load_metadata(experiment=EXP, traceid=traceid, animalids=['JC091'])
+else: #if not check_results:
+    print("here")
+    meta_list = load_metadata(experiment=EXP, traceid=traceid, animalids=[])
 
 if len(meta_list)==0:
     fatal("NO FOVs found.")

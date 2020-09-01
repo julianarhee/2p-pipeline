@@ -570,17 +570,14 @@ def load_traces(animalid, session, fovnum, curr_exp, traceid='traces001',
     if curr_exp=='blobs':
         exp = util.Objects(animalid, session, fov, traceid=traceid)
     else:
-        exp = util.Gratings(animalid, session, fov, traceid=traceid)
-    
-    exp.load(trace_type=response_type, update_self=True, make_equal=False)
-    
+        exp = util.Gratings(animalid, session, fov, traceid=traceid) 
+    exp.load(trace_type=response_type, update_self=True, make_equal=False)    
     labels = exp.data.labels.copy()
 
     # Get stimulus config info
     sdf = exp.data.sdf
     if curr_exp == 'blobs':
         sdf = reformat_morph_values(sdf)
-    n_conditions = len(sdf['size'].unique())
 
     # Get responsive cells
     if responsive_test is not None:
@@ -613,7 +610,7 @@ def traces_to_trials(traces, labels, epoch='stimulus', metric='mean'):
                                             for trial, g in labels.groupby(['trial'])]),
                                              columns=roi_list, index=trial_list)
         if metric=='zscore':
-            std_baseline = pd.DataFrame(np.vstack([np.nanstd(traces.iloc[g.index[0:s_on]], axis=0)\
+            std_responses = pd.DataFrame(np.vstack([np.nanstd(traces.iloc[g.index[0:s_on]], axis=0)\
                                             for trial, g in labels.groupby(['trial'])]),
                                              columns=roi_list, index=trial_list)
             tmp = mean_responses.divide(std_baseline)
@@ -622,7 +619,13 @@ def traces_to_trials(traces, labels, epoch='stimulus', metric='mean'):
         mean_responses = pd.DataFrame(np.vstack([np.nanmean(traces.iloc[g.index[0:s_on]], axis=0)\
                                             for trial, g in labels.groupby(['trial'])]),
                                              columns=roi_list, index=trial_list)
-
+        if metric=='zscore':
+            std_baseline = pd.DataFrame(np.vstack([np.nanstd(traces.iloc[g.index[0:s_on]], axis=0)\
+                                            for trial, g in labels.groupby(['trial'])]),
+                                             columns=roi_list, index=trial_list)
+            tmp = mean_responses.divide(std_baseline)
+            mean_responses = tmp.copy()
+ 
     condition_on_trial = np.array([g['config'].unique()[0] for trial, g in labels.groupby(['trial'])])
     mean_responses['config'] = condition_on_trial
 
