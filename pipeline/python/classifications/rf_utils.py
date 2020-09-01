@@ -88,8 +88,12 @@ def aggregate_rf_dataframes(filter_by, fit_desc=None, scale_sigma=True, fit_thr=
     
     return r_df, dkey_dict
 
-def get_fit_dpaths(dsets, traceid='traces001', fit_desc=None, excluded_sessions=[],
-              rootdir='/n/coxfs01/2p-data'):
+def get_fit_dpaths(dsets, traceid='traces001', fit_desc=None,
+                    excluded_sessions = ['JC110_20191004_FOV1_zoom2p0x',
+                                         'JC080_20190602_FOV1_zoom2p0x',
+                                         'JC113_20191108_FOV1_zoom2p0x', 
+                                         'JC113_20191108_FOV2_zoom2p0x'],
+                    rootdir='/n/coxfs01/2p-data'):
     '''
     rfdata: (dataframe)
         Metadata (subset of 'sdata') of all datasets to include in current analysis
@@ -113,8 +117,10 @@ def get_fit_dpaths(dsets, traceid='traces001', fit_desc=None, excluded_sessions=
         for rfname in rfruns:
             curr_rfname = 'gratings' if int(session) < 20190511 else rfname
             fpath = glob.glob(os.path.join(rootdir, animalid, session, '*%s' % fov, 
-                                        'combined_%s_*' % curr_rfname, 'traces', '%s*' % traceid, 
-                                        'receptive_fields', fit_desc, 'fit_results.pkl'))
+                                        'combined_%s_*' % curr_rfname, 
+                                        'traces', '%s*' % traceid, 
+                                        'receptive_fields', fit_desc, 
+                                        'fit_results.pkl'))
             if len(fpath) > 0:
                 assert len(fpath)==1, "Too many paths: %s" % str(fpath)
                 dpaths['-'.join([animalid, session, fov, rfname])] = fpath[0]
@@ -243,6 +249,19 @@ def aggregate_rf_data(rf_dpaths, fit_desc=None, traceid='traces001', fit_thr=0.5
     rfdf['fwhm_avg'] = rfdf[['fwhm_x', 'fwhm_y']].mean(axis=1)
     rfdf['std_avg'] = rfdf[['std_x', 'std_y']].mean(axis=1)
     rfdf['area'] = np.pi * (rfdf['std_x'] * rfdf['std_y'])
+
+    # Add some additional common info
+    #### Split fx, fy for theta comp
+    rfdf['fx'] = abs(rfdf[['std_x', 'std_y']].max(axis=1) * np.cos(rfdf['theta']))
+    rfdf['fy'] = abs(rfdf[['std_x', 'std_y']].max(axis=1) * np.sin(rfdf['theta']))
+    rfdf['ratio_xy'] = rfdf['std_x']/rfdf['std_y']
+
+    # Convert thetas to [-90, 90]
+    thetas = [(t % np.pi) - np.pi if 
+                    ((np.pi/2.)<t<(np.pi) or (((3./2)*np.pi)<t<2*np.pi)) \
+                    else (t % np.pi) for t in rfdf['theta'].values]
+    rfdf['theta_c'] = thetas
+
 
     return rfdf
 
@@ -719,3 +738,63 @@ def resize_image_to_coords(im, size_deg=30, pix_per_deg=16.05, aspect_scale=1.74
     imr = cv2.resize(im, None, fx=scale_factor, fy=scale_factor)
     
     return imr
+
+
+# --------------------------------------------------------
+# RF analysis functions
+# --------------------------------------------------------
+from matplotlib.patches import Ellipse, Rectangle, Polygon
+from shapely.geometry.point import Point
+from shapely.geometry import box
+from shapely import affinity
+from shapely.ops import cascaded_union
+
+def create_ellipse(center, lengths, angle=0):
+    """
+    create a shapely ellipse. adapted from
+    https://gis.stackexchange.com/a/243462
+    """
+    circ = Point(center).buffer(1)
+    ell = affinity.scale(circ, int(lengths[0]), int(lengths[1]))
+    ellr = affinity.rotate(ell, angle)
+    return ellr
+
+def rfs_to_polys(rffits, sigma_scale=2.35):
+    '''
+    rffits (pd dataframe)
+        index : roi indices (same as gdf.rois)
+        columns : r2, sigma_x, sigma_y, theta, x0, y0 (already converted) 
+    
+    returns list of polygons to do calculations with
+    '''
+    rf_polys=[]
+    for roi in rffits['cell']: #.index.tolist():
+        _, sx, sy, th, x0, y0 = rffits.loc[roi]
+        s_ell = create_ellipse((x0, y0), (abs(sx)*sigma_scale, abs(sy)*sigma_scale), np.rad2deg(th))
+        rf_polys.append((roi, s_ell))
+    return rf_polys
+
+def stimsize_poly(sz, xpos=0, ypos=0):
+    
+    ry_min = ypos - sz/2.
+    rx_min = xpos - sz/2.
+    ry_max = ypos + sz/2.
+    rx_max = xpos + sz/2.
+    s_blobs = box(rx_min, ry_min, rx_max, ry_max)
+    
+    return s_blobs
+
+def get_proportion_overlap(poly_tuple1, poly_tuple2):
+    r1, poly1 = poly_tuple1
+    r2, poly2 = poly_tuple2
+
+    area_of_smaller = min([poly1.area, poly2.area])
+    overlap_area = poly1.intersection(poly2).area
+    perc_overlap = overlap_area/area_of_smaller
+    #print(perc_overlap, overlap_area, area_of_smaller)
+    odf = pd.DataFrame({'row':r1,
+                        'col': r2,
+                        'area_overlap': overlap_area,
+                        'perc_overlap': perc_overlap}, index=[0])
+    
+    return odf
