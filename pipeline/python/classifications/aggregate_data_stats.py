@@ -16,7 +16,7 @@ import seaborn as sns
 import cPickle as pkl
 
 from pipeline.python.classifications import experiment_classes as util
-from pipeline.python.utils import label_figure, natural_keys, reformat_morph_values
+from pipeline.python.utils import label_figure, natural_keys, reformat_morph_values, add_meta_to_df
 
 # ===============================================================
 # Dataset selection
@@ -383,7 +383,39 @@ def get_rf_datasets(filter_by='drop_repeats', excluded_sessions=[], as_dict=True
         return session_dict
     else: 
         return included_sessions
-    
+   
+
+# Screen/stimulus-specific info
+def get_aggregate_stimulation_info(expdf):
+    s_list = []
+    i=0
+    for (visual_area, animalid, session, fovnum), tmpd in expdf.groupby(['visual_area', 'animalid', 'session', 'fovnum']):
+        datakey = '_'.join([session, animalid, 'fov%i' % fovnum])
+        S = util.Session(animalid, session, 'FOV%i_zoom2p0x' % fovnum)
+        xpos, ypos = S.get_stimulus_coordinates()
+        #stimcoords[datakey] = (xpos, ypos) #[(xpos, ypos) for _ in range(tmpd.shape[0])])
+        screenleft, screenright = S.screen['linminW'], S.screen['linmaxW']
+        screenbottom, screentop = S.screen['linminH'], S.screen['linmaxH']
+        screenaspect = S.screen['resolution'][0] / S.screen['resolution'][1]
+        #screeninfo[fovnum] = (screenleft, screenright, screenbottom, screentop, screenaspect) #for _ in range(tmpd.shape[0])])
+        
+        s_ = pd.DataFrame({'xpos': xpos, 'ypos': ypos,
+                      'screen_left': screenleft,
+                      'screen_right': screenright,
+                      'screen_top': screentop,
+                      'screen_bottom': screenbottom,
+                      'screen_xres': S.screen['resolution'][0],
+                      'screen_yres': S.screen['resolution'][1],
+                     }, index=[i])
+        metadict={'visual_area': visual_area, 'animalid': animalid, 
+              'session': session, 'fovnum': fovnum, 'datakey': datakey}
+        s_ = add_meta_to_df(s_, metadict)
+        s_list.append(s_)
+        i+=1
+    screeninfo = pd.concat(s_list, axis=0)
+    return screeninfo
+
+
 # ===============================================================
 # Plotting
 # ===============================================================
