@@ -684,11 +684,12 @@ class Session():
         #self.screen['linmaxW'] = 59.7782
         #self.screen['linminW'] = -59.7782
 
-    def get_stimulus_coordinates(self, update_self=False):
+    def get_stimulus_coordinates(self, experiments=['blobs', 'gratings'],
+                                    update_self=False):
 
         # Get stimulus positions - blobs and gratings only
         xpositions=[]; ypositions=[];
-        for ex in ['blobs', 'gratings']:
+        for ex in experiments: #['blobs', 'gratings']:
             if ex not in self.experiment_list: #.keys():
                 print("[%s|%s] not found: %s" % (self.animalid, self.session, ex))
                 continue
