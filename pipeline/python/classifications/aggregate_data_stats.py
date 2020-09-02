@@ -16,7 +16,7 @@ import seaborn as sns
 import cPickle as pkl
 
 from pipeline.python.classifications import experiment_classes as util
-from pipeline.python.utils import label_figure, natural_keys, reformat_morph_values
+from pipeline.python.utils import label_figure, natural_keys, reformat_morph_values, add_meta_to_df
 
 # ===============================================================
 # Dataset selection
@@ -383,7 +383,68 @@ def get_rf_datasets(filter_by='drop_repeats', excluded_sessions=[], as_dict=True
         return session_dict
     else: 
         return included_sessions
+   
+
+# Screen/stimulus-specific info
+
+def get_stim_info(animalid, session, fov):
+    S = util.Session(animalid, session, fov) #'FOV%i_zoom2p0x' % fovnum)
+    xpos, ypos = S.get_stimulus_coordinates()
+
+    screenleft, screenright = S.screen['linminW'], S.screen['linmaxW']
+    screenbottom, screentop = S.screen['linminH'], S.screen['linmaxH']
+    screenaspect = S.screen['resolution'][0] / S.screen['resolution'][1]
     
+    screen_width_deg = S.screen['linmaxW']*2.
+    screen_height_deg = S.screen['linmaxH']*2.
+
+    pix_per_degW = S.screen['resolution'][0] / screen_width_deg
+    pix_per_degH = S.screen['resolution'][1] / screen_height_deg 
+
+    #print(pix_per_degW, pix_per_degH)
+    pix_per_deg = np.mean([pix_per_degW, pix_per_degH])
+    print("avg pix/deg: %.2f" % pix_per_deg)
+
+    stiminfo = {#'screen_bounds': [screenbottom, screenleft, screentop, screenright],
+                'screen_aspect': screenaspect,
+                'pix_per_deg': pix_per_deg,
+                'stimulus_xpos': xpos,
+                'stimulus_ypos': ypos,
+                'screen_left': -1*screen_width_deg, #screenleft,
+                  'screen_right': screen_width_deg, #screenright,
+                  'screen_top': screen_height_deg, #screentop,
+                  'screen_bottom': -1*screen_height_deg, #screenbottom,
+                  'screen_xres': S.screen['resolution'][0],
+                  'screen_yres': S.screen['resolution'][1]}
+
+    return stiminfo
+
+def get_aggregate_stimulation_info(expdf):
+    s_list = []
+    i=0
+    for (visual_area, animalid, session, fovnum), tmpd in expdf.groupby(['visual_area', 'animalid', 'session', 'fovnum']):
+        datakey = '_'.join([session, animalid, 'fov%i' % fovnum])
+        fov = 'FOV%i_zoom2p0x' % fovnum
+        stiminfo = get_stim_info(animalid, session, fov)
+#        if experiment is not None:
+#            if experiment=='blobs':
+#                E = util.Objects(animalid, session, fov)
+#            elif experiment=='gratings':
+#                E = util.Gratings(animalid, session, fov) 
+#            sdf = E.get_stimuli() 
+#            stiminfo.update({'stimulus_sizes': sorted(sdf['size'].unique())})
+#        
+  
+        s_ = pd.DataFrame(stiminfo, index=[i])
+        metadict={'visual_area': visual_area, 'animalid': animalid, 
+                  'session': session, 'fovnum': fovnum, 'datakey': datakey}
+        s_ = add_meta_to_df(s_, metadict)
+        s_list.append(s_)
+        i+=1
+    screeninfo = pd.concat(s_list, axis=0)
+    return screeninfo
+
+
 # ===============================================================
 # Plotting
 # ===============================================================

@@ -20,6 +20,29 @@ import numpy as np
 from stat import S_IREAD, S_IRGRP, S_IROTH, S_IWRITE, S_IWGRP, S_IWOTH
 from scipy import ndimage
 
+
+# -----------------------------------------------------------------------------
+# Commonly used, generic methods:
+# -----------------------------------------------------------------------------
+def set_threecolor_palette():
+    # colors = ['k', 'royalblue', 'darkorange'] #sns.color_palette(palette='colorblind') #, n_colors=3)
+    # area_colors = {'V1': colors[0], 'Lm': colors[1], 'Li': colors[2]}
+    visual_areas = ['V1', 'Lm', 'Li']
+    colors = ['magenta', 'orange', 'dodgerblue'] #sns.color_palette(palette='colorblind') #, n_colors=3)
+    area_colors = {'V1': colors[0], 'Lm': colors[1], 'Li': colors[2]}
+    return visual_areas, area_colors
+
+def set_plot_params():
+    import pylab as pl
+    #### Plot params
+    pl.rcParams["axes.labelsize"] = 16
+    pl.rcParams["xtick.labelsize"] = 12
+    pl.rcParams["ytick.labelsize"] = 12
+    
+    dpi = 150
+
+    return dpi
+
 # -----------------------------------------------------------------------------
 # Commonly used, generic methods:
 # -----------------------------------------------------------------------------
@@ -63,6 +86,12 @@ def get_screen_dims():
               'deg_per_pixel': (deg_per_pixel_x, deg_per_pixel_y)}
 
     return screen
+
+def add_meta_to_df(cc, vardict):
+    nvals = cc.shape[0]
+    for k, v in vardict.items():
+        cc[k] = [v for _ in np.arange(0, nvals)]
+    return cc
 
 def isnumber(n):
     try:
@@ -146,6 +175,20 @@ def print_elapsed_time(t_start):
 import random
 import pandas as pd
 
+def melt_square_matrix(df, metric_name='value', add_values={}, include_diagonal=False):
+    
+    k = 0 if include_diagonal else 1
+    df = df.where(np.triu(np.ones(df.shape), k=k).astype(np.bool))
+
+    df = df.stack().reset_index()
+    df.columns=['row', 'col', metric_name]
+    
+    if len(add_values) > 0:
+        for k, v in add_values.items():
+            df[k] = [v for _ in np.arange(0, df.shape[0])]
+    
+    return df
+
 def check_counts_per_condition(raw_traces, labels):
     # Check trial counts / condn:
     #print("Checking counts / condition...")
@@ -186,6 +229,12 @@ def reformat_morph_values(sdf):
     sizevals = np.array([round(s, 1) for s in sdf['size'].unique() if s not in ['None', None] and not np.isnan(s)])
     sdf.loc[sdf.morphlevel==-1, 'size'] = pd.Series(sizevals, index=control_ixs)
     sdf['size'] = [round(s, 1) for s in sdf['size'].values]
+    xpos = [x for x in sdf['xpos'].unique() if x is not None]
+    ypos =  [x for x in sdf['ypos'].unique() if x is not None]
+    assert len(xpos)==1 and len(ypos)==1, "More than 1 pos? x: %s, y: %s" % (str(xpos), str(ypos))
+
+    sdf.loc[sdf.morphlevel==-1, 'xpos'] = [xpos[0] for _ in np.arange(0, len(control_ixs))]
+    sdf.loc[sdf.morphlevel==-1, 'ypos'] = [ypos[0] for _ in np.arange(0, len(control_ixs))]
     return sdf
 
 
@@ -206,6 +255,11 @@ def load_run_info(animalid, session, fov, run, traceid='traces001',
 
     return run_info, sdf
    
+
+def zscore_dataframe(xdf):
+    rlist = [r for r in xdf.columns if isnumber(r)]
+    z_xdf = (xdf[rlist]-xdf[rlist].mean()).divide(xdf[rlist].std())
+    return z_xdf
 
 def process_and_save_traces(trace_type='dff',
                             animalid=None, session=None, fov=None, 
