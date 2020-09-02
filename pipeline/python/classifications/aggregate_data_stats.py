@@ -559,6 +559,8 @@ def load_traces(animalid, session, fovnum, curr_exp, traceid='traces001',
         if responsive_cells is None:
             return None, None, None
         traces = exp.data.traces[responsive_cells]
+    else:
+        traces = exp.data.traces
 
     return traces, labels, sdf
 
