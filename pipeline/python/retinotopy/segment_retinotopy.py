@@ -28,6 +28,7 @@ from mpl_toolkits.axes_grid1 import make_axes_locatable
 from pipeline.python.retinotopy import utils as rutils
 from pipeline.python.utils import natural_keys, label_figure, get_screen_dims
 
+from pipeline.python.coregistration import align_fov as coreg
 
 import matplotlib as mpl
 import matplotlib.cm as cmx
@@ -87,6 +88,58 @@ def make_continuous(mapvals):
 
 
 #%%
+def plot_maps(absolute_az, absolute_el, surface_img=None, elev_cutoff=None,
+        cmap='nipy_spectral', vmin=0, vmax=2*np.pi):
+
+    fig, axes = pl.subplots(1,2)
+    ax = axes[0]
+    if surface_img is not None:
+        ax.imshow(surface_img, cmap='gray', origin='upper')
+    im1 = ax.imshow(absolute_az, cmap='nipy_spectral', vmin=vmin, vmax=vmax, 
+                    alpha=0.7, origin='upper')
+
+    ax = axes[1]
+    if surface_img is not None:
+        ax.imshow(surface_img, cmap='gray')
+    im2 = ax.imshow(absolute_el, cmap='nipy_spectral', vmin=vmin, vmax=vmax, 
+                    alpha=0.7, origin='upper')
+
+    cbar1_orientation='horizontal'
+    cbar1_axes = [0.37, 0.85, 0.1, 0.1]
+    cbar2_orientation='vertical'
+    cbar2_axes = [0.8, 0.85, 0.1, 0.1]
+
+    cnorm = mpl.colors.Normalize(vmin=vmin, vmax=vmax)
+    scalarmap = cmx.ScalarMappable(norm=cnorm, cmap='nipy_spectral')
+    print("scaled cmap lim:", scalarmap.get_clim())
+    bounds = np.linspace(vmin, vmax)
+    scalarmap.set_array(bounds)
+
+    cbar2_ax = fig.add_axes(cbar2_axes)
+    cbar2 = fig.colorbar(im2, cax=cbar2_ax, orientation=cbar2_orientation)
+    cbar2.ax.axhline(y=cbar2.norm(vmin*elev_cutoff), color='w', lw=1)
+    cbar2.ax.axhline(y=cbar2.norm(vmax*elev_cutoff), color='w', lw=1)
+    cbar2.ax.axis('off')
+
+
+    cbar1_ax = fig.add_axes(cbar1_axes)
+    cbar1 = fig.colorbar(im1, cax=cbar1_ax, orientation=cbar1_orientation)
+    cbar1.ax.axhline(y=cbar2.norm(vmin*elev_cutoff), color='w', lw=1)
+    cbar1.ax.axhline(y=cbar2.norm(vmax*elev_cutoff), color='w', lw=1)
+    cbar1.ax.axis('off')
+
+    cbar1.outline.set_visible(False)
+    cbar2.outline.set_visible(False)
+
+    #pl.subplots_adjust(top=0.8)
+
+    for ax in axes.flat:
+        ax.axis('off')
+
+    return fig
+
+
+#%%
 
 rootdir = '/n/coxfs01/2p-data'
 animalid = 'JC091' # 'JC076' #'JC091' #'JC059'
@@ -119,7 +172,10 @@ def extract_options(options):
     parser.add_option('--cont', action='store_true', dest='use_cont', default=False, \
                         help="flag to use cont (match aggreg_gradient())")
        
-   
+
+    parser.add_option('--thr', action='store', dest='mag_thr', default=0.0025,
+                    help='pixel threshold for mag-ratio (default: 0.003)')
+
     (options, args) = parser.parse_args(options)
 
     return options
@@ -135,6 +191,7 @@ def main(options):
     run = opts.run
     traceid = opts.traceid
     use_cont = opts.use_cont
+    mag_thr = float(opts.mag_thr)
 
     run_dir = os.path.join(rootdir, animalid, session, fov, run)
     retinoid, RID = rutils.load_retino_analysis_info(animalid, session, fov, 
@@ -142,7 +199,6 @@ def main(options):
 
     data_identifier = '|'.join([animalid, session, fov, run, retinoid])
     print("*** Dataset: %s ***" % data_identifier)
-
 
     #%% # Get processed retino data:
     processed_fpaths = glob.glob(os.path.join(RID['DST'], 'files', '*.h5'))
@@ -152,19 +208,16 @@ def main(options):
     absolute_maps_dir = os.path.join(run_dir, 'retino_analysis', 'absolute_maps')
     if not os.path.exists(absolute_maps_dir):
         os.makedirs(absolute_maps_dir)
-        
-    
+            
     #%% Get condition info for trials:
     mwinfo = rutils.load_mw_info(animalid, session, fov, run)
     # Get run info:
     scaninfo = rutils.get_protocol_info(animalid, session, fov, run=run)
 
-
     print "---------------------------------"
     # Get stimulus info:
     stiminfo, trials_by_cond = rutils.get_retino_stimulus_info(mwinfo, scaninfo)
     print "Trials by condN:", trials_by_cond
-
 
     #%% Get screen info
     screen = get_screen_dims() 
@@ -174,11 +227,10 @@ def main(options):
     screen_bottom = -1*screen['altitude_deg']/2.
     # adjust elevation limit to show only monitor extent    
     elev_cutoff = screen_top / screen_right
+    print("<<<cutoff: %.2f>>>" % elev_cutoff)
 
     #%%
     # tiff_fpaths = glob.glob(os.path.join(RID['PARAMS']['tiff_source'], '*.tif'))
-
-
     conditions_fpath = glob.glob(os.path.join(run_dir, 'paradigm', 'files', 
                                                         'parsed_trials*.json'))[0]
 
@@ -186,7 +238,7 @@ def main(options):
                                                                         conditions_fpath)
     #%%
 
-    mag_thr = 0.0025 # 0.0025
+    #mag_thr = 0.0025 # 0.0025
     d2 = scaninfo['pixels_per_line']
     d1 = scaninfo['lines_per_frame']
 
@@ -269,9 +321,6 @@ def main(options):
     figname = 'acquisview_absolute_and_delay_maps_magthr_%.3f_%s' % (mag_thr, cont_str)
     pl.savefig(os.path.join(absolute_maps_dir, '%s.png' % figname))
 
-
-
-
     #%% Load surface image to plot overlay:
     #surface_fpath = glob.glob(os.path.join(rootdir, animalid, 'macro_maps', '*', '*urf*'))[0]
     #surface_img = cv2.imread(surface_fpath, -1)
@@ -301,58 +350,31 @@ def main(options):
         surface_img = block_reduce(surface_img, (2,2), func=np.mean)
         
     #%%
-
     #vmin = -np.pi
     #vmax = np.pi
-
-    fig, axes = pl.subplots(1,2)
-    ax = axes[0]
-    ax.imshow(surface_img, cmap='gray', origin='upper')
-
-    ax = axes[0]
-    im1 = ax.imshow(absolute_az, cmap='nipy_spectral', vmin=vmin, vmax=vmax, 
-                    alpha=0.7, origin='upper')
-
-    ax = axes[1]
-    ax.imshow(surface_img, cmap='gray')
-    im2 = ax.imshow(absolute_el, cmap='nipy_spectral', vmin=vmin, vmax=vmax, 
-                    alpha=0.7, origin='upper')
-
-    cbar1_orientation='horizontal'
-    cbar1_axes = [0.37, 0.85, 0.1, 0.1]
-    cbar2_orientation='vertical'
-    cbar2_axes = [0.8, 0.85, 0.1, 0.1]
-
-    cnorm = mpl.colors.Normalize(vmin=vmin, vmax=vmax)
-    scalarmap = cmx.ScalarMappable(norm=cnorm, cmap='nipy_spectral')
-    print("scaled cmap lim:", scalarmap.get_clim())
-    bounds = np.linspace(vmin, vmax)
-    scalarmap.set_array(bounds)
-
-    cbar2_ax = fig.add_axes(cbar2_axes)
-    cbar2 = fig.colorbar(im2, cax=cbar2_ax, orientation=cbar2_orientation)
-    cbar2.ax.axhline(y=cbar2.norm(vmin*elev_cutoff), color='w', lw=1)
-    cbar2.ax.axhline(y=cbar2.norm(vmax*elev_cutoff), color='w', lw=1)
-    cbar2.ax.axis('off')
-
-
-    cbar1_ax = fig.add_axes(cbar1_axes)
-    cbar1 = fig.colorbar(im1, cax=cbar1_ax, orientation=cbar1_orientation)
-    cbar1.ax.axhline(y=cbar2.norm(vmin*elev_cutoff), color='w', lw=1)
-    cbar1.ax.axhline(y=cbar2.norm(vmax*elev_cutoff), color='w', lw=1)
-    cbar1.ax.axis('off')
-
-    cbar1.outline.set_visible(False)
-    cbar2.outline.set_visible(False)
-
-    #pl.subplots_adjust(top=0.8)
-
-    for ax in axes.flat:
-        ax.axis('off')
-
+    fig = plot_maps(absolute_az, absolute_el, surface_img=surface_img, 
+                        vmin=vmin, vmax=vmax, elev_cutoff=elev_cutoff)
     label_figure(fig, data_identifier)
     figname = 'acquisview_absolute_maps_magthr_%.3f_%s' % (mag_thr, cont_str)
     pl.savefig(os.path.join(run_dir, 'retino_analysis', 'absolute_maps', '%s.png' % figname))
+
+
+
+    #transf_ = coreg.orient_2p_to_macro(img, zoom_factor=zoom_factor, 
+    #                                    save=False, normalize=True)
+    #scaled_ = coreg.scale_2p_fov(transf_, pixel_size=pixel_size)
+
+    az_transf = coreg.orient_2p_to_macro(absolute_az, zoom_factor=1., 
+                                        save=False, normalize=True)
+    el_transf = coreg.orient_2p_to_macro(absolute_el, zoom_factor=1., 
+                                        save=False, normalize=True)
+    fig = plot_maps(az_transf, el_transf, surface_img=surface_img, 
+                    vmin=vmin, vmax=vmax, elev_cutoff=elev_cutoff)
+    label_figure(fig, data_identifier)
+    figname = 'naturalview_absolute_maps_magthr_%.3f_%s' % (mag_thr, cont_str)
+    pl.savefig(os.path.join(run_dir, 'retino_analysis', 'absolute_maps', '%s.png' % figname))
+
+
 
 
 if __name__=='__main__':
