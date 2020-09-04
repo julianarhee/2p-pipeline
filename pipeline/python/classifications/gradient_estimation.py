@@ -275,7 +275,8 @@ def plot_retinomap_processing(azim_phase_soma, azim_phase_np, azim_smoothed, az_
     ax.set_title('spatial smooth (%i)' % spatial_smooth_fwhm)
 
     ax = axn[0, 3]
-    ax.imshow(az_fill, cmap=cmap, vmin=vmin, vmax=vmax)
+    im0 = ax.imshow(az_fill, cmap=cmap, vmin=vmin, vmax=vmax)
+    pl.colorbar(im0, ax=ax, orientation='horizontal', shrink=0.7)
     ax.set_title('filled NaNs')
 
     ax = axn[1, 0]
@@ -292,7 +293,8 @@ def plot_retinomap_processing(azim_phase_soma, azim_phase_np, azim_smoothed, az_
     ax.imshow(elev_smoothed, cmap=cmap, vmin=vmin, vmax=vmax)
 
     ax = axn[1, 3]
-    ax.imshow(el_fill, cmap=cmap, vmin=vmin, vmax=vmax)
+    im1 = ax.imshow(el_fill, cmap=cmap, vmin=vmin, vmax=vmax)
+    pl.colorbar(im1, ax=ax, orientation='vertical', shrink=0.7)
     ax.set_title('filled NaNs')
 
     pl.subplots_adjust(wspace=0.3, hspace=0.3)
@@ -625,15 +627,17 @@ def extract_options(options):
     parser.add_option('-t', '--traceid', action='store', dest='traceid', default='traces001', \
                       help="name of traces ID [default: traces001]")
        
-    parser.add_option('--new', action='store_true', dest='create_new', default=False, \
-                      help="Flag to refit all rois")
-
+#    parser.add_option('--new', action='store_true', dest='create_new', default=False, \
+#                      help="Flag to refit all rois")
+#
     # data filtering 
     parser.add_option('--thr', action='store', dest='mag_thr', 
             default=0.01, help="magnitude-ratio thr (default: 0.01)")
+    choices_c = ('all', 'either', 'any', 'npmean')
+    default_c = 'either'
     parser.add_option('-p', '--crit', action='store', dest='pass_criterion', 
-            default='all', 
-            help="Criterion for passing cells as responsive (default: 'all', can by 'any' or None)")
+            default=default_c, type='choice', choices=choices_c,
+            help="Criterion for passing cells as responsive, choices: %s. (default: %s" % (choices_c, default_c))
     parser.add_option('--plot-examples', action='store_true', dest='plot_examples', 
             default=False, help="Flag to plot top 3 examples cell traces")
 
@@ -750,19 +754,47 @@ def main(options):
     mean_magratio_values_soma = magratios_soma.mean(axis=1).values 
     mean_magratio_values_np = magratios_np.mean(axis=1).values
 
+    # Filter out bad cells
+    np_mag_thr=0.1
+    conds = [c for c in magratios_soma.columns if c!='blank']
+    if pass_criterion=='all':
+        soma_rois = [i for i in magratios_soma.index \
+                        if all(magratios_soma[conds].loc[i] >= mag_thr)]
+        np_rois = [i for i in magratios_np.index \
+                        if all(magratios_np[conds].loc[i] >= np_mag_thr)]
+    elif pass_criterion=='either':
+        az_conds = [c for c in magratios_soma.columns if c in ['right', 'left']]
+        el_conds = [c for c in magratios_soma.columns if c in ['top', 'bottom']]
+        soma_rois = [i for i in magratios_soma.index \
+                    if (any(magratios_soma[az_conds].loc[i] >= mag_thr) \
+                        and (any(magratios_soma[el_conds].loc[i] >= mag_thr))) ]
+        np_rois = [i for i in magratios_np.index \
+                    if (any(magratios_np[az_conds].loc[i] >= mag_thr) \
+                        and (any(magratios_np[el_conds].loc[i] >= np_mag_thr))) ]
+    elif pass_criterion == 'any':
+        soma_rois = [i for i in magratios_soma.index \
+                        if any(magratios_soma[conds].loc[i] >= mag_thr) ]
+        np_rois = [i for i in magratios_np.index \
+                        if any(magratios_np[conds].loc[i] >= np_mag_thr)]
+    elif pass_criterion=='npmean':
+        np_mag_means = magratios_np.mean(axis=1)
+        pass_np_rlist = np_mag_means[np_mag_means>=np_mag_thr].index.tolist() 
+    else:
+        soma_rois = magratios_soma.index.tolist()
+        np_rois = magratios_np.index.tolist()
+
+    nrois_total = len(mean_magratio_values_soma)
+    if pass_criterion != 'npmean':
+        print("[soma] %i out of %i cells pass mag-ratio thr (thr>=%.3f, %s)" % (len(soma_rois), nrois_total, mag_thr, pass_criterion))
+        print("[np] %i out of %i cells pass mag-ratio thr (thr>=%.3f, %s)" % (len(np_rois), nrois_total, np_mag_thr, pass_criterion))
+
+    # Use NP mean to get roi list
+    mag_thr = np_mag_thr if pass_criterion=='npmean' else mag_thr
+    roi_list = pass_np_rlist if pass_criterion=='npmean' else soma_rois
+    print("%i out of %i cells pass mag-ratio thr (thr>=%.3f, %s)" % (len(roi_list), nrois_total, mag_thr, pass_criterion))
+
     # Sort ROIs by their average mag ratios
     sorted_rois_soma = np.argsort(mean_magratio_values_soma)[::-1]
-
-    # Filter out bad cells
-    conds = [c for c in magratios_soma.columns if c!='blank']
-    if pass_criterion=='all': 
-        roi_list = [i for i in magratios_soma.index if all(magratios_soma[conds].loc[i] > mag_thr)]
-    elif pass_criterion=='any': 
-        roi_list = [i for i in magratios_soma.index if any(magratios_soma[conds].loc[i] > mag_thr)]
-    else:
-        roi_list = magratios_soma.index.tolist()
-    print("... %i out of %i cells pass mag-ratio thr (thr>%.2f)" 
-                % (len(roi_list), len(mean_magratio_values_soma), mag_thr))
     sorted_by_mag = [r for r in sorted_rois_soma if r in roi_list]
 
     # Look at example cell
@@ -771,11 +803,17 @@ def main(options):
                                             plot_rois=sorted_rois_soma[0:3],
                                             dst_dir=curr_dst_dir, data_id=data_id)
       
-  
+ 
+
+    if len(roi_list)==0:
+        print("Exiting...")
+        return None
+
     #%% Get mask info
-    masks_soma, masks_np, zimg = ret_utils.load_soma_and_np_masks(RETID)
     roiid = RETID['PARAMS']['roi_id']
     ds_factor = int(RETID['PARAMS']['downsample_factor'])
+    #if create_all_masks:
+    masks_soma, masks_np, zimg = ret_utils.load_soma_and_np_masks(RETID)
     nrois_total, d1, d2 = masks_soma.shape
     print("... got masks: %s (downsample=%.2f)" % (str(masks_soma.shape), ds_factor))
 
@@ -829,14 +867,16 @@ def main(options):
 
     # Assign phase value to dilated masks
     azim_phase_np, elev_phase_np = get_phase_masks(dilated_masks, phases_np, 
-                                                   average_overlap=average_overlap, 
-                                                   roi_list=roi_list, #None, 
-                                                   use_cont=use_cont, mask_thr=mask_thr)
+                                                average_overlap=average_overlap, 
+                                                roi_list=roi_list, #None, 
+                                                use_cont=use_cont, 
+                                                mask_thr=mask_thr)
 
     azim_phase_soma, elev_phase_soma = get_phase_masks(masks_soma, phases_soma, 
-                                                    average_overlap=average_overlap, 
-                                                    roi_list=roi_list, 
-                                                    use_cont=use_cont, mask_thr=mask_thr)
+                                                average_overlap=average_overlap, 
+                                                roi_list=roi_list, 
+                                                use_cont=use_cont, 
+                                                mask_thr=mask_thr)
 
     #%% Resize image 
     pixel_size = putils.get_pixel_size()
@@ -845,8 +885,10 @@ def main(options):
     print("... pixel size: %s (ds_factor=%.2f)" % (str(pixel_size), ds_factor))
 
     #%% Spatial smooth neuropil dilated masks 
-    azim_smoothed = ret_utils.smooth_neuropil(azim_phase_np, smooth_fwhm=spatial_smooth_fwhm)
-    elev_smoothed = ret_utils.smooth_neuropil(elev_phase_np, smooth_fwhm=spatial_smooth_fwhm)
+    azim_smoothed = ret_utils.smooth_neuropil(azim_phase_np, 
+                                                smooth_fwhm=spatial_smooth_fwhm)
+    elev_smoothed = ret_utils.smooth_neuropil(elev_phase_np, 
+                                                smooth_fwhm=spatial_smooth_fwhm)
 
     if 'zoom1p0x' in fov:
         print("... resizing")
@@ -866,12 +908,14 @@ def main(options):
     #print(az_fill.shape)
 
     # In[43]:
-    fig = plot_retinomap_processing(azim_phase_soma, azim_phase_np, azim_smoothed, az_fill,
-                                   elev_phase_soma, elev_phase_np, elev_smoothed, el_fill, 
+    fig = plot_retinomap_processing(azim_phase_soma, azim_phase_np, 
+                                   azim_smoothed, az_fill,
+                                   elev_phase_soma, elev_phase_np, 
+                                   elev_smoothed, el_fill, 
                                    cmap=cmap_phase, vmin=vmin, vmax=vmax, 
                                    spatial_smooth_fwhm=spatial_smooth_fwhm)
     putils.label_figure(fig, data_id)
-    figname = 'soma_neuropil_dilate-%i_smooth-%i_magthr-%.2f-%s' % (kernel_size, spatial_smooth_fwhm, mag_thr, pass_criterion)
+    figname = 'soma_neuropil_dilate-%i_smooth-%i_%s_magthr-%.3f' % (kernel_size, spatial_smooth_fwhm, pass_criterion, mag_thr )
     pl.savefig(os.path.join(curr_dst_dir, '%s.png' % figname))
 
     #%% ## Calculate gradient on retino map
@@ -882,13 +926,12 @@ def main(options):
     screen_min = -screen_max
 
     img_az = convert_range(az_fill, oldmin=vmin, oldmax=vmax, 
-                            newmin=screen_min, newmax=screen_max) if plot_degrees else az_fill.copy()
+                    newmin=screen_min, newmax=screen_max) if plot_degrees else az_fill.copy()
     img_el = convert_range(el_fill, oldmin=vmin, oldmax=vmax,
-                            newmin=screen_min, newmax=screen_max) if plot_degrees else el_fill.copy()
+                    newmin=screen_min, newmax=screen_max) if plot_degrees else el_fill.copy()
     grad_az = calculate_gradients(img_az)
     grad_el = calculate_gradients(img_el)
     vmin, vmax = (screen_min, screen_max) if plot_degrees else (-np.pi, np.pi)
-    #print(vmin, vmax)
 
     #%% Plot gradients 
     spacing = 200
@@ -899,25 +942,25 @@ def main(options):
     plot_str = 'degrees' if plot_degrees else ''
     fig = plot_retinomap_gradients(grad_az, grad_el, cmap=cmap_phase)
     putils.label_figure(fig, data_id)
-    figname = 'gradients_dilate-%i_smooth-%i_%s_circ_magthr-%.2f-%s' % (kernel_size, spatial_smooth_fwhm, plot_str, mag_thr, pass_criterion)
+    figname = 'gradients_dilate-%i_smooth-%i_%s_%s_magthr-%.3f' % (kernel_size, spatial_smooth_fwhm, plot_str, pass_criterion, mag_thr)
     pl.savefig(os.path.join(curr_dst_dir, '%s.svg' % figname))
     print('-- [f] %s' % figname)
 
     fig = plot_unit_vectors(grad_az, grad_el)
     label_figure(fig, data_id)
     pl.subplots_adjust(left=0.1, wspace=0.5)
-    figname = 'unitvec_dilate-%i_smooth-%i_%s_circ_magthr-%.2f-%s' % (kernel_size, spatial_smooth_fwhm, plot_str, mag_thr, pass_criterion)
+    figname = 'unitvec_dilate-%i_smooth-%i_%s_%s_magthr-%.3f' % (kernel_size, spatial_smooth_fwhm, plot_str, pass_criterion, mag_thr)
     pl.savefig(os.path.join(curr_dst_dir, '%s.svg' % figname))
     print('-- [f] %s' % figname)
 
     # Save gradients
     gradients = {'az': grad_az, 'el': grad_el}
-    grad_fpath = os.path.join(curr_dst_dir, 'gradients.pkl')
+    grad_fpath = os.path.join(curr_dst_dir, 'gradients_%s_thr-%.3f.pkl' % (pass_criterion, mag_thr))
     with open(grad_fpath, 'wb') as f:
         pkl.dump(gradients, f, protocol=pkl.HIGHEST_PROTOCOL)
 
     uvectors = {'az': grad_az['vhat'], 'el': grad_el['vhat']}
-    vec_fpath = os.path.join(curr_dst_dir, 'vectors.pkl')
+    vec_fpath = os.path.join(curr_dst_dir, 'vectors_%s_thr-%.3f.pkl' % (pass_criterion, mag_thr))
     with open(vec_fpath, 'wb') as f:
         pkl.dump(uvectors, f, protocol=pkl.HIGHEST_PROTOCOL)
 
@@ -926,11 +969,11 @@ def main(options):
     projections = get_projection_points(grad_az, grad_el)
 
     d1, d2 = grad_az['image'].shape
-    fig = test_plot_projections(projections, ncyc=10, startcyc=50, imshape=(d1,d2))
+    fig = test_plot_projections(projections, ncyc=5, startcyc=800, imshape=(d1,d2))
     label_figure(fig, data_id)
     pl.subplots_adjust(left=0.1, wspace=0.5)
-    figname = 'test_projections__dilate-center-%i_spatial-smooth-%i_%s_circ_magthr-%.2f-%s' % (kernel_size, spatial_smooth_fwhm, plot_str, mag_thr, pass_criterion)
-    pl.savefig(os.path.join(curr_dst_dir, '%s.svg' % figname))
+    figname = 'test_projections__dilate-center-%i_spatial-smooth-%i_%s_%s_magthr-%.3f' % (kernel_size, spatial_smooth_fwhm, plot_str, pass_criterion, mag_thr )
+    pl.savefig(os.path.join(curr_dst_dir, '%s.png' % figname))
 
     #%% ## Fit linear  
     proj_fit_results = {}
@@ -966,10 +1009,12 @@ def main(options):
 
         d_list.append(d_)
         di += 1
-
     regr_df = pd.concat(d_list, axis=0)
+
     proj_fit_results.update({'projections': projections, 
                              'model': regr_model,
+                             'mag_thr': mag_thr,
+                             'pass_criterion': pass_criterion, 
                              'regr_df': regr_df})
 
     proj_fpath = os.path.join(curr_dst_dir, 'projection_results.pkl')
@@ -977,7 +1022,7 @@ def main(options):
         pkl.dump(proj_fit_results, f, protocol=pkl.HIGHEST_PROTOCOL)
     print(proj_fpath)
     
-    df_fpath = os.path.join(curr_dst_dir, 'projections.pkl')
+    df_fpath = os.path.join(curr_dst_dir, 'projections_%s_thr-%.3f.pkl' % (pass_criterion, mag_thr))
     p_df = {'regr_df': regr_df}
     with open(df_fpath, 'wb') as f:
         pkl.dump(p_df, f, protocol=pkl.HIGHEST_PROTOCOL)
@@ -989,9 +1034,11 @@ def main(options):
 
     label_figure(fig, data_id)
     pl.subplots_adjust(left=0.1, wspace=0.5)
-    figname = 'Proj_versus_Retinopos__dilate-%i_smooth-%i_%s_circ_magthr-%.2f-%s' % (kernel_size, spatial_smooth_fwhm, plot_str, mag_thr, pass_criterion)
+    figname = 'Proj_versus_Retinopos__dilate-%i_smooth-%i_%s_%s-magthr-%.3f' % (kernel_size, spatial_smooth_fwhm, plot_str, pass_criterion, mag_thr )
     pl.savefig(os.path.join(curr_dst_dir, '%s.svg' % figname))
 
+
+    return None
 
 if __name__ == '__main__':
     main(sys.argv[1:])
