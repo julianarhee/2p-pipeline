@@ -593,7 +593,7 @@ def get_roi_stats(animalid, session, fov, exp_name=None, traceid='traces001',
     try:
         curr_stats_dir = os.path.join(curr_traceid_dir, 'summary_stats', responsive_test)
         #results_str = '_thr-%.2f' % responsive_thr if responsive_test=='nstds' else ''
-        stats_fpath = glob.glob(os.path.join(stats_dir, '*results*.pkl'))
+        stats_fpath = glob.glob(os.path.join(curr_stats_dir, '*results*.pkl'))
         #stats_fpath = glob.glob(os.path.join(curr_stats_dir, '*results_*thr-%.2f%*.pkl' % responsive_thr))
         with open(stats_fpath[0], 'rb') as f:
             rstats = pkl.load(f)
