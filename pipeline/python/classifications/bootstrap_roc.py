@@ -417,7 +417,7 @@ def extract_options(options):
     parser.add_option('-t', '--trace-id', action='store', dest='traceid', default='traces001', help="Trace ID for current trace set (created with set_trace_params.py, e.g., traces001, traces020, etc.)")
 
     parser.add_option('-n', '--nproc', action="store",
-                      dest="n_processes", default=2, help="N processes [default: 1]")
+                      dest="n_processes", default=1, help="N processes [default: 1]")
     parser.add_option('-d', '--trace-type', action="store",
                       dest="trace_type", default='corrected', help="Trace type to use for calculating stats [default: corrected]")
 
