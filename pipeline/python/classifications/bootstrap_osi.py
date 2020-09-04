@@ -104,18 +104,17 @@ def get_circular_variance(response_vector, thetas):
 
 def get_gratings_run(animalid, session, fov, traceid='traces001', rootdir='/n/coxfs01/2p-data'):
     
-    fovdir = os.path.join(rootdir, animalid, session, fov)
-    
-    found_dirs = glob.glob(os.path.join(fovdir, '*gratings*', 'traces', '%s*' % traceid, 'data_arrays', 'datasets.npz'))
+    fovdir = os.path.join(rootdir, animalid, session, fov) 
+    found_dirs = glob.glob(os.path.join(fovdir, 'combined_gratings*', 'traces', '%s*' % traceid, 'data_arrays', 'np_subtracted.npz'))
     if int(session) < 20190511:
         return None
     
     try:
-        if any('combined' in d for d in found_dirs):
-            extracted_dir = [d for d in found_dirs if 'combined' in d][0]
-        else:
-            assert len(found_dirs) == 1, "ERROR: [%s|%s|%s|%s] More than 1 gratings experiments found, with no combined!" % (animalid, session, fov, traceid)
-            extracted_dir = found_dirs[0]
+        #if any(['combined' in d for d in found_dirs]):
+        #    extracted_dir = [d for d in found_dirs if 'combined' in d][0]
+        #else:
+        assert len(found_dirs) == 1, "ERROR: [%s|%s|%s|%s] More than 1 gratings experiments found, with no combined!" % (animalid, session, fov, traceid)
+        extracted_dir = found_dirs[0]
     except Exception as e:
         print e
         return None
@@ -663,6 +662,17 @@ def boot_roi_responses_allconfigs(roi_df, sdf, statdf=None, response_type='dff',
         print "Finished:", p
         p.join()
         
+#    except KeyboardInterrupt:
+#        print("**interupt")
+#        pool.terminate()
+#        print("***Terminating!")
+#    finally:
+#        pool.close()
+#        pool.join()
+#
+
+
+
     end_t = time.time() - start_t
     print("--> Elapsed time: {0:.2f}sec".format(end_t))
       
@@ -2332,7 +2342,8 @@ def bootstrap_tuning_curves_and_evaluate(animalid, session, fov, traceid='traces
                                          n_bootstrap_iters=int(n_bootstrap_iters), 
                                          n_resamples = int(n_resamples),
                                          n_intervals_interp=int(n_intervals_interp),
-                                         responsive_test=responsive_test, responsive_thr=responsive_thr, n_stds=n_stds,
+                                         responsive_test=responsive_test, 
+                                         responsive_thr=responsive_thr, n_stds=n_stds,
                                          create_new=create_new, n_processes=n_processes, rootdir=rootdir,
                                          min_cfgs_above=min_cfgs_above, min_nframes_above=min_nframes_above, make_plots=make_plots)
 
