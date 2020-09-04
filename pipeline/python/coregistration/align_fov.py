@@ -72,7 +72,8 @@ def transform_2p_fov(img, pixel_size, zoom_factor=1., normalize=True):
     return scaled_
 
 
-def orient_2p_to_macro(avg, zoom_factor, acquisition_dir='/tmp', channel_ix=0, plot=False, save=True, normalize=True): #,
+def orient_2p_to_macro(avg, zoom_factor, normalize=True, 
+                    acquisition_dir='/tmp', channel_ix=0, plot=False, save=True): #,
                         #xaxis_conversion=2.312, yaxis_conversion=1.904):
     '''
     Does standard Fiji steps:
