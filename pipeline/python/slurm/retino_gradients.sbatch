@@ -1,7 +1,7 @@
 #!/bin/bash
 # retino_gradients.sbatch
 #
-#SBATCH -J retino # A single job name for the array
+#SBATCH -J gradients # A single job name for the array
 #SBATCH -p cox # run on cox gpu to use correct env 
 #SBATCH -n 1 # one core
 #SBATCH -N 1 # on one node
@@ -32,6 +32,7 @@ SESSION="$2"
 FOV="$3"
 EXP="$4"
 TRACEID="$5"
+FILTER="$6"
 
 echo "ANIMALID: ${ANIMALID}"
 echo "SESSION: ${SESSION}"
@@ -49,7 +50,8 @@ echo "SESSION: ${SESSION}"
 #cd ${OUTDIR}
 
 # run processing on raw data
-python /n/coxfs01/2p-pipeline/repos/2p-pipeline/pipeline/python/classifications/gradient_estimation.py -i $ANIMALID -S $SESSION -A $FOV -R $EXP -t $TRACEID -c magenta --plot-examples -p all --thr 0.015 -M ridge #--fit --eval -n 8
+python /n/coxfs01/2p-pipeline/repos/2p-pipeline/pipeline/python/classifications/gradient_estimation.py -i $ANIMALID -S $SESSION -A $FOV -R $EXP -t $TRACEID -c magenta --plot-examples -p $FILTER --thr 0.01 -M ridge 
+
 
 #python /n/coxfs01/2p-pipeline/repos/2p-pipeline/pipeline/python/classifications/evaluate_receptivefield_fits.py -i $ANIMALID -S $SESSION -A $FOV -R $EXP -t $TRACEID -M dff -p 0.5 -c magenta -n 1 --test
 

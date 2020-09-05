@@ -17,6 +17,8 @@ parser.add_argument('-A', '--fov', dest='fov_type', action='store', default='zoo
 parser.add_argument('-E', '--exp', dest='experiment_type', action='store', default='rfs', help='Experiment type (e.g., rfs')
 parser.add_argument('-e', '--email', dest='email', action='store', default='rhee@g.harvard.edu', help='Email to send log files')
 parser.add_argument('-t', '--traceid', dest='traceid', action='store', default=None, help='Traceid to use as reference for selecting retino analysis')
+parser.add_argument('-p', '--pass-crit', dest='pass_criterion', action='store', default='npmean', help='Criterion to use for selecting ROIs for gradient calculation (default: npmean, use only if -E retino)')
+
 
 
 args = parser.parse_args()
@@ -59,6 +61,7 @@ FOV = args.fov_type
 EXP = args.experiment_type
 email = args.email
 traceid = args.traceid
+pass_criterion = args.pass_criterion
 
 # Open log lfile
 sys.stdout = open('loginfo_%s.txt' % EXP, 'w')
@@ -141,7 +144,7 @@ else:
 if len(meta_list)==0:
     fatal("NO FOVs found.")
 
-info("Found %i [%s] datasets to process." % (len(meta_list), EXP))
+info("Found %i [%s] datasets to process (FILTER: %s)." % (len(meta_list), EXP, pass_criterion))
 #for mi, meta in enumerate(meta_list):
 #    info("... %s" % '|'.join(meta))
 
@@ -160,9 +163,9 @@ for (animalid, session, fov, experiment, traceid) in meta_list:
 		-o 'log/{PROCID}.{EXP}.{MTAG}.out' \
 		-e 'log/{PROCID}.{EXP}.{MTAG}.err' \
 		/n/coxfs01/2p-pipeline/repos/2p-pipeline/pipeline/python/slurm/retino_gradients.sbatch \
-		{ANIMALID} {SESSION} {FOV} {EXP} {TRACEID}".format(
+		{ANIMALID} {SESSION} {FOV} {EXP} {TRACEID} {FILTER}".format(
                         PROCID=piper, MTAG=mtag, ANIMALID=animalid,
-                        SESSION=session, FOV=fov, EXP=experiment, TRACEID=traceid) #pid_file)
+                        SESSION=session, FOV=fov, EXP=experiment, TRACEID=traceid, FILTER=pass_criterion) #pid_file)
     #info("Submitting PROCESSPID job with CMD:\n%s" % cmd)
     status, joboutput = commands.getstatusoutput(cmd)
     jobnum = joboutput.split(' ')[-1]
