@@ -243,7 +243,7 @@ def get_phase_masks(masks, phases, average_overlap=True, roi_list=None,
 def plot_retinomap_processing(azim_phase_soma, azim_phase_np, azim_smoothed, az_fill,
                              elev_phase_soma, elev_phase_np, elev_smoothed, el_fill, 
                              cmap='nipy_spectral', vmin=None, vmax=None, 
-                             spatial_smooth_fwhm=7):
+                             smooth_fwhm=7):
     '''
     Plot all steps, from soma and NP masks, to dilating/smoothing/etc.
     '''
@@ -272,7 +272,7 @@ def plot_retinomap_processing(azim_phase_soma, azim_phase_np, azim_smoothed, az_
 
     ax = axn[0, 2]
     ax.imshow(azim_smoothed, cmap=cmap, vmin=vmin, vmax=vmax)
-    ax.set_title('spatial smooth (%i)' % spatial_smooth_fwhm)
+    ax.set_title('spatial smooth (%i)' % smooth_fwhm)
 
     ax = axn[0, 3]
     im0 = ax.imshow(az_fill, cmap=cmap, vmin=vmin, vmax=vmax)
@@ -300,6 +300,46 @@ def plot_retinomap_processing(azim_phase_soma, azim_phase_np, azim_smoothed, az_
     pl.subplots_adjust(wspace=0.3, hspace=0.3)
 
     return fig
+
+
+def plot_retinomap_processing_pixels(filt_az, azim_smoothed, az_fill,
+                                    filt_el, elev_smoothed, el_fill,
+                                    cmap_phase='nipy_spectral', 
+                                    vmin=-np.pi, vmax=np.pi,
+                                    smooth_fwhm=7):
+
+    fig, axn = pl.subplots(2,3, figsize=(10,6))
+
+    ax = axn[0,0]
+    ax.imshow(filt_az, cmap=cmap_phase, vmin=vmin, vmax=vmax)
+    ax.set_ylabel('Azimuth')
+
+    ax = axn[0, 1]
+    ax.imshow(azim_smoothed, cmap=cmap_phase, vmin=vmin, vmax=vmax)
+    ax.set_title('spatial smooth (%i)' % smooth_fwhm)
+
+    ax = axn[0, 2]
+    im0 = ax.imshow(az_fill, cmap=cmap_phase) #, vmin=vmin, vmax=vmax)
+    ax.set_title('filled NaNs')
+    pl.colorbar(im0, ax=ax, orientation='horizontal', shrink=0.7)
+    #ax.imshow(azim_soma_r, cmap=cmap_phase, vmin=vmin, vmax=vmax)
+
+    ax = axn[1, 0]
+    ax.imshow(filt_el, cmap=cmap_phase, vmin=vmin, vmax=vmax)
+    ax.set_ylabel('Altitude')
+
+    ax = axn[1, 1]
+    ax.imshow(elev_smoothed, cmap=cmap_phase, vmin=vmin, vmax=vmax)
+
+    ax = axn[1, 2]
+    im1= ax.imshow(el_fill, cmap=cmap_phase) #, vmin=vmin, vmax=vmax)
+    ax.set_title('filled NaNs')
+    pl.colorbar(im1, ax=ax, orientation='vertical', shrink=0.7)
+
+    pl.subplots_adjust(wspace=0.3, hspace=0.3)
+
+    return fig
+
 
 # Gradient functions
 def calculate_gradients(img):
@@ -599,7 +639,7 @@ plot_examples = True
 # plotting
 cmap_name = 'nic_Edge'
 zero_center = True
-spatial_smooth_fwhm = 7 #21
+smooth_fwhm = 7 #21
 
 desired_radius_um = 10.0 #20.0
 regr_plot_spacing=200
@@ -607,86 +647,17 @@ regr_line_color='magenta'
 
 
 
-def extract_options(options):
+
+def roi_gradients(animalid, session, fov, retino_run='retino_run1', 
+                traceid='traces001', mag_thr=0.01, pass_criterion='all',
+                plot_examples=True, cmap='nipy_spectral', 
+                smooth_fwhm=7, rootdir='/n/coxfs01/2p-data'):
+
+                #desired_radius_um=10, regr_plot_spacing=200,
+                #regr_line_color='magenta', zero_center=True, regr_model='ols',
+                #rootdir='/n/coxfs01/2p-data'):
     
-    parser = optparse.OptionParser()
-
-    parser.add_option('-D', '--root', action='store', dest='rootdir', 
-                      default='/n/coxfs01/2p-data',\
-                      help='data root dir [default: /n/coxfs01/2pdata]')
-    parser.add_option('-i', '--animalid', action='store', dest='animalid', 
-                        default='', help='Animal ID')
-
-    # Set specific session/run for current animal:
-    parser.add_option('-S', '--session', action='store', dest='session', default='', \
-                      help='session dir (format: YYYMMDD_ANIMALID')
-    parser.add_option('-A', '--fov', action='store', dest='fov', default='FOV1_zoom2p0x', \
-                      help="acquisition folder (ex: 'FOV1_zoom3x') [default: FOV1_zoom2p0x]")
-    parser.add_option('-R', '--run', action='store', dest='run', default='retino_run1', \
-                      help="name of run (default: retino_run1")
-    parser.add_option('-t', '--traceid', action='store', dest='traceid', default='traces001', \
-                      help="name of traces ID [default: traces001]")
-       
-#    parser.add_option('--new', action='store_true', dest='create_new', default=False, \
-#                      help="Flag to refit all rois")
-#
-    # data filtering 
-    parser.add_option('--thr', action='store', dest='mag_thr', 
-            default=0.01, help="magnitude-ratio thr (default: 0.01)")
-    choices_c = ('all', 'either', 'any', 'npmean')
-    default_c = 'either'
-    parser.add_option('-p', '--crit', action='store', dest='pass_criterion', 
-            default=default_c, type='choice', choices=choices_c,
-            help="Criterion for passing cells as responsive, choices: %s. (default: %s" % (choices_c, default_c))
-    parser.add_option('--plot-examples', action='store_true', dest='plot_examples', 
-            default=False, help="Flag to plot top 3 examples cell traces")
-
-    # plotting
-    parser.add_option('--cmap', action='store_true', dest='cmap', 
-            default='nic_Edge', help="Colormap (default: nic_Edge)")
-    parser.add_option('--plot-spacing', action='store', dest='regr_plot_spacing', 
-            default=200, help="Plot every N points for regression (default: 200)")
-    parser.add_option('-c', '--plot-color', action='store', dest='regr_line_color', 
-            default='magenta', help="Plot color for regression line (default: magenta)")
-
-    
-    parser.add_option('-s', '--spatial', action='store', dest='spatial_smooth_fwhm', 
-            default=7.0, help="FWHM for spatial smoothing (default: 7)")
-    parser.add_option('-d', '--dilate', action='store', dest='dilate_um', 
-            default=10.0, help="Desired radius for dilation (default: 10.0 um)")
-    parser.add_option('-M', '--model', action='store', dest='regr_model', 
-            default='ridge', help="Desired radius for dilation (default: ridge)")
-
-    
-    (options, args) = parser.parse_args(options)
-
-    return options
-
-
-
-def main(options):
-
-    opts = extract_options(options)
-    rootdir=opts.rootdir
-    animalid=opts.animalid
-    session=opts.session
-    fov=opts.fov
-    retinorun=opts.run
-    traceid=opts.traceid
-    mag_thr=float(opts.mag_thr)
-    pass_criterion=opts.pass_criterion    
-
-    plot_examples=opts.plot_examples
-    cmap_name=opts.cmap
-
-    spatial_smooth_fwhm=opts.spatial_smooth_fwhm
-    desired_radius_um=float(opts.dilate_um)
-    regr_plot_spacing=int(opts.regr_plot_spacing)
-    regr_line_color=opts.regr_line_color 
-    zero_center=True
-   
-    regr_model = opts.regr_model
-
+                
     #%% Load data metainfo
     run_dir = os.path.join(rootdir, animalid, session, fov, retinorun)
     RETID = ret_utils.load_retinoanalysis(run_dir, traceid)
@@ -702,7 +673,8 @@ def main(options):
     trials_by_cond = scaninfo['trials']
 
     # Set current animal's retino output dir
-    curr_dst_dir = os.path.join(analysis_dir, 'retino-structure')
+    #curr_dst_dir = os.path.join(analysis_dir, 'retino-structure')
+    curr_dst_dir = os.path.join(run_dir, 'retino_analysis', 'retino_structure')
     if not os.path.exists(curr_dst_dir):
         os.makedirs(curr_dst_dir)
     print("--- Saving output to:\n %s" % curr_dst_dir)
@@ -711,16 +683,16 @@ def main(options):
     old_dir = os.path.join(curr_dst_dir, 'tests')
     if not os.path.exists(old_dir):
         os.makedirs(old_dir)
-    oldimgs = [i for i in os.listdir(curr_dst_dir) if os.path.splitext(i)[1] in ['.svg','.png', '.pkl']]
+    oldimgs = [i for i in os.listdir(curr_dst_dir) \
+                    if os.path.splitext(i)[1] in ['.svg','.png', '.pkl']]
     for i in oldimgs:
         shutil.move(os.path.join(curr_dst_dir, i), os.path.join(old_dir, i))
 
     # Load colormap
     screen, cmap_phase = ret_utils.get_retino_legends(cmap_name=cmap_name, 
                                                       zero_center=zero_center,
-                                                      return_cmap=True, dst_dir=curr_dst_dir)  
-
-
+                                                      return_cmap=True, 
+                                                      dst_dir=curr_dst_dir)  
     #%% Process traces
     # Load raw and process traces -- returns average trace for condition
     np_traces = ret_utils.load_traces(animalid, session, fov, run=retinorun,
@@ -801,9 +773,7 @@ def main(options):
     if plot_examples:
         ret_utils.plot_some_example_traces(soma_traces, np_traces, 
                                             plot_rois=sorted_rois_soma[0:3],
-                                            dst_dir=curr_dst_dir, data_id=data_id)
-      
- 
+                                            dst_dir=curr_dst_dir, data_id=data_id) 
 
     if len(roi_list)==0:
         print("Exiting...")
@@ -886,9 +856,9 @@ def main(options):
 
     #%% Spatial smooth neuropil dilated masks 
     azim_smoothed = ret_utils.smooth_neuropil(azim_phase_np, 
-                                                smooth_fwhm=spatial_smooth_fwhm)
+                                                smooth_fwhm=smooth_fwhm)
     elev_smoothed = ret_utils.smooth_neuropil(elev_phase_np, 
-                                                smooth_fwhm=spatial_smooth_fwhm)
+                                                smooth_fwhm=smooth_fwhm)
 
     if 'zoom1p0x' in fov:
         print("... resizing")
@@ -913,12 +883,287 @@ def main(options):
                                    elev_phase_soma, elev_phase_np, 
                                    elev_smoothed, el_fill, 
                                    cmap=cmap_phase, vmin=vmin, vmax=vmax, 
-                                   spatial_smooth_fwhm=spatial_smooth_fwhm)
+                                   smooth_fwhm=smooth_fwhm)
     putils.label_figure(fig, data_id)
-    figname = 'soma_neuropil_dilate-%i_smooth-%i_%s_magthr-%.3f' % (kernel_size, spatial_smooth_fwhm, pass_criterion, mag_thr )
+    figname = 'soma_neuropil_dilate-%i_smooth-%i_%s_magthr-%.3f' % (kernel_size, smooth_fwhm, pass_criterion, mag_thr )
     pl.savefig(os.path.join(curr_dst_dir, '%s.png' % figname))
 
+    params={'dst_dir':curr_dst_dir,
+            'data_id': data_id,
+            'mag_thr': mag_thr,
+            'pass_criterion': pass_criterion,
+            'vmin': vmin, 
+            'vmax': vmax,
+            'smooth_fwhm': smooth_fwhm,
+            'd1': d1, 'd2': d2,
+            'pixel_size': pixel_size,
+            'kernel_size': kernel_size,
+            'retinoid': retinoid,
+            'zimg': zimg_r}
+
+    return az_fill, el_fill, params, RETID
+
+
+def pixel_gradients(animalid, session, fov, retino_run='retino_run1', 
+                traceid='traces001', mag_thr=0.003,
+                cmap='nipy_spectral', smooth_fwhm=7, 
+                rootdir='/n/coxfs01/2p-data'): 
+
+                #desired_radius_um=10, regr_plot_spacing=200,
+                #regr_line_color='magenta', zero_center=True, regr_model='ols',
+                #rootdir='/n/coxfs01/2p-data'): 
+                
+    #%% Load data metainfo
+    retinoid, RETID = ret_utils.load_retino_analysis_info(animalid, 
+                            session, fov, retinorun, traceid, use_pixels=True)
+    data_id = '_'.join([animalid, session, fov, retinorun, retinoid])
+    print("DATA ID: %s" % data_id)
+
+    # Load MW info and SI info
+    mwinfo = ret_utils.load_mw_info(animalid, session, fov, retinorun)
+    scaninfo = ret_utils.get_protocol_info(animalid, session, fov, run=retinorun) 
+    trials_by_cond = scaninfo['trials']
+
+    # Set current animal's retino output dir
+    #curr_dst_dir = os.path.join(RETID['DST'], 'retino-structure')
+    run_dir = os.path.join(rootdir, animalid, session, fov, retino_run)
+    curr_dst_dir = os.path.join(run_dir, 'retino_analysis', 'retino_structure')
+    if not os.path.exists(curr_dst_dir):
+            os.makedirs(curr_dst_dir)
+            print("Saving output to:\n %s" % curr_dst_dir)
+
+
+    # Move old stuff
+    old_dir = os.path.join(curr_dst_dir, 'tests')
+    if not os.path.exists(old_dir):
+        os.makedirs(old_dir)
+    oldimgs = [i for i in os.listdir(curr_dst_dir) \
+                    if os.path.splitext(i)[1] in ['.svg','.png', '.pkl']]
+    for i in oldimgs:
+        shutil.move(os.path.join(curr_dst_dir, i), os.path.join(old_dir, i))
+
+    # Load colormap
+    screen, cmap_phase = ret_utils.get_retino_legends(cmap_name=cmap_name, 
+                                                      zero_center=zero_center,
+                                                      return_cmap=True, 
+                                                      dst_dir=curr_dst_dir)  
+    #%% Get retino maps from pixel analysis
+    magratio, phase, trials_by_cond = ret_utils.fft_results_by_trial(RETID)
+    d2 = scaninfo['pixels_per_line']
+    d1 = scaninfo['lines_per_frame']
+    ds_factor = int(RETID['PARAMS']['downsample_factor'])
+
+    abs_az, abs_el, delay_az, delay_el = ret_utils.absolute_maps_from_conds(
+                                                magratio, phase, trials_by_cond,
+                                                mag_thr=mag_thr, dims=(d1, d2),
+                                                plot_conditions=False, 
+                                                ds_factor=ds_factor)
+    vmin, vmax = (-np.pi, np.pi)
+
+    # Shift delay maps to match phase map range
+    delay_az_shift = ret_utils.convert_values(delay_az, newmin=-np.pi, 
+                                            newmax=np.pi, oldmin=0, oldmax=2*np.pi)
+    delay_el_shift = ret_utils.convert_values(delay_el, newmin=-np.pi, 
+                                            newmax=np.pi, oldmin=0, oldmax=2*np.pi)
+
+    # Plot absolute/delay maps (inputs for gradient calc)
+    fig = ret_utils.plot_phase_and_delay_maps(abs_az, abs_el, 
+                                        delay_az_shift, delay_el_shift,
+                                        cmap=cmap_phase, vmin=vmin, vmax=vmax)
+    putils.label_figure(fig, data_id)
+    pl.savefig(os.path.join(curr_dst_dir, 'input_maps.svg'))
+    pl.close()
+
+    # Filter phase maps for only where delay map is close to 0  
+    filt_az = np.where(abs(delay_az_shift)<1, abs_az, np.nan)
+    filt_el = np.where(abs(delay_el_shift)<1, abs_el, np.nan)
+
+
+    # measured pixel size: (2.3, 1.9)
+    # want to dilate by ~9.52380952381
+
+    #%% Resize image 
+    pixel_size = putils.get_pixel_size()
+    pixel_size = (pixel_size[0]*ds_factor, pixel_size[1]*ds_factor)
+    #zimg_r = coreg.transform_2p_fov(zimg, pixel_size)
+    print("... pixel size: %s (ds_factor=%.2f)" % (str(pixel_size), ds_factor))
+
+    #%% Spatial smooth neuropil dilated masks 
+    azim_smoothed = ret_utils.smooth_neuropil(filt_az, smooth_fwhm=smooth_fwhm)
+    elev_smoothed = ret_utils.smooth_neuropil(filt_el, smooth_fwhm=smooth_fwhm)
+    # if 'zoom1p0x' in fov:
+    #     print("... resizing")
+    #     azim_smoothed = cv2.resize(azim_smoothed, (new_d1, new_d2))
+    #     elev_smoothed = cv2.resize(elev_smoothed, (new_d1, new_d2))
+    azim_smoothed = fill_and_smooth_nans(azim_smoothed)
+    elev_smoothed = fill_and_smooth_nans(elev_smoothed)
+
+    # Transform FOV to match widefield
+    azim_r = coreg.transform_2p_fov(azim_smoothed, pixel_size, normalize=False)
+    elev_r = coreg.transform_2p_fov(elev_smoothed, pixel_size, normalize=False)
+    print(azim_r[~np.isnan(azim_r)].min(), azim_r[~np.isnan(azim_r)].max())
+    print(elev_r[~np.isnan(elev_r)].min(), elev_r[~np.isnan(elev_r)].max())
+
+    az_fill = azim_r.copy()
+    el_fill = elev_r.copy()
+
+    vmin, vmax = (-np.pi, np.pi)
+
+    # In[43]:
+    fig = plot_retinomap_processing_pixels(filt_az, azim_smoothed, az_fill,
+                                           filt_el, elev_smoothed, el_fill, 
+                                           cmap_phase=cmap_phase, 
+                                           vmin=vmin, vmax=vmax, 
+                                           smooth_fwhm=smooth_fwhm)
+    putils.label_figure(fig, data_id)
+    figname = 'pixelmaps_smooth-%i_magthr-%.3f' % (smooth_fwhm, mag_thr )
+    pl.savefig(os.path.join(curr_dst_dir, '%s.png' % figname))
+
+    params={'dst_dir':curr_dst_dir,
+            'data_id': data_id,
+            'mag_thr': mag_thr,
+            'vmin': vmin, 
+            'vmax': vmax,
+            'pixel_size': pixel_size,
+            'smooth_fwhm': smooth_fwhm,
+            'd1': d1, 'd2': d2,
+            'retinoid': retinoid}
+
+    return az_fill, el_fill, params, RETID
+
+
+
+def extract_options(options):
+    
+    parser = optparse.OptionParser()
+
+    parser.add_option('-D', '--root', action='store', dest='rootdir', 
+                      default='/n/coxfs01/2p-data',\
+                      help='data root dir [default: /n/coxfs01/2pdata]')
+    parser.add_option('-i', '--animalid', action='store', dest='animalid', 
+                        default='', help='Animal ID')
+
+    # Set specific session/run for current animal:
+    parser.add_option('-S', '--session', action='store', dest='session', default='', \
+                      help='session dir (format: YYYMMDD_ANIMALID')
+    parser.add_option('-A', '--fov', action='store', dest='fov', default='FOV1_zoom2p0x', \
+                      help="acquisition folder (ex: 'FOV1_zoom3x') [default: FOV1_zoom2p0x]")
+    parser.add_option('-R', '--run', action='store', dest='run', default='retino_run1', \
+                      help="name of run (default: retino_run1")
+    parser.add_option('-t', '--traceid', action='store', dest='traceid', default='traces001', \
+                      help="name of traces ID [default: traces001]")
+       
+#    parser.add_option('--new', action='store_true', dest='create_new', default=False, \
+#                      help="Flag to refit all rois")
+#
+    # data filtering 
+    parser.add_option('--thr', action='store', dest='mag_thr', 
+            default=0.01, help="magnitude-ratio thr (default: 0.01)")
+    choices_c = ('all', 'either', 'any', 'npmean')
+    default_c = 'either'
+    parser.add_option('-p', '--crit', action='store', dest='pass_criterion', 
+            default=default_c, type='choice', choices=choices_c,
+            help="Criterion for passing cells as responsive, choices: %s. (default: %s" % (choices_c, default_c))
+    parser.add_option('--plot-examples', action='store_true', dest='plot_examples', 
+            default=False, help="Flag to plot top 3 examples cell traces")
+
+    # plotting
+    parser.add_option('--cmap', action='store_true', dest='cmap', 
+            default='nic_Edge', help="Colormap (default: nic_Edge)")
+    parser.add_option('--plot-spacing', action='store', dest='regr_plot_spacing', 
+            default=200, help="Plot every N points for regression (default: 200)")
+    parser.add_option('-c', '--plot-color', action='store', dest='regr_line_color', 
+            default='magenta', help="Plot color for regression line (default: magenta)")
+
+    
+    parser.add_option('-s', '--smooth', action='store', dest='smooth_fwhm', 
+            default=7.0, help="FWHM for spatial smoothing (default: 7)")
+    parser.add_option('-d', '--dilate', action='store', dest='dilate_um', 
+            default=10.0, help="Desired radius for dilation (default: 10.0 um)")
+    parser.add_option('-M', '--model', action='store', dest='regr_model', 
+            default='ridge', help="Desired radius for dilation (default: ridge)")
+    parser.add_option('--pixels', action='store', dest='use_pixels', 
+            default=False, help="Use pixel maps to calculate gradients (Note: make sure mag_thr is set properly)")
+   
+    (options, args) = parser.parse_args(options)
+
+    return options
+
+
+
+
+def main(options):
+
+    opts = extract_options(options)
+    rootdir=opts.rootdir
+    animalid=opts.animalid
+    session=opts.session
+    fov=opts.fov
+    retinorun=opts.run
+    traceid=opts.traceid
+    mag_thr=float(opts.mag_thr)
+    pass_criterion=opts.pass_criterion    
+
+    plot_examples=opts.plot_examples
+    cmap_name=opts.cmap
+
+    smooth_fwhm=opts.smooth_fwhm
+    desired_radius_um=float(opts.dilate_um)
+    regr_plot_spacing=int(opts.regr_plot_spacing)
+    regr_line_color=opts.regr_line_color 
+    zero_center=True
+   
+    regr_model = opts.regr_model
+
+    use_pixels = opts.use_pixels
+
+               
+
+    if use_pixels:
+        az_fill, el_fill, params, RETID = pixel_gradients(animalid, session, fov,
+                            retino_run=retinorun, traceid=traceid, 
+                            mag_thr=mag_thr, cmap=cmap_name, 
+                            smooth_fwhm=smooth_fwhm)                
+                
+        vmin, vmax = (params['vmin'], params['vmax'])
+        smooth_fwhm = params['smooth_fwhm']
+        mag_thr = params['mag_thr']
+        curr_dst_dir = params['dst_dir']
+        data_id = params['data_id']
+
+        figname_str = 'pixels_magthr-%.3f' % (mag_thr)
+        gradient_source = 'pixels-%.3f' % (mag_thr)
+    else: 
+        az_fill, el_fill, params, RETID = roi_gradients(animalid, session, fov, 
+                            retino_run=retinorun, traceid=traceid, 
+                            mag_thr=mag_thr, pass_criterion=pass_criterion,
+                            plot_examples=plot_examples, cmap=cmap_name, 
+                            smooth_fwhm=smooth_fwhm) 
+#                            desired_radius_um=desired_radius_um,
+#                            regr_plot_spacing=regr_plot_spacing,
+#                            regr_line_color=regr_line_color, zero_center=True, 
+#                            regr_model=regr_model) 
+#        
+        vmin, vmax = (params['vmin'], params['vmax'])
+        kernel_size = params['kernel_size']
+        smooth_fwhm = params['smooth_fwhm']
+        pass_criterion = params['pass_criterion']
+        mag_thr = params['mag_thr']
+        curr_dst_dir = params['dst_dir']
+        data_id = params['data_id']
+
+        figname_str = 'dilate-%i_smooth-%i_%s_magthr-%.3f' % (kernel_size, smooth_fwhm, pass_criterion, mag_thr)
+        gradient_source = '%s_thr-%.3f' % (pass_criterion, mag_thr)
+
+    # Get colormap
+    screen, cmap_phase = ret_utils.get_retino_legends(cmap_name=cmap_name, 
+                                                  zero_center=zero_center,
+                                                  return_cmap=True, 
+                                                  dst_dir=curr_dst_dir)  
+
+    # -----------------------------------------------
     #%% ## Calculate gradient on retino map
+    # ------------------------------------------------
     # Convert to degrees
     plot_degrees = True
     screen = putils.get_screen_dims()
@@ -926,9 +1171,11 @@ def main(options):
     screen_min = -screen_max
 
     img_az = convert_range(az_fill, oldmin=vmin, oldmax=vmax, 
-                    newmin=screen_min, newmax=screen_max) if plot_degrees else az_fill.copy()
+                            newmin=screen_min, newmax=screen_max) \
+                                    if plot_degrees else az_fill.copy()
     img_el = convert_range(el_fill, oldmin=vmin, oldmax=vmax,
-                    newmin=screen_min, newmax=screen_max) if plot_degrees else el_fill.copy()
+                            newmin=screen_min, newmax=screen_max) \
+                                    if plot_degrees else el_fill.copy()
     grad_az = calculate_gradients(img_az)
     grad_el = calculate_gradients(img_el)
     vmin, vmax = (screen_min, screen_max) if plot_degrees else (-np.pi, np.pi)
@@ -942,25 +1189,26 @@ def main(options):
     plot_str = 'degrees' if plot_degrees else ''
     fig = plot_retinomap_gradients(grad_az, grad_el, cmap=cmap_phase)
     putils.label_figure(fig, data_id)
-    figname = 'gradients_dilate-%i_smooth-%i_%s_%s_magthr-%.3f' % (kernel_size, spatial_smooth_fwhm, plot_str, pass_criterion, mag_thr)
+    
+    figname = 'gradients_%s__%s' % (plot_str, figname_str)
     pl.savefig(os.path.join(curr_dst_dir, '%s.svg' % figname))
     print('-- [f] %s' % figname)
 
     fig = plot_unit_vectors(grad_az, grad_el)
     label_figure(fig, data_id)
     pl.subplots_adjust(left=0.1, wspace=0.5)
-    figname = 'unitvec_dilate-%i_smooth-%i_%s_%s_magthr-%.3f' % (kernel_size, spatial_smooth_fwhm, plot_str, pass_criterion, mag_thr)
+    figname = 'unitvec_%s__%s' % (plot_str, figname_str)
     pl.savefig(os.path.join(curr_dst_dir, '%s.svg' % figname))
     print('-- [f] %s' % figname)
 
     # Save gradients
     gradients = {'az': grad_az, 'el': grad_el}
-    grad_fpath = os.path.join(curr_dst_dir, 'gradients_%s_thr-%.3f.pkl' % (pass_criterion, mag_thr))
+    grad_fpath = os.path.join(curr_dst_dir, 'gradients_%s.pkl' % (gradient_source))
     with open(grad_fpath, 'wb') as f:
         pkl.dump(gradients, f, protocol=pkl.HIGHEST_PROTOCOL)
 
     uvectors = {'az': grad_az['vhat'], 'el': grad_el['vhat']}
-    vec_fpath = os.path.join(curr_dst_dir, 'vectors_%s_thr-%.3f.pkl' % (pass_criterion, mag_thr))
+    vec_fpath = os.path.join(curr_dst_dir, 'vectors_%s.pkl' % (gradient_source))
     with open(vec_fpath, 'wb') as f:
         pkl.dump(uvectors, f, protocol=pkl.HIGHEST_PROTOCOL)
 
@@ -972,7 +1220,7 @@ def main(options):
     fig = test_plot_projections(projections, ncyc=5, startcyc=800, imshape=(d1,d2))
     label_figure(fig, data_id)
     pl.subplots_adjust(left=0.1, wspace=0.5)
-    figname = 'test_projections__dilate-center-%i_spatial-smooth-%i_%s_%s_magthr-%.3f' % (kernel_size, spatial_smooth_fwhm, plot_str, pass_criterion, mag_thr )
+    figname = 'test_projections__%s' % (figname_str) 
     pl.savefig(os.path.join(curr_dst_dir, '%s.png' % figname))
 
     #%% ## Fit linear  
@@ -982,8 +1230,6 @@ def main(options):
     for i, cond in enumerate(['az', 'el']):
         proj_v = projections['proj_%s' % cond].copy()
         ret_v = projections['retino_%s' % cond].copy()
-        #xv = xv[~np.isnan(yv)]
-        #yv = yv[~np.isnan(yv)]
         fitv, regr = evalrf.fit_linear_regr(proj_v[~np.isnan(ret_v)], 
                                             ret_v[~np.isnan(ret_v)],
                                             return_regr=True, model=regr_model)
@@ -1017,12 +1263,12 @@ def main(options):
                              'pass_criterion': pass_criterion, 
                              'regr_df': regr_df})
 
-    proj_fpath = os.path.join(curr_dst_dir, 'projection_results.pkl')
+    proj_fpath = os.path.join(curr_dst_dir, 'projection_results_%s.pkl' % gradient_source)
     with open(proj_fpath, 'wb') as f:
         pkl.dump(proj_fit_results, f, protocol=pkl.HIGHEST_PROTOCOL)
     print(proj_fpath)
     
-    df_fpath = os.path.join(curr_dst_dir, 'projections_%s_thr-%.3f.pkl' % (pass_criterion, mag_thr))
+    df_fpath = os.path.join(curr_dst_dir, 'projections_%s.pkl' % (gradient_source))
     p_df = {'regr_df': regr_df}
     with open(df_fpath, 'wb') as f:
         pkl.dump(p_df, f, protocol=pkl.HIGHEST_PROTOCOL)
@@ -1034,7 +1280,7 @@ def main(options):
 
     label_figure(fig, data_id)
     pl.subplots_adjust(left=0.1, wspace=0.5)
-    figname = 'Proj_versus_Retinopos__dilate-%i_smooth-%i_%s_%s-magthr-%.3f' % (kernel_size, spatial_smooth_fwhm, plot_str, pass_criterion, mag_thr )
+    figname = 'Proj_versus_Retinopos__%s' % (figname_str)
     pl.savefig(os.path.join(curr_dst_dir, '%s.svg' % figname))
 
 
