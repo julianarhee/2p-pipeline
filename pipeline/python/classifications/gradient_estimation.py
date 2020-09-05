@@ -777,7 +777,7 @@ def main(options):
         np_rois = [i for i in magratios_np.index \
                         if any(magratios_np[conds].loc[i] >= np_mag_thr)]
     elif pass_criterion=='npmean':
-        np_mag_means = magratios_np.mean(axis=1)
+        np_mag_means = magratios_np[conds].mean(axis=1)
         pass_np_rlist = np_mag_means[np_mag_means>=np_mag_thr].index.tolist() 
     else:
         soma_rois = magratios_soma.index.tolist()
