@@ -1059,7 +1059,7 @@ def extract_options(options):
     # data filtering 
     parser.add_option('--thr', action='store', dest='mag_thr', 
             default=0.01, help="magnitude-ratio thr (default: 0.01)")
-    choices_c = ('all', 'either', 'any', 'npmean')
+    choices_c = ('all', 'either', 'any', 'npmean', 'pixels')
     default_c = 'either'
     parser.add_option('-p', '--crit', action='store', dest='pass_criterion', 
             default=default_c, type='choice', choices=choices_c,
@@ -1101,24 +1101,26 @@ def main(options):
     fov=opts.fov
     retinorun=opts.run
     traceid=opts.traceid
-    mag_thr=float(opts.mag_thr)
-    pass_criterion=opts.pass_criterion    
+
 
     plot_examples=opts.plot_examples
-    cmap_name=opts.cmap
+    cmap_name=opts.cmap 
+    regr_model = opts.regr_model
 
     smooth_fwhm=opts.smooth_fwhm
     desired_radius_um=float(opts.dilate_um)
     regr_plot_spacing=int(opts.regr_plot_spacing)
     regr_line_color=opts.regr_line_color 
     zero_center=True
-   
-    regr_model = opts.regr_model
+  
+    mag_thr=float(opts.mag_thr)
+    pass_criterion=opts.pass_criterion    
+    use_pixels = pass_criterion=='pixels' #opts.use_pixels
+    if use_pixels:
+        mag_thr = 0.003 
 
-    use_pixels = opts.use_pixels
 
-               
-
+    # Get gradients
     if use_pixels:
         az_fill, el_fill, params, RETID = pixel_gradients(animalid, session, fov,
                             retino_run=retinorun, traceid=traceid, 
