@@ -1134,7 +1134,7 @@ def main(options):
         data_id = params['data_id']
 
         figname_str = 'pixels_magthr-%.3f' % (mag_thr)
-        gradient_source = 'pixels-%.3f' % (mag_thr)
+        gradient_source = 'pixels_thr-%.3f' % (mag_thr)
     else: 
         az_fill, el_fill, params, RETID = roi_gradients(animalid, session, fov, 
                             retino_run=retinorun, traceid=traceid, 
