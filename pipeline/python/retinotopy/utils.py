@@ -52,6 +52,69 @@ from matplotlib.colors import LinearSegmentedColormap
 import matplotlib.colors as mcolors
 import cPickle as pkl
 #%%
+# -----------------------------------------------------------------------------
+# Map funcs 
+# -----------------------------------------------------------------------------
+def arrays_to_maps(magratio, phase, trials_by_cond, use_cont=False,
+                            dims=(512, 512), ds_factor=2, cond='right', 
+                            mag_thr=None, mag_perc=0.05):
+    if mag_thr is None:
+        mag_thr = magratio.max().max()*mag_perc
+        
+    currmags = magratio[trials_by_cond[cond]]
+    currmags[currmags<mag_thr] = np.nan
+    currmags_mean = np.nanmean(currmags, axis=1)
+    #d1 = int(np.sqrt(currmags_mean.shape[0]))
+    d1 = dims[0] / ds_factor
+    d2 = dims[1] / ds_factor
+    currmags_map = np.reshape(currmags_mean, (d1, d2))
+    
+    currphase = phase[trials_by_cond[cond]]
+    currphase_mean = stats.circmean(currphase, low=-np.pi, high=np.pi, axis=1)
+    currphase_mean_c = correct_phase_wrap(currphase_mean)
+
+    currphase_mean_c[np.isnan(currmags_mean)] = np.nan
+    currphase_map_c = np.reshape(currphase_mean_c, (d1, d2))
+    
+    return currmags_map, currphase_map_c, mag_thr
+
+def absolute_maps_from_conds(magratio, phase, trials_by_cond, mag_thr=0.01,
+                                dims=(512, 512), ds_factor=2, outdir='/tmp', 
+                                plot_conditions=False):
+    use_cont=False # doens't matter, should be equiv now
+    magmaps = {}
+    phasemaps = {}
+    magthrs = {}
+    for cond in trials_by_cond.keys():    
+        magmaps[cond], phasemaps[cond], magthrs[cond] = arrays_to_maps(
+                                                    magratio, phase, trials_by_cond,
+                                                    cond=cond, use_cont=use_cont,
+                                                    mag_thr=mag_thr, dims=dims,
+                                                    ds_factor=ds_factor)
+        if plot_conditions:
+            fig = plot_filtered_maps(cond, magmaps[cond], 
+                                        phasemaps[cond], magthrs[cond])
+            label_figure(fig, data_identifier)
+            figname = 'maps_%s_magthr-%.3f' % (cond, mag_thr)
+            pl.savefig(os.path.join(outdir, '%s.png' % figname)) 
+    ph_left = phasemaps['left'].copy()
+    ph_right = phasemaps['right'].copy()
+    ph_top = phasemaps['top'].copy()
+    ph_bottom = phasemaps['bottom'].copy()
+    print("got phase:", np.nanmin(ph_left), np.nanmax(ph_left)) # (0, 2*np.pi)
+
+    absolute_az = (ph_left - ph_right) / 2.
+    delay_az = (ph_left + ph_right) / 2.
+
+    absolute_el = (ph_bottom - ph_top) / 2.
+    delay_el = (ph_bottom + ph_top) / 2.
+
+    vmin, vmax = (-np.pi, np.pi) # Now in range (-np.pi, np.pi)
+    print("got absolute:", np.nanmin(absolute_az), np.nanmax(absolute_az))
+    print("Delay:", np.nanmin(delay_az), np.nanmax(delay_az))
+
+    return absolute_az, absolute_el, delay_az, delay_el
+ 
 
 # -----------------------------------------------------------------------------
 # Data processing funcs 
@@ -80,10 +143,13 @@ def load_traces(animalid, session, fov, run='retino_run1', analysisid='analysis0
     return traces
 
 
-def load_traces_from_file(retino_dpath, scaninfo, trace_type='corrected', temporal_ds=None):
+def load_traces_from_file(retino_dpath, scaninfo, trace_type='corrected', 
+                            temporal_ds=None):
     '''
-    Loads ./traces/extracted_traces.h5 (contains data for each tif file).
-    Pre-processes raw extracted traces by adding back in neuropil offsets and F0 offset from drift correction.
+    Pre-processes raw extracted traces by:
+        - adding back in neuropil offsets, and 
+        - F0 offset from drift correction.
+    Loads: ./traces/extracted_traces.h5 (contains data for each tif file).
     Averages traces for each condition. Downsamples final array.
     '''
     frame_rate = scaninfo['stimulus']['frame_rate']
@@ -185,9 +251,7 @@ def smooth_phase_nans(inputArray, sigma, sz):
     Z=VV/WW
 
     return Z
-
-
-       
+   
 def smooth_phase_array(theta,sigma,sz):
     #build 2D Gaussian Kernel
     kernelX = cv2.getGaussianKernel(sz, sigma); 
@@ -200,8 +264,10 @@ def smooth_phase_array(theta,sigma,sz):
     componentY=np.sin(theta)
     
     #convolce
-    componentX_smooth=signal.convolve2d(componentX,kernelXY_norm,mode='same',boundary='symm')
-    componentY_smooth=signal.convolve2d(componentY,kernelXY_norm,mode='same',boundary='symm')
+    componentX_smooth=signal.convolve2d(componentX, kernelXY_norm, 
+                                            mode='same',boundary='symm')
+    componentY_smooth=signal.convolve2d(componentY, kernelXY_norm, 
+                                            mode='same',boundary='symm')
 
     theta_smooth=np.arctan2(componentY_smooth,componentX_smooth)
     return theta_smooth
@@ -256,11 +322,14 @@ def get_condition_averaged_traces(RID, retinoid_dir, mwinfo, runinfo, tiff_fpath
         
     return traces
 
-def average_retino_traces(RID, mwinfo, runinfo, tiff_fpaths, masks, output_dir='/tmp'):
+def average_retino_traces(RID, mwinfo, runinfo, tiff_fpaths, masks, 
+                            output_dir='/tmp'):
     
     rep_list = [(k, v['stimuli']['stimulus']) for k,v in mwinfo.items()]
     unique_conditions = np.unique([rep[1] for rep in rep_list])
-    conditions = dict((cond, [int(run) for run,config in rep_list if config==cond]) for cond in unique_conditions)
+    conditions = dict((cond, 
+                    [int(run) for run,config in rep_list if config==cond]) \
+                                                    for cond in unique_conditions)
     print("CONDITIONS:", conditions)
     
     rtraces = {}
@@ -269,7 +338,7 @@ def average_retino_traces(RID, mwinfo, runinfo, tiff_fpaths, masks, output_dir='
     traces_fpath = glob.glob(os.path.join(output_dir, 'extracted_traces*.h5'))
     extract_from_stack = False
     try:
-        assert len(traces_fpath) == 1, "*** unable to find unique extracted_traces.h5 in dir:\n%s" % output_dir
+        assert len(traces_fpath) == 1, "*No extracted_traces.h5:\n%s" % output_dir
         traces_fpath = traces_fpath[0]
         print("... Loading extracted traces: %s" % traces_fpath)
         extracted = h5py.File(traces_fpath, 'r')
@@ -465,6 +534,11 @@ def convert_values(oldval, newmin=None, newmax=None, oldmax=None, oldmin=None):
     newval = (((oldval - oldmin) * newrange) / oldrange) + newmin
     return newval
 
+def make_continuous(mapvals):
+    map_c = mapvals.copy()
+    map_c = -1*map_c
+    map_c = map_c % (2*np.pi)
+    return map_c
 
 def correct_phase_wrap(phase):
         
@@ -525,6 +599,15 @@ def do_fft_analysis(avg_traces, sorted_idxs, stim_freq_idx):
 #def average_trial_dataframes(df, trials_by_cond, is_circular=False):
 #    for 
 
+def fft_results_by_trial(RETID):
+
+    run_dir = RETID['DST'].split('/retino_analysis/')[0]
+    processed_filepaths = glob.glob(os.path.join(RETID['DST'], 'files', '*h5'))
+    trialinfo_filepath = glob.glob(os.path.join(run_dir, 'paradigm', 
+                                    'files', 'parsed_trials*.json'))[0]
+    _, magratio, phase, trials_by_cond = trials_to_dataframes(processed_filepaths, 
+                                                trialinfo_filepath)
+    return magratio, phase, trials_by_cond
 
 def trials_to_dataframes(processed_fpaths, conditions_fpath):
     
@@ -552,7 +635,7 @@ def trials_to_dataframes(processed_fpaths, conditions_fpath):
     mags = []
     for trial_num, trial_fpath in zip(sorted(trial_list), sorted(processed_fpaths, key=natural_keys)):
         
-        print("%i: %s" % (trial_num, os.path.split(trial_fpath)[-1]))
+        #print("%i: %s" % (trial_num, os.path.split(trial_fpath)[-1]))
         df = h5py.File(trial_fpath, 'r')
         fits.append(pd.Series(data=df['var_exp_array'][:], name=trial_num))
         phases.append(pd.Series(data=df['phase_array'][:], name=trial_num))
@@ -961,12 +1044,13 @@ def make_legends(cmap='nipy_spectral', cmap_name='nipy_spectral', zero_center=Fa
 
     screen = get_screen_dims()
     azi_legend, alt_legend = create_legend(screen, zero_center=zero_center)
-    
-    save_legend(azi_legend, screen, cmap=cmap, 
-                    cmap_name=cmap_name, cond='azimuth', dst_dir=dst_dir)
-    save_legend(alt_legend, screen, cmap=cmap, 
-                    cmap_name=cmap_name, cond='elevation', dst_dir=dst_dir)
-    
+   
+    if dst_dir is not None:
+        save_legend(azi_legend, screen, cmap=cmap, 
+                        cmap_name=cmap_name, cond='azimuth', dst_dir=dst_dir)
+        save_legend(alt_legend, screen, cmap=cmap, 
+                        cmap_name=cmap_name, cond='elevation', dst_dir=dst_dir)
+        
     screen.update({'azi_legend': azi_legend,
                    'alt_legend': alt_legend})
     return screen
@@ -1016,3 +1100,59 @@ def plot_example_traces(soma_traces, np_traces, rid=0, cond='right',
     ax.plot(np_traces[cond][rid], np_color, label='neuropil')
     
     return ax
+
+
+def plot_phase_and_delay_maps(absolute_az, absolute_el, delay_az, delay_el, 
+                                cmap='nipy_spectral', vmin=-np.pi, vmax=np.pi, 
+                                elev_cutoff=0.56):
+    fig, axes = pl.subplots(2,2)
+    im1 = axes[0,0].imshow(absolute_az, cmap=cmap, vmin=vmin, vmax=vmax)
+    im2 = axes[0,1].imshow(absolute_el, cmap=cmap, vmin=vmin, vmax=vmax)
+    axes[1,0].imshow(delay_az, cmap=cmap, vmin=vmin, vmax=vmax)
+    axes[1,1].imshow(delay_el, cmap=cmap, vmin=vmin, vmax=vmax)
+
+    cbar1_orientation='horizontal'
+    cbar1_axes = [0.35, 0.85, 0.1, 0.1]
+    cbar2_orientation='vertical'
+    cbar2_axes = [0.75, 0.85, 0.1, 0.1]
+
+    cbaxes = fig.add_axes(cbar1_axes) 
+    cb = pl.colorbar(im1, cax = cbaxes, orientation=cbar1_orientation)  
+    cb.ax.axis('off')
+    cb.outline.set_visible(False)
+
+    cbaxes = fig.add_axes(cbar2_axes) 
+    cb = pl.colorbar(im2, cax = cbaxes, orientation=cbar2_orientation)
+    #cb.ax.set_ylim([cb.norm(-np.pi*top_cutoff), cb.norm(np.pi*top_cutoff)])
+    cb.ax.axhline(y=cb.norm(vmin*elev_cutoff), color='w', lw=1)
+    cb.ax.axhline(y=cb.norm(vmax*elev_cutoff), color='w', lw=1)
+    cb.ax.axis('off')
+    cb.outline.set_visible(False)
+    pl.subplots_adjust(top=0.8)
+
+    for ax in axes.flat:
+        ax.axis('off')
+ 
+    return fig
+
+def plot_filtered_maps(cond, currmags_map, currphase_map_c, mag_thr):
+    '''
+    For given cond, plots mag-ratio and phase maps.
+    '''
+    fig, axes = pl.subplots(1, 2) #pl.figure()
+    im = axes[0].imshow(currmags_map)
+    divider = make_axes_locatable(axes[0])
+    cax = divider.append_axes('right', size='5%', pad=0.05)
+    fig.colorbar(im, cax=cax, orientation='vertical')
+    
+    im2 = axes[1].imshow(currphase_map_c, cmap='nipy_spectral', vmin=0, vmax=2*np.pi)
+    divider = make_axes_locatable(axes[1])
+    cax = divider.append_axes('right', size='5%', pad=0.05)
+    fig.colorbar(im2, cax=cax, orientation='vertical')
+    
+    pl.subplots_adjust(wspace=0.5)
+    fig.suptitle('%s (mag_thr: %.4f)' % (cond, mag_thr))
+
+    return fig
+
+
