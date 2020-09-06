@@ -154,8 +154,8 @@ def main(options):
     retinoid, RID = rutils.load_retino_analysis_info(animalid, session, fov, 
                                 run, traceid, use_pixels=True, rootdir=rootdir)
 
-    data_identifier = '|'.join([animalid, session, fov, run, retinoid])
-    print("*** Dataset: %s ***" % data_identifier)
+    data_id = '|'.join([animalid, session, fov, run, retinoid])
+    print("*** Dataset: %s ***" % data_id)
 
     #%% # Get processed retino data:
     processed_fpaths = glob.glob(os.path.join(RID['DST'], 'files', '*.h5'))
@@ -205,7 +205,8 @@ def main(options):
     absolute_az, absolute_el, delay_az, delay_el = rutils.absolute_maps_from_conds(
                                                     magratio, phase, trials_by_cond, 
                                                     mag_thr=mag_thr, dims=(d1, d2), 
-                                                    outdir=map_cond_dir, 
+                                                    outdir=map_cond_dir,
+                                                    data_id=data_id,
                                                     plot_conditions=plot_conditions)
 
     vmin, vmax = (-np.pi, np.pi) # Now in range (-np.pi, np.pi)
@@ -213,7 +214,7 @@ def main(options):
     #%% #Plot absolute maps + delay maps
     fig = rutils.plot_phase_and_delay_maps(absolute_az, absolute_el, delay_az, delay_el, 
                         cmap='nipy_spectral', vmin=vmin, vmax=vmax, elev_cutoff=elev_cutoff) 
-    label_figure(fig, data_identifier)
+    label_figure(fig, data_id)
     figname = 'acquisview_absolute_and_delay_maps_magthr-%.3f' % (mag_thr)
     pl.savefig(os.path.join(absolute_maps_dir, '%s.png' % figname))
 
@@ -243,7 +244,7 @@ def main(options):
     #%%
     fig = plot_absolute_maps(absolute_az, absolute_el, surface_img=surface_img, 
                         vmin=vmin, vmax=vmax, elev_cutoff=elev_cutoff)
-    label_figure(fig, data_identifier)
+    label_figure(fig, data_id)
     figname = 'acquisview_absolute_maps_magthr-%.3f' % (mag_thr)
     pl.savefig(os.path.join(run_dir, 'retino_analysis', 'absolute_maps', '%s.png' % figname))
 
@@ -262,7 +263,7 @@ def main(options):
 
     fig = plot_absolute_maps(az_transf, el_transf, surface_img=surface_transf, 
                     vmin=vmin, vmax=vmax, elev_cutoff=elev_cutoff)
-    label_figure(fig, data_identifier)
+    label_figure(fig, data_id)
     figname = 'naturalview_absolute_maps_magthr-%.3f' % (mag_thr)
     pl.savefig(os.path.join(run_dir, 'retino_analysis', 'absolute_maps', '%s.png' % figname))
 

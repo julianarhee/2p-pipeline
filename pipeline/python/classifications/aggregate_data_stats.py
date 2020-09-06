@@ -450,15 +450,16 @@ def get_aggregate_stimulation_info(expdf):
 # ===============================================================
 from matplotlib.lines import Line2D
 
-def annotateBars(row, ax, fontsize=12, fmt='%.2f'): 
+def annotateBars(row, ax, fontsize=12, fmt='%.2f', fontcolor='k', xytext=(0, 10)): 
     for p in ax.patches:
         ax.annotate(fmt % p.get_height(), (p.get_x() + p.get_width() / 2., 0.), #p.get_height()),
-                    ha='center', va='center', fontsize=fontsize, color='k', 
-                    rotation=0, xytext=(0, 20),
+                    ha='center', va='center', fontsize=fontsize, color=fontcolor, 
+                    rotation=0, xytext=xytext, #(0, 10),
              textcoords='offset points')
         
 
-def plot_mannwhitney(mdf, metric='I_rs', multi_comp_test='holm', ax=None):
+def plot_mannwhitney(mdf, metric='I_rs', multi_comp_test='holm', 
+                        ax=None, y_loc=None, offset=0.1):
     if ax is None:
         fig, ax = pl.subplots()
 
@@ -467,7 +468,7 @@ def plot_mannwhitney(mdf, metric='I_rs', multi_comp_test='holm', ax=None):
     #print(statresults)
     
     # stats significance
-    ax = annotate_stats_areas(statresults, ax)
+    ax = annotate_stats_areas(statresults, ax, y_loc=y_loc, offset=offset)
     print("****************************")
     
     return statresults, ax
