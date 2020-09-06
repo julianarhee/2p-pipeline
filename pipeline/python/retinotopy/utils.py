@@ -35,6 +35,7 @@ import scipy as sp
 import pandas as pd
 import seaborn as sns
 
+from mpl_toolkits.axes_grid1 import make_axes_locatable
 from pipeline.python.utils import natural_keys, label_figure, replace_root, convert_range, get_screen_dims
 #from matplotlib.patches import Ellipse, Rectangle
 
@@ -80,7 +81,7 @@ def arrays_to_maps(magratio, phase, trials_by_cond, use_cont=False,
 
 def absolute_maps_from_conds(magratio, phase, trials_by_cond, mag_thr=0.01,
                                 dims=(512, 512), ds_factor=2, outdir='/tmp', 
-                                plot_conditions=False):
+                                plot_conditions=False, data_id='dataid'):
     use_cont=False # doens't matter, should be equiv now
     magmaps = {}
     phasemaps = {}
@@ -94,7 +95,7 @@ def absolute_maps_from_conds(magratio, phase, trials_by_cond, mag_thr=0.01,
         if plot_conditions:
             fig = plot_filtered_maps(cond, magmaps[cond], 
                                         phasemaps[cond], magthrs[cond])
-            label_figure(fig, data_identifier)
+            label_figure(fig, data_id)
             figname = 'maps_%s_magthr-%.3f' % (cond, mag_thr)
             pl.savefig(os.path.join(outdir, '%s.png' % figname)) 
     ph_left = phasemaps['left'].copy()
