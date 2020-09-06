@@ -564,17 +564,27 @@ def get_counts_for_legend(df, area_colors=None, markersize=10, marker='_',
         counts = df.groupby(['visual_area', 'animalid', 'datakey']).count().reset_index()
 
     # Get counts of samples for legend
-    n_rats = dict((v, len(g['animalid'].unique())) for v, g in counts.groupby(['visual_area']))
-    n_fovs = dict((v, len(g[['datakey']].drop_duplicates())) for v, g in counts.groupby(['visual_area']))
+    n_rats = dict((v, len(g['animalid'].unique())) \
+                        for v, g in counts.groupby(['visual_area']))
+    n_fovs = dict((v, len(g[['datakey']].drop_duplicates())) \
+                        for v, g in counts.groupby(['visual_area']))
+    for v in area_colors.keys():
+        if v not in n_rats.keys:
+            n_rats.update{v: 0}
+        if v not in n_fovs.keys:
+            n_fovs.update{v: 0}
     if 'cell' in df.columns.tolist():
-        n_cells = dict((v, g['n_cells'].sum()) for v, g in counts.groupby(['visual_area']))
+        n_cells = dict((v, g['n_cells'].sum()) \
+                        for v, g in counts.groupby(['visual_area']))
         legend_elements = [Line2D([0], [0], marker='_', markersize=10, \
-                                  lw=1, color=area_colors[v], markerfacecolor=area_colors[v],
+                                  lw=1, color=area_colors[v], 
+                                  markerfacecolor=area_colors[v],
                                   label='%s (n=%i rats, %i fovs, %i cells)' % (v, n_rats[v], n_fovs[v], n_cells[v]))\
                            for v in visual_areas]
     else:
         legend_elements = [Line2D([0], [0], marker='_', markersize=10, \
-                                  lw=1, color=area_colors[v], markerfacecolor=area_colors[v],
+                                  lw=1, color=area_colors[v], 
+                                  markerfacecolor=area_colors[v],
                                   label='%s (n=%i rats, %i fovs)' % (v, n_rats[v], n_fovs[v]))\
                            for v in visual_areas]
 
