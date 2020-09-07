@@ -172,6 +172,20 @@ def print_elapsed_time(t_start):
     minutes, seconds = divmod(rem, 60)
     print "Duration: {:0>2}:{:0>2}:{:05.2f}".format(int(hours),int(minutes),seconds)
 
+def abline(slope, intercept, ax=None, color='purple', ls='-',
+           label=True, label_prefix=''):
+    """Plot a line from slope and intercept"""
+    if ax is None:
+        fig, ax = pl.subplots()
+    #axes = plt.gca()
+    #x_vals = np.array(axes.get_xlim())
+    x_vals = np.array(ax.get_xlim())
+    y_vals = intercept + slope * x_vals
+    label_str = '(%s) y=%.2fx+%.2f' % (label_prefix, slope, intercept) if label else None
+    ax.plot(x_vals, y_vals, '--', label=label_str, color=color, ls=ls)
+    ax.legend()
+    return ax
+
 # -----------------------------------------------------------------------------
 # Data-saving and -formatting methods:
 # -----------------------------------------------------------------------------
