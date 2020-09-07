@@ -16,7 +16,7 @@ import seaborn as sns
 import cPickle as pkl
 
 from pipeline.python.classifications import experiment_classes as util
-from pipeline.python.utils import label_figure, natural_keys, reformat_morph_values, add_meta_to_df
+from pipeline.python.utils import label_figure, natural_keys, reformat_morph_values, add_meta_to_df, isnumber
 
 # ===============================================================
 # Dataset selection
@@ -594,6 +594,42 @@ def get_counts_for_legend(df, area_colors=None, markersize=10, marker='_',
 # ===============================================================
 # Data loading
 # ===============================================================
+def isnumber(n):
+    try:
+        float(n)   # Type-casting the string to `float`.
+                   # If string is not a valid `float`, 
+                   # it'll raise `ValueError` exception
+    except ValueError:
+        return False
+    except TypeError:
+        return False
+
+    return True
+
+
+def get_trial_alignment(animalid, session, fovnum, curr_exp, traceid='traces001',
+        rootdir='/n/coxfs01/2p-data'):
+    extraction_files = glob.glob(os.path.join(rootdir, animalid, session, 'FOV%i*' % fovnum, 
+                '*%s*' % curr_exp, 'traces', '%s*' % traceid, 'extraction_params.json'))
+    assert len(extraction_files) > 0, "No extraction info found..."
+
+    for i, ifile in enumerate(extraction_files):
+        with open(ifile, 'r') as f:
+            info = json.load(f)
+        if i==0:
+            infodict = dict((k, [v]) for k, v in info.items() if isnumber(v)) 
+        else:
+            for k, v in info.items():
+                if isnumber(v):
+                    infodict[k].append(v)
+    
+    for k, v in infodict.items():
+        nvs = np.unique(v)
+        assert len(nvs)==1, "more than 1 value found: (%s, %s)" % (k, str(nvs))
+        infodict[k] = np.unique(v)[0]
+    return infodict
+
+            
 
 def load_traces(animalid, session, fovnum, curr_exp, traceid='traces001',
                 response_type='dff', 
