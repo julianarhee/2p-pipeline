@@ -100,6 +100,9 @@ def isnumber(n):
                    # it'll raise `ValueError` exception
     except ValueError:
         return False
+    except TypeError:
+        return False
+
     return True
 
 def midpoint(ptA, ptB):
