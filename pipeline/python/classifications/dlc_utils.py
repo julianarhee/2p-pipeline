@@ -2,6 +2,7 @@ import re
 import os
 import glob
 import json
+import traceback
 
 import numpy as np
 import pandas as pd
@@ -14,10 +15,11 @@ def atoi(text):
 def natural_keys(text):
     return [ atoi(c) for c in re.split('(\d+)', text) ]
 
-def load_pose_data(animalid, session, fovnum, curr_exp, analysis_dir, feature='pupil',
+def load_pose_data(animalid, session, fovnum, curr_exp, analysis_dir, feature_list=['pupil'],
                    epoch='stimulus_on', pre_ITI_ms=1000, post_ITI_ms=1000,
                    traceid='traces001', eyetracker_dir='/n/coxfs01/2p-data/eyetracker_tmp'):
-    
+   
+    print("Loading pose data (dlc)") 
     # Get metadata for facetracker
     facemeta = align_trials_to_facedata(animalid, session, fovnum, curr_exp, 
                                         epoch=epoch, pre_ITI_ms=pre_ITI_ms, post_ITI_ms=post_ITI_ms,
@@ -26,7 +28,8 @@ def load_pose_data(animalid, session, fovnum, curr_exp, analysis_dir, feature='p
     # Get pupil data
     datakey ='%s_%s_fov%i_%s' % (session, animalid, fovnum, curr_exp)  
     #pupildata, bad_files = parse_pupil_data(datakey, analysis_dir, eyetracker_dir=eyetracker_dir)
-    pupildata, bad_files = parse_pose_data(datakey, analysis_dir, feature=feature, eyetracker_dir=eyetracker_dir)
+    pupildata, bad_files = parse_pose_data(datakey, analysis_dir, feature_list=feature_list, 
+                                            eyetracker_dir=eyetracker_dir)
     if len(bad_files) > 0:
         print("___ there are %i bad files ___" % len(bad_files))
         for b in bad_files:
@@ -36,12 +39,14 @@ def load_pose_data(animalid, session, fovnum, curr_exp, analysis_dir, feature='p
 
 
 #def calculate_pupil_stats(facemeta, pupildata, labels):
-def get_pose_traces(facemeta, pupildata, labels, feature='pupil'):
+def get_pose_traces(facemeta, pupildata, labels, feature='pupil', verbose=False):
     '''
     Combines indices for MW trials (facemeta) with pupil traces (pupildata)
     and assigns stimulus/condition info w/ labels.
     
     '''
+    print("Parsing pose data with MW")
+
     # Make sure we only take the included runs
     included_run_indices = labels['run_ix'].unique() #0 indexed
     mwmeta_runs = facemeta['run_num'].unique() # 1 indexed
@@ -57,51 +62,60 @@ def get_pose_traces(facemeta, pupildata, labels, feature='pupil'):
 
     # Add stimulus config info to face data
     trial_key = pd.DataFrame({'config': [g['config'].unique()[0] \
-                             for trial, g in labels.groupby(['trial'])],
-                  'trial': [int(trial[5:]) \
-                             for trial, g in labels.groupby(['trial'])]})
+                                            for trial, g in labels.groupby(['trial'])],
+                             'trial': [int(trial[5:]) \
+                                            for trial, g in labels.groupby(['trial'])]})
     facemeta = pd.concat([tmpmeta, trial_key], axis=1)
     
     # Get pos traces for each valid trial
     config_names = sorted(facemeta['config'].unique(), key=natural_keys)
 
+    missing_trials = []
     pupiltraces = []
     for tix, (trial, g) in enumerate(facemeta.groupby(['trial'])):
 
+        curr_config = g['config'].unique()[0] 
         # Get run of experiment that current trial is in
-        run_num = g['run_num'].unique()[0]
-        if run_num not in pupildata['run_num'].unique():
-            print("--- [trial %i] warning, run_num %i not found in pupildata. skipping..." % (trial, run_num))
-            continue
+        run_label = g['run_label'].unique()[0]
+        if run_label not in pupildata['run_label'].unique():
+            if verbose:
+                print("--- [trial %i] warning, run %s not found. skipping..." % (int(trial), run_label))
+            missing_trials.append(trial)
+            eye_values = [np.nan] 
+            # continue
         
-        if 'pupil' in feature:
-            feature_name_tmp = 'pupil_maj'
-        elif 'snout' in feature:
-            feature_name_tmp = 'snout_area'
-        else:
-            feature_name_tmp = feature
-        #print("***** getting %s *****" % feature_name_tmp)
-        pupil_dists_major = pupildata[pupildata['run_num']==run_num]['%s' % feature_name_tmp].values
+        else: 
+            if feature=='pupil':
+                feature_name_tmp = 'pupil_maj'
+            elif 'snout' in feature:
+                feature_name_tmp = 'snout_area'
+            else:
+                feature_name_tmp = feature
 
-        # Get start/end indices of current trial in run
-        (eye_start, eye_end), = g[['start_ix', 'end_ix']].values
+            # print("***** getting %s *****" % feature_name_tmp)
+            pupil_dists_major = pupildata[pupildata['run_label']==run_label]['%s' % feature_name_tmp].values
 
-        #eye_tpoints = frames['time_stamp'][eye_start:eye_end+1]
-        eye_values = pupil_dists_major[int(eye_start):int(eye_end)+1]
-        
-        # If all nan, get rid of this trial
-        if all(np.isnan(eye_values)):
-            print("NANs: skipping", trial)
-            continue
+            # Get start/end indices of current trial in run
+            (eye_start, eye_end), = g[['start_ix', 'end_ix']].values
+
+            #eye_tpoints = frames['time_stamp'][eye_start:eye_end+1]
+            eye_values = pupil_dists_major[int(eye_start):int(eye_end)+1]
             
-        curr_config = g['config'].unique()[0]
-
+            # If all nan, get rid of this trial
+            if all(np.isnan(eye_values)):
+                #print("NANs: skipping", trial)
+                eye_values = [np.nan]
+                missing_trials.append(trial)
+                #continue 
         pdf = pd.DataFrame({'%s' % feature: eye_values,
                             'config': [curr_config for _ in np.arange(0, len(eye_values))],
-                            'trial': [trial for _ in np.arange(0, len(eye_values))]}, index=np.arange(0, len(eye_values)) )
+                            'trial': [trial for _ in np.arange(0, len(eye_values))]}, 
+                            index=np.arange(0, len(eye_values)) )
         pupiltraces.append(pdf)
 
     pupiltraces = pd.concat(pupiltraces, axis=0).fillna(method='pad')  
+    print("Missing %i trials total" % (len(missing_trials)))
+
     return pupiltraces
 
 
@@ -150,7 +164,7 @@ def get_per_trial_metrics(pupildata, facemeta, feature_name='pupil_maj', feature
         
     config_names = sorted(facemeta['config'].unique(), key=natural_keys)
 
-    pupilstats_by_config = dict((k, []) for k in config_names)
+    #pupilstats_by_config = dict((k, []) for k in config_names)
     pupilstats = []
     #fig, ax = pl.subplots()
     for tix, (trial, g) in enumerate(facemeta.groupby(['trial'])):
@@ -159,16 +173,16 @@ def get_per_trial_metrics(pupildata, facemeta, feature_name='pupil_maj', feature
         run_num = g['run_num'].unique()[0]
         if run_num not in pupildata['run_num'].unique():
             #print(run_num)
-            print("--- [trial %i] warning, run_num %i not found in pupildata. skipping..." % (trial, run_num))
+            print("--- [trial %i] warning, run %s not found in pupildata. skipping..." % (trial, run_num))
             continue
         
-        if 'pupil' in feature_name:
+        if feature=='pupil':
             feature_name_tmp = 'pupil_maj'
         elif 'snout' in feature_name:
             feature_name_tmp = 'snout_area'
         else:
             feature_name_tmp = feature_name
-        print("***** getting %s *****" % feature_name_tmp)
+        #print("***** getting %s *****" % feature_name_tmp)
         pupil_dists_major = pupildata[pupildata['run_num']==run_num]['%s' % feature_name_tmp]
 
         # Get start/end indices of current trial in run
@@ -187,9 +201,9 @@ def get_per_trial_metrics(pupildata, facemeta, feature_name='pupil_maj', feature
         #ax.plot(eye_values.values, color=cond_colors[curr_cond])
 
         #print(trial, np.nanmean(eye_values))
-        pupilstats_by_config[curr_config].append(np.nanmean(eye_values))
+        #pupilstats_by_config[curr_config].append(np.nanmean(eye_values))
 
-        pdf = pd.DataFrame({'%s' % feature_save_name: np.nanmean(eye_values),
+        pdf = pd.DataFrame({'%s' % feature_save_name: np.nan if all(np.isnan(eye_valus) else np.nanmean(eye_values),
                             'config': curr_config,
                             'trial': trial}, index=[tix])
 
@@ -208,11 +222,13 @@ def get_metaface_for_run(curr_src):
     '''
     
     try:
-        run_num = int(re.search(r"_f\d{1}_", os.path.split(curr_src)[-1]).group().split('_')[1][1:])
+        run_num = int(re.search(r"_f\d+_", os.path.split(curr_src)[-1]).group().split('_')[1][1:])
+        #run_num = int(re.search(r"_f\d{1}_", os.path.split(curr_src)[-1]).group().split('_')[1][1:])
     except Exception as e:
-        run_num = int(re.search(r"_f\d{2}_", os.path.split(curr_src)[-1]).group().split('_')[1][1:])
+        run_num = int(re.search(r"_f\d+[a-zA-Z]_", os.path.split(curr_src)[-1]).group().split('_')[1][1:])
+        #run_num = int(re.search(r"_f\d{2}_", os.path.split(curr_src)[-1]).group().split('_')[1][1:])
 
-    print("----- File %i.-----" % run_num)
+    # print("----- File %s.-----" % run_num)
 
     # Get meta data for experiment
     #errors = []
@@ -223,8 +239,10 @@ def get_metaface_for_run(curr_src):
         fps = float(metadata['frame_rate'])
         #print(metadata)
     except Exception as e:
-        print('****[%s]**** ERROR:' % curr_src, e)
+        src_key = os.path.split(curr_src)[-1]
+        print('***** ERROR: *****\n  Unable to load performance.txt (%s)\n  %s' % (src_key, str(e)))
         #errors.append(curr_src)
+        fps = 20.0
 
     # Get frame info
     frame_info = os.path.join(curr_src, 'times', 'frame_times.txt')
@@ -239,12 +257,12 @@ def get_metaface_for_run(curr_src):
     #print("... adjusted for missing frames:", frames.shape)
 
     tif_dur_sec = frames.iloc[-1]['time_stamp'] / 60.
-    print("Full run duration: %.2f min" % tif_dur_sec)
+    print("... Full run duration: %.2f min" % tif_dur_sec)
     
     return frames
 
 
-def check_missing_frames(frame_attrs, metadata):
+def check_missing_frames(frame_attrs, metadata, verbose=False):
     '''
     frame_attrs : pd.DataFrame with columns 
         frame_number
@@ -258,19 +276,22 @@ def check_missing_frames(frame_attrs, metadata):
         interpdf, the interpolated dataframe
         
     '''
-    print("Checking for missing frames.")
+    if verbose:
+        print("... checking for missing frames.")
     if metadata is None:
         fps = 20.0
         metadata = {'frame_period': (1./fps)}
     tmpdf = frame_attrs.copy()
     missed_ixs = [m-1 for m in np.where(frame_attrs['time_stamp'].diff() > float(metadata['frame_period']*1.5))[0]]
-    print(missed_ixs)
-    print("... found %i funky frame chunks." % len(missed_ixs))
+
+    if len(missed_ixs)>0:
+        print("... found %i funky frame chunks: %s" % (len(missed_ixs), str(missed_ixs)))
     for mi in missed_ixs:
         # Identify duration of funky interval and how many missed frames it is:
         missing_interval = frame_attrs['time_stamp'][mi+1] - frame_attrs['time_stamp'][mi] 
         n_missing_frames = round(missing_interval/metadata['frame_period'], 0) -1
-        print("... interpolating %i frames" % n_missing_frames)
+        if verbose:
+            print("... interpolating %i frames" % n_missing_frames)
 
         add_missing = pd.DataFrame({
                       'frame_number': [np.nan for _ in np.arange(0, n_missing_frames)], #np.arange(mi+1, mi+n_missing_frames+1),
@@ -281,15 +302,16 @@ def check_missing_frames(frame_attrs, metadata):
                       'time_stamp': [np.nan for _ in np.arange(0, n_missing_frames)]},
                                   index=np.linspace(mi, mi+1, n_missing_frames+2)[1:-1])
 
-
-        print("... adding %i frames" % add_missing.shape[0])
+        if verbose:
+            print("... adding %i frames" % add_missing.shape[0])
         df2 = pd.concat([tmpdf.iloc[:mi+1], add_missing, tmpdf.iloc[mi+1:]]) #.reset_index(drop=True)
         tmpdf = df2.copy()
         
     #df2 = tmpdf.reset_index(drop=True)
 
     interpdf = tmpdf.interpolate().reset_index(drop=True)
-    print("... frame info shape changed from %i to %i frames" % (frame_attrs.shape[0], interpdf.shape[0]))
+    if verbose:
+        print("... frame info shape changed from %i to %i frames" % (frame_attrs.shape[0], interpdf.shape[0]))
     
     return interpdf
 
@@ -300,7 +322,7 @@ def align_trials_to_facedata(animalid, session, fovnum, curr_exp,
                              epoch='stimulus_on', pre_ITI_ms=1000, post_ITI_ms=1000,
                              rootdir='/n/coxfs01/2p-data',
                             eyetracker_dir='/n/coxfs01/2p-data/eyetracker_tmp',
-                            blacklist=['20191018_JC113_fov1_blobs_run5']):
+                            blacklist=['20191018_JC113_fov1_blobs_run5'], verbose=False):
     
     '''
     Align MW trial events/epochs to eyetracker data for each trial, 
@@ -321,7 +343,8 @@ def align_trials_to_facedata(animalid, session, fovnum, curr_exp,
     all_runs = sorted(glob.glob(os.path.join(rootdir, animalid, session, 'FOV%i*' % fovnum,\
                           '%s*_run*' % curr_exp)), key=natural_keys)
 
-    run_list = [int(os.path.split(rundir)[-1].split('_run')[-1]) for rundir in all_runs]
+    #run_list = [int(os.path.split(rundir)[-1].split('_run')[-1]) for rundir in all_runs]
+    run_list = [os.path.split(rundir)[-1].split('_run')[-1] for rundir in all_runs] 
     print("[%s] Found runs:" % curr_exp, run_list)
     
     # Eyetracker source files
@@ -333,18 +356,22 @@ def align_trials_to_facedata(animalid, session, fovnum, curr_exp,
     # Align facetracker frames to MW trials based on time stamps
     facemeta = []
     for run_num in run_list:
-        print("--- |%s|: getting MW info for run_%i" % (curr_exp, run_num))
+        print("----- File %s.-----" % run_num)
+
+        run_numeric = int(re.findall('\d+', run_num)[0])
+        if verbose:
+            print("... getting MW info for %s run: %s (run_%i)" % (curr_exp, run_num, run_numeric))
         
-        if '%s_%s_fov%i_%s_run%i' % (session, animalid, fovnum, curr_exp, run_num) in blacklist:
+        if '%s_%s_fov%i_%s_run%s' % (session, animalid, fovnum, curr_exp, run_numeric) in blacklist:
             continue
         
         # Get MW info for this run
         n_files = len( glob.glob(os.path.join(rootdir, animalid, session, 'FOV%i*' % fovnum,\
-                                        '*%s*_run%i' % (curr_exp, run_num), 'raw*', '*.tif')) )
-        print("--- %i tifs in run" % n_files)
+                                        '*%s*_run%i' % (curr_exp, run_numeric), 'raw*', '*.tif')) )
         
         mw_file = glob.glob(os.path.join(rootdir, animalid, session, 'FOV%i*' % fovnum,\
-                                        '*%s*_run%i' % (curr_exp, run_num), 'paradigm', 'trials_*.json'))[0]
+                                        '*%s*_run%i' % (curr_exp, run_numeric), \
+                                        'paradigm', 'trials_*.json'))[0]
         with open(mw_file, 'r') as f:
             mw = json.load(f)
 
@@ -352,15 +379,22 @@ def align_trials_to_facedata(animalid, session, fovnum, curr_exp,
         file_ixs = np.arange(0, n_files)
         trialnames = sorted([t for t, md in mw.items() if md['block_idx'] in file_ixs \
                             and md['stimuli']['type'] != 'blank'], key=natural_keys)
-        print("--- %i trials in run" % len(trialnames))
-        
+        if verbose:
+            print("... %i tifs in run (%i trials)" % (n_files, len(trialnames)))
+       
         start_t = mw[trialnames[0]]['start_time_ms'] - mw[trialnames[0]]['iti_dur_ms']
         #end_t = mw[trialnames[0]]['end_time_ms']
 
         # Get corresponding eyetracker dir for run
-        curr_face_srcdir = [s for s in facetracker_srcdirs if '_f%i_' % run_num in s][0]
-        print('Eyetracker:', os.path.split(curr_face_srcdir)[-1])
-
+        try:
+            curr_face_srcdir = [s for s in facetracker_srcdirs if '_f%s_' % run_num in s][0]
+            print('... Eyetracker dir: %s' % os.path.split(curr_face_srcdir)[-1])
+        except Exception as e:
+            print("... ERROR (%s): Unable to load run %s" % (datakey, run_num))
+            traceback.print_exc()
+            print(facetracker_srcdirs)
+            continue
+ 
         # Get eyetracker metadata
         faceframes_meta = get_metaface_for_run(curr_face_srcdir)
 
@@ -368,12 +402,6 @@ def align_trials_to_facedata(animalid, session, fovnum, curr_exp,
         for tix, curr_trial in enumerate(sorted(trialnames, key=natural_keys)):
 
             parafile = str(os.path.split(mw[curr_trial]['behavior_data_path'])[-1])
-            #print('Paradigm:', parafile)
-            if run_num >= 10:
-                trial_run_num = int(re.search(r"_f\d{2}.", parafile).group().split('_')[1][1:-1])
-            else:
-                trial_run_num = int(re.search(r"_f\d{1}.", parafile).group().split('_')[1][1:-1])
-            assert trial_run_num == run_num, "Bad run assignment: %s (should be %i)" % (parafile, run_num)
 
             # Get SI triggers for start and end of trial
             if 'retino' in curr_exp:
@@ -408,25 +436,26 @@ def align_trials_to_facedata(animalid, session, fovnum, curr_exp,
             # Get corresponding eyetracker frame indices for start and end time points
             eye_start = np.where(abs(faceframes_meta['time_stamp']-trial_start_sec) == (abs(faceframes_meta['time_stamp']-trial_start_sec).min()))[0][0]
             eye_end = np.where(abs(faceframes_meta['time_stamp']-trial_end_sec) == (abs(faceframes_meta['time_stamp']-trial_end_sec).min()) )[0][0]
-            print("Eyetracker start/stop frames:", eye_start, eye_end)
 
+            if verbose:
+                print("Eyetracker start/stop frames:", eye_start, eye_end)
             #face_indices[trial_num] = (eye_start, eye_end)
 
             face_movie = '_'.join(os.path.split(curr_face_srcdir)[-1].split('_')[0:-1])
             tmpdf = pd.DataFrame({'start_ix': eye_start,
                                   'end_ix': eye_end,
                                   'trial_in_run': trial_num,
-                                  'run_num': run_num,
+                                  'run_label': run_num,
+                                  'run_num': run_numeric,
                                   'movie': face_movie}, index=[tix])
 
             facemeta.append(tmpdf)
-
     facemeta = pd.concat(facemeta, axis=0).reset_index(drop=True)
 
     return facemeta
 
 
-def parse_pose_data(datakey, analysis_dir, feature='pupil', 
+def parse_pose_data(datakey, analysis_dir, feature_list=['pupil'], 
                     eyetracker_dir='/n/coxfs01/2p-data/eyetracker_tmp'):
 
     '''
@@ -448,12 +477,18 @@ def parse_pose_data(datakey, analysis_dir, feature='pupil',
     for fd, od in zip(facetracker_srcdirs, dlc_outfiles):
         fsub = os.path.split(fd)[-1]
         osub = os.path.split(od)[-1]
+        #print('names:', fsub, osub)
         try:
-            face_fnum = int(re.search(r"_f\d{1}_", fsub).group().split('_')[1][1:])
-            dlc_fnum = int(re.search(r"_f\d{1}D", osub).group().split('_')[1][1:-1])
+            face_fnum = re.search(r"_f\d+_", fsub).group().split('_')[1][1:]
+            dlc_fnum = re.search(r"_f\d+DLC", osub).group().split('_')[1][1:-3]
+            #face_fnum = int(re.search(r"_f\d{1}_", fsub).group().split('_')[1][1:])
+            #dlc_fnum = int(re.search(r"_f\d{1}D", osub).group().split('_')[1][1:-1])
         except Exception as e:
-            face_fnum = int(re.search(r"_f\d{2}_", fsub).group().split('_')[1][1:])
-            dlc_fnum = int(re.search(r"_f\d{2}D", osub).group().split('_')[1][1:-1])
+            #traceback.print_exc()
+            face_fnum = re.search(r"_f\d+[a-zA-Z]_", fsub).group().split('_')[1][1:]
+            dlc_fnum = re.search(r"_f\d+[a-zA-Z]DLC", osub).group().split('_')[1][1:-3] 
+            #face_fnum = int(re.search(r"_f\d{2}_", fsub).group().split('_')[1][1:])
+            #dlc_fnum = int(re.search(r"_f\d{2}D", osub).group().split('_')[1][1:-1])
         assert dlc_fnum == face_fnum, "incorrect match: %s / %s" % (fsub, osub)
 
     bad_files = []
@@ -461,46 +496,49 @@ def parse_pose_data(datakey, analysis_dir, feature='pupil',
     for dlc_outfile in sorted(dlc_outfiles, key=natural_keys):
         run_num=None
         try:
-            run_num = int(re.search(r"_f\d{1}D", os.path.split(dlc_outfile)[-1]).group().split('_')[1][1:-1])
-        except Exception as e:
-            run_num = int(re.search(r"_f\d{2}D", os.path.split(dlc_outfile)[-1]).group().split('_')[1][1:-1])
+            # run_num = int(re.search(r"_f\d{1}D", os.path.split(dlc_outfile)[-1]).group().split('_')[1][1:-1])
+            fbase = os.path.split(dlc_outfile)[-1]
+            run_num = re.search(r"_f\d+DLC", fbase).group().split('_')[1][1:-3]
+
+        except Exception as e: 
+            run_num = re.search(r"_f\d+[a-zA-Z]DLC", fbase).group().split('_')[1][1:-3]
         
         assert run_num is not None, "Unable to find run_num for file: %s" % dlfile
-        assert np.isnan(run_num)==False, "Unable to find run_num for file: %s" % dlfile
-        print("...curr run: %i [%s]" % (run_num, os.path.split(dlc_outfile)[-1]))
+        #assert np.isnan(run_numeric)==False, "Unable to find run_num for file: %s" % dlfile
+        print("...curr run: %s [%s]" % (run_num, os.path.split(dlc_outfile)[-1]))
 
         # Get corresponding DLC results for movie
         #dlc_outfile = [s for s in dlc_outfiles if '_f%iD' % run_num in s][0]
         
         # Calculate some statistic from pose data
-        if 'pupil' in feature:
-            pupil_dists_major, pupil_dists_minor = calculate_pupil_metrics(dlc_outfile)
-            if pupil_dists_major is None and pupil_dists_minor is None:
-                feature_dict = None
-            else:
-                feature_dict = {'pupil_maj': pupil_dists_major,
-                                 'pupil_min': pupil_dists_minor}
-        elif 'snout' in feature:
-            snout_areas = calculate_snout_metrics(dlc_outfile)
-            if snout_areas is None:
-                feature_dict = None
-            else:
-                feature_dict = {'snout_area': snout_areas}
-        
-        if feature_dict is None:
+        feature_dict={}
+        for feature in feature_list:
+            if 'pupil' in feature:
+                pupil_dists_major, pupil_dists_minor = calculate_pupil_metrics(dlc_outfile)
+                pupil_areas = [np.pi*p_maj*p_min for p_maj, p_min in zip(pupil_dists_major, pupil_dists_minor)]
+                if pupil_dists_major is not None and pupil_dists_minor is not None:
+                    feature_dict.update({'pupil_maj': pupil_dists_major,
+                                         'pupil_min': pupil_dists_minor,
+                                         'pupil_area': pupil_areas})
+            elif 'snout' in feature:
+                snout_areas = calculate_snout_metrics(dlc_outfile)
+                feature_dict.update({'snout_area': snout_areas})
+            
+        if len(feature_dict.keys())==0:
             bad_files.append(dlc_outfile)
             continue
         
         nsamples = len(feature_dict[feature_dict.keys()[0]]) #pupil_dists_major)
-        feature_dict.update({'run_num': [run_num for _ in np.arange(0, nsamples)],
-                             'index': np.arange(0, nsamples)})
-        
-        pdf = pd.DataFrame(feature_dict, index=np.arange(0, nsamples))
-        
+        run_numeric = int(re.findall('\d+', run_num)[0])
+        feature_dict.update({'run_label': [run_num for _ in np.arange(0, nsamples)],
+                             'run_num': [run_numeric for _ in np.arange(0, nsamples)],
+                             'index': np.arange(0, nsamples)}) 
+        pdf = pd.DataFrame(feature_dict, index=np.arange(0, nsamples)) 
         pupildata.append(pdf)
 
     pupildata = pd.concat(pupildata, axis=0)
     
+    print("... done parsing!") 
     return pupildata, bad_files
 
 # body feature extraction
