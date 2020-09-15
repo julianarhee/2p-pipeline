@@ -174,7 +174,9 @@ def transform_anatomicals(acquisition_dir):
         avg = np.sum(np.dstack([np.mean(channel_img[i::nslices, :, :], axis=0) for i in range(nslices)]), axis=-1, dtype=channel_img.dtype)
         
         # Transform img:
-        image_path = orient_2p_to_macro(avg, zoom_factor, acquisition_dir, channel_ix=channel_ix, plot=True)
+        image_path = orient_2p_to_macro(avg, zoom_factor, 
+                                    acquisition_dir=acquisition_dir, 
+                                    channel_ix=channel_ix, plot=True)
         image_paths.append(image_path)
         
     return image_paths
@@ -604,7 +606,9 @@ class FOV():
             avg = np.sum(np.dstack([np.mean(channel_img[i::nslices, :, :], axis=0) for i in range(nslices)]), axis=-1, dtype=channel_img.dtype)
             
             # Transform img:
-            image_path = orient_2p_to_macro(avg, zoom_factor, acquisition_dir, channel_ix=channel_ix, plot=True)
+            image_path = orient_2p_to_macro(avg, zoom_factor, 
+                                            acquisition_dir=acquisition_dir, 
+                                            channel_ix=channel_ix, plot=True)
             image_paths.append(image_path)
         
         self.meta['nchannels'] = nchannels
