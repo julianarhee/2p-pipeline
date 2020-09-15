@@ -26,6 +26,7 @@ def load_pose_data(animalid, session, fovnum, curr_exp, analysis_dir, feature_li
                                         eyetracker_dir=eyetracker_dir)
     
     # Get pupil data
+    print("Getting pose metrics by trial")
     datakey ='%s_%s_fov%i_%s' % (session, animalid, fovnum, curr_exp)  
     #pupildata, bad_files = parse_pupil_data(datakey, analysis_dir, eyetracker_dir=eyetracker_dir)
     pupildata, bad_files = parse_pose_data(datakey, analysis_dir, feature_list=feature_list, 
@@ -203,7 +204,7 @@ def get_per_trial_metrics(pupildata, facemeta, feature_name='pupil_maj', feature
         #print(trial, np.nanmean(eye_values))
         #pupilstats_by_config[curr_config].append(np.nanmean(eye_values))
 
-        pdf = pd.DataFrame({'%s' % feature_save_name: np.nan if all(np.isnan(eye_valus) else np.nanmean(eye_values),
+        pdf = pd.DataFrame({'%s' % feature_save_name: np.nan if all(np.isnan(eye_valus)) else np.nanmean(eye_values),
                             'config': curr_config,
                             'trial': trial}, index=[tix])
 
@@ -460,16 +461,18 @@ def parse_pose_data(datakey, analysis_dir, feature_list=['pupil'],
 
     '''
     Loads DLC pose analysis results, extracts some feature of the behavior for all runs of the experiment.
+    Assigns face-data frames to MW trials.
     
     Returns:
         dataframe that contains all analyzed (and thresholded) frames for all runs.
     '''
+    #print("Parsing pose data...")
     # DLC outfiles
     dlc_outfiles = sorted(glob.glob(os.path.join(analysis_dir, '%s*.h5' % datakey)), key=natural_keys)
     #print(dlc_outfiles)
 
     # Eyetracker source files
-    print("... checking movies for dset: %s" % datakey)
+    # print("... checking movies for dset: %s" % datakey)
     facetracker_srcdirs = sorted(glob.glob(os.path.join(eyetracker_dir, '%s*' % (datakey))), key=natural_keys)
     print("... found %i DLC outfiles, expecting %i based on found eyetracker dirs." % (len(dlc_outfiles), len(facetracker_srcdirs)))
     
