@@ -732,6 +732,11 @@ def get_aggregate_info(traceid='traces001', fov_type='zoom2p0x', state='awake', 
         with open(sdata_fpath, 'wb') as f:
             pkl.dump(sdata, f, protocol=pkl.HIGHEST_PROTOCOL)
             
+    sdata['datakey'] = ['%s_%s_fov%i' % (session, animalid, fovnum) 
+                              for session, animalid, fovnum in zip(sdata['session'].values, 
+                                                                   sdata['animalid'].values,
+                                                                   sdata['fovnum'].values)]
+
     return sdata
 
 def get_aggregate_data_filepath(experiment, traceid='traces001', response_type='dff', epoch='stimulus',
