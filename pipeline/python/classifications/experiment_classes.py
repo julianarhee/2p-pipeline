@@ -167,14 +167,16 @@ def get_roi_id(animalid, session, fov, traceid, run_name='', rootdir='/n/coxfs01
         
     return roi_id, traceid
 
-def get_anatomical(animalid, session, fov, channel_num=2, rootdir='/n/coxfs01/2p-data'):
+def get_anatomical(animalid, session, fov, channel_num=2, verbose=False, 
+                    rootdir='/n/coxfs01/2p-data'):
     anatomical = None
     fov_dir = os.path.join(rootdir, animalid, session, fov)
     anatomical_dirs = glob.glob(os.path.join(fov_dir, 'anatomical'))
     try:
         assert len(anatomical_dirs) > 0, "---> (warning): no anatomicals for (%s|%s|%s)" % (animalid, session, fov)
         anatomical_dir = anatomical_dirs[0]
-        print("... found %i anatomical runs." % len(anatomical_dirs))
+        if verbose:
+            print("... found %i anatomical runs." % len(anatomical_dirs))
         anatomical_imgs = glob.glob(os.path.join(anatomical_dir, 'processed',
                                                  'processed*', 'mcorrected_*_mean_deinterleaved',
                                                  'Channel%02d' % channel_num, 'File*', '*.tif'))
@@ -649,7 +651,8 @@ def get_roi_stats(animalid, session, fov, exp_name=None, traceid='traces001',
 #%%
 
 class Session():
-    def __init__(self, animalid, session, fov, visual_area=None, state=None, rootdir='/n/coxfs01/2p-data'):
+    def __init__(self, animalid, session, fov, visual_area=None, state=None, 
+                    verbose=False, rootdir='/n/coxfs01/2p-data'):
         self.animalid = animalid
         self.session = session
         self.fov = fov
@@ -665,7 +668,8 @@ class Session():
         self.visual_area = visual_area
         self.state = state
         
-        print("Creating session object [%s|%s|%s]" % (animalid, session, fov))
+        if verbose:
+            print("Creating session object [%s|%s|%s]" % (animalid, session, fov))
 
         self.anatomical = get_anatomical(animalid, session, fov, rootdir=rootdir)
         
@@ -1122,8 +1126,9 @@ class Experiment(object):
         
         return roi_id#, traceid
 
-    def get_stimuli(self, rootdir='/n/coxfs01/2p-data'):
-        print("... getting stimulus info for: %s" % self.name)
+    def get_stimuli(self, rootdir='/n/coxfs01/2p-data', verbose=False):
+        if verbose:
+            print("... getting stimulus info for: %s" % self.name)
         dset_path = glob.glob(os.path.join(rootdir, self.animalid, self.session,
                                            self.fov, self.name, 'traces/traces*', 
                                            'data_arrays', 'labels.npz'))[0]
