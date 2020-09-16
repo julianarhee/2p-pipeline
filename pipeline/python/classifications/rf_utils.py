@@ -262,6 +262,8 @@ def aggregate_rf_data(rf_dpaths, fit_desc=None, traceid='traces001', fit_thr=0.5
                     else (t % np.pi) for t in rfdf['theta'].values]
     rfdf['theta_c'] = thetas
 
+    # Anisotropy metrics
+    rfdf['anisotropy'] = [(sx-sy)/(sx+sy) for (sx, sy) in rfdf[['std_x', 'std_y']].values]
 
     return rfdf
 
@@ -741,7 +743,7 @@ def resize_image_to_coords(im, size_deg=30, pix_per_deg=16.05, aspect_scale=1.74
 
 
 # --------------------------------------------------------
-# RF analysis functions
+# RF geometry functions
 # --------------------------------------------------------
 from matplotlib.patches import Ellipse, Rectangle, Polygon
 from shapely.geometry.point import Point
