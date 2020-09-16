@@ -769,11 +769,14 @@ def rfs_to_polys(rffits, sigma_scale=2.35):
     
     returns list of polygons to do calculations with
     '''
-    rf_polys=[]
-    for roi in rffits['cell']: #.index.tolist():
-        _, sx, sy, th, x0, y0 = rffits.loc[roi]
-        s_ell = create_ellipse((x0, y0), (abs(sx)*sigma_scale, abs(sy)*sigma_scale), np.rad2deg(th))
-        rf_polys.append((roi, s_ell))
+    rf_polys=[(rid, 
+        create_ellipse((x0, y0), (abs(sx)*sigma_scale, abs(sy)*sigma_scale), np.rad2deg(th))) \
+        for rid, sx, sy, th, x0, y0 in rffits.values]
+#    rf_polys = []
+#    for roi in rffits['cell']: #.index.tolist():
+#        _, sx, sy, th, x0, y0 = rffits.loc[roi]
+#        s_ell = create_ellipse((x0, y0), (abs(sx)*sigma_scale, abs(sy)*sigma_scale), np.rad2deg(th))
+#        rf_polys.append((roi, s_ell))
     return rf_polys
 
 def stimsize_poly(sz, xpos=0, ypos=0):
