@@ -569,9 +569,9 @@ def get_counts_for_legend(df, area_colors=None, markersize=10, marker='_',
     n_fovs = dict((v, len(g[['datakey']].drop_duplicates())) \
                         for v, g in counts.groupby(['visual_area']))
     for v in area_colors.keys():
-        if v not in n_rats.keys:
+        if v not in n_rats.keys():
             n_rats.update({v: 0})
-        if v not in n_fovs.keys:
+        if v not in n_fovs.keys():
             n_fovs.update({v: 0})
     if 'cell' in df.columns.tolist():
         n_cells = dict((v, g['n_cells'].sum()) \
