@@ -263,7 +263,33 @@ def aggregate_rf_data(rf_dpaths, fit_desc=None, traceid='traces001', fit_thr=0.5
     rfdf['theta_c'] = thetas
 
     # Anisotropy metrics
-    rfdf['anisotropy'] = [(sx-sy)/(sx+sy) for (sx, sy) in rfdf[['std_x', 'std_y']].values]
+    #rfdf['anisotropy'] = [(sx-sy)/(sx+sy) for (sx, sy) in rfdf[['std_x', 'std_y']].values]
+    # Find indices where std_x < std_y
+    swap_ixs = r_df[r_df['std_x'] < r_df['std_y']].index.tolist()
+
+    # Get thetas in deg for plotting (using Ellipse() patch function)
+    # note: regardless of whether std_x or _y bigger, when plotting w/ width=Major, height=minor, 
+    #       correction gives correct theta orientation
+    rfdf['plot_ellipse_deg'] = np.rad2deg(r_df['theta'].copy())
+    r_df['plot_ellipse_deg'][swap_ixs] = [ (theta + 90) % 360 if (90 <= theta < 360) \
+                                          else (((theta) % 90) + 90) % 360
+                                    for theta in np.rad2deg(r_df['theta'][swap_ixs].copy()) ]        
+#    rfdf['plot_ellipse_deg'][swap_ixs] = [ (( (theta) % 90) + 90 + (180 if theta >=270 else 0)) % 360 \
+#                                        if (90 <= theta < 180) or (270 <= theta <360) \
+#                                                else (((theta + 90) % 90) + 180) % 360
+#                                        for theta in np.rad2deg(r_df['theta'][swap_ixs].copy()) ]
+#
+    # Get true major and minor axes 
+    rfdf['major_axis'] = [max([sx, sy]) for sx, sy in r_df[['std_x', 'std_y']].values]
+    rfdf['minor_axis'] = [min([sx, sy]) for sx, sy in r_df[['std_x', 'std_y']].values]
+
+    # Get anisotropy index from these (0=isotropic, >0=anisotropic)
+    rfdf['anisotropy'] = [(sx-sy)/(sx+sy) for (sx, sy) in r_df[['major_axis', 'minor_axis']].values]
+
+    # Calculate true theta that shows orientation of RF relative to major/minor axes
+    nu_thetas = [(t % np.pi) - np.pi if ((np.pi/2.)<t<(np.pi) or (((3./2)*np.pi)<t<2*np.pi)) \
+                 else (t % np.pi) for t in np.deg2rad(r_df['plot_ellipse_deg'].values) ]
+    r_df['theta_true'] = nu_thetas
 
     return rfdf
 
