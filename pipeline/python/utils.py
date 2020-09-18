@@ -24,21 +24,28 @@ from scipy import ndimage
 # -----------------------------------------------------------------------------
 # Commonly used, generic methods:
 # -----------------------------------------------------------------------------
-def set_threecolor_palette():
+def set_threecolor_palette(c1='magenta', c2='orange', c3='dodgerblue', cmap=None):
     # colors = ['k', 'royalblue', 'darkorange'] #sns.color_palette(palette='colorblind') #, n_colors=3)
     # area_colors = {'V1': colors[0], 'Lm': colors[1], 'Li': colors[2]}
     visual_areas = ['V1', 'Lm', 'Li']
-    colors = ['magenta', 'orange', 'dodgerblue'] #sns.color_palette(palette='colorblind') #, n_colors=3)
-    area_colors = {'V1': colors[0], 'Lm': colors[1], 'Li': colors[2]}
+    if cmap is not None:
+        c1, c2, c3 = sns.color_palette(palette='colorblind') #, n_colors=3) 
+    area_colors = {'V1': c1, 'Lm': c2, 'Li': c3}
     return visual_areas, area_colors
 
-def set_plot_params():
+def set_plot_params(lw_axes=1, labelsize=12, color='k'):
     import pylab as pl
     #### Plot params
-    pl.rcParams["axes.labelsize"] = 16
-    pl.rcParams["xtick.labelsize"] = 12
-    pl.rcParams["ytick.labelsize"] = 12
-    
+    pl.rcParams["axes.labelsize"] = labelsize + 4
+    pl.rcParams["axes.linewidth"] = lw_axes
+    pl.rcParams["xtick.labelsize"] = labelsize
+    pl.rcParams["ytick.labelsize"] = labelsize
+    pl.rcParams['xtick.major.width'] = lw_axes
+    pl.rcParams['ytick.major.width'] = lw_axes
+
+    for param in ['xtick.color', 'ytick.color', 'axes.labelcolor', 'axes.edgecolor']:
+        pl.rcParams[param] = color
+
     dpi = 150
 
     return dpi
