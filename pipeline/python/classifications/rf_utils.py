@@ -88,6 +88,7 @@ def aggregate_rf_dataframes(filter_by, fit_desc=None, scale_sigma=True, fit_thr=
     
     return r_df, dkey_dict
 
+
 def get_fit_dpaths(dsets, traceid='traces001', fit_desc=None,
                     excluded_sessions = ['JC110_20191004_FOV1_zoom2p0x',
                                          'JC080_20190602_FOV1_zoom2p0x',
@@ -234,7 +235,7 @@ def aggregate_rf_data(rf_dpaths, fit_desc=None, traceid='traces001', fit_thr=0.5
             traceback.print_exc()
             continue
             
-    rfdf = pd.concat(df_list, axis=0) #.reset_index(drop=True)
+    rfdf = pd.concat(df_list, axis=0).reset_index(drop=True)
 
     # Include average RF size (average of minor/major axes of fit ellipse)
     if scale_sigma:
@@ -265,31 +266,28 @@ def aggregate_rf_data(rf_dpaths, fit_desc=None, traceid='traces001', fit_thr=0.5
     # Anisotropy metrics
     #rfdf['anisotropy'] = [(sx-sy)/(sx+sy) for (sx, sy) in rfdf[['std_x', 'std_y']].values]
     # Find indices where std_x < std_y
-    swap_ixs = r_df[r_df['std_x'] < r_df['std_y']].index.tolist()
+    swap_ixs = rfdf[rfdf['std_x'] < rfdf['std_y']].index.tolist()
 
     # Get thetas in deg for plotting (using Ellipse() patch function)
-    # note: regardless of whether std_x or _y bigger, when plotting w/ width=Major, height=minor, 
-    #       correction gives correct theta orientation
-    rfdf['plot_ellipse_deg'] = np.rad2deg(r_df['theta'].copy())
-    r_df['plot_ellipse_deg'][swap_ixs] = [ (theta + 90) % 360 if (90 <= theta < 360) \
+    # Note: regardless of whether std_x or _y bigger, when plotting w/ width=Major, height=minor
+    #       or width=std_x, height=std_y, should have correct theta orientation 
+    # theta_Mm_deg = Major, minor as width/height, corresponding theta for Ellipse(), in deg.
+    rfdf['theta_Mm_deg'] = np.rad2deg(rfdf['theta'].copy())
+    rfdf['theta_Mm_deg'][swap_ixs] = [ (theta + 90) % 360 if (90 <= theta < 360) \
                                           else (((theta) % 90) + 90) % 360
-                                    for theta in np.rad2deg(r_df['theta'][swap_ixs].copy()) ]        
-#    rfdf['plot_ellipse_deg'][swap_ixs] = [ (( (theta) % 90) + 90 + (180 if theta >=270 else 0)) % 360 \
-#                                        if (90 <= theta < 180) or (270 <= theta <360) \
-#                                                else (((theta + 90) % 90) + 180) % 360
-#                                        for theta in np.rad2deg(r_df['theta'][swap_ixs].copy()) ]
-#
+                                    for theta in np.rad2deg(rfdf['theta'][swap_ixs].values) ]        
+
     # Get true major and minor axes 
-    rfdf['major_axis'] = [max([sx, sy]) for sx, sy in r_df[['std_x', 'std_y']].values]
-    rfdf['minor_axis'] = [min([sx, sy]) for sx, sy in r_df[['std_x', 'std_y']].values]
+    rfdf['major_axis'] = [max([sx, sy]) for sx, sy in rfdf[['std_x', 'std_y']].values]
+    rfdf['minor_axis'] = [min([sx, sy]) for sx, sy in rfdf[['std_x', 'std_y']].values]
 
     # Get anisotropy index from these (0=isotropic, >0=anisotropic)
-    rfdf['anisotropy'] = [(sx-sy)/(sx+sy) for (sx, sy) in r_df[['major_axis', 'minor_axis']].values]
+    rfdf['anisotropy'] = [(sx-sy)/(sx+sy) for (sx, sy) in rfdf[['major_axis', 'minor_axis']].values]
 
     # Calculate true theta that shows orientation of RF relative to major/minor axes
     nu_thetas = [(t % np.pi) - np.pi if ((np.pi/2.)<t<(np.pi) or (((3./2)*np.pi)<t<2*np.pi)) \
-                 else (t % np.pi) for t in np.deg2rad(r_df['plot_ellipse_deg'].values) ]
-    r_df['theta_true'] = nu_thetas
+                 else (t % np.pi) for t in np.deg2rad(rfdf['theta_Mm_deg'].values) ]
+    rfdf['theta_Mm_c'] = nu_thetas
 
     return rfdf
 
