@@ -648,7 +648,7 @@ regr_line_color='magenta'
 
 
 
-def roi_gradients(animalid, session, fov, retino_run='retino_run1', 
+def roi_gradients(animalid, session, fov, retinorun='retino_run1', 
                 traceid='traces001', mag_thr=0.01, pass_criterion='all',
                 plot_examples=True, cmap='nipy_spectral', 
                 smooth_fwhm=7, rootdir='/n/coxfs01/2p-data'):
@@ -904,7 +904,7 @@ def roi_gradients(animalid, session, fov, retino_run='retino_run1',
     return az_fill, el_fill, params, RETID
 
 
-def pixel_gradients(animalid, session, fov, retino_run='retino_run1', 
+def pixel_gradients(animalid, session, fov, retinorun='retino_run1', 
                 traceid='traces001', mag_thr=0.003,
                 cmap='nipy_spectral', smooth_fwhm=7, 
                 rootdir='/n/coxfs01/2p-data'): 
@@ -926,7 +926,7 @@ def pixel_gradients(animalid, session, fov, retino_run='retino_run1',
 
     # Set current animal's retino output dir
     #curr_dst_dir = os.path.join(RETID['DST'], 'retino-structure')
-    run_dir = os.path.join(rootdir, animalid, session, fov, retino_run)
+    run_dir = os.path.join(rootdir, animalid, session, fov, retinorun)
     curr_dst_dir = os.path.join(run_dir, 'retino_analysis', 'retino_structure')
     if not os.path.exists(curr_dst_dir):
             os.makedirs(curr_dst_dir)
@@ -1123,7 +1123,7 @@ def main(options):
     # Get gradients
     if use_pixels:
         az_fill, el_fill, params, RETID = pixel_gradients(animalid, session, fov,
-                            retino_run=retinorun, traceid=traceid, 
+                            retinorun=retinorun, traceid=traceid, 
                             mag_thr=mag_thr, cmap=cmap_name, 
                             smooth_fwhm=smooth_fwhm)                
                 
@@ -1137,7 +1137,7 @@ def main(options):
         gradient_source = 'pixels_thr-%.3f' % (mag_thr)
     else: 
         az_fill, el_fill, params, RETID = roi_gradients(animalid, session, fov, 
-                            retino_run=retinorun, traceid=traceid, 
+                            retinorun=retinorun, traceid=traceid, 
                             mag_thr=mag_thr, pass_criterion=pass_criterion,
                             plot_examples=plot_examples, cmap=cmap_name, 
                             smooth_fwhm=smooth_fwhm) 
