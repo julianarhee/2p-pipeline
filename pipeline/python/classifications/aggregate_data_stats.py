@@ -555,18 +555,19 @@ def get_counts_for_legend(df, area_colors=None, markersize=10, marker='_',
         colors = ['magenta', 'orange', 'dodgerblue'] #sns.color_palette(palette='colorblind') #, n_colors=3)
         area_colors = {'V1': colors[0], 'Lm': colors[1], 'Li': colors[2]}
 
+    dkey_name = 'retinokey' if 'datakey' not in df.columns else 'datakey'
 
     # Get counts
     if 'cell' in df.columns:
-        counts = df.groupby(['visual_area', 'animalid', 'datakey'])['cell'].count().reset_index()
+        counts = df.groupby(['visual_area', 'animalid', dkey_name])['cell'].count().reset_index()
         counts.rename(columns={'cell': 'n_cells'}, inplace=True)
     else:
-        counts = df.groupby(['visual_area', 'animalid', 'datakey']).count().reset_index()
+        counts = df.groupby(['visual_area', 'animalid', dkey_name]).count().reset_index()
 
     # Get counts of samples for legend
     n_rats = dict((v, len(g['animalid'].unique())) \
                         for v, g in counts.groupby(['visual_area']))
-    n_fovs = dict((v, len(g[['datakey']].drop_duplicates())) \
+    n_fovs = dict((v, len(g[[dkey_name]].drop_duplicates())) \
                         for v, g in counts.groupby(['visual_area']))
     for v in area_colors.keys():
         if v not in n_rats.keys():
