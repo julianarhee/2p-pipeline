@@ -17,7 +17,8 @@ parser.add_argument('-A', '--fov', dest='fov_type', action='store', default='zoo
 parser.add_argument('-E', '--exp', dest='experiment_type', action='store', default='rfs', help='Experiment type (e.g., rfs')
 parser.add_argument('-e', '--email', dest='email', action='store', default='rhee@g.harvard.edu', help='Email to send log files')
 parser.add_argument('-t', '--traceid', dest='traceid', action='store', default=None, help='Traceid to use as reference for selecting retino analysis')
-parser.add_argument('-p', '--pass-crit', dest='pass_criterion', action='store', default='npmean', help='Criterion to use for selecting ROIs for gradient calculation (default: npmean, use only if -E retino)')
+
+parser.add_argument('-p', '--pass-crit', dest='pass_criterion', action='store', default='npmean', help='Criterion to use for selecting ROIs for gradient calculation (default: npmean, use only if -E retino. Choices: all, either, any, npmean, pixels)')
 
 
 
