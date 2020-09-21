@@ -31,7 +31,8 @@ def load_pose_data(animalid, session, fovnum, curr_exp, analysis_dir, feature_li
     #pupildata, bad_files = parse_pupil_data(datakey, analysis_dir, eyetracker_dir=eyetracker_dir)
     pupildata, bad_files = parse_pose_data(datakey, analysis_dir, feature_list=feature_list, 
                                             eyetracker_dir=eyetracker_dir)
-    if len(bad_files) > 0:
+    
+    if bad_files is not None and len(bad_files) > 0:
         print("___ there are %i bad files ___" % len(bad_files))
         for b in bad_files:
             print("    %s" % b)
@@ -470,6 +471,9 @@ def parse_pose_data(datakey, analysis_dir, feature_list=['pupil'],
     # DLC outfiles
     dlc_outfiles = sorted(glob.glob(os.path.join(analysis_dir, '%s*.h5' % datakey)), key=natural_keys)
     #print(dlc_outfiles)
+    if len(dlc_outfils)==0:
+        print("***ERROR: no files found for dlc (analysis dir:  \n%s)" % analysis_dir)
+        return None, None
 
     # Eyetracker source files
     # print("... checking movies for dset: %s" % datakey)
