@@ -471,7 +471,7 @@ def parse_pose_data(datakey, analysis_dir, feature_list=['pupil'],
     # DLC outfiles
     dlc_outfiles = sorted(glob.glob(os.path.join(analysis_dir, '%s*.h5' % datakey)), key=natural_keys)
     #print(dlc_outfiles)
-    if len(dlc_outfils)==0:
+    if len(dlc_outfiles)==0:
         print("***ERROR: no files found for dlc (analysis dir:  \n%s)" % analysis_dir)
         return None, None
 
@@ -522,8 +522,10 @@ def parse_pose_data(datakey, analysis_dir, feature_list=['pupil'],
         for feature in feature_list:
             if 'pupil' in feature:
                 pupil_dists_major, pupil_dists_minor = calculate_pupil_metrics(dlc_outfile)
-                pupil_areas = [np.pi*p_maj*p_min for p_maj, p_min in zip(pupil_dists_major, pupil_dists_minor)]
+                   
                 if pupil_dists_major is not None and pupil_dists_minor is not None:
+                    pupil_areas = [np.pi*p_maj*p_min for p_maj, p_min in \
+                                        zip(pupil_dists_major, pupil_dists_minor)]
                     feature_dict.update({'pupil_maj': pupil_dists_major,
                                          'pupil_min': pupil_dists_minor,
                                          'pupil_area': pupil_areas})
