@@ -152,16 +152,19 @@ def get_blob_datasets(filter_by='first', has_gratings=False,
                         excluded_sessions=[], as_dict=True):
 
     included_sessions = []
-    
+
     # Blobs runs w/ incorrect stuff
     always_exclude = ['20190426_JC078', # backlight test, but good for A/B
                       '20191008_JC091'] # rf test
     excluded_sessions.extend(always_exclude)
 
     if filter_by is None:
-        v1_repeats = []
-        lm_repeats = []
-        li_repeats = []
+        #ddict = all_datasets_by_area()
+        sdata = get_aggregate_info()
+        bd = sdata[sdata['experiment']=='blobs'].copy()
+        v1_include = bd[bd['visual_area']=='V1']['datakey'].unique()
+        lm_include = bd[bd['visual_area']=='Lm']['datakey'].unique()
+        li_include = bd[bd['visual_area']=='Li']['datakey'].unique()
     else:
         # Only sessions > 20190511 should have regular gratings
         v1_include = [#'20190511_JC083',  only if has_gratings=True
@@ -210,32 +213,32 @@ def get_blob_datasets(filter_by='first', has_gratings=False,
         else:
             print("Filter <%s> UNKNOWN." % str(filter_by))
             return None
-          
-    if has_gratings:
-        v1_include.extend(['20190511_JC083'])
+              
+        if has_gratings:
+            v1_include.extend(['20190511_JC083'])
 
-        lm_include.extend(['20190513_JC078',
-                           '20190603_JC080',
-                           '20190512_JC083']) # Also, 20190517_JC083
-    else:
-        # Sometimes, same FOV scanned twice, pick earlier/later
-        if filter_by=='first': #default_take_first:
-            v1_include.extend(['20190420_JC076',  # not 20190501_JC076
-                               '20190507_JC083']) # not 20190510_JC083
-            lm_include.extend(['20190504_JC078']) # not 20190509_JC078
+            lm_include.extend(['20190513_JC078',
+                               '20190603_JC080',
+                               '20190512_JC083']) # Also, 20190517_JC083
         else:
-            # pick the later one
-            v1_include.extend(['20190501_JC076',
-                               '20190510_JC083'])
+            # Sometimes, same FOV scanned twice, pick earlier/later
+            if filter_by=='first': #default_take_first:
+                v1_include.extend(['20190420_JC076',  # not 20190501_JC076
+                                   '20190507_JC083']) # not 20190510_JC083
+                lm_include.extend(['20190504_JC078']) # not 20190509_JC078
+            else:
+                # pick the later one
+                v1_include.extend(['20190501_JC076',
+                                   '20190510_JC083'])
 
-            lm_include.extend(['20190509_JC078'])
-        
-        # and add good dsets without gratings
-        lm_include.extend(['20190430_JC078',
-                           '20190506_JC080',
-                           '20190508_JC083'])
-        
-        li_include.extend(['20190502_JC076'])
+                lm_include.extend(['20190509_JC078'])
+            
+            # and add good dsets without gratings
+            lm_include.extend(['20190430_JC078',
+                               '20190506_JC080',
+                               '20190508_JC083'])
+            
+            li_include.extend(['20190502_JC076'])
 
 
     included_ = [v1_include, lm_include, li_include]
