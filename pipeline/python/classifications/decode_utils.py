@@ -5,6 +5,8 @@ Created on  Apr 24 19:56:32 2020
 
 @author: julianarhee
 """
+import matplotlib as mpl
+mpl.use('agg')
 import os
 import json
 import glob
@@ -58,15 +60,18 @@ from sklearn import svm
 
 
 def load_aggregate_rfs(rf_dsets, traceid='traces001', 
-                        fit_desc='fit-2dgaus_dff-no-cutoff', verbose=False):
+                        fit_desc='fit-2dgaus_dff-no-cutoff', 
+                        reliable_only=True, verbose=False):
     rf_dpaths, no_fits = rfutils.get_fit_dpaths(rf_dsets, traceid=traceid, fit_desc=fit_desc)
     rfdf = rfutils.aggregate_rf_data(rf_dpaths, reliable_only=reliable_only, 
                                         fit_desc=fit_desc, traceid=traceid, verbose=verbose)
     rfdf = rfdf.reset_index(drop=True)
     return rfdf
 
-def get_rf_positions(rf_dsets, df_fpath):
-    rfdf = load_aggregate_rfs(rf_dsets, traceid=traceid, fit_desc=fit_desc)
+def get_rf_positions(rf_dsets, df_fpath, traceid='traces001', 
+                        fit_desc='fit-2dgaus_dff-no-cutoff', reliable_only=True, verbose=False):
+    rfdf = load_aggregate_rfs(rf_dsets, traceid=traceid, fit_desc=fit_desc, 
+                                reliable_only=reliable_only, verbose=verbose)
     get_positions = False
     if os.path.exists(df_fpath) and get_positions is False:
         print("Loading existing RF coord conversions...")
@@ -120,11 +125,18 @@ def pick_rfs_with_most_overlap(rfdf, MEANS):
 
     return RFs
 
-def plot_all_rfs(RFs, cmap='cubehelix'):
+def plot_all_rfs(RFs, MEANS, screeninfo, cmap='cubehelix', dpi=150):
     '''
     Plot ALL receptive field pos, mark CoM by FOV. Colormap = datakey.
     One subplot per visual area.
     '''
+    screenright = float(screeninfo['azimuth_deg']/2)
+    screenleft = -1*screenright #float(screeninfo['screen_right'].unique())
+    screentop = float(screeninfo['altitude_deg']/2)
+    screenbottom = -1*screentop
+    screenaspect = float(screeninfo['resolution'][0]) / float(screeninfo['resolution'][1])
+
+
     visual_areas = ['V1', 'Lm', 'Li']
     fig, axn = pl.subplots(1,3, figsize=(10,6), dpi=dpi)
     for visual_area, v_df in RFs.groupby(['visual_area']):
@@ -163,7 +175,6 @@ def plot_all_rfs(RFs, cmap='cubehelix'):
         ax.set_ylabel('')
         ax.set_xlabel('')
         
-    pl.suptitle("RF positions (+ CoM), responsive cells (%s)" % experiment)
     pl.subplots_adjust(top=0.9, bottom=0.4)
 
     return fig
@@ -177,6 +188,8 @@ def calculate_overlaps(RFs, datakeys, experiment='blobs'):
             continue
         
         # Convert RF fit params to polygon
+        rfname = g['experiment'].unique()[0]
+        print(rfname) 
         g.index = g['cell'].values
         rf_polys = rfutils.rfs_to_polys(g[rf_fit_params])
 
@@ -437,8 +450,8 @@ def fit_svm(zdata, targets, test_split=0.2, cv_nfolds=5, verbose=False, cv=True,
 # In[93]:
 
 
-def do_fit(iter_num, global_rois=None, MEANS=None, sdf=None, sample_ncells=None,
-           C_value=None, test_size=0.2, cv_nfolds=5, class_a=0, class_b=106):
+def do_fit(iter_num, global_rois=None, MEANS=None, sdf=None, sample_ncells=None, cv=True,
+           C_value=None, test_split=0.2, cv_nfolds=5, class_a=0, class_b=106):
     #[gdf, MEANS, sdf, sample_ncells, cv] * n_times)
     '''
     Resample w/ replacement from pooled cells (across datasets). Assumes 'sdf' is same for all datasets.

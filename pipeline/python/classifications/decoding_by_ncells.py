@@ -5,6 +5,9 @@ Created on  Apr 24 17:16:28 2020
 
 @author: julianarhee
 """
+import matplotlib as mpl
+mpl.use('agg')
+
 import sys
 import optparse
 import os
@@ -305,7 +308,8 @@ def main(options):
     pp.pprint(RFs[['visual_area', 'datakey']].drop_duplicates().groupby(['visual_area']).count())
 
     # Plot
-    fig = dutils.plot_all_rfs(RFs, cmap='cubehelix')
+    fig = dutils.plot_all_rfs(RFs, MEANS, screeninfo, cmap='cubehelix')
+    pl.suptitle("RF positions (+ CoM), responsive cells (%s)" % experiment)
     putils.label_figure(fig, data_id)
     figname = 'CoM_label-fovs_common_to_blobs_and_rfs'
     pl.savefig(os.path.join(aggr_rf_dir, '%s.svg' % figname))
@@ -370,7 +374,7 @@ def main(options):
     filter_str = '%s_%s' % (filter_str, 'remove-few') if remove_too_few else filter_str
     print(filter_str)
 
-    globalcells_df, cell_counts = dutlis.filter_rois(rfs_and_blobs[rfs_and_blobs['datakey'].isin(curr_dkeys)], 
+    globalcells_df, cell_counts = dutils.filter_rois(rfs_and_blobs[rfs_and_blobs['datakey'].isin(curr_dkeys)], 
                                     overlap_thr=overlap_thr, return_counts=True)
 
 
@@ -417,12 +421,13 @@ def main(options):
 
     # Save data
     datestr = datetime.datetime.now().strftime("%Y%m%d")
-    pooled_outfile = os.path.join(decoding_dir, 'results_%s.pkl' % datestr)
+    pooled_outfile = os.path.join(decoding_dir, 'results_overlap-%.2f_%s.pkl' % (overlap_thr, datestr))
     with open(pooled_outfile, 'wb') as f:
         pkl.dump({'pooled': pooled}, f, protocol=pkl.HIGHEST_PROTOCOL) 
-    params_outfile = os.path.join(decoding_dir, 'params_%s.json' % datestr)
 
-    params = {'test_split': test_split, 'cv_nfolds': cv_nfolds, 'C_value': C_vlaue, 'cv':cv,
+
+    params_outfile = os.path.join(decoding_dir, 'params_overlap-%.2f_%s.json' % (overlap_thr, datestr))
+    params = {'test_split': test_split, 'cv_nfolds': cv_nfolds, 'C_value': C_value, 'cv':cv,
               'n_iterations': n_iterations, 'overlap_thr': overlap_thr,
               'class_a': m0, 'class_b': m100}
     with open(params_outfile, 'w') as f:
