@@ -971,17 +971,15 @@ def plot_score_by_ncells(pooled, metric='heldout_test_score', area_colors=None,
 
     return ax
 
-def default_classifier_by_ncells(pooled, plot_str='traintestAB', dst_dir='/tmp', data_id='DATAID',
-                                    area_colors=None, datestr='YYYYMMDD'):
+def default_classifier_by_ncells(pooled, plot_str='traintestAB', dst_dir='/tmp', 
+                                data_id='DATAID', area_colors=None, date_str='YYYYMMDD', 
+                                dpi=150, lw=2, capsize=2, metric='heldout_test_score'):
     # Plot
-    lw=2
-    capsize=5
-    metric='heldout_test_score'
     for zoom in [True, False]:
         fig, ax = pl.subplots(figsize=(5,4), sharex=True, sharey=True, dpi=dpi)
-        ax = dutils.plot_score_by_ncells(pooled, metric=metric, area_colors=area_colors, 
+        ax = plot_score_by_ncells(pooled, metric=metric, area_colors=area_colors, 
                                 lw=lw, capsize=capsize, ax=ax)
-        ax.set_title(overlap_thr)
+        ax.set_title(plot_str) #overlap_thr)
         if metric=='heldout_test_score':
             ax.set_ylim([0.4, 1.0])
         ax.set_ylabel(metric)
@@ -997,7 +995,7 @@ def default_classifier_by_ncells(pooled, plot_str='traintestAB', dst_dir='/tmp',
         putils.label_figure(fig, data_id)
 
         figname = '%s_decode_%s%s' % (plot_str, metric, zoom_str)
-        pl.savefig(os.path.join(dst_dir, '%s_%s.svg' % (figname, datestr)))
+        pl.savefig(os.path.join(dst_dir, '%s_%s.svg' % (figname, date_str)))
         print(dst_dir, figname)
     return
 
@@ -1021,7 +1019,7 @@ def plot_morph_curves(results, sdf, col_name='test_transform', plot_ci=False, ci
             # plot luminance control
             control_val=-1
             if plot_ci:
-                ctl, ctl_lo, ctl_hi = dutils.calculate_ci(df_[df_[col_name]==control_val]['p_chooseB'].values, ci=ci)
+                ctl, ctl_lo, ctl_hi = calculate_ci(df_[df_[col_name]==control_val]['p_chooseB'].values, ci=ci)
                 yerr = [abs(np.array([ctl-ctl_lo])), abs(np.array([ctl_hi-ctl]))]
             else:
                 ctl = df_[df_[col_name]==control_val]['p_chooseB'].mean()
@@ -1032,7 +1030,7 @@ def plot_morph_curves(results, sdf, col_name='test_transform', plot_ci=False, ci
             
         # plot morph curves
         if plot_ci:
-            ci_vals = dict((val, dutils.calculate_ci(g['p_chooseB'].values, ci=ci)) \
+            ci_vals = dict((val, calculate_ci(g['p_chooseB'].values, ci=ci)) \
                              for val, g in df_[df_[col_name].isin(morphlevels)].groupby([col_name]))
             mean_vals = np.array([ci_vals[k][0] for k in morphlevels])
             lowers = np.array([ci_vals[k][1] for k in morphlevels])

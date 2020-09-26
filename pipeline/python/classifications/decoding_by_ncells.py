@@ -141,7 +141,6 @@ def pool_bootstrap(global_rois, MEANS, sdf, sample_ncells, n_iterations=50, n_pr
 
 def decode_vs_ncells(rfs_and_blobs, stim_datakeys, MEANS, sdf, train_str='clf-by-ncells',
                     n_iterations=100, overlap_thr=0.8, n_processes=1, 
-                    filter_fovs=True, remove_too_few=False,
                     test_split=0.2, cv_nfolds=5, C_value=None, cv=True, 
                     class_a=0, class_b=106, data_id='DATAID', 
                     dst_dir='/n/coxfs01/julianarhee/aggregate-data/decoding'):
@@ -152,26 +151,6 @@ def decode_vs_ncells(rfs_and_blobs, stim_datakeys, MEANS, sdf, train_str='clf-by
 
     #### Linear separability, by RF overlap
     #### Run for 1 overlap_thr, 1 iter, select M0 / M100
-    min_ncells=20
-    too_few = []
-    if filter_fovs:
-        if remove_too_few:
-            for (visual_area, datakey), g in rfs_and_blobs[rfs_and_blobs['perc_overlap']>=overlap_thr].groupby(['visual_area', 'datakey']):
-                if len(g['cell'].unique()) < min_ncells:
-                    print(datakey, len(g['cell'].unique()))
-                    too_few.append(datakey)
-                if datakey not in stim_datakeys:
-                    not_in_stimkeys.append(datakey)
-            curr_dkeys = [s for s in stim_datakeys if s not in too_few]
-        else:
-            curr_dkeys = stim_datakeys
-    else:
-        curr_dkeys = rfs_and_blobs['datakey'].unique()
-
-    filter_str = 'filter-repeat-fovs' if filter_fovs else 'all-fovs'
-    filter_str = '%s_%s' % (filter_str, 'remove-few') if remove_too_few else filter_str
-    print(filter_str)
-
     globalcells_df, cell_counts = dutils.filter_rois(
                                     rfs_and_blobs[rfs_and_blobs['datakey'].isin(curr_dkeys)], 
                                     overlap_thr=overlap_thr, return_counts=True)
@@ -228,13 +207,13 @@ def decode_vs_ncells(rfs_and_blobs, stim_datakeys, MEANS, sdf, train_str='clf-by
 
     params = {'test_split': test_split, 'cv_nfolds': cv_nfolds, 'C_value': C_value, 'cv':cv,
               'n_iterations': n_iterations, 'overlap_thr': overlap_thr,
-              'class_a': m0, 'class_b': m100}
+              'class_a': m0, 'class_b': m100, filter_fovs=True, }
     with open(params_outfile, 'w') as f:
         json.dump(params, f,  indent=4, sort_keys=True)
     print("-- params: %s" % params_outfile)
        
     # Plot
-    plot_str = '%s_overlap-%.2f_%s' % (train_str, overlap_thr, filter_str)
+    plot_str = '%s_overlap-%.2f' % (train_str, overlap_thr)
     dutils.default_classifier_by_ncells(pooled, plot_str=plot_str, dst_dir=dst_dir, 
                         data_id=data_id, area_colors=area_colors, datestr=datestr)
     print("DONE!")
@@ -357,7 +336,7 @@ def main(options):
 
     #### Responsive params
     n_stds = None if responsive_test=='ROC' else 2.5 #None
-    response_str = '%s_resptest-%s_respthr-%.2f' % (response_type, responsive_test, responsive_thr) 
+    response_str = '%s_%s-thr-%.2f' % (response_type, responsive_test, responsive_thr) 
 
     #### Output dir
     stats_dir = os.path.join(aggregate_dir, 'data-stats')
@@ -373,8 +352,8 @@ def main(options):
         exp_dkeys = aggr.get_gratings_datasets(filter_by=stim_filterby, as_dict=True)
 
     # Create data ID for labeling figures with data-types
-    filter_str = 'stim-filter-%s_%s_%s' % (stim_filterby, g_str, response_str)
-    data_id = '|'.join([traceid, filter_str])
+    filter_str = 'filter_%s_%s' % (stim_filterby, g_str)
+    data_id = '|'.join([traceid, filter_str, respones_str])
 
     #### Get metadata for experiment type
     sdata = aggr.get_aggregate_info(traceid=traceid, fov_type=fov_type, state=state)
@@ -478,12 +457,22 @@ def main(options):
     rfs_and_blobs = pd.concat(d_list, axis=0)   
     common_counts = pd.concat(c_list, axis=0)
     
-    
-    decode_vs_ncells(rfs_and_blobs, stim_datakeys, MEANS, sdf, train_str=train_str,
-                    n_iterations=n_iterations, overlap_thr=overlap_thr, n_processes=n_processes, 
-                    filter_fovs=filter_fovs, remove_too_few=remove_too_few,
+    min_ncells=20
+    curr_datakeys = stim_datakeys if filter_fovs else rfs_and_blobs['datakey'].unique()
+    if remove_too_few:
+        too_few = [datakey for (visual_area, datakey), g in 
+                rfs_and_blobs[rfs_and_blobs['perc_overlap']>=overlap_thr].groupby(['visual_area', 'datakey']) if len(g['cell'].unique()) < min_ncells]
+        curr_datakeys = [s for s in curr_datakeys if s not in too_few]
+
+    fig_str = '%s_%s' % (response_str, filter_str) if filter_fovs else '%s_all' % response_str
+    fig_str = '%s_%s' % (fig_str, 'min-%i-cells' % min_ncells) if remove_too_few else fig_str
+    print(fig_str)
+
+    decode_vs_ncells(rfs_and_blobs, curr_datakeys, MEANS, sdf, train_str=train_str,
+                    n_iterations=n_iterations, overlap_thr=overlap_thr, 
+                    n_processes=n_processes, 
                     test_split=test_split, cv_nfolds=cv_nfolds, C_value=C_value, cv=cv, 
-                    class_a=m0, class_b=m100, data_id=data_id,
+                    class_a=m0, class_b=m100, data_id='%s|%s' % (traceid, fig_str), #data_id,
                     dst_dir=decoding_dir)
 
 
