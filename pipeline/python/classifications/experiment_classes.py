@@ -993,15 +993,16 @@ class Session():
     
 class Experiment(object):
     def __init__(self, experiment_type, animalid, session, fov, \
-                 traceid='traces001', rootdir='/n/coxfs01/2p-data'):
+                 traceid='traces001', rootdir='/n/coxfs01/2p-data', verbose=False):
         self.name = experiment_type
         self.animalid = animalid
         self.session = session
         self.fov = fov
         if int(session) < 20190511 and experiment_type=='gratings':
             experiment_type = 'rfs'
-        self.experiment_type = experiment_type
-        print("Creating %s object [%s|%s|%s|%s]" % (experiment_type, animalid, session, fov, traceid))
+        self.experiment_type = experiment_type  
+        if verbose:
+            print("Creating %s object [%s|%s|%s|%s]" % (experiment_type, animalid, session, fov, traceid))
 
         self.get_roi_id(traceid=traceid, rootdir=rootdir)            
         paths = self.get_data_paths(rootdir=rootdir)
@@ -1676,7 +1677,7 @@ class Gratings(Experiment):
 #%%
             
 class Objects(Experiment):
-    def __init__(self, animalid, session, fov, traceid='traces001', rootdir='/n/coxfs01/2p-data'):
+    def __init__(self, animalid, session, fov, traceid='traces001', rootdir='/n/coxfs01/2p-data', verbose=False):
         super(Objects, self).__init__('blobs', animalid, session, fov, traceid=traceid, rootdir=rootdir)
         self.experiment_type = 'blobs'
         
