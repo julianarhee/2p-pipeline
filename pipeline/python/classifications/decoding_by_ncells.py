@@ -68,6 +68,11 @@ import multiprocessing as mp
 from functools import partial
 from contextlib import contextmanager
 
+
+import multiprocessing as mp
+from functools import partial
+from contextlib import contextmanager
+
 @contextmanager
 def poolcontext(*args, **kwargs):
     pool = multiprocessing.Pool(*args, **kwargs)
@@ -82,15 +87,43 @@ def initializer(terminating_):
     global terminating
     terminating = terminating_
 
-def pool_bootstrap(global_rois, MEANS, sdf, sample_ncells, n_iterations=50, n_processes=1):   
-    #try:
-    results = []# None
+
+def pool_bootstrap(global_rois, MEANS, sdf, sample_ncells, n_iterations=50, n_processes=1,
+                   test=None, single=False, n_train_configs=4):   
+    '''
+    test (string, None)
+        None  : Classify A/B only 
+                single=True to train/test on each size
+        morph : Train on anchors, test on intermediate morphs
+                single=True to train/test on each size
+        size  : Train on specific size(s), test on un-trained sizes
+                single=True to train/test on each size
+    '''
+    
+    results = []
     terminating = mp.Event()
 
     pool = mp.Pool(initializer=initializer, initargs=(terminating, ), processes=n_processes)  
     try:
         print("... n: %i (%i procs)" % (sample_ncells, n_processes))
-        func = partial(dutils.do_fit, global_rois=global_rois, MEANS=MEANS, sdf=sdf, sample_ncells=sample_ncells)
+        if test=='morph':
+            if single: # train on 1 size, test on other sizes
+                func = partial(dutils.do_fit_train_single_test_morph, global_rois=global_rois, 
+                               MEANS=MEANS, sdf=sdf, sample_ncells=sample_ncells)
+            else: # combine data across sizes
+                func = partial(dutils.do_fit_train_test_morph, global_rois=global_rois, 
+                               MEANS=MEANS, sdf=sdf, sample_ncells=sample_ncells)             
+        elif test=='size':
+            if single:
+                func = partial(dutils.do_fit_train_test_single, global_rois=global_rois, 
+                               MEANS=MEANS, sdf=sdf, sample_ncells=sample_ncells)
+            else:
+                func = partial(dutils.cycle_train_sets, global_rois=global_rois, 
+                               MEANS=MEANS, sdf=sdf, sample_ncells=sample_ncells, 
+                                n_train_configs=n_train_configs)
+        else:
+            func = partial(dutils.do_fit, global_rois=global_rois, MEANS=MEANS, 
+                           sdf=sdf, sample_ncells=sample_ncells)
         results = pool.map_async(func, range(n_iterations)).get(99999999)
         pool.close()
         pool.join()
@@ -103,6 +136,110 @@ def pool_bootstrap(global_rois, MEANS, sdf, sample_ncells, n_iterations=50, n_pr
         pool.join()
 
     return results
+
+#%%
+
+def decode_vs_ncells(rfs_and_blobs, stim_datakeys, MEANS, sdf, train_str='clf-by-ncells',
+                    n_iterations=100, overlap_thr=0.8, n_processes=1, 
+                    filter_fovs=True, remove_too_few=False,
+                    test_split=0.2, cv_nfolds=5, C_value=None, cv=True, 
+                    class_a=0, class_b=106, data_id='DATAID', 
+                    dst_dir='/n/coxfs01/julianarhee/aggregate-data/decoding'):
+
+    # Filter by RF overlap
+    overlap_int = 0.2
+    overlap_thr_values = np.arange(0, 1+overlap_int, overlap_int)
+
+    #### Linear separability, by RF overlap
+    #### Run for 1 overlap_thr, 1 iter, select M0 / M100
+    min_ncells=20
+    too_few = []
+    if filter_fovs:
+        if remove_too_few:
+            for (visual_area, datakey), g in rfs_and_blobs[rfs_and_blobs['perc_overlap']>=overlap_thr].groupby(['visual_area', 'datakey']):
+                if len(g['cell'].unique()) < min_ncells:
+                    print(datakey, len(g['cell'].unique()))
+                    too_few.append(datakey)
+                if datakey not in stim_datakeys:
+                    not_in_stimkeys.append(datakey)
+            curr_dkeys = [s for s in stim_datakeys if s not in too_few]
+        else:
+            curr_dkeys = stim_datakeys
+    else:
+        curr_dkeys = rfs_and_blobs['datakey'].unique()
+
+    filter_str = 'filter-repeat-fovs' if filter_fovs else 'all-fovs'
+    filter_str = '%s_%s' % (filter_str, 'remove-few') if remove_too_few else filter_str
+    print(filter_str)
+
+    globalcells_df, cell_counts = dutils.filter_rois(
+                                    rfs_and_blobs[rfs_and_blobs['datakey'].isin(curr_dkeys)], 
+                                    overlap_thr=overlap_thr, return_counts=True)
+
+    # Make sure have SAME N trials total
+    keys_with_min_reps = [k for k, v in MEANS.items() if v['config'].value_counts().min() < 29]
+    filt_globaldf = globalcells_df[~globalcells_df['datakey'].isin(keys_with_min_reps)]
+    print(filt_globaldf['visual_area'].value_counts())
+
+    # SET N cells, plot.
+    if overlap_thr==0:
+        NCELLS = [2, 4, 8, 16, 32, 64, 82, 123, 186, 237, 448, 556, 652]
+    elif overlap_thr==0.8:
+        NCELLS = [2, 4, 8, 16, 32, 64, 82, 112, 164, 201, 448, 556, 652]
+    print("NCELLS: %s" % (str(NCELLS)))
+    ncells_dict = dict((k, NCELLS) for k in overlap_thr_values)
+
+    popdf = []
+    #for overlap_thr, NCELLS in ncells_dict.items():
+    print("-------- Overlap: %.2f --------" % overlap_thr)
+    i=0
+    for visual_area, global_rois in filt_globaldf.groupby(['visual_area']):
+        for sample_ncells in NCELLS: #[0::2]:
+            print("... [%s] popn size: %i" % (visual_area, sample_ncells))
+            if sample_ncells > cell_counts[visual_area]:
+                continue 
+            iter_list = pool_bootstrap(global_rois, MEANS, sdf, sample_ncells, test=None,
+                                       n_iterations=n_iterations, n_processes=n_processes)
+            # DATA - get mean across iters
+            iter_results = pd.concat(iter_list, axis=0)
+            iterd = dict(iter_results.mean())
+            iterd.update( dict(('%s_std' % k, v) \
+                    for k, v in zip(iter_results.std().index, iter_results.std().values)) )
+            iterd.update( dict(('%s_sem' % k, v) \
+                    for k, v in zip(iter_results.sem().index, iter_results.sem().values)) )
+            iterd.update({'n_units': sample_ncells, 
+                          'overlap': overlap_thr, 'visual_area': visual_area})
+            popdf.append(pd.DataFrame(iterd, index=[i]))
+            i += 1
+    pooled = pd.concat(popdf, axis=0)
+    pooled.head()
+
+    # Save data
+    print("SAVING.....")
+    datestr = datetime.datetime.now().strftime("%Y%m%d")
+    results_outfile = os.path.join(dst_dir, 
+                        '%s_overlap-%.2f_results_%s.pkl' % (train_str, overlap_thr, datestr))
+    params_outfile = os.path.join(dst_dir, 
+                        '%s_overlap-%.2f_params_%s.json' % (train_str, overlap_thr, datestr))
+
+    with open(results_outfile, 'wb') as f:
+        pkl.dump(pooled, f, protocol=pkl.HIGHEST_PROTOCOL) 
+    print("-- results: %s" % results_outfile)
+
+    params = {'test_split': test_split, 'cv_nfolds': cv_nfolds, 'C_value': C_value, 'cv':cv,
+              'n_iterations': n_iterations, 'overlap_thr': overlap_thr,
+              'class_a': m0, 'class_b': m100}
+    with open(params_outfile, 'w') as f:
+        json.dump(params, f,  indent=4, sort_keys=True)
+    print("-- params: %s" % params_outfile)
+       
+    # Plot
+    plot_str = '%s_overlap-%.2f_%s' % (train_str, overlap_thr, filter_str)
+    dutils.default_classifier_by_ncells(pooled, plot_str=plot_str, dst_dir=dst_dir, 
+                        data_id=data_id, area_colors=area_colors, datestr=datestr)
+    print("DONE!")
+
+    return
 
 
 traceid = 'traces001'
@@ -210,8 +347,10 @@ def main(options):
     filter_fovs = True
     remove_too_few = False
     min_ncells = 20 if remove_too_few else 0
-    # -------------------------------------------------
-
+    # -------------------------------------------------                              
+    
+    train_str = 'traintest_by-ncells_iter-%i' % (n_iterations)
+ 
     # Set colors
     visual_area, area_colors = putils.set_threecolor_palette()
     dpi = putils.set_plot_params()
@@ -338,126 +477,14 @@ def main(options):
         i+=1    
     rfs_and_blobs = pd.concat(d_list, axis=0)   
     common_counts = pd.concat(c_list, axis=0)
-     
-
-    # Filter by RF overlap
-    overlap_int = 0.2
-    overlap_thr_values = np.arange(0, 1+overlap_int, overlap_int)
-
-    # Set output dir
-    overlap_dir = os.path.join(decoding_dir, 'match_RF_overlap')
-    if not os.path.exists(overlap_dir):
-        os.makedirs(overlap_dir)
-    print(overlap_dir)
-
-
-    #### Linear separability, by RF overlap
-    #### Run for 1 overlap_thr, 1 iter, select M0 / M100
-    if filter_fovs:
-        if remove_too_few:
-            not_in_stimkeys =[]
-            too_few = []
-
-            for (visual_area, datakey), g in rfs_and_blobs[rfs_and_blobs['perc_overlap']>=overlap_thr].groupby(['visual_area', 'datakey']):
-                if len(g['cell'].unique()) < min_ncells:
-                    print(datakey, len(g['cell'].unique()))
-                    too_few.append(datakey)
-                if datakey not in stim_datakeys:
-                    not_in_stimkeys.append(datakey)
-            curr_dkeys = [s for s in stim_datakeys if s not in too_few]
-        else:
-            curr_dkeys = stim_datakeys
-    else:
-        curr_dkeys = rfs_and_blobs['datakey'].unique()
-
-    filter_str = 'filter-repeat-fovs' if filter_fovs else 'all-fovs'
-    filter_str = '%s_%s' % (filter_str, 'remove-few') if remove_too_few else filter_str
-    print(filter_str)
-
-    globalcells_df, cell_counts = dutils.filter_rois(rfs_and_blobs[rfs_and_blobs['datakey'].isin(curr_dkeys)], 
-                                    overlap_thr=overlap_thr, return_counts=True)
-
-
-    # Make sure have SAME N trials total
-    keys_with_min_reps = [k for k, v in MEANS.items() if v['config'].value_counts().min() < 29]
-    filt_globaldf = globalcells_df[~globalcells_df['datakey'].isin(keys_with_min_reps)]
-    print(filt_globaldf['visual_area'].value_counts())
-
-    NCELLS = [2, 4, 8, 16, 32, 64, 82, 123, 186, 237, 448, 556, 652]
-    print("NCELLS: %s" % (str(NCELLS)))
-    ncells_dict = dict((k, NCELLS) for k in overlap_thr_values)
-
-
-    popdf = []
-    #for overlap_thr, NCELLS in ncells_dict.items():
-    print("-------- Overlap: %.2f --------" % overlap_thr)
-    i=0
-    for visual_area, global_rois in filt_globaldf.groupby(['visual_area']):
-        for sample_ncells in NCELLS: #[0::2]:
-            print("... [%s] popn size: %i" % (visual_area, sample_ncells))
-            if sample_ncells > cell_counts[visual_area]:
-                continue 
-            iter_list = pool_bootstrap(global_rois, MEANS, sdf, sample_ncells, 
-                                       n_iterations=n_iterations, n_processes=n_processes)
-
-            # DATA - get mean across iters
-            iter_results = pd.concat(iter_list, axis=0)
-            iterd = dict(iter_results.mean())
-            iterd.update( dict(('%s_std' % k, v) \
-                    for k, v in zip(iter_results.std().index, iter_results.std().values)) )
-            iterd.update( dict(('%s_sem' % k, v) \
-                    for k, v in zip(iter_results.sem().index, iter_results.sem().values)) )
-            iterd.update({'n_units': sample_ncells, 
-                          'overlap': overlap_thr, 'visual_area': visual_area})
-
-            popdf.append(pd.DataFrame(iterd, index=[i]))
-            #popdf_chance.append(pd.DataFrame(iterd_chance, index=[i]))
-            i += 1
-    pooled = pd.concat(popdf, axis=0)
-    #pooled_chance = pd.concat(popdf_chance, axis=0)
-    #print(pooled.shape, pooled_chance.shape)
-    pooled.head()
-
-
-    # Save data
-    datestr = datetime.datetime.now().strftime("%Y%m%d")
-    pooled_outfile = os.path.join(decoding_dir, 'results_overlap-%.2f_%s.pkl' % (overlap_thr, datestr))
-    with open(pooled_outfile, 'wb') as f:
-        pkl.dump({'pooled': pooled}, f, protocol=pkl.HIGHEST_PROTOCOL) 
-
-
-    params_outfile = os.path.join(decoding_dir, 'params_overlap-%.2f_%s.json' % (overlap_thr, datestr))
-    params = {'test_split': test_split, 'cv_nfolds': cv_nfolds, 'C_value': C_value, 'cv':cv,
-              'n_iterations': n_iterations, 'overlap_thr': overlap_thr,
-              'class_a': m0, 'class_b': m100}
-    with open(params_outfile, 'w') as f:
-        json.dump(params, f,  indent=4, sort_keys=True)
-        
-
-    lw=2
-    capsize=5
-    metric='heldout_test_score'
-
-    for zoom in [True, False]:
-        fig, ax = pl.subplots(figsize=(5,4), sharex=True, sharey=True, dpi=dpi)
-        ax = dutils.plot_by_ncells(pooled, metric=metric, area_colors=area_colors, 
-                                lw=lw, capsize=capsize, ax=ax)
-        ax.set_title(overlap_thr)
-        if metric=='heldout_test_score':
-            ax.set_ylim([0.4, 1.0])
-        ax.set_ylabel(metric)
-
-        zoom_str=''
-        if zoom:
-            ax.set_xlim([0, 120])
-            zoom_str = 'zoom'
-
-        sns.despine(trim=True, offset=4)
-        pl.subplots_adjust(right=0.75, left=0.2, wspace=0.5, bottom=0.2, top=0.8)
-
-        putils.label_figure(fig, data_id)
-        figname = '%s_%s%s_cv-C-by-ncells_overlap-%.2f' % (filter_str, metric, zoom_str, overlap_thr)
-        pl.savefig(os.path.join(decoding_dir, '%s_%s.svg' % (figname, datestr)))
+    
+    
+    decode_vs_ncells(rfs_and_blobs, stim_datakeys, MEANS, sdf, train_str=train_str,
+                    n_iterations=n_iterations, overlap_thr=overlap_thr, n_processes=n_processes, 
+                    filter_fovs=filter_fovs, remove_too_few=remove_too_few,
+                    test_split=test_split, cv_nfolds=cv_nfolds, C_value=C_value, cv=cv, 
+                    class_a=m0, class_b=m100, data_id=data_id,
+                    dst_dir=decoding_dir)
 
 
 
