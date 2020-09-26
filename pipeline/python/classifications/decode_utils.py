@@ -1001,7 +1001,7 @@ def default_classifier_by_ncells(pooled, plot_str='traintestAB', dst_dir='/tmp',
 
 
 def plot_morph_curves(results, sdf, col_name='test_transform', plot_ci=False, ci=95, 
-                        plot_luminance=True, lw=2, capsize=3, markersize=5, 
+                        plot_luminance=True, lw=2, capsize=2, markersize=5, 
                         area_colors=None, ax=None, dpi=150, alpha=1, label=None):
     
     if area_colors is None:
@@ -1056,11 +1056,12 @@ def plot_morph_curves(results, sdf, col_name='test_transform', plot_ci=False, ci
     return ax
 
 
-def default_morphcurves_split_size(results, area_colors=None, dst_dir='/tmp', data_id='DATAID'):
+def default_morphcurves_split_size(results, sdf, area_colors=None, dst_dir='/tmp', data_id='DATAID',
+                                    lw=2, train_str='train-anchors-test-intermed', capsize=2):
     if area_colors is None:
         visual_areas, area_colors = putils.set_threecolor_palette()
         
-    fig, axn = pl.subplots(1, 3, figsize=(12,4), sharex=True, sharey=True)
+    fig, axn = pl.subplots(1, 3, figsize=(12,4), sharex=True, sharey=True, dpi=150)
     alphas = np.linspace(0.1, 1, 5)
     ci = 95
     shade=False
@@ -1075,38 +1076,42 @@ def default_morphcurves_split_size(results, area_colors=None, dst_dir='/tmp', da
         ax = axn[ai]
         for si, (sz, df_) in enumerate(vdf.groupby(['size'])):
             ax = plot_morph_curves(df_, sdf, col_name='morphlevel', 
-                                   plot_luminance=plot_luminance, plot_ci=plot_ci,
+                                   plot_luminance=plot_luminance, plot_ci=plot_ci, capsize=capsize,
                                    lw=lw, area_colors=area_colors, ax=ax, alpha=alphas[si], label=sz)
+        ax.axhline(y=0.5, linestyle=':', color='k', lw=1)
+
         if ai==2:
             ax.legend(bbox_to_anchor=(1, 1.1))                               
 
     pl.subplots_adjust(left=0.1, right=0.9, bottom=0.2, top=0.8)
     sns.despine(trim=True, offset=4)
-    pl.suptitle("Train on anchors, test on intermediates\n(n=%i iters, overlap=%.2f)" % (n_iterations, overlap_thr), fontsize=8)
-
+    pl.suptitle("Train on anchors, test on intermediates", fontsize=8)
+    
     putils.label_figure(fig, data_id)
 
-    figname = '%s_morphcurves_split-size__overlap-%.2f_%s' % (train_str, overlap_thr, plot_str)
+    figname = '%s_morphcurves_split-size__%s' % (train_str, plot_str)
     pl.savefig(os.path.join(dst_dir, '%s.svg' % figname))
     print(dst_dir, figname)
     
     return
  
-def default_morphcurves_avg_size(results, dst_dir='/tmp', data_id='DATAID'):
+def default_morphcurves_avg_size(results, sdf, area_colors=None, dst_dir='/tmp', data_id='DATAID',
+                                    lw=2, train_str='train-anchors-test-intermed', capsize=2):
+    if area_colors is None:
+        visual_areas, area_colors = putils.set_threecolor_palette()
+
     ci=95
     markersize=5
-    lw=2
-    capsize=2
     plot_luminance=True
     plot_ci=False
     #shade=False
     plot_str = 'wLum' if plot_luminance else ''
     plot_str = '%s_ci%i' % (plot_str, ci) if plot_ci else plot_str
 
-    fig, ax = pl.subplots(dpi=dpi, figsize=(5,4))
+    fig, ax = pl.subplots(dpi=150, figsize=(5,4))
     ax = plot_morph_curves(results, sdf, col_name='morphlevel', ci=ci, plot_luminance=plot_luminance, 
                           lw=lw, capsize=capsize, markersize=markersize, plot_ci=plot_ci,
-                           area_colors=area_colors, ax=ax, dpi=dpi)
+                           area_colors=area_colors, ax=ax, dpi=150)
     pl.subplots_adjust(left=0.2, bottom=0.2, right=0.8, top=0.8)
 
     sns.despine(trim=True, offset=4)
@@ -1114,7 +1119,7 @@ def default_morphcurves_avg_size(results, dst_dir='/tmp', data_id='DATAID'):
 
     putils.label_figure(fig, data_id)
 
-    figname = '%s_morphcurves_avg-size__overlap-%.2f_%s' % (train_str, overlap_thr, plot_str)
+    figname = '%s_morphcurves_avg-size__%s' % (train_str, plot_str)
     pl.savefig(os.path.join(dst_dir, '%s.svg' % figname))
     print(dst_dir, figname)
 
