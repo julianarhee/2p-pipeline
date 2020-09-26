@@ -1124,7 +1124,7 @@ def default_morphcurves_avg_size(results, dst_dir='/tmp', data_id='DATAID'):
 # Train/Test on SIZE SUBSETS
 # ----------------------------------------------------------------------------
 def plot_scores_by_test_set(results, sdf, metric='heldout_test_score',  
-                            area_colors=None, ax=None):
+                            area_colors=None, ax=None, plot_sem=True):
     if area_colors is None:
         visual_areas, area_colors = putils.set_threecolor_palette()
 
@@ -1135,7 +1135,10 @@ def plot_scores_by_test_set(results, sdf, metric='heldout_test_score',
     for visual_area, vdf in results.groupby(['visual_area']):
 
         mean_vals = vdf[vdf['test_transform'].isin(sizes)].groupby(['test_transform']).mean()[metric]
-        sem_vals = vdf[vdf['test_transform'].isin(sizes)].groupby(['test_transform']).sem()[metric]
+        if plot_sem:
+            sem_vals = vdf[vdf['test_transform'].isin(sizes)].groupby(['test_transform']).sem()[metric]
+        else:
+            sem_vals = vdf[vdf['test_transform'].isin(sizes)].groupby(['test_transform']).std()[metric]
 
         ax.plot(np.arange(0, len(sizes)), mean_vals, color=area_colors[visual_area],
                    marker='o', markersize=markersize, label=visual_area)
@@ -1152,7 +1155,6 @@ def plot_scores_by_test_set(results, sdf, metric='heldout_test_score',
     ax.set_xlabel('Test Size', fontsize=16)
     ax.set_ylabel(metric, fontsize=16)
     pl.subplots_adjust(left=0.2, right=0.8, top=0.8, bottom=0.3, wspace=0.3)
-    sns.despine(trim=True, offset=4)
     ax.legend(bbox_to_anchor=(1, 1.1))
     return ax
 
@@ -1168,6 +1170,7 @@ def default_train_test_subset(results, sdf, metric='heldout_test_score', area_co
     pl.subplots_adjust(left=0.2, right=0.8, top=0.8, bottom=0.3, wspace=0.3)
     ax.set_title(plot_title, fontsize=8)
     plot_scores_by_test_set(results, sdf, metric=metric, ax=ax)
+    sns.despine(trim=True, offset=4)
     putils.label_figure(fig, data_id)
 
     figname = '%s_generalize_size' % (plot_str)
