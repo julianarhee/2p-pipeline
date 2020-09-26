@@ -152,7 +152,7 @@ def decode_vs_ncells(rfs_and_blobs, stim_datakeys, MEANS, sdf, train_str='clf-by
     #### Linear separability, by RF overlap
     #### Run for 1 overlap_thr, 1 iter, select M0 / M100
     globalcells_df, cell_counts = dutils.filter_rois(
-                                    rfs_and_blobs[rfs_and_blobs['datakey'].isin(curr_dkeys)], 
+                                    rfs_and_blobs[rfs_and_blobs['datakey'].isin(stim_datakeys)], 
                                     overlap_thr=overlap_thr, return_counts=True)
 
     # Make sure have SAME N trials total
@@ -163,8 +163,8 @@ def decode_vs_ncells(rfs_and_blobs, stim_datakeys, MEANS, sdf, train_str='clf-by
     # SET N cells, plot.
     if overlap_thr==0:
         NCELLS = [2, 4, 8, 16, 32, 64, 82, 123, 186, 237, 448, 556, 652]
-    elif overlap_thr==0.8:
-        NCELLS = [2, 4, 8, 16, 32, 64, 82, 112, 164, 201, 448, 556, 652]
+    else: # overlap_thr==0.8:
+        NCELLS = [2, 4, 8, 16, 32, 64, 82, 114, 164, 207, 384, 524, 652]
     print("NCELLS: %s" % (str(NCELLS)))
     ncells_dict = dict((k, NCELLS) for k in overlap_thr_values)
 
@@ -207,7 +207,7 @@ def decode_vs_ncells(rfs_and_blobs, stim_datakeys, MEANS, sdf, train_str='clf-by
 
     params = {'test_split': test_split, 'cv_nfolds': cv_nfolds, 'C_value': C_value, 'cv':cv,
               'n_iterations': n_iterations, 'overlap_thr': overlap_thr,
-              'class_a': m0, 'class_b': m100, filter_fovs=True, }
+              'class_a': m0, 'class_b': m100, 'train_str': train_str, 'data_id': data_id}
     with open(params_outfile, 'w') as f:
         json.dump(params, f,  indent=4, sort_keys=True)
     print("-- params: %s" % params_outfile)
@@ -236,7 +236,7 @@ m0=0
 m100=106
 n_iterations=100 
 n_processes = 2
-print(m0, m100, '%i iters' % n_iterations)
+#print(m0, m100, '%i iters' % n_iterations)
 
 test_split=0.2
 cv_nfolds=5
@@ -353,7 +353,7 @@ def main(options):
 
     # Create data ID for labeling figures with data-types
     filter_str = 'filter_%s_%s' % (stim_filterby, g_str)
-    data_id = '|'.join([traceid, filter_str, respones_str])
+    data_id = '|'.join([traceid, filter_str, response_str])
 
     #### Get metadata for experiment type
     sdata = aggr.get_aggregate_info(traceid=traceid, fov_type=fov_type, state=state)
