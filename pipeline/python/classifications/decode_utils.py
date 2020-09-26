@@ -1143,8 +1143,9 @@ def plot_scores_by_test_set(results, sdf, metric='heldout_test_score',
                    marker='o', markersize=markersize, label=None)
 
         #ax.set_title(train_transform)
-        ax.axhline(y=0.5, color='k', linestyle=':')
-        ax.set_ylim([0.4, 1])
+        if metric=='heldout_test_score':
+            ax.axhline(y=0.5, color='k', linestyle=':')
+            ax.set_ylim([0.4, 1])
         ax.set_xticks(np.arange(0, len(sizes)))
         ax.set_xticklabels(sizes)
 
@@ -1159,8 +1160,8 @@ def default_train_test_subset(results, sdf, metric='heldout_test_score', area_co
                                 plot_title='Train on subset, test on remainder',
                                 plot_str='traintest-size-subset', dst_dir='/tmp', data_id='DATAID'):
 
-    if area_colors is None:
-        visual_areas, area_colors = putils.set_threecolor_palette()
+    #if area_colors is None:
+    visual_areas, area_colors = putils.set_threecolor_palette()
 
     # First plot score for each heldout test size
     fig, ax = pl.subplots(dpi=150, figsize=(4,4), sharex=True, sharey=True)
@@ -1188,7 +1189,7 @@ def default_train_test_subset(results, sdf, metric='heldout_test_score', area_co
         ax.set_xticks([0, 1])
         ax.set_xticklabels(['trained', 'novel'])
         ax.set_title(visual_area, loc='left')
-        ax.set_ylim([0.4, 1])
+        #ax.set_ylim([0.4, 1])
     axn[-1].legend(bbox_to_anchor=(1., 1.))
     axn[0].set_ylabel(metric)
 
