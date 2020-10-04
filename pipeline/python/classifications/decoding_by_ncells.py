@@ -200,7 +200,7 @@ def decode_vs_ncells(rfs_and_blobs, stim_datakeys, MEANS, sdf, train_str='clf-by
                         '%s_overlap-%.2f_results_%s.pkl' % (train_str, overlap_thr, datestr))
     params_outfile = os.path.join(dst_dir, 
                         '%s_overlap-%.2f_params_%s.json' % (train_str, overlap_thr, datestr))
-
+    results = {'results': pooled, 'sdf': sdf}
     with open(results_outfile, 'wb') as f:
         pkl.dump(pooled, f, protocol=pkl.HIGHEST_PROTOCOL) 
     print("-- results: %s" % results_outfile)
