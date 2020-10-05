@@ -31,7 +31,7 @@ import scipy.optimize as opt
 from matplotlib.patches import Ellipse, Rectangle
 
 from mpl_toolkits.axes_grid1 import AxesGrid
-from pipeline.python.utils import natural_keys, convert_range, label_figure, load_dataset, load_run_info, get_screen_dims #ata
+from pipeline.python.utils import natural_keys, convert_range, label_figure, load_dataset, load_run_info, get_screen_dims, warp_spherical, get_spherical_coords
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 from scipy.signal import argrelextrema
 from scipy.interpolate import splrep, sproot, splev, interp1d
@@ -48,7 +48,6 @@ from pipeline.python.traces.trial_alignment import aggregate_experiment_runs
 
 
 #%% Data formating for working with fit params (custom functions)
-
 def rfits_to_df(fitr, row_vals=[], col_vals=[], roi_list=None,
                 scale_sigma=True, sigma_scale=2.35, convert_coords=True):
     '''
@@ -76,7 +75,6 @@ def rfits_to_df(fitr, row_vals=[], col_vals=[], roi_list=None,
         fitdf['sigma_y'] = sigma_y * sigma_scale
 
     return fitdf
-
 
 def convert_fit_to_coords(fitdf, row_vals, col_vals, rid=None):
     
@@ -115,6 +113,19 @@ def convert_fit_to_coords(fitdf, row_vals, col_vals, rid=None):
     
     return xx, yy, sigma_x, sigma_y
 
+def warp_spherical_fromarr(rfmap_values, cart_x, cart_y, sphr_th, sphr_ph, nx=21, ny=11, normalize_range=True):
+#     ny = 11 if len(rfmap_values)==231 else 6
+#     nx = 21 if len(rfmap_values)==231 else 11
+    
+    rfmap_orig = rfmap_values.reshape(nx, ny).T
+    rfmap_warp = warp_spherical(rfmap_orig, cart_x, cart_y, 
+                                     sphr_th, sphr_ph, normalize_range=normalize_range)
+    return rfmap_warp.flatten()
+
+def reshape_array_for_nynx(rfmap_values, nx, ny):
+    rfmap_orig = rfmap_values.reshape(nx, ny).T
+    return rfmap_orig.ravel()
+
 
 #%%
 # -----------------------------------------------------------------------------
@@ -128,14 +139,17 @@ def get_trials_by_cond(labels):
 
     return trials_by_cond
 
-def group_trial_values_by_cond(zscores, trials_by_cond):
+def group_trial_values_by_cond(zscores, trials_by_cond, do_spherical_correction=False, nx=21, ny=11):
     resp_by_cond = dict()
     for cfg, trial_ixs in trials_by_cond.items():
         resp_by_cond[cfg] = zscores.iloc[trial_ixs]  # For each config, array of size ntrials x nrois
 
     trialvalues_by_cond = pd.DataFrame([resp_by_cond[cfg].mean(axis=0) \
                                             for cfg in sorted(resp_by_cond.keys(), key=natural_keys)]) # nconfigs x nrois
-         
+    if do_spherical_correction:
+        avg_t = trialvalues_by_cond.apply(reshape_array_for_nynx, args=(nx, ny))
+        trialvalues_by_cond = avg_t.copy()
+            
     return trialvalues_by_cond
 
 
@@ -397,9 +411,11 @@ def raw_fwhm(arr):
     
 
 
-def get_rf_map(response_vector, ncols, nrows):
-    
-    coordmap_r = np.reshape(response_vector, (ncols, nrows)).T
+def get_rf_map(response_vector, ncols, nrows, do_spherical_correction=False):
+    if do_spherical_correction:
+        coordmap_r = np.reshape(response_vector, (nrows, ncols))
+    else:
+        coordmap_r = np.reshape(response_vector, (ncols, nrows)).T
     
     return coordmap_r
 
@@ -434,12 +450,15 @@ def plot_rf_ellipse(fitr, ax=None, sigma_scale=2.35, scale_sigma=True):
 
 
 def plot_roi_RF(response_vector, ncols, nrows, ax=None, trim=False, cmap='inferno',
-                hard_cutoff=False, set_to_min=True, map_thr=2.0, perc_min=0.1):
+                hard_cutoff=False, set_to_min=True, map_thr=2.0, perc_min=0.1, do_spherical_correction=True):
     
     if ax is None:
         fig, ax = pl.subplots()
         
-    coordmap_r = np.reshape(response_vector, (ncols, nrows)).T
+    if do_spherical_correction:
+        coordmap_r = np.reshape(response_vector, (nrows, ncols))
+    else:
+        coordmap_r = np.reshape(response_vector, (ncols, nrows)).T
      
     rfmap = coordmap_r.copy()
 #    if trim:
@@ -473,35 +492,36 @@ def do_2d_fit(rfmap, nx=None, ny=None, verbose=False):
         #y0, x0 = np.where(rfmap**2. == (rfmap**2.).max())
         #print "x0, y0: (%i, %i)" % (int(x0), int(y0))    
 
-        rfmap_sub = np.abs(rfmap - rfmap.mean())
-        y0, x0 = np.where(rfmap_sub == rfmap_sub.max())
+        rfmap_sub = np.abs(rfmap - np.nanmean(rfmap))
+        y0, x0 = np.where(rfmap_sub == np.nanmax(rfmap_sub))
         amplitude = rfmap[y0, x0][0]
         #print "x0, y0: (%i, %i) | %.2f" % (int(x0), int(y0), amplitude)    
         try:
             #sigma_x = fwhm(xi, (rfmap**2).sum(axis=0))
             #sigma_x = fwhm(xi, abs(rfmap.sum(axis=0) - rfmap.sum(axis=0).mean()) )
-            sigma_x = fwhm(xi, rfmap_sub.sum(axis=0) )
+            sigma_x = fwhm(xi, np.nansum(rfmap_sub, axis=0) )
             assert sigma_x is not None
         except AssertionError:
             #sigma_x = raw_fwhm(rfmap.sum(axis=0)) 
-            sigma_x = raw_fwhm(rfmap_sub.sum(axis=0)) 
+            sigma_x = raw_fwhm( np.nansum(rfmap_sub, axis=0) ) 
         try:
-            sigma_y = fwhm(yi, rfmap_sub.sum(axis=1))
+            sigma_y = fwhm(yi, np.nansum(rfmap_sub, axis=1))
             assert sigma_y is not None
         except AssertionError: #Exception as e:
-            sigma_y = raw_fwhm(rfmap_sub.sum(axis=1))
+            sigma_y = raw_fwhm(np.nansum(rfmap_sub, axis=1))
         #print "sig-X, sig-Y:", sigma_x, sigma_y
         theta = 0
         offset=0
         initial_guess = (amplitude, int(x0), int(y0), sigma_x, sigma_y, theta, offset)
-        popt, pcov = opt.curve_fit(twoD_gauss, (xx, yy), rfmap.ravel(), 
+        valid_ixs = ~np.isnan(rfmap)
+        popt, pcov = opt.curve_fit(twoD_gauss, (xx[valid_ixs], yy[valid_ixs]), rfmap[valid_ixs].ravel(), 
                                    p0=initial_guess, maxfev=2000)
         fitr = twoD_gauss((xx, yy), *popt)
-            
+
         # Get residual sum of squares 
         residuals = rfmap.ravel() - fitr
-        ss_res = np.sum(residuals**2)
-        ss_tot = np.sum((rfmap.ravel() - np.mean(rfmap.ravel()))**2)
+        ss_res = np.nansum(residuals**2)
+        ss_tot = np.nansum((rfmap.ravel() - np.nanmean(rfmap.ravel()))**2)
         r2 = 1 - (ss_res / ss_tot)
         #print(r2)
         if len(np.where(fitr > fitr.min())[0]) < 2 or pcov.max() == np.inf or r2 == 1: 
@@ -525,7 +545,7 @@ def do_2d_fit(rfmap, nx=None, ny=None, verbose=False):
 
 #response_vector = avg_resp_by_cond[rid]
 
-def plot_and_fit_roi_RF(response_vector, row_vals, col_vals, 
+def plot_and_fit_roi_RF(response_vector, row_vals, col_vals, do_spherical_correction=False, 
                         min_sigma=2.5, max_sigma=50, sigma_scale=2.35, scale_sigma=True,
                         trim=False, hard_cutoff=False, map_thr=None, set_to_min=False, perc_min=None):
     '''
@@ -552,7 +572,7 @@ def plot_and_fit_roi_RF(response_vector, row_vals, col_vals,
     fig, axes = pl.subplots(1,2, figsize=(8, 4)) # pl.figure()
     ax = axes[0]
     #ax, rfmap = plot_roi_RF(avg_zscores_by_cond[rid], ncols=len(col_vals), nrows=len(row_vals), ax=ax)
-    ax, rfmap = plot_roi_RF(response_vector, ax=ax,
+    ax, rfmap = plot_roi_RF(response_vector, ax=ax, do_spherical_correction=do_spherical_correction, 
                             ncols=len(col_vals), nrows=len(row_vals))
 #                            , trim=trim,
 #                            perc_min=perc_min,
@@ -816,17 +836,20 @@ def overlay_traces_on_rfmap(rid, avg_resp_by_cond, zscored_traces, labels, sdf, 
                             fitdf=None, response_type='response', start_frame=0, nframes_plot=45, 
                             yunit_sec=1.0, scaley=None, vmin=None, vmax=None, 
                             lw=1, legend_lw=2., cmap='bone', linecolor='darkslateblue', 
-                            row_vals=[], col_vals=[], 
+                            row_vals=[], col_vals=[], do_spherical_correction=True,
                             plot_ellipse=True, scale_sigma=True, sigma_scale=2.35, 
                             ellipse_ec='w', ellipse_fc='none', ellipse_lw=1, ellipse_alpha=1.0): 
                             #screen_ylim=[-33.6615, 33.6615], screen_xlim=[-59.7782, 59.7782]):
    
     nr = len(row_vals)
     nc = len(col_vals)
-   
-    rfmap = np.flipud(np.reshape(avg_resp_by_cond[rid], (len(col_vals), len(row_vals))).T) # Fipud to match screen
-    vmin = rfmap.min() if vmin is None else vmin
-    vmax = rfmap.max() if vmax is None else vmax
+       
+    if do_spherical_correction:
+        rfmap = np.flipud(avg_resp_by_cond[rid].reshape(len(row_vals), len(col_vals))) # Fipud to match screen
+    else:
+        rfmap = np.flipud(np.reshape(avg_resp_by_cond[rid], (len(col_vals), len(row_vals))).T) # Fipud to match screen
+    vmin = np.nanmin(rfmap) if vmin is None else vmin
+    vmax = np.nanmax(rfmap) if vmax is None else vmax
     norm = mpl.colors.Normalize(vmin=vmin, vmax=vmax)
     cmapper = cm.ScalarMappable(norm=norm, cmap=cmap)
    
@@ -1294,7 +1317,7 @@ def target_fov(avg_resp_by_cond, fitdf, screen, fit_roi_list=[], row_vals=[], co
 
 def load_fit_results(animalid, session, fov, experiment='rfs',
                         traceid='traces001', response_type='dff', 
-                        fit_desc=None,
+                        fit_desc=None, do_spherical_correction=False, 
                         rootdir='/n/coxfs01/2p-data'):
  
     fit_results = None
@@ -1302,7 +1325,8 @@ def load_fit_results(animalid, session, fov, experiment='rfs',
     try: 
         if fit_desc is None:
             assert response_type is not None, "No response_type or fit_desc provided"
-            fit_desc = 'fit-2dgaus_%s-no-cutoff' % response_type
+            fit_desc = get_fit_desc(response_type=response_type, do_spherical_correction=do_spherical_correction) 
+            #'fit-2dgaus_%s-no-cutoff' % response_type
     
         rfname = 'gratings' if int(session) < 20190511 else experiment
         rfname = rfname.split('_')[1] if 'combined' in rfname else rfname
@@ -1326,10 +1350,12 @@ def load_fit_results(animalid, session, fov, experiment='rfs',
         fit_params = json.load(f)
         
     return fit_results, fit_params
-    
+  
+
 def fit_rfs(avg_resp_by_cond, fit_params={}, #row_vals=[], col_vals=[], fitparams=None,
             response_type='dff', roi_list=None, #scale_sigma=True,
             #rf_results_fpath='/tmp/fit_results.pkl', 
+            do_spherical_correction=False,
             data_identifier='METADATA'):
             #response_thr=None):
 
@@ -1381,6 +1407,7 @@ def fit_rfs(avg_resp_by_cond, fit_params={}, #row_vals=[], col_vals=[], fitparam
 
         roi_fit_results, fig = plot_and_fit_roi_RF(avg_resp_by_cond[rid], 
                                                     row_vals, col_vals,
+                                                    do_spherical_correction=do_spherical_correction,
                                                     scale_sigma=scale_sigma, 
                                                     sigma_scale=sigma_scale) 
         fig.suptitle('roi %i' % int(rid+1))
@@ -1403,16 +1430,19 @@ def fit_rfs(avg_resp_by_cond, fit_params={}, #row_vals=[], col_vals=[], fitparam
 
 #%%
 
-def get_fit_desc(response_type='dff'):
-    fit_desc = 'fit-2dgaus_%s-no-cutoff' % response_type
+def get_fit_desc(response_type='dff', do_spherical_correction=False):
+    if do_spherical_correction:
+        fit_desc = 'fit-2dgaus_%s_sphr' % response_type
+    else:
+        fit_desc = 'fit-2dgaus_%s-no-cutoff' % response_type        
     return fit_desc
 
 
 def create_rf_dir(animalid, session, fov, run_name, 
-               traceid='traces001', response_type='dff', fit_thr=0.5,
+               traceid='traces001', response_type='dff', do_spherical_correction=False, fit_thr=0.5,
                rootdir='/n/coxfs01/2p-data'):
     # Get RF dir for current fit type
-    fit_desc = get_fit_desc(response_type=response_type)
+    fit_desc = get_fit_desc(response_type=response_type, do_spherical_correction=do_spherical_correction)
     fov_dir = os.path.join(rootdir, animalid, session, fov)
     #print("... >>  (fitrfs) creating RF dir:", run_name)
 
@@ -1508,7 +1538,7 @@ def get_rf_to_fov_info(masks, rfdf, zimg, rfname='rfs', #rfdir='/tmp', rfname='r
 
 #%%
 def get_fit_params(animalid, session, fov, run='combined_rfs_static', traceid='traces001', 
-                   response_type='dff', fit_thr=0.5, 
+                   response_type='dff', fit_thr=0.5, do_spherical_correction=False, 
                    post_stimulus_sec=0.5, sigma_scale=2.35, scale_sigma=True,
                    rootdir='/n/coxfs01/2p-data'):
     
@@ -1525,7 +1555,8 @@ def get_fit_params(animalid, session, fov, run='combined_rfs_static', traceid='t
      
     rfdir, fit_desc = create_rf_dir(animalid, session, fov, 
                                     run, traceid=traceid,
-                                    response_type=response_type, fit_thr=fit_thr)
+                                    response_type=response_type, 
+                                    do_spherical_correction=do_spherical_correction, fit_thr=fit_thr)
 
 
     fit_params = {
@@ -1556,7 +1587,7 @@ def get_fit_params(animalid, session, fov, run='combined_rfs_static', traceid='t
 #%%     
 def fit_2d_receptive_fields(animalid, session, fov, run, traceid, 
                             reload_data=False, create_new=False,
-                            trace_type='corrected', response_type='dff', 
+                            trace_type='corrected', response_type='dff', do_spherical_correction=False, 
                             post_stimulus_sec=0.5, scaley=None,
                             make_pretty_plots=False, plot_response_type='dff', plot_format='svg',
                             #visual_area='', select_rois=False, segment=False,
@@ -1573,7 +1604,8 @@ def fit_2d_receptive_fields(animalid, session, fov, run, traceid,
     run_name = run.split('_')[1] if 'combined' in run else run
     rfdir, fit_desc = create_rf_dir(animalid, session, fov, 
                                     'combined_%s_static' % run_name, traceid=traceid,
-                                    response_type=response_type, fit_thr=fit_thr)
+                                    response_type=response_type, 
+                                    do_spherical_correction=do_spherical_correction, fit_thr=fit_thr)
     # Get data source
     traceid_dir = rfdir.split('/receptive_fields/')[0]
     data_fpath = os.path.join(traceid_dir, 'data_arrays', 'np_subtracted.npz')
@@ -1608,7 +1640,8 @@ def fit_2d_receptive_fields(animalid, session, fov, run, traceid,
         #print("--- [%s|%s|%s|%s]: loaded traces (%s, for %s)." % (animalid, session, fov, run, trace_type, response_type))  
         # Get screen dims and fit params
         fit_params = get_fit_params(animalid, session, fov, run=run, traceid=traceid, 
-                                    response_type=response_type, fit_thr=fit_thr,
+                                    response_type=response_type, 
+                                    do_spherical_correction=do_spherical_correction, fit_thr=fit_thr,
                                     post_stimulus_sec=post_stimulus_sec, 
                                     sigma_scale=sigma_scale, scale_sigma=scale_sigma)
 
@@ -1617,10 +1650,19 @@ def fit_2d_receptive_fields(animalid, session, fov, run, traceid,
         zscored_traces, zscores = process_traces(raw_traces, labels, 
                                                 response_type=fit_params['response_type'],
                                                 nframes_post_onset=fit_params['nframes_post_onset']) 
-        avg_resp_by_cond = group_trial_values_by_cond(zscores, trials_by_cond)
+        nx = len(fit_params['col_vals'])
+        ny = len(fit_params['row_vals'])
+        avg_resp_by_cond = group_trial_values_by_cond(zscores, trials_by_cond, nx=nx, ny=ny,
+                                                        do_spherical_correction=do_spherical_correction)
+        if do_spherical_correction:
+            [px, py] = np.meshgrid(fit_params['col_vals'], fit_params['row_vals'][::-1])
+            cart_x, cart_y, sphr_th, sphr_ph = get_spherical_coords(cart_pointsX=px, cart_pointsY=py)
+            avg_t = avg_resp_by_cond.apply(warp_spherical_fromarr, axis=0, args=(cart_x, cart_y, sphr_th, sphr_ph, nx, ny))        
+            avg_resp_by_cond=avg_t.copy()
        
         # Do fits 
         fit_results, fit_params = fit_rfs(avg_resp_by_cond, response_type=response_type, 
+                                          do_spherical_correction=do_spherical_correction, 
                                             fit_params=fit_params, data_identifier=data_id)        
     
     try:
@@ -1656,7 +1698,18 @@ def fit_2d_receptive_fields(animalid, session, fov, run, traceid,
             zscored_traces, zscores = process_traces(raw_traces, labels, 
                                         response_type=plot_response_type,
                                         nframes_post_onset=fit_params['nframes_post_onset'])
-            avg_resp_by_cond = group_trial_values_by_cond(zscores, trials_by_cond)
+            nx = len(fit_params['col_vals'])
+            ny = len(fit_params['row_vals'])
+            avg_resp_by_cond = group_trial_values_by_cond(zscores, trials_by_cond, nx=nx, ny=ny,
+                                                            do_spherical_correction=do_spherical_correction)
+            if do_spherical_correction:
+                [px, py] = np.meshgrid(fit_params['col_vals'], fit_params['row_vals'][::-1])
+                cart_x, cart_y, sphr_th, sphr_ph = get_spherical_coords(cart_pointsX=px, cart_pointsY=py)
+                nx = len(col_vals)
+                ny = len(row_vals)
+                avg_t = avg_resp_by_cond.apply(warp_spherical_fromarr, axis=0, args=(cart_x, cart_y, sphr_th, sphr_ph, nx, ny))        
+                avg_resp_by_cond=avg_t.copy()
+     
     #%
         # Overlay RF map and mean traces:
         # -----------------------------------------------------------------------------
@@ -1828,9 +1881,8 @@ def extract_options(options):
     parser.add_option('-n', '--nproc', action='store', dest='n_processes', default=1, 
                       help="N processes")
 
-
-
-
+    parser.add_option('--sphere', action='store_true', 
+                        dest='do_spherical_correction', default=False, help="N processes")
     (options, args) = parser.parse_args(options)
 
     return options
@@ -1878,6 +1930,8 @@ def main(options):
     #select_rois = optsE.select_rois
     
     response_type = optsE.response_type
+    do_spherical_correction = optsE.do_spherical_correction
+    
     #response_thr = optsE.response_thr
     create_new= optsE.create_new
 
@@ -1901,6 +1955,7 @@ def main(options):
                                 reload_data=reload_data,
                                 #visual_area=visual_area, select_rois=select_rois,
                                 response_type=response_type, #response_thr=response_thr, 
+                                do_spherical_correction=do_spherical_correction,
                                 create_new=create_new,
                                 make_pretty_plots=make_pretty_plots, 
                                 ellipse_ec=optsE.ellipse_ec, 
