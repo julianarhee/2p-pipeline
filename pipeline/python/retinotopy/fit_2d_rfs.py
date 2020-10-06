@@ -1556,7 +1556,8 @@ def get_fit_params(animalid, session, fov, run='combined_rfs_static', traceid='t
     rfdir, fit_desc = create_rf_dir(animalid, session, fov, 
                                     run, traceid=traceid,
                                     response_type=response_type, 
-                                    do_spherical_correction=do_spherical_correction, fit_thr=fit_thr)
+                                    do_spherical_correction=do_spherical_correction, 
+                                    fit_thr=fit_thr)
 
 
     fit_params = {
@@ -1576,7 +1577,8 @@ def get_fit_params(animalid, session, fov, run='combined_rfs_static', traceid='t
             'row_vals': row_vals,
             'col_vals': col_vals,
             'rfdir': rfdir,
-            'fit_desc': fit_desc
+            'fit_desc': fit_desc,
+            'do_spherical_correction': do_spherical_correction
             } 
    
     with open(os.path.join(rfdir, 'fit_params.json'), 'w') as f:
@@ -1644,6 +1646,10 @@ def fit_2d_receptive_fields(animalid, session, fov, run, traceid,
                                     do_spherical_correction=do_spherical_correction, fit_thr=fit_thr,
                                     post_stimulus_sec=post_stimulus_sec, 
                                     sigma_scale=sigma_scale, scale_sigma=scale_sigma)
+
+        print('-----------------------------')
+        print(fit_params['rfdir'])
+        print('-----------------------------')
 
         # Z-score or dff the traces:
         trials_by_cond = get_trials_by_cond(labels)
