@@ -973,7 +973,7 @@ def plot_score_by_ncells(pooled, metric='heldout_test_score', area_colors=None,
 
 def default_classifier_by_ncells(pooled, plot_str='traintestAB', dst_dir='/tmp', 
                                 data_id='DATAID', area_colors=None, date_str='YYYYMMDD', 
-                                dpi=150, lw=2, capsize=2, metric='heldout_test_score'):
+                                dpi=150, lw=2, capsize=2, metric='heldout_test_score', xlim=100):
     # Plot
     for zoom in [True, False]:
         fig, ax = pl.subplots(figsize=(5,4), sharex=True, sharey=True, dpi=dpi)
@@ -986,7 +986,7 @@ def default_classifier_by_ncells(pooled, plot_str='traintestAB', dst_dir='/tmp',
 
         zoom_str=''
         if zoom:
-            ax.set_xlim([0, 120])
+            ax.set_xlim([0, xlim])
             zoom_str = 'zoom'
 
         sns.despine(trim=True, offset=4)
@@ -1001,12 +1001,9 @@ def default_classifier_by_ncells(pooled, plot_str='traintestAB', dst_dir='/tmp',
 
 
 def plot_morph_curves(results, sdf, col_name='test_transform', plot_ci=False, ci=95, 
-                        plot_luminance=True, lw=2, capsize=2, markersize=5, 
-                        area_colors=None, ax=None, dpi=150, alpha=1, label=None):
+                        plot_luminance=True, lw=2, capsize=2, markersize=5,
+                        curr_color='k', ax=None, dpi=150, alpha=1, label=None):
     
-    if area_colors is None:
-        visual_areas, area_colors = putils.set_threecolor_palette()
-
     if ax is None:
         fig, ax = pl.subplots(dpi=dpi, figsize=(5,4))
 
@@ -1014,7 +1011,7 @@ def plot_morph_curves(results, sdf, col_name='test_transform', plot_ci=False, ci
     xvs = np.arange(1, len(morphlevels)+1) #if plot_luminance else np.arange(0, len(morphlevels))
     
     for visual_area, df_ in results.groupby(['visual_area']):
-        
+        # Set color
         if plot_luminance:
             # plot luminance control
             control_val=-1
@@ -1025,7 +1022,7 @@ def plot_morph_curves(results, sdf, col_name='test_transform', plot_ci=False, ci
                 ctl = df_[df_[col_name]==control_val]['p_chooseB'].mean()
                 yerr = df_[df_[col_name]==control_val]['p_chooseB'].sem()
 
-            ax.errorbar(0, ctl, yerr=yerr, color=area_colors[visual_area],
+            ax.errorbar(0, ctl, yerr=yerr, color=curr_color,
                            marker='o', markersize=markersize, capsize=capsize, alpha=alpha)
             
         # plot morph curves
@@ -1040,8 +1037,8 @@ def plot_morph_curves(results, sdf, col_name='test_transform', plot_ci=False, ci
             mean_vals = df_[df_[col_name].isin(morphlevels)].groupby([col_name]).mean()['p_chooseB']
             yerr = df_[df_[col_name].isin(morphlevels)].groupby([col_name]).sem()['p_chooseB']
 
-        ax.plot(xvs, mean_vals, color=area_colors[visual_area], lw=lw, alpha=alpha, label=label)
-        ax.errorbar(xvs, mean_vals, yerr=yerr, color=area_colors[visual_area],
+        ax.plot(xvs, mean_vals, color=curr_color, lw=lw, alpha=alpha, label=label)
+        ax.errorbar(xvs, mean_vals, yerr=yerr, color=curr_color,
                           capsize=capsize, alpha=alpha, label=None)
         ax.set_ylim([0, 1])
 
@@ -1057,32 +1054,44 @@ def plot_morph_curves(results, sdf, col_name='test_transform', plot_ci=False, ci
 
 
 def default_morphcurves_split_size(results, sdf, area_colors=None, dst_dir='/tmp', data_id='DATAID',
-                                    lw=2, train_str='train-anchors-test-intermed', capsize=2):
-    if area_colors is None:
-        visual_areas, area_colors = putils.set_threecolor_palette()
-        
+                                    lw=2, capsize=2, plot_legend=False, hue_size=False,
+                                  train_str='train-anchors-test-intermed'):
+    #if area_colors is None:
+    visual_areas, area_colors = putils.set_threecolor_palette()
+    cpalettes = {'V1': 'cubehelix', 'Lm': 'colorblind', 'Li': 'hsv'}
+    
     fig, axn = pl.subplots(1, 3, figsize=(12,4), sharex=True, sharey=True, dpi=150)
     alphas = np.linspace(0.1, 1, 5)
     ci = 95
     shade=False
     plot_ci=False
     plot_luminance= True
-
+    use_alpha = hue_size==False
+    
     plot_str = 'wLum' if plot_luminance else ''
     plot_str = '%s_ci%i' % (plot_str, ci) if plot_ci else plot_str
-
+    
     for visual_area, vdf in results.groupby(['visual_area']):
+        if hue_size:
+            color_palette=cpalettes[visual_area]
+            size_colors = sns.color_palette(color_palette, n_colors=5)
+
         ai = visual_areas.index(visual_area)
         ax = axn[ai]
         for si, (sz, df_) in enumerate(vdf.groupby(['size'])):
+            alpha_val = alphas[si] if use_alpha else 1
+            curr_color = size_colors[si] if hue_size else area_colors[visual_area]
             ax = plot_morph_curves(df_, sdf, col_name='morphlevel', 
                                    plot_luminance=plot_luminance, plot_ci=plot_ci, capsize=capsize,
-                                   lw=lw, area_colors=area_colors, ax=ax, alpha=alphas[si], label=sz)
+                                   lw=lw, curr_color=curr_color, ax=ax, alpha=alpha_val, label=sz)
         ax.axhline(y=0.5, linestyle=':', color='k', lw=1)
 
-        if ai==2:
-            ax.legend(bbox_to_anchor=(1, 1.1))                               
-
+        if plot_legend:
+            ax.legend(bbox_to_anchor=(1, 1.1))  
+        else:
+            if ai==2: 
+                ax.legend(bbox_to_anchor=(1, 1.1))
+                
     pl.subplots_adjust(left=0.1, right=0.9, bottom=0.2, top=0.8)
     sns.despine(trim=True, offset=4)
     pl.suptitle("Train on anchors, test on intermediates", fontsize=8)

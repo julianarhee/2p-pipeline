@@ -10,9 +10,41 @@ import scipy.stats as spstats
 import seaborn as sns
 import traceback
 
+import matplotlib as mpl
+import matplotlib.cm as cm
+from matplotlib import colors as mcolors
+from pipeline.python.utils import convert_range
+
 # ------------------------------------------------------------------------------------
 # General stats
 # ------------------------------------------------------------------------------------
+def get_aniso_index(r_df):
+    '''
+    Measure of horizontally vs. vertically anisotropic (-1=horizontal, 1=vertical).
+    Note:  0 can be either isotropic or oblique.
+    
+    theta_Mm_c : converted theta, range -90 to 90 [see aggregate_rf_data()]
+    anisotropy : range [0, 1], where 0=isotropic and 1=anisotropic
+    
+    Convert abs(sin(theta)) range from [0, 1] to [-1, 1], then multiply by anisotropy index
+    '''
+    sins = abs(np.sin(r_df['theta_Mm_c']))
+    sins_c = convert_range(sins, oldmin=0, oldmax=1, newmin=-1, newmax=1)
+    r_df['aniso_index'] = sins_c * r_df['anisotropy']
+    # print(r_df['aniso_index'].min(), r_df['aniso_index'].max())
+   
+    return r_df
+
+def assign_saturation(hue_param, saturation_param, cmap='hsv', min_v=0, max_v=1):
+    norm = mpl.colors.Normalize(vmin=min_v, vmax=max_v)
+    scalar_cmap = cm.ScalarMappable(norm=norm, cmap=cmap)
+
+    norm_ai = (saturation_param - min_v) / (max_v - min_v)
+    theta_rgb = scalar_cmap.to_rgba(abs(np.sin(hue_param)))
+    theta_hsv = mcolors.rgb_to_hsv(theta_rgb[0:3])
+    theta_hsv[1] = norm_ai
+    theta_col = mcolors.hsv_to_rgb(theta_hsv)     
+    return theta_col
 
 def compare_rf_size(df, metric='avg_size', cdf=False, ax=None, alpha=1, lw=2,
                    area_colors=None, visual_areas=['V1', 'Lm', 'Li']):

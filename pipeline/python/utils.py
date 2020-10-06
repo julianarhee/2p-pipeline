@@ -20,9 +20,83 @@ import numpy as np
 from stat import S_IREAD, S_IRGRP, S_IROTH, S_IWRITE, S_IWGRP, S_IWOTH
 from scipy import ndimage
 
+from scipy.interpolate import griddata
+
 
 # -----------------------------------------------------------------------------
-# Commonly used, generic methods:
+# Screen:
+# -----------------------------------------------------------------------------
+def cart2sph(x,y,z):
+    azimuth = np.arctan2(y,x)
+    elevation = np.arctan2(z,np.sqrt(x**2 + y**2))
+    r = np.sqrt(x**2 + y**2 + z**2)
+    return azimuth, elevation, r
+
+def get_spherical_coords(cart_pointsX=None, cart_pointsY=None):
+
+    # Monitor size and position variables
+    width_cm = 103; #%56.69;  % 103 width of screen, in cm
+    height_cm = 58; #%34.29;  % 58 height of screen, in cm
+    pxXmax = 1920; #%200; % number of pixels in an image that fills the whole screen, x
+    pxYmax = 1080; #%150; % number of pixels in an image that fills the whole screen, y
+
+    # Eye info
+    cx = width_cm/2. # % eye x location, in cm
+    cy = height_cm/2. # %11.42; % eye y location, in cm
+    eye_dist = 30.; #% in cm
+
+    # Distance to bottom of screen, along the horizontal eye line
+    zdistBottom = np.sqrt((cy**2) + (eye_dist**2)) #; %24.49;     % in cm
+    zdistTop    = np.sqrt((cy**2) + (eye_dist**2)) #; %14.18;     % in cm
+
+    # Internal conversions
+    top = height_cm-cy;
+    bottom = -cy;
+    right = cx;
+    left = cx - width_cm;
+
+    if cart_pointsX is None or cart_pointsY is None:
+
+        [xi, yi] = np.meshgrid(np.arange(0, pxXmax), np.arange(0, pxYmax))
+        print(xi.shape, yi.shape)
+
+        cart_pointsX = left + (float(width_cm)/pxXmax)*xi;
+        cart_pointsY = top - (float(height_cm)/pxYmax)*yi;
+        cart_pointsZ = zdistTop + ((zdistBottom-zdistTop)/float(pxYmax))*yi
+    else:
+        cart_pointsZ = zdistTop + ((zdistBottom-zdistTop)/float(pxYmax))*cart_pointsY
+
+    sphr_pointsTh, sphr_pointsPh, sphr_pointsR = cart2sph(cart_pointsZ, cart_pointsX, cart_pointsY)
+
+    return cart_pointsX, cart_pointsY, sphr_pointsTh, sphr_pointsPh
+
+def warp_spherical(image_values, cart_pointsX, cart_pointsY, sphr_pointsTh, sphr_pointsPh, normalize_range=True):
+    from scipy.interpolate import griddata
+
+    xmaxRad = sphr_pointsTh.max()
+    ymaxRad = sphr_pointsPh.max()
+
+    # normalize max of Cartesian to max of Spherical
+    fx = xmaxRad/cart_pointsX.max() if normalize_range else 1.
+    fy = ymaxRad/cart_pointsY.max() if normalize_range else 1.
+    x0 = cart_pointsX.copy()*fx
+    y0 = cart_pointsY.copy()*fy
+
+    if normalize_range:
+        points = np.array( (sphr_pointsTh.flatten(), sphr_pointsPh.flatten()) ).T
+    else:
+        points = np.array( (np.rad2deg(sphr_pointsTh).flatten(), np.rad2deg(sphr_pointsPh).flatten()) ).T
+
+    values_ = image_values.flatten()
+    #values_y = cart_pointsY.flatten()
+
+    warped_values = griddata( points, values_, (x0,y0) )
+    
+    return warped_values
+
+
+# -----------------------------------------------------------------------------
+# Plotting:
 # -----------------------------------------------------------------------------
 def set_threecolor_palette(c1='magenta', c2='orange', c3='dodgerblue', cmap=None):
     # colors = ['k', 'royalblue', 'darkorange'] #sns.color_palette(palette='colorblind') #, n_colors=3)
@@ -49,6 +123,7 @@ def set_plot_params(lw_axes=1, labelsize=12, color='k'):
     dpi = 150
 
     return dpi
+
 
 # -----------------------------------------------------------------------------
 # Commonly used, generic methods:
