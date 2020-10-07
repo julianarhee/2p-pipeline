@@ -1667,6 +1667,19 @@ def get_fit_params(animalid, session, fov, run='combined_rfs_static', traceid='t
         json.dump(fit_params, f, indent=4, sort_keys=True)
     
     return fit_params
+def load_rfmap_array(rfdir, do_spherical_correction=True):  
+    rfarray_dpath = os.path.join(rfdir, 'rfmap_array.pkl')    
+    avg_resp_by_cond=None
+    if os.path.exists(rfarray_dpath):
+        with open(rfarray_dpath, 'rb') as f:
+            avg_resp_by_cond = pkl.load(f)
+    return avg_resp_by_cond
+
+def save_rfmap_array(avg_resp_by_cond, rfdir):  
+    rfarray_dpath = os.path.join(rfdir, 'rfmap_array.pkl')    
+    with open(rfarray_dpath, 'wb') as f:
+        pkl.dump(avg_resp_by_cond, f, protocol=pkl.HIGHEST_PROTOCOL)
+    return
 
 #%%     
 def fit_2d_receptive_fields(animalid, session, fov, run, traceid, 
@@ -1740,12 +1753,22 @@ def fit_2d_receptive_fields(animalid, session, fov, run, traceid,
                                                 nframes_post_onset=fit_params['nframes_post_onset']) 
         nx = len(fit_params['col_vals'])
         ny = len(fit_params['row_vals'])
-        avg_resp_by_cond = group_trial_values_by_cond(zscores, trials_by_cond, nx=nx, ny=ny,
+       
+        # -------------------------------------------------------
+        avg_resp_by_cond = load_rfmap_array(fit_params['rfdir'], do_spherical_correction=do_spherical_correction)
+        if avg_resp_by_cond is None:
+            print("Error loading array, extracting now")
+
+            print("...getting avg by cond")
+            avg_resp_by_cond = group_trial_values_by_cond(zscores, trials_by_cond, nx=nx, ny=ny,
                                                         do_spherical_correction=do_spherical_correction)
-        if do_spherical_correction:
-            print("...doin spherical warps")
-            avg_resp_by_cond = sphr_correct_maps(avg_resp_by_cond, fit_params)
-      
+            if do_spherical_correction:
+                print("...doin spherical warps")
+                avg_resp_by_cond = sphr_correct_maps(avg_resp_by_cond, fit_params)
+
+            print("...saved array")
+            save_rfmap_array(avg_resp_by_cond, fit_params['rfdir'])
+         
         # Do fits 
         print("...now, fitting")
         fit_results, fit_params = fit_rfs(avg_resp_by_cond, response_type=response_type, 
@@ -1787,10 +1810,22 @@ def fit_2d_receptive_fields(animalid, session, fov, run, traceid,
                                         nframes_post_onset=fit_params['nframes_post_onset'])
             nx = len(fit_params['col_vals'])
             ny = len(fit_params['row_vals'])
-            avg_resp_by_cond = group_trial_values_by_cond(zscores, trials_by_cond, nx=nx, ny=ny,
+            # -------------------------------------------------------
+            avg_resp_by_cond = load_rfmap_array(fit_params['rfdir'], do_spherical_correction=do_spherical_correction)
+            if avg_resp_by_cond is None:
+                print("Error loading array, extracting now")
+                print("...getting avg by cond")
+                avg_resp_by_cond = group_trial_values_by_cond(zscores, trials_by_cond, nx=nx, ny=ny,
                                                             do_spherical_correction=do_spherical_correction)
-            if do_spherical_correction:
-                avg_resp_by_cond = sphr_correct_maps(avg_resp_by_cond, fit_params)
+                if do_spherical_correction:
+                    print("...doin spherical warps")
+                    avg_resp_by_cond = sphr_correct_maps(avg_resp_by_cond, fit_params)
+                print("...saved array")
+                save_rfmap_array(avg_resp_by_cond, fit_params['rfdir']) 
+                avg_resp_by_cond = group_trial_values_by_cond(zscores, trials_by_cond, nx=nx, ny=ny,
+                                                                do_spherical_correction=do_spherical_correction)
+                if do_spherical_correction:
+                    avg_resp_by_cond = sphr_correct_maps(avg_resp_by_cond, fit_params)
      
 #            if do_spherical_correction:
 #                [px, py] = np.meshgrid(fit_params['col_vals'], fit_params['row_vals'][::-1])
