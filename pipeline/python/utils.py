@@ -32,13 +32,85 @@ def cart2sph(x,y,z):
     r = np.sqrt(x**2 + y**2 + z**2)
     return azimuth, elevation, r
 
-def get_spherical_coords(cart_pointsX=None, cart_pointsY=None):
+
+def get_lin_coords(resolution=[1080, 1920], cm_to_deg=True, 
+                   xlim_degrees=(-59.7, 59.7), ylim_degrees=(-33.6, 33.6)):
+    """
+    **From: https://github.com/zhuangjun1981/retinotopic_mapping (Monitor initialiser)
+
+    Parameters
+    ----------
+    resolution : tuple of two positive integers
+        value of the monitor resolution, (pixel number in height, pixel number in width)
+    dis : float
+         distance from eyeball to monitor (in cm)
+    mon_width_cm : float
+        width of monitor (in cm)
+    mon_height_cm : float
+        height of monitor (in cm)
+    C2T_cm : float
+        distance from gaze center to monitor top
+    C2A_cm : float
+        distance from gaze center to anterior edge of the monitor
+    center_coordinates : tuple of two floats
+        (altitude, azimuth), in degrees. the coordinates of the projecting point
+        from the eye ball to the monitor. This allows to place the display monitor
+        in any arbitrary position.
+    visual_field : str from {'right','left'}, optional
+        the eye that is facing the monitor, defaults to 'left'
+    """
+    mon_height_cm = 58.
+    mon_width_cm = 103.
+    # resolution = [1080, 1920]
+    visual_field = 'left'
+    
+    C2T_cm = mon_height_cm/2. #np.sqrt(dis**2 + mon_height_cm**2)
+    C2A_cm = mon_width_cm/2.
+    
+    # distance form projection point of the eye to bottom of the monitor
+    C2B_cm = mon_height_cm - C2T_cm
+    # distance form projection point of the eye to right of the monitor
+    C2P_cm = -C2A_cm #mon_width_cm - C2A_cm
+
+    map_coord_x, map_coord_y = np.meshgrid(range(resolution[1]),
+                                           range(resolution[0]))
+
+    if visual_field == "left":
+        #map_x = np.linspace(C2A_cm, -1.0 * C2P_cm, resolution[1])
+        map_x = np.linspace(C2P_cm, C2A_cm, resolution[1])
+
+    if visual_field == "right":
+        map_x = np.linspace(-1 * C2A_cm, C2P_cm, resolution[1])
+
+    map_y = np.linspace(C2T_cm, -1.0 * C2B_cm, resolution[0])
+    old_map_x, old_map_y = np.meshgrid(map_x, map_y, sparse=False)
+
+    lin_coord_x = old_map_x
+    lin_coord_y = old_map_y
+    
+    
+    if cm_to_deg:
+        xmin_cm = lin_coord_x.min(); xmax_cm = lin_coord_x.max();
+        ymin_cm = lin_coord_y.min(); ymax_cm = lin_coord_y.max();
+        
+        xmin_deg, xmax_deg = xlim_degrees
+        ymin_deg, ymax_deg = ylim_degrees
+        
+        lin_coord_x = convert_range(lin_coord_x, oldmin=xmin_cm, oldmax=xmax_cm, 
+                                           newmin=xmin_deg, newmax=xmax_deg)
+        lin_coord_y = convert_range(lin_coord_y, oldmin=ymin_cm, oldmax=ymax_cm, 
+                                           newmin=ymin_deg, newmax=ymax_deg)
+    return lin_coord_x, lin_coord_y
+
+def get_spherical_coords(cart_pointsX=None, cart_pointsY=None, cm_to_degrees=True,
+                    resolution=(1080, 1920),
+                   xlim_degrees=(-59.7, 59.7), ylim_degrees=(-33.6, 33.6)):
 
     # Monitor size and position variables
     width_cm = 103; #%56.69;  % 103 width of screen, in cm
     height_cm = 58; #%34.29;  % 58 height of screen, in cm
-    pxXmax = 1920; #%200; % number of pixels in an image that fills the whole screen, x
-    pxYmax = 1080; #%150; % number of pixels in an image that fills the whole screen, y
+    pxXmax = resolution[1] #1920; #%200; % number of pixels in an image that fills the whole screen, x
+    pxYmax = resolution[0] #1080; #%150; % number of pixels in an image that fills the whole screen, y
 
     # Eye info
     cx = width_cm/2. # % eye x location, in cm
@@ -56,7 +128,6 @@ def get_spherical_coords(cart_pointsX=None, cart_pointsY=None):
     left = cx - width_cm;
 
     if cart_pointsX is None or cart_pointsY is None:
-
         [xi, yi] = np.meshgrid(np.arange(0, pxXmax), np.arange(0, pxYmax))
         print(xi.shape, yi.shape)
 
@@ -66,11 +137,25 @@ def get_spherical_coords(cart_pointsX=None, cart_pointsY=None):
     else:
         cart_pointsZ = zdistTop + ((zdistBottom-zdistTop)/float(pxYmax))*cart_pointsY
 
+    if cm_to_degrees:
+        xmin_cm=cart_pointsX.min(); xmax_cm=cart_pointsX.max();
+        ymin_cm=cart_pointsY.min(); ymax_cm=cart_pointsY.max();
+        xmin_deg, xmax_deg = xlim_degrees
+        ymin_deg, ymax_deg = ylim_degrees
+        cart_pointsX = convert_range(cart_pointsX, oldmin=xmin_cm, oldmax=xmax_cm, 
+                                       newmin=xmin_deg, newmax=xmax_deg)
+        cart_pointsY = convert_range(cart_pointsY, oldmin=ymin_cm, oldmax=ymax_cm, 
+                                       newmin=ymin_deg, newmax=ymax_deg)
+        cart_pointsZ = convert_range(cart_pointsZ, oldmin=ymin_cm, oldmax=ymax_cm, 
+                                       newmin=ymin_deg, newmax=ymax_deg)
+
     sphr_pointsTh, sphr_pointsPh, sphr_pointsR = cart2sph(cart_pointsZ, cart_pointsX, cart_pointsY)
+    #sphr_pointsTh, sphr_pointsPh, sphr_pointsR = cart2sph(cart_pointsX, cart_pointsY, cart_pointsZ)
 
     return cart_pointsX, cart_pointsY, sphr_pointsTh, sphr_pointsPh
 
-def warp_spherical(image_values, cart_pointsX, cart_pointsY, sphr_pointsTh, sphr_pointsPh, normalize_range=True):
+def warp_spherical(image_values, cart_pointsX, cart_pointsY, sphr_pointsTh, sphr_pointsPh, 
+                    normalize_range=True, in_radians=True, method='linear'):
     from scipy.interpolate import griddata
 
     xmaxRad = sphr_pointsTh.max()
@@ -81,16 +166,16 @@ def warp_spherical(image_values, cart_pointsX, cart_pointsY, sphr_pointsTh, sphr
     fy = ymaxRad/cart_pointsY.max() if normalize_range else 1.
     x0 = cart_pointsX.copy()*fx
     y0 = cart_pointsY.copy()*fy
-
-    if normalize_range:
-        points = np.array( (sphr_pointsTh.flatten(), sphr_pointsPh.flatten()) ).T
-    else:
+   
+    if in_radians and not normalize_range:
         points = np.array( (np.rad2deg(sphr_pointsTh).flatten(), np.rad2deg(sphr_pointsPh).flatten()) ).T
+    else:
+        points = np.array( (sphr_pointsTh.flatten(), sphr_pointsPh.flatten()) ).T
 
     values_ = image_values.flatten()
     #values_y = cart_pointsY.flatten()
 
-    warped_values = griddata( points, values_, (x0,y0) )
+    warped_values = griddata( points, values_, (x0,y0) , method=method)
     
     return warped_values
 
