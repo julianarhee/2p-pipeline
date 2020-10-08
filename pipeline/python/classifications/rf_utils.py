@@ -268,7 +268,12 @@ def aggregate_rf_data(rf_dpaths, fit_desc=None, traceid='traces001', fit_thr=0.5
             continue
             
     rfdf = pd.concat(df_list, axis=0).reset_index(drop=True)
+    
+    rfdf = update_rf_metrics(rfdf, scale_sigma=scale_sigma)
 
+    return rfdf
+
+def update_rf_metrics(rfdf, scale_sigma=True):
     # Include average RF size (average of minor/major axes of fit ellipse)
     if scale_sigma:
         rfdf = rfdf.rename(columns={'sigma_x': 'fwhm_x', 'sigma_y': 'fwhm_y'})
@@ -321,6 +326,12 @@ def aggregate_rf_data(rf_dpaths, fit_desc=None, traceid='traces001', fit_thr=0.5
                  else (t % np.pi) for t in np.deg2rad(rfdf['theta_Mm_deg'].values) ]
     rfdf['theta_Mm_c'] = nu_thetas
 
+
+    # Get anisotropy index
+    sins = abs(np.sin(rfdf['theta_Mm_c']))
+    sins_c = convert_range(sins, oldmin=0, oldmax=1, newmin=-1, newmax=1)
+    rfdf['aniso_index'] = sins_c * rfdf['anisotropy']
+ 
     return rfdf
 
 
