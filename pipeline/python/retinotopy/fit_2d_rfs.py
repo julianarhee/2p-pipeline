@@ -1778,7 +1778,8 @@ def fit_2d_receptive_fields(animalid, session, fov, run, traceid,
             print "... checking for existing fit results"
             fit_results, fit_params = load_fit_results(animalid, session, fov,
                                         experiment=run_name, traceid=traceid,
-                                        response_type=response_type)
+                                        response_type=response_type, 
+                                        do_spherical_correction=do_spherical_correction)
             print "... loaded RF fit results"
             assert fit_results is not None and fit_params is not None, "EMPTY fit_results"
         except Exception as e:
