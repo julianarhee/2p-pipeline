@@ -1721,10 +1721,12 @@ def get_fit_params(animalid, session, fov, run='combined_rfs_static', traceid='t
         json.dump(fit_params, f, indent=4, sort_keys=True)
     
     return fit_params
+
 def load_rfmap_array(rfdir, do_spherical_correction=True):  
     rfarray_dpath = os.path.join(rfdir, 'rfmap_array.pkl')    
     avg_resp_by_cond=None
     if os.path.exists(rfarray_dpath):
+        print("-- loading: %s" % rfarray_dpath)
         with open(rfarray_dpath, 'rb') as f:
             avg_resp_by_cond = pkl.load(f)
     return avg_resp_by_cond
@@ -1741,7 +1743,8 @@ def fit_2d_receptive_fields(animalid, session, fov, run, traceid,
                             trace_type='corrected', response_type='dff', 
                             do_spherical_correction=False, ds_factor=3, 
                             post_stimulus_sec=0.5, scaley=None,
-                            make_pretty_plots=False, plot_response_type='dff', plot_format='svg',
+                            make_pretty_plots=False, nrois_plot=10,
+                            plot_response_type='dff', plot_format='svg',
                             #visual_area='', select_rois=False, segment=False,
                             ellipse_ec='w', ellipse_fc='none', ellipse_lw=2, 
                             plot_ellipse=True, scale_sigma=True, sigma_scale=2.35,
@@ -1782,6 +1785,7 @@ def fit_2d_receptive_fields(animalid, session, fov, run, traceid,
             traceback.print_exc()
             create_new = True
     print("... do fits?", create_new) 
+    avg_resp_by_cond=None
 
     if create_new or reload_data: #do_fits:
         # Load processed traces 
@@ -1811,7 +1815,6 @@ def fit_2d_receptive_fields(animalid, session, fov, run, traceid,
         ny = len(fit_params['row_vals'])
        
         # -------------------------------------------------------
-        avg_resp_by_cond=None
         if create_new is False:
             avg_resp_by_cond = load_rfmap_array(fit_params['rfdir'], 
                                             do_spherical_correction=do_spherical_correction)
@@ -1829,8 +1832,6 @@ def fit_2d_receptive_fields(animalid, session, fov, run, traceid,
                 else:
                     avg_resp_by_cond = sphr_correct_maps(avg_resp_by_cond, fit_params, 
                                                                 multiproc=False)
-
-
             print("...saved array")
             save_rfmap_array(avg_resp_by_cond, fit_params['rfdir'])
          
@@ -1838,10 +1839,13 @@ def fit_2d_receptive_fields(animalid, session, fov, run, traceid,
         print("...now, fitting")
         fit_results, fit_params = fit_rfs(avg_resp_by_cond, response_type=response_type, 
                                           do_spherical_correction=do_spherical_correction, 
-                                            fit_params=fit_params, data_identifier=data_id)        
-    
+                                            fit_params=fit_params, data_identifier=data_id)            
     try:
         # Convert to dataframe
+        if avg_resp_by_cond is None:
+            avg_resp_by_cond = load_rfmap_array(fit_params['rfdir'], 
+                                        do_spherical_correction=do_spherical_correction)
+
         fitdf_pos = rfits_to_df(fit_results, scale_sigma=False, convert_coords=False,
                             row_vals=fit_params['row_vals'], col_vals=fit_params['col_vals'])
         fit_roi_list = fitdf_pos[fitdf_pos['r2'] > fit_thr].sort_values('r2', axis=0, ascending=False).index.tolist()
@@ -1902,9 +1906,9 @@ def fit_2d_receptive_fields(animalid, session, fov, run, traceid,
                     (len(fit_roi_list), fitdf.shape[0], fit_thr))
 
         plot_ellipse=True
-        for ri, rid in enumerate(fit_roi_list):
+        for ri, rid in enumerate(fit_roi_list[0:nrois_plot]):
             if ri % 20 == 0:
-                print("    %i of %i pretty plots" % (int(ri+1), len(fit_roi_list)))
+                print("    %i of %i pretty plots (total was %i)" % (int(ri+1),nrois_plot,len(fit_roi_list)))
             fig = overlay_traces_on_rfmap(rid, avg_resp_by_cond, zscored_traces, 
                                         labels, sdf, run_info,
                                         response_type=plot_response_type, 
@@ -2034,6 +2038,9 @@ def extract_options(options):
                       default='svg', help="[prettyplots] Plot format (default:svg)")
     parser.add_option('-y', '--scaley', action='store', dest='scaley', default=None, 
                         help="[prettyplots] Set to float to set scale y across all plots (default: max of current trace)")
+    parser.add_option('--nrois',  action='store', dest='nrois_plot', default=10, 
+                      help="[prettyplots] N rois plot")
+
 
 
     # RF fitting options
@@ -2129,13 +2136,15 @@ def main(options):
                                 do_spherical_correction=do_spherical_correction,
                                 create_new=create_new,
                                 make_pretty_plots=make_pretty_plots, 
+                                nrois_plot=int(optsE.nrois_plot),
                                 ellipse_ec=optsE.ellipse_ec, 
                                 ellipse_fc=optsE.ellipse_fc, 
                                 ellipse_lw=optsE.ellipse_lw, 
                                 plot_ellipse=optsE.plot_ellipse,
                                 linecolor=optsE.linecolor, cmap=optsE.cmap, 
                                 legend_lw=optsE.legend_lw, 
-                                plot_format=plot_format, n_processes=n_processes, test=test)
+                                plot_format=plot_format, n_processes=n_processes, 
+                                test_subset=test_subset)
     
     print("--- fit %i rois total ---" % (len(fit_results.keys())))
 
