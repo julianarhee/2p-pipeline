@@ -1906,7 +1906,8 @@ class ReceptiveFields(Experiment):
                                 do_fits=do_fits,
                                 reload_data=reload_data,
                                 create_new=reload_data,
-                                n_orocesses=n_processes) 
+                                n_processes=n_processes,
+                                do_spherical_correction=do_spherical_correction) 
 
         data_id = '|'.join([self.animalid, self.session, self.fov, self.traceid, 
                             self.rois, self.trace_type, estats.fitinfo['fit_desc']])
