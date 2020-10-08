@@ -1712,7 +1712,8 @@ class ReceptiveFields(Experiment):
         
     def get_rf_fits(self, response_type='dff', fit_thr=0.5, make_pretty_plots=False,
                     scale_sigma=True, sigma_scale=2.35, reload_data=False,
-                    create_new=False, rootdir='/n/coxfs01/2p-data', n_processes=1):
+                    create_new=False, rootdir='/n/coxfs01/2p-data', n_processes=1,
+                    do_spherical_correction=False):
         '''
         Loads or does RF 2d-gaussian fit.
         reload_data = set True to reprocess data arrays
@@ -1734,7 +1735,8 @@ class ReceptiveFields(Experiment):
                                                     self.session, self.fov,
                                                     experiment=self.name, 
                                                     traceid=self.traceid,
-                                                    response_type=response_type)
+                                                    response_type=response_type,
+                                                    do_spherical_correction=do_spherical_correction)
                 print("... loaded fits (%s, response-type: %s)" % (self.name, response_type))
             except Exception as e:
                 print(".... unable to load RF fit results. re-fitting...")
@@ -1756,7 +1758,8 @@ class ReceptiveFields(Experiment):
                                                       sigma_scale=sigma_scale,
                                                       trace_type='corrected', 
                                                       response_type=response_type,
-                                                      rootdir=rootdir, n_processes=n_processes)
+                                                      rootdir=rootdir, n_processes=n_processes,
+                                                      do_spherical_correction=do_spherical_correction)
             except Exception as e:
                 print("*** [ERROR]: UNABLE TO GET RF FITS ***")
                 traceback.print_exc()
@@ -1777,6 +1780,7 @@ class ReceptiveFields(Experiment):
                     add_offset=True,
                     reload_data=False, 
                     n_processes=1,
+                    do_spherical_correction=False,
                     rootdir='/n/coxfs01/2p-data', **kwargs):
         '''
         return_all_rois will return all rois in grouped gdf.
@@ -1793,6 +1797,7 @@ class ReceptiveFields(Experiment):
                                             traceid=self.traceid, 
                                             response_type=response_type, 
                                             fit_thr=fit_thr, 
+                                            do_spherical_correction=do_spherical_correction,
                                             rootdir=rootdir)
  
         estats = Struct()
@@ -1814,6 +1819,7 @@ class ReceptiveFields(Experiment):
         fit_results, fit_params = self.get_rf_fits(response_type=response_type, 
                                                     fit_thr=fit_thr,
                                                     make_pretty_plots=plot_pretty_rfs,
+                                                    do_spherical_correction=do_spherical_correction,
                                                     create_new=do_fits,
                                                     reload_data=reload_data, 
                                                     n_processes=n_processes)
@@ -1836,7 +1842,6 @@ class ReceptiveFields(Experiment):
                                         scale_sigma=scale_sigma, 
                                         sigma_scale=sigma_scale)
         estats.fitinfo = fit_params
-
      
         if create_new:         
             estats.experiment_id = 'rfs'
