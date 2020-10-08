@@ -1737,7 +1737,7 @@ class ReceptiveFields(Experiment):
                                                     traceid=self.traceid,
                                                     response_type=response_type,
                                                     do_spherical_correction=do_spherical_correction)
-                print("... loaded fits (%s, response-type: %s)" % (self.name, response_type))
+                print("... loaded fits (%s, %s)" % (self.name, fit_params['fit_desc']))
             except Exception as e:
                 print(".... unable to load RF fit results. re-fitting...")
                 do_fits = True
