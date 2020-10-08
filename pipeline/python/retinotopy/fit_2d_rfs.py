@@ -117,9 +117,9 @@ def convert_fit_to_coords(fitdf, row_vals, col_vals, rid=None):
 
 
 
-def get_screen_lim_pixels(lin_coord_x, lin_coord_y, row_vals=None, col_vals=None, pix_per_deg=16.050716):
+def get_screen_lim_pixels(lin_coord_x, lin_coord_y, row_vals=None, col_vals=None):
     
-    #pix_per_deg = screeninfo['pix_per_deg']
+    #pix_per_deg=16.050716 pix_per_deg = screeninfo['pix_per_deg']
     stim_size = float(np.unique(np.diff(row_vals)))
 
     right_lim = max(col_vals) + (stim_size/2.)
@@ -143,27 +143,26 @@ def get_screen_lim_pixels(lin_coord_x, lin_coord_y, row_vals=None, col_vals=None
     #print("EL bounds (pixels): ", pix_top_edge, pix_bottom_edge)
 
     # Check expected tile size
-    ncols = len(col_vals); nrows = len(row_vals);
-    expected_sz_x = (pix_right_edge-pix_left_edge+1) * (1./pix_per_deg) / ncols
-    expected_sz_y = (pix_bottom_edge-pix_top_edge+1) * (1./pix_per_deg) / nrows
-
+    #ncols = len(col_vals); nrows = len(row_vals);
+    #expected_sz_x = (pix_right_edge-pix_left_edge+1) * (1./pix_per_deg) / ncols
+    #expected_sz_y = (pix_bottom_edge-pix_top_edge+1) * (1./pix_per_deg) / nrows
     #print("tile sz-x, -y should be ~(%.2f, %.2f) deg" % (expected_sz_x, expected_sz_y))
     
     return (pix_bottom_edge, pix_left_edge, pix_top_edge,  pix_right_edge)
 
 
 def resample_map(rfmap, lin_coord_x, lin_coord_y, row_vals=None, col_vals=None,
-                 pix_per_deg=16.050716, resolution=(1080,1920)):
+                 resolution=(1080,1920)):
 
     screen_bounds_pix=get_screen_lim_pixels(lin_coord_x, lin_coord_y, 
-                                        row_vals=row_vals, col_vals=col_vals, pix_per_deg=pix_per_deg)
+                                            row_vals=row_vals, col_vals=col_vals)
     (pix_bottom_edge, pix_left_edge, pix_top_edge, pix_right_edge) = screen_bounds_pix
 
     stim_height = pix_bottom_edge-pix_top_edge+1
     stim_width = pix_right_edge-pix_left_edge+1
     stim_resolution = [stim_height, stim_width]
 
-    # Upsample to match res
+    # Upsample rfmap to match resolution of stimulus-occupied space
     rfmap_r = cv2.resize(rfmap.astype(float), (stim_resolution[1], stim_resolution[0]), 
                           interpolation=cv2.INTER_NEAREST)
 
@@ -173,13 +172,9 @@ def resample_map(rfmap, lin_coord_x, lin_coord_y, row_vals=None, col_vals=None,
     return rfmap_to_screen
 
 
-def warp_spherical_fromarr(rfmap_values, cart_x, cart_y, sphr_th, sphr_ph, 
-                            row_vals=None, col_vals=None,
-                            pix_per_deg=16.050716, resolution=(1080, 1920),
-                            normalize_range=True):
-#     ny = 11 if len(rfmap_values)==231 else 6
-#     nx = 21 if len(rfmap_values)==231 else 11
-   
+def warp_spherical_fromarr(rfmap_values, cart_x=None, cart_y=None, sphr_th=None, sphr_ph=None, 
+                            row_vals=None, col_vals=None, resolution=(1080, 1920),
+                            normalize_range=True):  
     nx = len(col_vals)
     ny = len(row_vals)
     rfmap = rfmap_values.reshape(ny, nx) #rfmap_values.reshape(nx, ny).T
@@ -187,16 +182,13 @@ def warp_spherical_fromarr(rfmap_values, cart_x, cart_y, sphr_th, sphr_ph,
     # Upsample to screen resolution (pixels)
     rfmap_orig = resample_map(rfmap, cart_x, cart_y, #lin_coord_x, lin_coord_y, 
                             row_vals=row_vals, col_vals=col_vals,
-                            pix_per_deg=pix_per_deg, resolution=resolution)
-   
+                            resolution=resolution) 
     # Warp upsampled
-    rfmap_warp = warp_spherical(rfmap_orig, 
-                                cart_x, cart_y, sphr_th, sphr_ph, 
+    rfmap_warp = warp_spherical(rfmap_orig, sphr_th, sphr_ph, cart_x, cart_y,
                                 normalize_range=normalize_range, method='linear')
 
     # Crop
-    screen_bounds_pix = get_screen_lim_pixels(cart_x, cart_y, 
-                                    row_vals=row_vals, col_vals=col_vals, pix_per_deg=pix_per_deg)
+    screen_bounds_pix = get_screen_lim_pixels(cart_x, cart_y, row_vals=row_vals, col_vals=col_vals)
     (pix_bottom_edge, pix_left_edge, pix_top_edge, pix_right_edge) = screen_bounds_pix
     rfmap_trim = rfmap_warp[pix_top_edge:pix_bottom_edge, pix_left_edge:pix_right_edge]
 
@@ -210,18 +202,79 @@ def reshape_array_for_nynx(rfmap_values, nx, ny):
     return rfmap_orig.ravel()
 
 
-def sphr_correct_maps(avg_resp_by_cond, fit_params):
-    # [px, py] = np.meshgrid(fit_params['col_vals'], fit_params['row_vals'][::-1])
-    lin_x, lin_y = get_lin_coords(resolution=fit_params['screen']['resolution'][::-1], cm_to_deg=True)
-    # cart_x, cart_y, sphr_th, sphr_ph = get_spherical_coords(cart_pointsX=px, cart_pointsY=py)
-    cart_x, cart_y, sphr_th, sphr_ph = get_spherical_coords(cart_pointsX=lin_x, cart_pointsY=lin_y,
-                                                            cm_to_degrees=False) # already in deg
+def sphr_correct_maps(avg_resp_by_cond, fit_params=None, multiproc=True):
+
+    if multiproc:
+        avg_resp_by_cond = avg_resp_by_cond.T
+
+    ds_factor = fit_params['downsample_factor']
     col_vals = fit_params['col_vals']
     row_vals = fit_params['row_vals']
-    avg_t = avg_resp_by_cond.apply(warp_spherical_fromarr, axis=0, 
-                                    args=(cart_x, cart_y, sphr_th, sphr_ph, row_vals, col_vals))     
-    return avg_t
 
+    # Downsample screen resolution
+    resolution_ds = [int(i/ds_factor) for i in fit_params['screen']['resolution'][::-1]]
+
+    # Get linear coordinates in degrees (downsampled)
+    lin_x, lin_y = get_lin_coords(resolution=resolution_ds, cm_to_deg=True) 
+    print("Screen resolution (ds=%ix): [%i, %i]" % (ds_factor, resolution_ds[0], resolution_ds[1]))
+    print(avg_resp_by_cond.shape)
+
+    # Get Spherical coordinate mapping
+    cart_x, cart_y, sphr_th, sphr_ph = get_spherical_coords(cart_pointsX=lin_x, cart_pointsY=lin_y,
+                                                            cm_to_degrees=False) # already in deg
+
+    args=(cart_x, cart_y, sphr_th, sphr_ph, row_vals, col_vals, resolution_ds,)
+    avg_t = avg_resp_by_cond.apply(warp_spherical_fromarr, axis=0, args=args)
+
+    print(avg_t.shape)
+
+    return avg_t.reset_index(drop=True)
+
+from functools import partial
+import multiprocessing as mp
+
+def sphr_correct_maps_mp(avg_resp_by_cond, fit_params, n_processes=2, test_subset=False):
+    
+    if test_subset:
+        roi_list=[92, 249, 91, 162, 61, 202, 32, 339]
+        df_ = avg_resp_by_cond[roi_list]
+    else:
+        df_ = avg_resp_by_cond.copy()
+    print("Parallel", df_.shape)
+
+    df = parallelize_dataframe(df_.T, sphr_correct_maps, fit_params, n_processes=n_processes)
+
+    return df
+
+def initializer(terminating_):
+    # This places terminating in the global namespace of the worker subprocesses.
+    # This allows the worker function to access `terminating` even though it is
+    # not passed as an argument to the function.
+    global terminating
+    terminating = terminating_
+
+def parallelize_dataframe(df, func, fit_params, n_processes=4):
+    #cart_x=None, cart_y=None, sphr_th=None, sphr_ph=None,
+    #                      row_vals=None, col_vals=None, resolution=None, n_processes=4):
+    results = []
+    terminating = mp.Event()
+    
+    df_split = np.array_split(df, n_processes)
+    pool = mp.Pool(processes=n_processes, initializer=initializer, initargs=(terminating,))
+    try:
+        results = pool.map(partial(func, fit_params=fit_params), df_split)
+        print("done!")
+    except KeyboardInterrupt:
+        pool.terminate()
+        print("terminating")
+    finally:
+        pool.close()
+        pool.join()
+  
+    print(results[0].shape)
+    df = pd.concat(results, axis=1)
+    print(df.shape)
+    return df #results
 
 #%%
 # -----------------------------------------------------------------------------
@@ -1620,7 +1673,7 @@ def get_rf_to_fov_info(masks, rfdf, zimg, rfname='rfs', #rfdir='/tmp', rfname='r
 
 #%%
 def get_fit_params(animalid, session, fov, run='combined_rfs_static', traceid='traces001', 
-                   response_type='dff', fit_thr=0.5, do_spherical_correction=False, 
+                   response_type='dff', fit_thr=0.5, do_spherical_correction=False, ds_factor=3.,
                    post_stimulus_sec=0.5, sigma_scale=2.35, scale_sigma=True,
                    rootdir='/n/coxfs01/2p-data'):
     
@@ -1660,7 +1713,8 @@ def get_fit_params(animalid, session, fov, run='combined_rfs_static', traceid='t
             'col_vals': col_vals,
             'rfdir': rfdir,
             'fit_desc': fit_desc,
-            'do_spherical_correction': do_spherical_correction
+            'do_spherical_correction': do_spherical_correction,
+            'downsample_factor': ds_factor
             } 
    
     with open(os.path.join(rfdir, 'fit_params.json'), 'w') as f:
@@ -1684,14 +1738,15 @@ def save_rfmap_array(avg_resp_by_cond, rfdir):
 #%%     
 def fit_2d_receptive_fields(animalid, session, fov, run, traceid, 
                             reload_data=False, create_new=False,
-                            trace_type='corrected', response_type='dff', do_spherical_correction=False, 
+                            trace_type='corrected', response_type='dff', 
+                            do_spherical_correction=False, ds_factor=3, 
                             post_stimulus_sec=0.5, scaley=None,
                             make_pretty_plots=False, plot_response_type='dff', plot_format='svg',
                             #visual_area='', select_rois=False, segment=False,
                             ellipse_ec='w', ellipse_fc='none', ellipse_lw=2, 
                             plot_ellipse=True, scale_sigma=True, sigma_scale=2.35,
                             linecolor='darkslateblue', cmap='bone', legend_lw=2, 
-                            fit_thr=0.5, rootdir='/n/coxfs01/2p-data', n_processes=1):
+                            fit_thr=0.5, rootdir='/n/coxfs01/2p-data', n_processes=1, test_subset=False):
 
     rows = 'ypos'; cols = 'xpos';
 
@@ -1738,7 +1793,8 @@ def fit_2d_receptive_fields(animalid, session, fov, run, traceid,
         # Get screen dims and fit params
         fit_params = get_fit_params(animalid, session, fov, run=run, traceid=traceid, 
                                     response_type=response_type, 
-                                    do_spherical_correction=do_spherical_correction, fit_thr=fit_thr,
+                                    do_spherical_correction=do_spherical_correction, ds_factor=ds_factor,
+                                    fit_thr=fit_thr,
                                     post_stimulus_sec=post_stimulus_sec, 
                                     sigma_scale=sigma_scale, scale_sigma=scale_sigma)
 
@@ -1755,7 +1811,10 @@ def fit_2d_receptive_fields(animalid, session, fov, run, traceid,
         ny = len(fit_params['row_vals'])
        
         # -------------------------------------------------------
-        avg_resp_by_cond = load_rfmap_array(fit_params['rfdir'], do_spherical_correction=do_spherical_correction)
+        avg_resp_by_cond=None
+        if create_new is False:
+            avg_resp_by_cond = load_rfmap_array(fit_params['rfdir'], 
+                                            do_spherical_correction=do_spherical_correction)
         if avg_resp_by_cond is None:
             print("Error loading array, extracting now")
 
@@ -1764,7 +1823,13 @@ def fit_2d_receptive_fields(animalid, session, fov, run, traceid,
                                                         do_spherical_correction=do_spherical_correction)
             if do_spherical_correction:
                 print("...doin spherical warps")
-                avg_resp_by_cond = sphr_correct_maps(avg_resp_by_cond, fit_params)
+                if n_processes>1:
+                    avg_resp_by_cond = sphr_correct_maps_mp(avg_resp_by_cond, fit_params, 
+                                                                n_processes=n_processes, test_subset=test_subset)
+                else:
+                    avg_resp_by_cond = sphr_correct_maps(avg_resp_by_cond, fit_params, 
+                                                                multiproc=False)
+
 
             print("...saved array")
             save_rfmap_array(avg_resp_by_cond, fit_params['rfdir'])
@@ -1813,26 +1878,8 @@ def fit_2d_receptive_fields(animalid, session, fov, run, traceid,
             # -------------------------------------------------------
             avg_resp_by_cond = load_rfmap_array(fit_params['rfdir'], do_spherical_correction=do_spherical_correction)
             if avg_resp_by_cond is None:
-                print("Error loading array, extracting now")
-                print("...getting avg by cond")
-                avg_resp_by_cond = group_trial_values_by_cond(zscores, trials_by_cond, nx=nx, ny=ny,
-                                                            do_spherical_correction=do_spherical_correction)
-                if do_spherical_correction:
-                    print("...doin spherical warps")
-                    avg_resp_by_cond = sphr_correct_maps(avg_resp_by_cond, fit_params)
-                print("...saved array")
-                save_rfmap_array(avg_resp_by_cond, fit_params['rfdir']) 
-                avg_resp_by_cond = group_trial_values_by_cond(zscores, trials_by_cond, nx=nx, ny=ny,
-                                                                do_spherical_correction=do_spherical_correction)
-                if do_spherical_correction:
-                    avg_resp_by_cond = sphr_correct_maps(avg_resp_by_cond, fit_params)
-     
-#            if do_spherical_correction:
-#                [px, py] = np.meshgrid(fit_params['col_vals'], fit_params['row_vals'][::-1])
-#                cart_x, cart_y, sphr_th, sphr_ph = get_spherical_coords(cart_pointsX=px, cart_pointsY=py)
-#                avg_t = avg_resp_by_cond.apply(warp_spherical_fromarr, axis=0, args=(cart_x, cart_y, sphr_th, sphr_ph, nx, ny))        
-#                avg_resp_by_cond=avg_t.copy()
-#     
+                print("Error loading array, ABORTING.")
+                return None   
     #%
         # Overlay RF map and mean traces:
         # -----------------------------------------------------------------------------
@@ -2068,6 +2115,7 @@ def main(options):
     plot_format = optsE.plot_format
 
     n_processes = int(optsE.n_processes)
+    test_subset=False
 
     fit_results, fit_params = fit_2d_receptive_fields(animalid, session, fov, 
                                 run, traceid, 
@@ -2087,7 +2135,7 @@ def main(options):
                                 plot_ellipse=optsE.plot_ellipse,
                                 linecolor=optsE.linecolor, cmap=optsE.cmap, 
                                 legend_lw=optsE.legend_lw, 
-                                plot_format=plot_format, n_processes=n_processes)
+                                plot_format=plot_format, n_processes=n_processes, test=test)
     
     print("--- fit %i rois total ---" % (len(fit_results.keys())))
 
