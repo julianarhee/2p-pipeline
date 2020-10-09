@@ -1893,6 +1893,7 @@ class ReceptiveFields(Experiment):
                       plot_boot_distns=True, nframes_post=0,
                       transform_fov=True, sigma_scale=2.35, scale_sigma=True,
                       do_fits=False, reload_data=False, 
+                      do_spherical_correction=False,
                       create_new=False, rootdir='/n/coxfs01/2p-data'):
         
         from pipeline.python.classifications import evaluate_receptivefield_fits as evalrfs
