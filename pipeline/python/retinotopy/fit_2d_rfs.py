@@ -62,11 +62,11 @@ def rfits_to_df(fitr, row_vals=[], col_vals=[], roi_list=None,
     sigma_scale = sigma_scale if scale_sigma else 1.0
 
     fitdf = pd.DataFrame({'x0': [fitr[r]['x0'] for r in roi_list],
-                               'y0': [fitr[r]['y0'] for r in roi_list],
-                               'sigma_x': [fitr[r]['sigma_x'] for r in roi_list],
-                               'sigma_y': [fitr[r]['sigma_y'] for r in roi_list],
-                               'theta': [fitr[r]['theta'] % (2*np.pi) for r in roi_list],
-                               'r2': [fitr[r]['r2'] for r in roi_list]},
+                          'y0': [fitr[r]['y0'] for r in roi_list],
+                          'sigma_x': [fitr[r]['sigma_x'] for r in roi_list],
+                          'sigma_y': [fitr[r]['sigma_y'] for r in roi_list],
+                          'theta': [fitr[r]['theta'] % (2*np.pi) for r in roi_list],
+                          'r2': [fitr[r]['r2'] for r in roi_list]},
                               index=roi_list)
 
     if convert_coords:
@@ -1178,7 +1178,6 @@ def plot_rfs_to_screen(fitdf, sdf, screen, sigma_scale=2.35, fit_roi_list=[]):
     for rid in fit_roi_list:
         rcolor = next(rcolors)
         #ax.plot(fitdf['x0'][rid], fitdf['y0'][rid], marker='*', color=rcolor)        
-        #xx, yy, sigma_x, sigma_y = convert_fit_to_coords(fitdf, row_vals, col_vals, rid=rid)        
         ell = Ellipse((fitdf['x0'][rid], fitdf['y0'][rid]), 
                       abs(fitdf['sigma_x'][rid])*sigma_scale, abs(fitdf['sigma_y'][rid])*sigma_scale, 
                       angle=np.rad2deg(fitdf['theta'][rid]))
@@ -1230,7 +1229,6 @@ def plot_rfs_to_screen_pretty(fitdf, sdf, screen, sigma_scale=2.35, fit_roi_list
     for rid in fit_roi_list:
         rcolor = next(rcolors)
         #ax.plot(fitdf['x0'][rid], fitdf['y0'][rid], marker='*', color=rcolor)        
-        #xx, yy, sigma_x, sigma_y = convert_fit_to_coords(fitdf, row_vals, col_vals, rid=rid)        
         ell = Ellipse((fitdf['x0'][rid], fitdf['y0'][rid]), 
                       abs(fitdf['sigma_x'][rid])*sigma_scale, abs(fitdf['sigma_y'][rid])*sigma_scale, 
                       angle=np.rad2deg(fitdf['theta'][rid]))
@@ -1400,7 +1398,6 @@ def target_fov(avg_resp_by_cond, fitdf, screen, fit_roi_list=[], row_vals=[], co
     compare_kdes = False
 
     max_zscores = avg_resp_by_cond.max(axis=0)
-    #xx, yy, sigma_x, sigma_y = convert_fit_to_coords(fitdf, row_vals, col_vals)
     xx = fitdf['x0']
     yy = fitdf['y0']
     
