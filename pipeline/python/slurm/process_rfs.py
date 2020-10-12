@@ -16,6 +16,7 @@ parser = argparse.ArgumentParser(
 parser.add_argument('-A', '--fov', dest='fov_type', action='store', default='zoom2p0x', help='FOV type (e.g., zoom2p0x)')
 parser.add_argument('-E', '--exp', dest='experiment_type', action='store', default='rfs', help='Experiment type (e.g., rfs')
 parser.add_argument('-e', '--email', dest='email', action='store', default='rhee@g.harvard.edu', help='Email to send log files')
+parser.add_argument('-S', '--sphere', dest='do_spherical_correction', action='store_true', help='Run RF fits and eval with spherical correction (saves to: fit-2dgaus_sphr-corr')
 
 args = parser.parse_args()
 
@@ -56,47 +57,53 @@ ROOTDIR = '/n/coxfs01/2p-data'
 FOV = args.fov_type
 EXP = args.experiment_type
 email = args.email
+do_spherical_correction = args.do_spherical_correction
+sphr_str = 'sphere' if do_spherical_correction else ''
 
 # Open log lfile
-sys.stdout = open('log/loginfo_%s.txt' % EXP, 'w')
+sys.stdout = open('log/info_%s_%s.txt' % (EXP, sphr_str), 'w')
 
 def load_metadata(rootdir='/n/coxfs01/2p-data', aggregate_dir='/n/coxfs01/julianarhee/aggregate-visual-areas',
-                    experiment='', traceid='traces001'):
+                    experiment='', traceid='traces001', response_type='dff', do_spherical_correction=False):
 
     sdata_fpath = os.path.join(aggregate_dir, 'dataset_info.pkl')
     with open(sdata_fpath, 'rb') as f:
         sdata = pkl.load(f)
+
+    if do_spherical_correction:
+        fit_desc = 'fit-2dgaus_%s_sphr' % response_type
+    else:
+        fit_desc = 'fit-2dgaus_%s-no-cutoff' % response_type        
    
     meta_list=[]
     for (animalid, session, fov), g in sdata.groupby(['animalid', 'session', 'fov']):
         exp_list = [e for e in g['experiment'].values if experiment in e]
         for e in exp_list:
-            if experiment in e:
-                #rfname = 'gratings' if int(session)<20190511 else e
-                meta_list.append(tuple([animalid, session, fov, e, traceid]))    
-                existing_dirs = glob.glob(os.path.join(rootdir, animalid, session, fov, '*%s*' % e,
-                                                'traces', '%s*' % traceid, 'receptive_fields', 
-                                                'fit-2dgaus_dff*'))
-                for edir in existing_dirs:
-                    tmp_od = os.path.split(edir)[0]
-                    tmp_rt = os.path.split(edir)[-1]
-                    old_dir = os.path.join(tmp_od, '_%s' % tmp_rt)
-                    if os.path.exists(old_dir):
-                        continue
-                    else:
-                        os.rename(edir, old_dir)    
-                    info('renamed: %s' % old_dir)
+            #rfname = 'gratings' if int(session)<20190511 else e
+            meta_list.append(tuple([animalid, session, fov, e, traceid]))     
+            existing_dirs = glob.glob(os.path.join(rootdir, animalid, session, fov, '*%s*' % e,
+                                            'traces', '%s*' % traceid, 'receptive_fields', 
+                                            '%s' % fit_desc))
+            for edir in existing_dirs:
+                tmp_od = os.path.split(edir)[0]
+                tmp_rt = os.path.split(edir)[-1]
+                old_dir = os.path.join(tmp_od, '_%s' % tmp_rt)
+                if os.path.exists(old_dir):
+                    continue
+                else:
+                    os.rename(edir, old_dir)    
+                info('renamed: %s' % old_dir)
     return meta_list
 
 
-#meta_list = [('JC120', '20191111', 'FOV1_zoom2p0x', 'rfs10', 'traces001')] #,
-#             ('JC083', '20190510', 'FOV1_zoom2p0x', 'rfs', 'traces001'),
-#             ('JC083', '20190508', 'FOV1_zoom2p0x', 'rfs', 'traces001'),
+meta_list = [('JC097', '20190617', 'FOV1_zoom2p0x', 'rfs', 'traces001'),
+             ('JC084', '20190522', 'FOV1_zoom2p0x', 'rfs', 'traces001'),
+             ('JC120', '20191111', 'FOV1_zoom2p0x', 'rfs10', 'traces001')]
 #             ('JC084', '20190525', 'FOV1_zoom2p0x', 'rfs', 'traces001')]
 #
 
 
-meta_list = load_metadata(experiment=EXP)
+#meta_list = load_metadata(experiment=EXP, do_spherical_correction=do_spherical_correction)
 
 if len(meta_list)==0:
     fatal("NO FOVs found.")
@@ -114,17 +121,31 @@ info("Found %i [%s] datasets to process." % (len(meta_list), EXP))
 # STEP1: TIFF PROCESSING. All PIDs will be processed in parallel since they don't
 #        have any dependencies
 
+basedir='/n/coxfs01/2p-pipeline/repos/2p-pipeline/pipeline/python/slurm'
+if do_spherical_correction:
+    cmd_str = '%s/process_rfs_spherical.sbatch' % basedir
+else:
+    cmd_str = '%s/process_rfs.sbatch' % basedir
+
 jobids = [] # {}
 for (animalid, session, fov, experiment, traceid) in meta_list:
     mtag = '-'.join([session, animalid, fov, experiment])
     cmd = "sbatch --job-name={PROCID}.rfs.{MTAG} \
-		-o 'log/{PROCID}.rfs.{MTAG}.out' \
-		-e 'log/{PROCID}.rfs.{MTAG}.err' \
-		/n/coxfs01/2p-pipeline/repos/2p-pipeline/pipeline/python/slurm/process_rfs.sbatch \
-		{ANIMALID} {SESSION} {FOV} {EXP} {TRACEID}".format(
-                        PROCID=piper, MTAG=mtag, ANIMALID=animalid,
-                        SESSION=session, FOV=fov, EXP=experiment, TRACEID=traceid) #pid_file)
-    #info("Submitting PROCESSPID job with CMD:\n%s" % cmd)
+                -o 'log/{PROCID}.rfs.{MTAG}.out' \
+                -e 'log/{PROCID}.rfs.{MTAG}.err' \
+                {COMMAND} {ANIMALID} {SESSION} {FOV} {EXP} {TRACEID}".format(
+                        PROCID=piper, MTAG=mtag, COMMAND=cmd_str, ANIMALID=animalid,
+                        SESSION=session, FOV=fov, EXP=experiment, TRACEID=traceid)
+#    else:
+#        cmd = "sbatch --job-name={PROCID}.rfs.{MTAG} \
+#                    -o 'log/{PROCID}.rfs.{MTAG}.out' \
+#                    -e 'log/{PROCID}.rfs.{MTAG}.err' \
+#                    /n/coxfs01/2p-pipeline/repos/2p-pipeline/pipeline/python/slurm/process_rfs_sbatch.sbatch \
+#                    {ANIMALID} {SESSION} {FOV} {EXP} {TRACEID}".format(
+#                            PROCID=piper, MTAG=mtag, ANIMALID=animalid,
+#                            SESSION=session, FOV=fov, EXP=experiment, TRACEID=traceid, SPHERE=do_spherical_correction)
+#
+        #info("Submitting PROCESSPID job with CMD:\n%s" % cmd)
     status, joboutput = commands.getstatusoutput(cmd)
     jobnum = joboutput.split(' ')[-1]
     jobids.append(jobnum)
