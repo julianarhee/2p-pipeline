@@ -73,7 +73,9 @@ def rfits_to_df(fitr, row_vals=[], col_vals=[], roi_list=None, fit_params={},
 
     if convert_coords:
         if spherical:
-            fitdf = convert_fit_to_coords_spherical(fitdf, fit_params, spherical=spherical)
+            fitdf = convert_fit_to_coords_spherical(fitdf, fit_params, spherical=spherical, scale_sigma=False)
+            fitdf['sigma_x'] = fitdf['sigma_x']*sigma_scale
+            fitdf['sigma_y'] = fitdf['sigma_y']*sigma_scale
         else:
             x0, y0, sigma_x, sigma_y = convert_fit_to_coords(fitdf, row_vals, col_vals)
             fitdf['x0'] = x0
@@ -94,7 +96,9 @@ def apply_scaling_to_df(row, grid_points=None, new_values=None):
     return x0, y0, sx, sy #sx, sy, x0, y0
 
 
-def convert_fit_to_coords_spherical(fitdf, fit_params, sigma_scale=2.35, spherical=True):
+def convert_fit_to_coords_spherical(fitdf, fit_params, scale_sigma=True, sigma_scale=2.35, spherical=True):
+    sigma_scale = sigma_scale if scale_sigma else 1.0
+
     grid_points, cart_values, sphr_values = coordinates_for_transformation(fit_params)
     
     if spherical:
@@ -2013,8 +2017,8 @@ def fit_2d_receptive_fields(animalid, session, fov, run, traceid,
         print("... plottin' pretty (%s)" % plot_response_type)
         if response_type != plot_response_type or create_new is False:
             raw_traces, labels, sdf, run_info = load_dataset(data_fpath, 
-                                            trace_type=trace_type,
-                                            add_offset=True, make_equal=False)
+                                                            trace_type=trace_type,
+                                                            add_offset=True, make_equal=False)
             # Z-score or dff the traces:
             trials_by_cond = get_trials_by_cond(labels)
             zscored_traces, zscores = process_traces(raw_traces, labels, 
