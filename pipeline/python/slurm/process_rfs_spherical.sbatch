@@ -5,7 +5,7 @@
 #SBATCH -p cox # run on cox gpu to use correct env 
 #SBATCH -n 8 # one core
 #SBATCH -N 1 # on one node
-#SBATCH -t 0-03:00 # Running time of 3 hours
+#SBATCH -t 0-02:00 # Running time of 3 hours
 #SBATCH --mem 32768 #70656 # Memory request of 70 GB (set to 98304 if exceed lim)
 #SBATCH -o rfs_%A_%a.out # Standard output
 #SBATCH -e rfs_%A_%a.err # Standard error

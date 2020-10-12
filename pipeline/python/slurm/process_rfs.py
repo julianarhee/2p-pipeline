@@ -96,14 +96,11 @@ def load_metadata(rootdir='/n/coxfs01/2p-data', aggregate_dir='/n/coxfs01/julian
     return meta_list
 
 
-meta_list = [('JC097', '20190617', 'FOV1_zoom2p0x', 'rfs', 'traces001'),
-             ('JC084', '20190522', 'FOV1_zoom2p0x', 'rfs', 'traces001'),
-             ('JC120', '20191111', 'FOV1_zoom2p0x', 'rfs10', 'traces001')]
-#             ('JC084', '20190525', 'FOV1_zoom2p0x', 'rfs', 'traces001')]
-#
+#`meta_list = [('JC097', '20190617', 'FOV1_zoom2p0x', 'rfs', 'traces001'),
+#            ('JC084', '20190522', 'FOV1_zoom2p0x', 'rfs', 'traces001'),
+#             ('JC120', '20191111', 'FOV1_zoom2p0x', 'rfs10', 'traces001')]
 
-
-#meta_list = load_metadata(experiment=EXP, do_spherical_correction=do_spherical_correction)
+meta_list = load_metadata(experiment=EXP, do_spherical_correction=do_spherical_correction)
 
 if len(meta_list)==0:
     fatal("NO FOVs found.")
