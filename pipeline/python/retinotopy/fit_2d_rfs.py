@@ -15,6 +15,8 @@ import optparse
 import sys
 import traceback
 import cv2
+from scipy import interpolate
+import math
 
 import matplotlib as mpl
 mpl.use('agg')
@@ -50,8 +52,8 @@ from pipeline.python.traces.trial_alignment import aggregate_experiment_runs
 
 
 #%% Data formating for working with fit params (custom functions)
-def rfits_to_df(fitr, row_vals=[], col_vals=[], roi_list=None,
-                scale_sigma=True, sigma_scale=2.35, convert_coords=True):
+def rfits_to_df(fitr, row_vals=[], col_vals=[], roi_list=None, fit_params={},
+                scale_sigma=True, sigma_scale=2.35, convert_coords=True, spherical=False):
     '''
     Takes each roi's RF fit results, converts to screen units, and return as dataframe.
     Scale to make size FWFM if scale_sigma is True.
@@ -70,13 +72,43 @@ def rfits_to_df(fitr, row_vals=[], col_vals=[], roi_list=None,
                               index=roi_list)
 
     if convert_coords:
-        x0, y0, sigma_x, sigma_y = convert_fit_to_coords(fitdf, row_vals, col_vals)
-        fitdf['x0'] = x0
-        fitdf['y0'] = y0
-        fitdf['sigma_x'] = sigma_x * sigma_scale
-        fitdf['sigma_y'] = sigma_y * sigma_scale
+        if spherical:
+            fitdf = convert_fit_to_coords_spherical(fitdf, fit_params, spherical=spherical)
+        else:
+            x0, y0, sigma_x, sigma_y = convert_fit_to_coords(fitdf, row_vals, col_vals)
+            fitdf['x0'] = x0
+            fitdf['y0'] = y0
+            fitdf['sigma_x'] = sigma_x * sigma_scale
+            fitdf['sigma_y'] = sigma_y * sigma_scale
 
     return fitdf
+
+def apply_scaling_to_df(row, grid_points=None, new_values=None):
+    #r2 = row['r2']
+    #theta = row['theta']
+    #offset = row['offset']
+    x0, y0, sx, sy = get_scaled_sigmas(grid_points, new_values,
+                                             row['x0'], row['y0'], 
+                                             row['sigma_x'], row['sigma_y'], row['theta'],
+                                             convert=True)
+    return x0, y0, sx, sy #sx, sy, x0, y0
+
+
+def convert_fit_to_coords_spherical(fitdf, fit_params, sigma_scale=2.35, spherical=True):
+    grid_points, cart_values, sphr_values = coordinates_for_transformation(fit_params)
+    
+    if spherical:
+        converted = fitdf.apply(apply_scaling_to_df, args=(grid_points, sphr_values), axis=1)
+    else:
+        converted = fitdf.apply(apply_scaling_to_df, args=(grid_points, cart_values), axis=1)
+    newdf = pd.DataFrame([[x0, y0, sx*sigma_scale, sy*sigma_scale] 
+                          for x0, y0, sx, sy in converted.values], 
+                             index=converted.index, 
+                             columns=['x0', 'y0', 'sigma_x', 'sigma_y'])
+    fitdf[['sigma_x', 'sigma_y', 'x0', 'y0']] = newdf[['sigma_x', 'sigma_y', 'x0', 'y0']]
+
+    return fitdf
+
 
 def convert_fit_to_coords(fitdf, row_vals, col_vals, rid=None):
     
@@ -114,6 +146,118 @@ def convert_fit_to_coords(fitdf, row_vals, col_vals, rid=None):
                             oldmax=len(row_vals)-1, oldmin=0)
     
     return xx, yy, sigma_x, sigma_y
+
+def ang(lineA, lineB):
+    # Get nicer vector form
+    vA = [(lineA[0][0]-lineA[1][0]), (lineA[0][1]-lineA[1][1])]
+    vB = [(lineB[0][0]-lineB[1][0]), (lineB[0][1]-lineB[1][1])]
+    # Get dot prod
+    dot_prod = np.dot(vA, vB)
+    # Get magnitudes
+    magA = np.dot(vA, vA)**0.5
+    magB = np.dot(vB, vB)**0.5
+    # Get cosine value
+    cos_ = dot_prod/magA/magB
+    # Get angle in radians and then convert to degrees
+    angle = math.acos(dot_prod/magB/magA)
+    # Basically doing angle <- angle mod 360
+    ang_deg = math.degrees(angle)%360.
+
+    if ang_deg-180>=0:
+        # As in if statement
+        return round(360 - ang_deg, 2)
+    else: 
+        return round(ang_deg, 2)
+
+
+def get_endpoints_from_sigma(x0, y0, sx, sy, th, scale_sigma=False, sigma_scale=2.35):
+    
+    sx = sx*sigma_scale if scale_sigma else sx
+    sy = sy*sigma_scale if scale_sigma else sy
+    
+    sx_x1, sx_y1 = (x0-(sx/2.)*np.cos(th), y0-(sx/2.)*np.sin(th)) # Get min half
+    sx_x2, sx_y2 = (x0+(sx/2.)*np.cos(th), y0+(sx/2.)*np.sin(th)) # Get other half
+
+    th_orth = th + (np.pi/2.)
+    sy_x1, sy_y1 = (x0-(sy/2.)*np.cos(th_orth), y0-(sy/2.)*np.sin(th_orth))
+    sy_x2, sy_y2 = (x0+(sy/2.)*np.cos(th_orth), y0+(sy/2.)*np.sin(th_orth))
+
+    lA = (sy_x1, sy_y1), (sy_x2, sy_y2)
+    lB = (sx_x1, sx_y1), (sx_x2, sx_y2)
+    ang_deg = ang(lA, lB)
+    assert ang_deg==90.0, "bad angle calculation (%.1f)..." % ang_deg
+
+    return (sx_x1, sx_y1), (sx_x2, sx_y2), (sy_x1, sy_y1), (sy_x2, sy_y2)
+
+
+def coordinates_for_transformation(fit_params):
+    ds_factor = fit_params['downsample_factor']
+    col_vals = fit_params['col_vals']
+    row_vals = fit_params['row_vals']
+    nx = len(col_vals)
+    ny = len(row_vals)
+
+    # Downsample screen resolution
+    resolution_ds = [int(i/ds_factor) for i in fit_params['screen']['resolution'][::-1]]
+
+    # Get linear coordinates in degrees (downsampled)
+    lin_x, lin_y = get_lin_coords(resolution=resolution_ds, cm_to_deg=True) 
+    print("Screen res (ds=%ix): [%i, %i]" % (ds_factor, resolution_ds[0], resolution_ds[1]))
+
+    # Get Spherical coordinate mapping
+    cart_x, cart_y, sphr_x, sphr_y = get_spherical_coords(cart_pointsX=lin_x, 
+                                                            cart_pointsY=lin_y,
+                                                            cm_to_degrees=False) # already in deg
+
+    screen_bounds_pix = get_screen_lim_pixels(lin_x, lin_y, 
+                                            row_vals=row_vals, col_vals=col_vals)
+    (pix_bottom_edge, pix_left_edge, pix_top_edge, pix_right_edge) = screen_bounds_pix
+ 
+    # Trim and downsample coordinate space to match corrected map
+    cart_x_ds  = cv2.resize(cart_x[pix_top_edge:pix_bottom_edge, pix_left_edge:pix_right_edge], 
+                            (nx, ny))
+    cart_y_ds  = cv2.resize(cart_y[pix_top_edge:pix_bottom_edge, pix_left_edge:pix_right_edge], 
+                            (nx, ny))
+
+    sphr_x_ds  = cv2.resize(sphr_x[pix_top_edge:pix_bottom_edge, pix_left_edge:pix_right_edge], 
+                            (nx,ny))
+    sphr_y_ds  = cv2.resize(sphr_y[pix_top_edge:pix_bottom_edge, pix_left_edge:pix_right_edge], 
+                            (nx, ny))
+
+    grid_x, grid_y = np.meshgrid(range(nx),range(ny)[::-1])
+    grid_points = np.array( (grid_x.flatten(), grid_y.flatten()) ).T
+    cart_values = np.array( (cart_x_ds.flatten(), cart_y_ds.flatten()) ).T
+    sphr_values = np.array( (np.rad2deg(sphr_x_ds).flatten(), np.rad2deg(sphr_y_ds).flatten()) ).T
+    return grid_points, cart_values, sphr_values
+
+def get_scaled_sigmas(grid_points, new_values, x0, y0, sx, sy, th, convert=True):
+
+    x0_scaled, y0_scaled = interpolate.griddata(grid_points, new_values, (x0, y0))
+    x0_scaled, y0_scaled = interpolate.griddata(grid_points, new_values, (x0, y0))
+
+    # Get flanking points spanned by sx, sy
+    sx_linel, sx_line2, sy_line1, sy_line2 = get_endpoints_from_sigma(x0, y0, sx, sy, th, 
+                                                                        scale_sigma=False)
+
+    # Get distances
+    if convert:
+        # Convert coordinates of array to new coordinate system
+        sx_x1_sc, sx_y1_sc = interpolate.griddata(grid_points, new_values, sx_linel) 
+        sx_x2_sc, sx_y2_sc = interpolate.griddata(grid_points, new_values, sx_line2)
+        sx_scaled = math.hypot(sx_x2_sc - sx_x1_sc, sx_y2_sc - sx_y1_sc)
+    else:
+        #sx_scaled = math.hypot(sx_x2 - sx_x1, sx_y2 - sx_y1)
+        sx_scaled = math.hypot(sx_line2[0] - sx_linel[0], sx_line2[1] - sx_linel[1])
+
+    if convert:
+        sy_x1_sc, sy_y1_sc = interpolate.griddata(grid_points, new_values, sy_line1)
+        sy_x2_sc, sy_y2_sc = interpolate.griddata(grid_points, new_values, sy_line2)
+        sy_scaled = math.hypot(sy_x2_sc - sy_x1_sc, sy_y2_sc - sy_y1_sc)
+    else:
+        #sy_scaled = math.hypot(sy_x2 - sy_x1, sy_y2 - sy_y1)
+        sy_scaled = math.hypot(sy_line2[0] - sy_line1[0], sy_line2[1] - sy_line1[1])
+    
+    return x0_scaled, y0_scaled, abs(sx_scaled), abs(sy_scaled)
 
 
 
@@ -188,7 +332,8 @@ def warp_spherical_fromarr(rfmap_values, cart_x=None, cart_y=None, sphr_th=None,
                                 normalize_range=normalize_range, method='linear')
 
     # Crop
-    screen_bounds_pix = get_screen_lim_pixels(cart_x, cart_y, row_vals=row_vals, col_vals=col_vals)
+    screen_bounds_pix = get_screen_lim_pixels(cart_x, cart_y, 
+                                              row_vals=row_vals, col_vals=col_vals)
     (pix_bottom_edge, pix_left_edge, pix_top_edge, pix_right_edge) = screen_bounds_pix
     rfmap_trim = rfmap_warp[pix_top_edge:pix_bottom_edge, pix_left_edge:pix_right_edge]
 
@@ -200,6 +345,7 @@ def warp_spherical_fromarr(rfmap_values, cart_x=None, cart_y=None, sphr_th=None,
 def reshape_array_for_nynx(rfmap_values, nx, ny):
     rfmap_orig = rfmap_values.reshape(nx, ny).T
     return rfmap_orig.ravel()
+
 
 
 def sphr_correct_maps(avg_resp_by_cond, fit_params=None, multiproc=True):
@@ -216,17 +362,15 @@ def sphr_correct_maps(avg_resp_by_cond, fit_params=None, multiproc=True):
 
     # Get linear coordinates in degrees (downsampled)
     lin_x, lin_y = get_lin_coords(resolution=resolution_ds, cm_to_deg=True) 
-    print("Screen resolution (ds=%ix): [%i, %i]" % (ds_factor, resolution_ds[0], resolution_ds[1]))
-    print(avg_resp_by_cond.shape)
+    print("Screen res (ds=%ix): [%i, %i]" % (ds_factor, resolution_ds[0], resolution_ds[1]))
 
     # Get Spherical coordinate mapping
-    cart_x, cart_y, sphr_th, sphr_ph = get_spherical_coords(cart_pointsX=lin_x, cart_pointsY=lin_y,
+    cart_x, cart_y, sphr_th, sphr_ph = get_spherical_coords(cart_pointsX=lin_x, 
+                                                            cart_pointsY=lin_y,
                                                             cm_to_degrees=False) # already in deg
 
     args=(cart_x, cart_y, sphr_th, sphr_ph, row_vals, col_vals, resolution_ds,)
     avg_t = avg_resp_by_cond.apply(warp_spherical_fromarr, axis=0, args=args)
-
-    print(avg_t.shape)
 
     return avg_t.reset_index(drop=True)
 
@@ -1845,6 +1989,7 @@ def fit_2d_receptive_fields(animalid, session, fov, run, traceid,
                                         do_spherical_correction=do_spherical_correction)
 
         fitdf_pos = rfits_to_df(fit_results, scale_sigma=False, convert_coords=False,
+                            fit_params=fit_params, spherical=do_spherical_correction, 
                             row_vals=fit_params['row_vals'], col_vals=fit_params['col_vals'])
         fit_roi_list = fitdf_pos[fitdf_pos['r2'] > fit_thr].sort_values('r2', axis=0, ascending=False).index.tolist()
         print("... %i out of %i fit rois with r2 > %.2f" % 
@@ -1896,9 +2041,9 @@ def fit_2d_receptive_fields(animalid, session, fov, run, traceid,
             os.makedirs(best_rois_figdir)
     
         #if not do_fits: # need to load results
-        fitdf = rfits_to_df(fit_results, scale_sigma=False, 
+        fitdf = rfits_to_df(fit_results, scale_sigma=False, fit_params=fit_params, 
                             row_vals=fit_params['row_vals'], col_vals=fit_params['col_vals'],
-                            convert_coords=True)
+                            convert_coords=True, spherical=do_spherical_correction)
         fit_roi_list = fitdf[fitdf['r2'] > fit_thr].sort_values('r2', axis=0, ascending=False).index.tolist()
         print("%i out of %i fit rois with r2 > %.2f" % 
                     (len(fit_roi_list), fitdf.shape[0], fit_thr))
@@ -1926,9 +2071,9 @@ def fit_2d_receptive_fields(animalid, session, fov, run, traceid,
             
             
     #if not do_fits: # need to load results
-    fitdf = rfits_to_df(fit_results, scale_sigma=False, 
+    fitdf = rfits_to_df(fit_results, scale_sigma=False, fit_params=fit_params,
                         row_vals=fit_params['row_vals'], col_vals=fit_params['col_vals'],
-                        convert_coords=True)
+                        convert_coords=True, spherical=do_spherical_correction)
 
     #%%
     if create_new or make_pretty_plots:

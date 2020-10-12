@@ -418,7 +418,7 @@ def do_fft_analysis(avg_traces, sorted_freq_ixs, stim_freq_ix, n_frames):
 # #############################################################################
 
 def get_receptive_field_fits(animalid, session, fov, response_type='dff', 
-                             reload_data=False,
+                             reload_data=False, do_spherical_correction=False,
                              run='combined_rfs*_static', traceid='traces001', 
                              pretty_plots=False, create_new=False,
                              rootdir='/n/coxfs01/2p-data'):
@@ -426,6 +426,7 @@ def get_receptive_field_fits(animalid, session, fov, response_type='dff',
     rfits = None
 #    fov_dir = os.path.join(rootdir, animalid, session, fov)
     rfdir, fit_desc = fitrf.create_rf_dir(animalid, session, fov, run, traceid=traceid, 
+                                          do_spherical_correction=do_spherical_correction,
                                           response_type=response_type, rootdir=rootdir)
     rfs_fpath = os.path.join(rfdir, 'fit_results.pkl')
     fov_fpath = os.path.join(rfdir, 'fov_info.pkl')
@@ -450,6 +451,7 @@ def get_receptive_field_fits(animalid, session, fov, response_type='dff',
                                                         create_new=create_new,
                                                         trace_type='corrected', 
                                                         response_type=response_type,
+                                                        do_spherical_correction=do_spherical_correction,
                                                         rootdir=rootdir)
         #    except Exception as e:
 #        print("*** NO receptive field fits found: %s ***" % '|'.join([animalid, session, fov, run, traceid]))
@@ -1836,11 +1838,13 @@ class ReceptiveFields(Experiment):
         estats.rois = roi_list # This is list of cells that had R2 > 0.5
         estats.nrois = nrois_total # N rois that were fit attempted
         estats.fits = fitrf.rfits_to_df(fit_results, 
+                                        fit_params=fit_params,
                                         row_vals=fit_params['row_vals'],
                                         col_vals=fit_params['col_vals'],
                                         roi_list=sorted(roi_list), 
                                         scale_sigma=scale_sigma, 
-                                        sigma_scale=sigma_scale)
+                                        sigma_scale=sigma_scale,
+                                        spherical=do_spherical_correction)
         estats.fitinfo = fit_params
      
         if create_new:         

@@ -85,9 +85,11 @@ def group_configs(group, response_type):
 
     return pd.DataFrame(data={'%s' % config: group[response_type]})
  
-def bootstrap_rf_params(rdf, response_type='dff',
+def bootstrap_rf_params(rdf, response_type='dff', fit_params={},
                         row_vals=[], col_vals=[], sigma_scale=2.35,
-                        n_resamples=10, n_bootstrap_iters=1000):
+                        n_resamples=10, n_bootstrap_iters=1000,
+                        do_spherical_correction=False):
+
     #print(rdf.index.tolist()[0])
      
     paramsdf = None
@@ -95,9 +97,16 @@ def bootstrap_rf_params(rdf, response_type='dff',
         if not terminating.is_set():
             time.sleep(1)
             
-        xres = np.unique(np.diff(row_vals))[0]
-        yres = np.unique(np.diff(col_vals))[0]
+        #xres = np.unique(np.diff(row_vals))[0]
+        #yres = np.unique(np.diff(col_vals))[0]
+        xres=1 if do_spherical_correction else float(np.unique(np.diff(row_vals)))
+        yres=1 if do_spherical_correction else float(np.unique(np.diff(col_vals)))
+        sigma_scale=1 if do_spherical_correction else sigma_scale
+        sigma_scale=1 if do_spherical_correction else sigma_scale
         min_sigma=2.5; max_sigma=50;
+
+        if do_spherical_correction:
+            grid_points, cart_values, sphr_values = fitrf.coordinates_for_transformation(fit_params)
 
         # Get all trials for each config (indices = trial reps, columns = conditions)
         grouplist = [group_configs(group, response_type) \
@@ -122,6 +131,13 @@ def bootstrap_rf_params(rdf, response_type='dff',
             fitr, fit_y = fitrf.do_2d_fit(rfmap, nx=nx, ny=ny) #len(col_vals), ny=len(row_vals))
             if fitr['success']:
                 amp_f, x0_f, y0_f, sigx_f, sigy_f, theta_f, offset_f = fitr['popt']
+                if do_spherical_correction:
+                    # Correct for spher correction, if nec
+                    x0_f, y0_f, sigx_f, sigy_f = fitrf.get_scaled_sigmas(grid_points, sphr_values,
+                                                         x0_f, y0_f,
+                                                         sigx_f, sigy_f, theta_f,
+                                                         convert=True)
+                    fitr['popt'] = (amp_f, x0_f, y0_f, sigx_f, sigy_f, theta_f, offset_f) 
                 if any(s < min_sigma for s in [abs(sigx_f)*xres*sigma_scale, abs(sigy_f)*yres*sigma_scale])\
                     or any(s > max_sigma for s in [abs(sigx_f)*xres*sigma_scale, abs(sigy_f)*yres*sigma_scale]):
                     fitr['success'] = False
@@ -170,7 +186,7 @@ def initializer(terminating_):
     global terminating
     terminating = terminating_
 
-def pool_bootstrap(rdf_list, params, n_processes=1):   
+def pool_bootstrap(rdf_list, params, do_spherical_correction, n_processes=1):   
     #try:
     results = []# None
     terminating = mp.Event()
@@ -182,6 +198,8 @@ def pool_bootstrap(rdf_list, params, n_processes=1):
     pool = mp.Pool(initializer=initializer, initargs=(terminating, ), processes=n_processes)
     try:
         results = pool.map_async(partial(bootstrap_rf_params, 
+                            fit_params=params,
+                            do_spherical_correction=do_spherical_correction,
                             response_type=params['response_type'],
                             row_vals=params['row_vals'], 
                             col_vals=params['col_vals'],
@@ -215,7 +233,8 @@ def pool_bootstrap(rdf_list, params, n_processes=1):
 
 def run_bootstrap_evaluation(estats, fit_params, 
                             n_bootstrap_iters=1000, n_resamples=10,
-                            ci=0.95, n_processes=1):
+                            ci=0.95, n_processes=1,
+                            do_spherical_correction=False):
     eval_results = {}
     scale_sigma = fit_params['scale_sigma']
     sigma_scale = fit_params['sigma_scale'] if scale_sigma else 1.0
@@ -230,7 +249,8 @@ def run_bootstrap_evaluation(estats, fit_params,
                        'n_resamples': n_resamples,
                        'ci': ci})   
     start_t = time.time()
-    bootstrap_results = pool_bootstrap(rdf_list, bootparams, n_processes=n_processes)
+    bootstrap_results = pool_bootstrap(rdf_list, bootparams, n_processes=n_processes,
+                                        do_spherical_correction=do_spherical_correction)
     #except KeyboardInterrupt:
         #pool.terminate()
     end_t = time.time() - start_t
@@ -242,18 +262,23 @@ def run_bootstrap_evaluation(estats, fit_params,
 
     # Create dataframe of bootstrapped data
     bootdata = pd.concat(bootstrap_results)
-    
-    xx, yy, sigx, sigy = fitrf.convert_fit_to_coords(bootdata, 
-                                                     fit_params['row_vals'], 
-                                                     fit_params['col_vals'])
-    bootdata['x0'] = xx
-    bootdata['y0'] = yy
-    bootdata['sigma_x'] = sigx * sigma_scale
-    bootdata['sigma_y'] = sigy * sigma_scale
+   
+    if do_spherical_correction is False: 
+        xx, yy, sigx, sigy = fitrf.convert_fit_to_coords(bootdata, 
+                                                         fit_params['row_vals'], 
+                                                         fit_params['col_vals'])
+        bootdata['x0'] = xx
+        bootdata['y0'] = yy
+        bootdata['sigma_x'] = sigx
+        bootdata['sigma_y'] = sigy
+
+    bootdata['sigma_x'] = bootdata['sigma_x'] * sigma_scale
+    bootdata['sigma_y'] = bootdata['sigma_y'] * sigma_scale
     theta_vs = bootdata['theta'].values.copy()
     bootdata['theta'] = theta_vs % (2*np.pi)
-    
+
     # Calculate confidence intervals
+    bootdata = bootdata.dropna()
     bootcis = get_cis_for_params(bootdata, ci=ci)
 
     # Plot bootstrapped distn of x0 and y0 parameters for each roi (w/ CIs)
@@ -282,6 +307,33 @@ def plot_bootstrapped_position_estimates(x0, y0, true_x, true_y, ci=0.95):
     lower_y0, upper_y0 = get_empirical_ci(y0, ci=ci)
 
     fig, axes = pl.subplots(1, 2, figsize=(5,3))
+    ax=axes[0]
+    ax.hist(x0, color='k', alpha=0.5)
+    ax.axvline(x=lower_x0, color='k', linestyle=':')
+    ax.axvline(x=upper_x0, color='k', linestyle=':')
+    ax.axvline(x=true_x, color='r', linestyle='-')
+    ax.set_title('x0 (n=%i)' % len(x0))
+    
+    ax=axes[1]
+    ax.hist(y0, color='k', alpha=0.5)
+    ax.axvline(x=lower_y0, color='k', linestyle=':')
+    ax.axvline(x=upper_y0, color='k', linestyle=':')
+    ax.axvline(x=true_y, color='r', linestyle='-')
+    lower_y0, upper_y0 = get_empirical_ci(y0, ci=ci)
+
+    fig, axes = pl.subplots(1, 2, figsize=(5,3))
+    ax=axes[0]
+    ax.hist(x0, color='k', alpha=0.5)
+    ax.axvline(x=lower_x0, color='k', linestyle=':')
+    ax.axvline(x=upper_x0, color='k', linestyle=':')
+    ax.axvline(x=true_x, color='r', linestyle='-')
+    ax.set_title('x0 (n=%i)' % len(x0))
+    
+    ax=axes[1]
+    ax.hist(y0, color='k', alpha=0.5)
+    ax.axvline(x=lower_y0, color='k', linestyle=':')
+    ax.axvline(x=upper_y0, color='k', linestyle=':')
+    ax.axvline(x=true_y, color='r', linestyle='-')
     ax=axes[0]
     ax.hist(x0, color='k', alpha=0.5)
     ax.axvline(x=lower_x0, color='k', linestyle=':')
@@ -993,10 +1045,10 @@ def evaluate_rfs(estats, fit_params,
 #%%
 def identify_reliable_fits(eval_results, fit_results, fit_params, pass_criterion='all',
                            plot_boot_distns=True, plot_rois=[],
-                           plot_format='svg', 
+                           plot_format='svg',  do_spherical_correction=False,
                            outdir='/tmp/roi_bootdistns', data_id='DATAID'):
 
-    meas_df = fitrf.rfits_to_df(fit_results,
+    meas_df = fitrf.rfits_to_df(fit_results, fit_params=fit_params, spherical=do_spherical_correction, 
                             row_vals=fit_params['row_vals'], col_vals=fit_params['col_vals'],
                             scale_sigma=fit_params['scale_sigma'], sigma_scale=fit_params['sigma_scale'])
     meas_df = meas_df[meas_df['r2']>fit_params['fit_thr']]
@@ -1252,6 +1304,7 @@ def do_rf_fits_and_evaluation(animalid, session, fov, rfname=None,
     reliable_rois = identify_reliable_fits(eval_results, fit_results, fit_params,
                                            pass_criterion=pass_criterion, 
                                            plot_boot_distns=plot_boot_distns, #do_evaluation,
+                                           do_spherical_correction=do_spherical_correction, 
                                            plot_format='svg', outdir=roidir, data_id=data_id)
     
     eval_results.update({'reliable_rois': reliable_rois})
@@ -1259,7 +1312,7 @@ def do_rf_fits_and_evaluation(animalid, session, fov, rfname=None,
     fovcoords = exp.get_roi_coordinates()
     marker_size=30; fill_marker=True; marker='o';
     reg_results, posdf = regr_rf_fov(fovcoords, fit_results, fit_params, eval_results, 
-                                     data_id=data_id,
+                                     data_id=data_id, do_spherical_correction=do_spherical_correction, 
                                      pass_criterion=pass_criterion, model=model,
                                       marker=marker, marker_size=marker_size, 
                                      fill_marker=fill_marker, deviant_color=deviant_color)
@@ -1268,7 +1321,7 @@ def do_rf_fits_and_evaluation(animalid, session, fov, rfname=None,
 
 
 def regr_rf_fov(fovcoords, fit_results, fit_params, eval_results, 
-                model='ridge', pass_criterion='all', data_id='ID', 
+                model='ridge', pass_criterion='all', data_id='ID', do_spherical_correction=False,
                 deviant_color='magenta', marker='o', 
                 marker_size=20, fill_marker=True):
     print("~regressing rf on fov~")
@@ -1276,7 +1329,7 @@ def regr_rf_fov(fovcoords, fit_results, fit_params, eval_results,
     reliable_rois = get_reliable_fits(eval_results['pass_cis'], pass_criterion=pass_criterion)
 
     #%% Get measured fits
-    meas_df = fitrf.rfits_to_df(fit_results,
+    meas_df = fitrf.rfits_to_df(fit_results, fit_params=fit_params, spherical=do_spherical_correction,
                             row_vals=fit_params['row_vals'], col_vals=fit_params['col_vals'],
                             scale_sigma=fit_params['scale_sigma'], sigma_scale=fit_params['sigma_scale'])
     meas_df = meas_df[meas_df['r2']>fit_params['fit_thr']]
@@ -1418,7 +1471,8 @@ n_bootstrap_iters=1000
 n_resamples = 10
 plot_boot_distns = True
 ci = 0.95
-n_processes=1   
+n_processes=1  
+
 sigma_scale = 2.35
 scale_sigma = True
 post_stimulus_sec=0.5
@@ -1429,7 +1483,7 @@ reload_data=False
 
 options = ['-i', animalid, '-S', session, '-A', fov, '-t', traceid,
            '-R', 'rfs', '-M', response_type, '-p', 0.5 ]
-#%%
+
 
 def main(options):
     opts = extract_options(options)
@@ -1443,9 +1497,10 @@ def main(options):
     do_fits = opts.do_fits
     do_evaluation = opts.do_evaluation
     reload_data = opts.reload_data
-   
+
     n_resamples = opts.n_resamples
     n_bootstrap_iters = opts.n_bootstrap_iters
+ 
     n_processes = int(opts.n_processes)
     pass_criterion = opts.pass_criterion
     
