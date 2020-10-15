@@ -1339,7 +1339,7 @@ def plot_rfs_to_screen(fitdf, sdf, screen, sigma_scale=2.35, fit_roi_list=[]):
     ax.set_ylim([screen_bottom, screen_top])
     ax.set_xlim([screen_left, screen_right])
     
-    summary_str = "Avg sigma-x, -y: (%.2f, %.2f)\nAvg RF size: %.2f (min: %.2f, max: %.2f)" % (np.mean(majors), np.mean(minors), np.mean([np.mean(majors), np.mean(minors)]), avg_rfs.min(), avg_rfs.max())
+    summary_str = "Avg sigma-x, -y: (%.2f, %.2f)\nAvg RF size: %.2f (min: %.2f, max: %.2f)" % (np.nanmean(majors), np.nanmean(minors), np.nanmean([np.nanmean(majors), np.nanmean(minors)]), np.nanmin(avg_rfs), np.nanmax(avg_rfs))
     pl.text(ax.get_xlim()[0]-12, ax.get_ylim()[0]-8, summary_str, ha='left', rotation=0, wrap=True)
     
     return fig
