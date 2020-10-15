@@ -23,5 +23,5 @@ source activate /n/coxfs01/2p-pipeline/envs/caiman
 #echo "File: ${FILENAME}"
 
 # run processing on raw data
-python /n/coxfs01/2p-pipeline/repos/2p-pipeline/pipeline/python/traces/extract_caiman.py -i ${1} -S ${2} -A ${3} -E ${4} -n 8 -s ${5} --seed
+python /n/coxfs01/2p-pipeline/repos/2p-pipeline/pipeline/python/traces/extract_caiman.py -i ${1} -S ${2} -A ${3} -E ${4} -n 8 -s ${5} --seed --prefix=${6}
 
