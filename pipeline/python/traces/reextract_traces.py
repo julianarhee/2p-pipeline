@@ -151,24 +151,34 @@ def redo_manual_extraction(options):
                 continue
             print("3. Parsing trials - %s" % experiment) 
             realign.parse_trial_epochs(animalid, session, fov, experiment, traceid, 
-                                iti_pre=iti_pre, iti_post=iti_post)
+                                        iti_pre=iti_pre, iti_post=iti_post)
             
             print("4. Aligning traces to trials - %s" % experiment)
-            realign.align_traces(animalid, session, fov, experiment, traceid, rootdir=rootdir)
+            realign.align_traces(animalid, session, fov, experiment, 
+                                    traceid, rootdir=rootdir)
 
     if do_retino:
         # Get retino runs and extract
-        retino_rundirs = sorted(glob.glob(os.path.join(session_dir, fov, 'retino_run*')), key=natural_keys)
+        retino_rundirs = sorted(glob.glob(os.path.join(session_dir, fov, 'retino_run*')),
+                                key=natural_keys)
         print("5.  Doiing retino anaysis for %i runs." % len(retino_rundirs))
         for retino_rundir in retino_rundirs:
             curr_retino_run = os.path.split(retino_rundir)[1]
             print("--> %s" % curr_retino_run)
             # extract
-            retino_opts = ['-i', animalid, '-S', session, '-A', fov, '-g', gap_niterations, '-a', np_niterations, '--new', '--masks',
-                           '-d', traceid, '-R', curr_retino_run]
+            retino_opts = ['-i', animalid, '-S', session, '-A', fov, 
+                            '-g', gap_niterations, '-a', np_niterations, 
+                            '--new', '--masks',
+                            '-d', traceid, '-R', curr_retino_run]
             retino.do_analysis(retino_opts)
 
     if fit_rfs:
+        response_type = 'dff'
+        post_stimulus_sec = 0.5
+        sigma_scale=2.35 #True
+        scale_sigma=True
+        ci=0.95
+
         # Do RF fits
         if int(session) < 20190511 and 'gratings' in experiment_types:
                 rf_runs = ['rfs']
@@ -179,13 +189,32 @@ def redo_manual_extraction(options):
             print("[%s] 6a.  Fitting RF runs." % rf_run)
             # fit RFs
             fit_thr = 0.5
-            res_, fov_ = fitrf.fit_2d_receptive_fields(animalid, session, fov, rf_run, traceid, fit_thr=fit_thr, 
-                                 make_pretty_plots=True)
+            res_, params_ = fitrf.fit_2d_receptive_fields(animalid, session, fov, 
+                                                        rf_run, traceid, 
+                                                        fit_thr=fit_thr, 
+                                                        make_pretty_plots=True,
+                                                        create_new=True,
+                                                        reload_data=True
+                                                        sigma_scale=sigma_scale, 
+                                                        scale_sigma=scale_sigma,
+                                                        post_stimulus_sec=post_stimulus_sec,
+                                                        response_type=response_type     
+                                                        )
 
             # evaluate  
             print("[%s] 6b. Evaluating RF fits." % rf_run)
-            devs_ = evalrfs.do_rf_fits_and_evaluation(animalid, session, fov, rfname=rf_run,
-                                  traceid=traceid, response_type=response_type, fit_thr=fit_thr, n_processes=n_processes) 
+            eval_, params_ = evalrfs.do_rf_fits_and_evaluation(animalid, session, fov, 
+                                                    rfname=rf_run, traceid=traceid, 
+                                                    response_type=response_type, 
+                                                    fit_thr=fit_thr, 
+                                                    sigma_scale=sigma_scale, 
+                                                    scale_sigma=scale_sigma,
+                                                    ci=ci,
+                                                    post_stimulus_sec=post_stimulus_sec,
+                                                    n_processes=n_processes,
+                                                    reload_data=False,
+                                                    create_stats=True,
+                                                    do_evaluation=True) 
 
     if roc_test:
         # Do ROC responsivity test

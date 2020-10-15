@@ -62,7 +62,19 @@ def rotate_image(mat, angle):
     return rotated_mat
 
 
-def transform2p_to_macro(avg, zoom_factor, acquisition_dir, channel_ix=0, plot=False):
+def transform_2p_fov(img, pixel_size, zoom_factor=1., normalize=True):
+    '''
+    First, left/right reflection and rotation of 2p image to match orientation of widefield view.
+    Then, scale image to pixel size as measured by PSF.
+    '''
+    transf_ = orient_2p_to_macro(img, zoom_factor=zoom_factor, save=False, normalize=normalize)
+    scaled_ = scale_2p_fov(transf_, pixel_size=pixel_size)
+    return scaled_
+
+
+def orient_2p_to_macro(avg, zoom_factor, normalize=True, 
+                    acquisition_dir='/tmp', channel_ix=0, plot=False, save=True): #,
+                        #xaxis_conversion=2.312, yaxis_conversion=1.904):
     '''
     Does standard Fiji steps:
         1. Scale slow-angle (if needed)
@@ -70,11 +82,16 @@ def transform2p_to_macro(avg, zoom_factor, acquisition_dir, channel_ix=0, plot=F
         3. Convert to 8-bit and adjust contrast
     '''
     # Scale:
-    d1, d2 = avg.shape
-    print("Input img shape: (%i, %i)" % (d1, d2))
+    d1, d2 = avg.shape # (img height, img width)
+    #print("Input img shape: (%i, %i)" % (d1, d2))
     #scaled = cv2.resize(avg, dsize=(d1, int(d2*zoom_factor)), interpolation=cv2.INTER_CUBIC)  #, dtype=avg.dtype)
-    scaled = cv2.resize(avg, dsize=(int(d1*zoom_factor), d2), interpolation=cv2.INTER_CUBIC)  #, dtype=avg.dtype)
+    #new_d1 = d1*xaxis_conversion
+    #new_d2 = d2*yaxis_conversion
+    #scaled_pix = cv2.resize(avg, (new_d1, new_d2))
     
+    # dsize: (v1, v2) -- v1 specifies COLS, v2 specifies ROWS (i.e., img_w, img_h)
+    scaled = cv2.resize(avg, dsize=(int(d1*zoom_factor), d2), interpolation=cv2.INTER_CUBIC)  #, dtype=avg.dtype)
+     
     # Rotate leftward:
     rotated = rotate_image(scaled, 90)
     
@@ -82,31 +99,51 @@ def transform2p_to_macro(avg, zoom_factor, acquisition_dir, channel_ix=0, plot=F
     transformed = np.fliplr(rotated)
     
     # Cut off super low vals, Convert range from 0, 255
-    transformed[transformed<-50] = 0 
-    normed = cv2.normalize(transformed, None, 0, 255, cv2.NORM_MINMAX)
-    
-    # Convert to 8-bit
-    img8 = cv2.convertScaleAbs(normed)
-    
-    # Equalize hist:
-    clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(10,10))
-    eq = clahe.apply(img8)
-    
-    if plot:
-        pl.figure()
-        pl.subplot(2,2,1); pl.title('orig'); pl.imshow(rotated)
-        pl.subplot(2,2,2); pl.title('normalized'); pl.imshow(normed)
-        pl.subplot(2,2,3); pl.title('8 bit'); pl.imshow(img8)
-        pl.subplot(2,2,4); pl.title('equalize'); pl.imshow(eq)
-        pl.savefig(os.path.join(acquisition_dir, 'anatomical', 'transform_steps_Ch%i.png' % int(channel_ix+1)))
-        pl.close()
+    if normalize:
+        transformed[transformed<-50] = 0 
+        normed = cv2.normalize(transformed, None, 0, 255, cv2.NORM_MINMAX)
         
-    transformed_img_path = os.path.join(acquisition_dir, 'anatomical', 'anatomical_Channel%02d_transformed.tif' % int(channel_ix+1))
-    tf.imsave(transformed_img_path, eq)
-    
-    return transformed_img_path
-    
+        # Convert to 8-bit
+        img8 = cv2.convertScaleAbs(normed)
+        
+        # Equalize hist:
+        clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(10,10))
+        eq = clahe.apply(img8)
+            
+        if plot:
+            pl.figure()
+            pl.subplot(2,2,1); pl.title('orig'); pl.imshow(rotated); pl.colorbar();
+            pl.subplot(2,2,2); pl.title('normalized'); pl.imshow(normed); pl.colorbar();
+            pl.subplot(2,2,3); pl.title('8 bit'); pl.imshow(img8); pl.colorbar();
+            pl.subplot(2,2,4); pl.title('equalize'); pl.imshow(eq); pl.colorbar();
+            pl.savefig(os.path.join(acquisition_dir, 'anatomical', 'transform_steps_Ch%i.png' % int(channel_ix+1)))
+            pl.close()
+       
+    else:
+        eq = transformed.copy()
 
+    if save:
+        transformed_img_path = os.path.join(acquisition_dir, 'anatomical', 'anatomical_Channel%02d_transformed.tif' % int(channel_ix+1))
+        tf.imsave(transformed_img_path, eq)
+        return transformed_img_path
+    else:
+        if normalize:
+            return img8 #eq #transformed_img_path
+        else:
+            return eq
+    
+ 
+def scale_2p_fov(transformed_image, pixel_size=(2.312, 1.888)):
+    xaxis_conversion, yaxis_conversion = pixel_size 
+
+    d1, d2 = transformed_image.shape # d1=HEIGHT, d2=WIDTH
+    new_d1 = int(round(d1*xaxis_conversion,1)) # yaxis corresponds to M-L axis (now along )
+    new_d2 = int(round(d2*yaxis_conversion,1)) # xaxis corresopnds to A-P axis (d2 is iamge width) 
+    im_r = cv2.resize(transformed_image, (new_d2, new_d1))
+
+    return im_r
+
+    
 def transform_anatomicals(acquisition_dir):
     image_paths = []
     anatomical_fpath = glob.glob(os.path.join(acquisition_dir, 'anatomical', 'processed', 'processed*', 'mcorrected*', '*.tif'))
@@ -137,7 +174,9 @@ def transform_anatomicals(acquisition_dir):
         avg = np.sum(np.dstack([np.mean(channel_img[i::nslices, :, :], axis=0) for i in range(nslices)]), axis=-1, dtype=channel_img.dtype)
         
         # Transform img:
-        image_path = transform2p_to_macro(avg, zoom_factor, acquisition_dir, channel_ix=channel_ix, plot=True)
+        image_path = orient_2p_to_macro(avg, zoom_factor, 
+                                    acquisition_dir=acquisition_dir, 
+                                    channel_ix=channel_ix, plot=True)
         image_paths.append(image_path)
         
     return image_paths
@@ -168,6 +207,7 @@ def transformation_from_points(points1, points2):
 
 
 def warp_im(im, M, dshape):
+    #print("warping...", im.min(), im.max())
     output_im = np.zeros(dshape, dtype=im.dtype)
     cv2.warpAffine(im,
                    M[:2],
@@ -248,7 +288,6 @@ def align_to_reference(sample, reference, outdir, sample_name='sample'):
 
 
     #% GET corresponding reference points:
-
     refPt = []
     image = copy.copy(reference)
     ref_pts_img, reference_pts = get_registration_points(reference)
@@ -267,10 +306,14 @@ def align_to_reference(sample, reference, outdir, sample_name='sample'):
     # Use SAMPLTE and TEST points to align:
     sample_mat = np.matrix([i for i in sample_pts])
     reference_mat = np.matrix([i for i in reference_pts])
+    print("ref:", reference_mat.dtype)
+    print("sample:", sample_mat.dtype)
     M = transformation_from_points(reference_mat, sample_mat)
 
     #Re-read sample image as grayscale for warping:
-    out = warp_im(sample, M, reference.shape)
+    out = warp_im(sample.astype(float), M, reference.shape)
+    print('output:', out.min(), out.max())
+    print('wrap matrix:', M.min(), M.max())
 
     coreg_info = dict()
     coreg_info['reference_points_x'] = tuple(p[0] for p in reference_pts)
@@ -358,6 +401,7 @@ class Animal():
         self.get_reference(path_to_macro=optsE.macro_path)
         
     def save_me(self):
+        print("...saving")
         out_fpath = os.path.join(self.coreg_dir, 'FOVs.pkl')
         f = open(out_fpath, 'wb')
         #with open(out_fpath, 'wb') as f:
@@ -367,7 +411,7 @@ class Animal():
     def get_reference(self, path_to_macro=None):
         if path_to_macro is None:
             try:
-                macro_paths = glob.glob(os.path.join(self.rootdir, self.animalid, 'macro_maps', '16bitSurf.tif'))
+                macro_paths = glob.glob(os.path.join(self.rootdir, self.animalid, 'macro_maps', '20*', '*urf.png'))
                 assert len(macro_paths) == 1, "Not sure which image to use as reference..."
                 path_to_macro = macro_paths[0]
             except Exception as e:
@@ -400,10 +444,12 @@ class Animal():
                 print "Re-adding FOV to list."
                 self.session_list.update({curr_fov: FOV(optsE)})
             else:
-                return
-        
+                return -1
+       
         # Get anatomical image if this is  a new or re-do FOV:
-        self.session_list[curr_fov].get_transformed_image()
+        self.session_list[curr_fov].get_transformed_image(create_new=optsE.create_new)
+       
+        return None
         
     def align_fov(self, curr_fov):
         
@@ -426,6 +472,7 @@ class Animal():
 
         pl.figure()
         pl.imshow(self.reference, cmap='gray')
+        print(aligned.min(), aligned.max())
         pl.imshow(a, alpha=0.5)
         pl.axis('off')
         pl.title(curr_fov)
@@ -446,7 +493,7 @@ class Animal():
             
         return reselect_points  
     
-        
+   
         
         
 #%%
@@ -459,11 +506,12 @@ class FOV():
         self.acquisition = optsE.acquisition
         self.image_fpath = None
         self.image = None
+        self.pixel_size = (2.312, 1.888) # um per pixel
         self.meta = {'nchannels': None, 'zoom_factor': None}
         self.coreg_dir = os.path.join(optsE.rootdir, optsE.animalid, 'coreg', '%s_%s' % (self.session, self.acquisition))
         if not os.path.exists(self.coreg_dir): os.makedirs(self.coreg_dir)
         
-    def get_transformed_image(self):
+    def get_transformed_image(self, create_new=False): #1.904):
         acquisition_dir = os.path.join(self.rootdir, self.animalid, self.session, self.acquisition)
         
         # Get transformed, 8bit anatomical image to align to macro map:
@@ -471,28 +519,57 @@ class FOV():
         if len(image_paths) == 0:
             print "No anatomical transformed images found. Creating now."
             image_paths = self.transform_anatomicals()
-        
-        if len(image_paths) > 1:
+       
+        # check if scaled for pixels
+        xaxis_conversion, yaxis_conversion = self.pixel_size
+        scaled_paths = sorted(glob.glob(os.path.join(acquisition_dir, 'anatomical', 'anatomical_Channel*_transformed_scaled.tif')), key=natural_keys)
+        if len(scaled_paths)==0:
+            scaled_paths = self.scale_anatomicals(image_paths) 
+                                                  #xaxis_conversion=xaxis_conversion,
+                                                  #yaxis_conversion=yaxis_conversion)
+
+        if len(scaled_paths) > 1:
             print "More than 1 channel img found:"
-            ch1 = tf.imread([f for f in image_paths if 'Channel01' in f][0])
-            ch2 = tf.imread([f for f in image_paths if 'Channel02' in f][0])
+            ch1 = tf.imread([f for f in scaled_paths if 'Channel01' in f][0])
+            ch2 = tf.imread([f for f in scaled_paths if 'Channel02' in f][0])
             fig = pl.figure(figsize=(10,4))
             pl.subplot(1,2,1); pl.imshow(ch1, cmap='gray'); pl.title('Channel01'); pl.axis('off')
             pl.subplot(1,2,2); pl.imshow(ch2, cmap='gray'); pl.title('Channel02'); pl.axis('off')
             pl.tight_layout()
             pl.show(block=False)
             
-            for i, img_path in enumerate(image_paths):
+            for i, img_path in enumerate(scaled_paths):
                 print i, img_path
             select = input("Choose IDX of channel to use: ")
-            self.image_path = image_paths[select]
+            self.image_path = scaled_paths[select]
             pl.close(fig)
         else:
-            self.image_path = image_paths[0]
+            self.image_path = scaled_paths[0]
             
         self.image = tf.imread(self.image_path)
         
+        return
+
+    def scale_anatomicals(self, image_paths): #, xaxis_conversion=2.312, yaxis_conversion=1.904):
         
+        print("... scaling pixels")
+        xaxis_conversion, yaxis_conversion = self.pixel_size 
+        new_paths = []
+        for impath in image_paths:
+            img_outpath = '%s_scaled.tif' % (os.path.splitext(impath)[0])
+            im = tf.imread(impath)
+#            d1, d2 = im.shape # d1=HEIGHT, d2=WIDTH
+#            new_d1 = int(round(d1*xaxis_conversion,1)) # yaxis corresponds to M-L axis (now along )
+#            new_d2 = int(round(d2*yaxis_conversion,1)) # xaxis corresopnds to A-P axis (d2 is iamge width 
+#            im_r = cv2.resize(im, (new_d2, new_d1))
+
+            im_r = scale_2p_fov(im, pixel_size=self.pixel_size)
+            tf.imsave(img_outpath, im_r)
+            print(img_outpath)
+            new_paths.append(img_outpath)
+
+        return new_paths
+
     def transform_anatomicals(self):
         acquisition_dir = os.path.join(self.rootdir, self.animalid, self.session, self.acquisition)
 
@@ -529,7 +606,9 @@ class FOV():
             avg = np.sum(np.dstack([np.mean(channel_img[i::nslices, :, :], axis=0) for i in range(nslices)]), axis=-1, dtype=channel_img.dtype)
             
             # Transform img:
-            image_path = transform2p_to_macro(avg, zoom_factor, acquisition_dir, channel_ix=channel_ix, plot=True)
+            image_path = orient_2p_to_macro(avg, zoom_factor, 
+                                            acquisition_dir=acquisition_dir, 
+                                            channel_ix=channel_ix, plot=True)
             image_paths.append(image_path)
         
         self.meta['nchannels'] = nchannels
@@ -547,9 +626,9 @@ def extract_options(options):
     parser = optparse.OptionParser()
 
     parser.add_option('-D', '--root', action='store', dest='rootdir',
-                          default='/nas/volume1/2photon/data',
+                          default='/n/coxfs01/2p-data',
                           help='data root dir (dir w/ all animalids) [default: /nas/volume1/2photon/data, /n/coxfs01/2pdata if --slurm]')
-    parser.add_option('--slurm', action='store_true', dest='slurm', default=False, help="set if running as SLURM job on Odyssey")
+    # parser.add_option('--slurm', action='store_true', dest='slurm', default=False, help="set if running as SLURM job on Odyssey")
 
     parser.add_option('-i', '--animalid', action='store', dest='animalid',
                           default='', help='Animal ID')
@@ -558,15 +637,15 @@ def extract_options(options):
     parser.add_option('-S', '--session', action='store', dest='session',
                           default='', help='session dir (format: YYYMMDD_ANIMALID')
     parser.add_option('-A', '--acq', action='store', dest='acquisition',
-                          default='FOV1', help="acquisition folder (ex: 'FOV1_zoom3x') [default: FOV1]")
+                          default='FOV1_zoom2p0x', help="acquisition folder (ex: 'FOV1_zoom3x') [default: FOV1]")
     parser.add_option('-M', '--macro-path', action='store', dest='macro_path',
                           default=None, help="Full path to image to use as reference (macro image) [default: /path/to/macro_maps/16bitSurf.tiff]")
     
+    parser.add_option('--new', action='store_true', dest='create_new',
+                          default=False, help="flag to remake fov images")
     
     (options, args) = parser.parse_args(options)
-    if options.slurm is True and '/n/coxfs01' not in options.rootdir:
-        options.rootdir = '/n/coxfs01/2p-data'
-        
+       
     return options
 
 
@@ -589,18 +668,30 @@ def main(options):
         A.save_me()
     else:
         with open(animal_fpath, 'rb') as f: A = pkl.load(f)
-        
-        
-    A.add_fov(optsE)
-    curr_fov = '%s_%s' % (optsE.session, optsE.acquisition)
-    A.align_fov(curr_fov)
-    A.plot_alignment(curr_fov)
-    reselect_points = A.check_alignment(curr_fov)
-    while reselect_points:
-        #pl.close(fig)
+       
+#        for fkey, currfv in A.session_list.items():
+#            if not hasattr(currfv, 'pixel_size'):
+#                fv_ = FOV(optsE) #setattr(xx, vv, 'test')
+#                print('%s - adding px' % fkey)
+#                for vv in dir(currfv):
+#                    if _ in vv:
+#                        continue
+##                    if callable(getattr(currfv, vv)):
+##                        continue
+##                    setattr(fv_, vv, getattr(currfv, vv))
+#                A.session_list[fkey] = fv_
+#
+    state = A.add_fov(optsE)
+    if state is None:
+        curr_fov = '%s_%s' % (optsE.session, optsE.acquisition)
         A.align_fov(curr_fov)
         A.plot_alignment(curr_fov)
         reselect_points = A.check_alignment(curr_fov)
+        while reselect_points:
+            #pl.close(fig)
+            A.align_fov(curr_fov)
+            A.plot_alignment(curr_fov)
+            reselect_points = A.check_alignment(curr_fov)
 
     A.save_me()
     print A.session_list

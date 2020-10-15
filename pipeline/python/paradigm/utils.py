@@ -45,6 +45,16 @@ from mpl_toolkits.axes_grid1 import make_axes_locatable
 from pipeline.python.utils import get_frame_info
 #
 #%%
+
+def load_mw_trials(animalid, session, fov, run_name, rootdir='/n/coxfs01/2p-data'):
+    parsed_fpaths = glob.glob(os.path.join(animalid, session, fov, '%s*' % run_name, 
+                                    'paradigm', 'files', 'parsed_trials*.json'))
+    assert len(parsed_fpaths)==1, "Unable to find correct parsed trials path: %s" % str(parsed_fpaths)
+    with open(parsed_fpaths[0], 'r') as f:
+        mwinfo = json.load(f)
+
+    return mwinfo
+
 def combine_run_info(D, identical_fields=[], combined_fields=[]):
     
     run_info = {}
@@ -2028,7 +2038,7 @@ def get_transforms(stimconfigs):
                 included_objects = list(set(curr_objects[0]).intersection(*curr_objects[1:]))
         else:
             included_objects = transform_dict[trans]
-            print included_objects
+            # print included_objects
         object_transformations[trans] = included_objects
 
     return transform_dict, object_transformations

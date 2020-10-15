@@ -372,7 +372,7 @@ def find_n_responsive_frames(roi_traces, labels, n_stds=2.5):
     
     return cfs
     
-def group_roidata_stimresponse(roidata, labels_df, roi_list=None, return_grouped=True):
+def group_roidata_stimresponse(roidata, labels_df, roi_list=None, return_grouped=True, nframes_post=0): #None):
     '''
     roidata: array of shape nframes_total x nrois
     labels:  dataframe of corresponding nframes_total with trial/config info
@@ -415,7 +415,7 @@ def group_roidata_stimresponse(roidata, labels_df, roi_list=None, return_grouped
              
         trial_frames = roidata[trial_ixs.index.tolist(), :]
         
-        nframes_stim = int(round(nframes_on*1.5))
+        nframes_stim = int(round(nframes_on + nframes_post)) #int(round(nframes_on*1.5))
     
         nrois = trial_frames.shape[-1]
         #base_mean= trial_frames[0:stim_on_frame, :].mean(axis=0)

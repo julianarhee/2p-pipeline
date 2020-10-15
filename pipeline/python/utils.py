@@ -20,6 +20,262 @@ import numpy as np
 from stat import S_IREAD, S_IRGRP, S_IROTH, S_IWRITE, S_IWGRP, S_IWOTH
 from scipy import ndimage
 
+from scipy.interpolate import griddata
+
+
+# -----------------------------------------------------------------------------
+# Screen:
+# -----------------------------------------------------------------------------
+def cart2sph(x,y,z):
+    azimuth = np.arctan2(y,x)
+    elevation = np.arctan2(z,np.sqrt(x**2 + y**2))
+    r = np.sqrt(x**2 + y**2 + z**2)
+    return azimuth, elevation, r
+
+
+def get_lin_coords(resolution=[1080, 1920], cm_to_deg=True, 
+                   xlim_degrees=(-59.7, 59.7), ylim_degrees=(-33.6, 33.6)):
+    """
+    **From: https://github.com/zhuangjun1981/retinotopic_mapping (Monitor initialiser)
+
+    Parameters
+    ----------
+    resolution : tuple of two positive integers
+        value of the monitor resolution, (pixel number in height, pixel number in width)
+    dis : float
+         distance from eyeball to monitor (in cm)
+    mon_width_cm : float
+        width of monitor (in cm)
+    mon_height_cm : float
+        height of monitor (in cm)
+    C2T_cm : float
+        distance from gaze center to monitor top
+    C2A_cm : float
+        distance from gaze center to anterior edge of the monitor
+    center_coordinates : tuple of two floats
+        (altitude, azimuth), in degrees. the coordinates of the projecting point
+        from the eye ball to the monitor. This allows to place the display monitor
+        in any arbitrary position.
+    visual_field : str from {'right','left'}, optional
+        the eye that is facing the monitor, defaults to 'left'
+    """
+    mon_height_cm = 58.
+    mon_width_cm = 103.
+    # resolution = [1080, 1920]
+    visual_field = 'left'
+    
+    C2T_cm = mon_height_cm/2. #np.sqrt(dis**2 + mon_height_cm**2)
+    C2A_cm = mon_width_cm/2.
+    
+    # distance form projection point of the eye to bottom of the monitor
+    C2B_cm = mon_height_cm - C2T_cm
+    # distance form projection point of the eye to right of the monitor
+    C2P_cm = -C2A_cm #mon_width_cm - C2A_cm
+
+    map_coord_x, map_coord_y = np.meshgrid(range(resolution[1]),
+                                           range(resolution[0]))
+
+    if visual_field == "left":
+        #map_x = np.linspace(C2A_cm, -1.0 * C2P_cm, resolution[1])
+        map_x = np.linspace(C2P_cm, C2A_cm, resolution[1])
+
+    if visual_field == "right":
+        map_x = np.linspace(-1 * C2A_cm, C2P_cm, resolution[1])
+
+    map_y = np.linspace(C2T_cm, -1.0 * C2B_cm, resolution[0])
+    old_map_x, old_map_y = np.meshgrid(map_x, map_y, sparse=False)
+
+    lin_coord_x = old_map_x
+    lin_coord_y = old_map_y
+    
+    
+    if cm_to_deg:
+        xmin_cm = lin_coord_x.min(); xmax_cm = lin_coord_x.max();
+        ymin_cm = lin_coord_y.min(); ymax_cm = lin_coord_y.max();
+        
+        xmin_deg, xmax_deg = xlim_degrees
+        ymin_deg, ymax_deg = ylim_degrees
+        
+        lin_coord_x = convert_range(lin_coord_x, oldmin=xmin_cm, oldmax=xmax_cm, 
+                                           newmin=xmin_deg, newmax=xmax_deg)
+        lin_coord_y = convert_range(lin_coord_y, oldmin=ymin_cm, oldmax=ymax_cm, 
+                                           newmin=ymin_deg, newmax=ymax_deg)
+    return lin_coord_x, lin_coord_y
+
+def get_spherical_coords(cart_pointsX=None, cart_pointsY=None, cm_to_degrees=True,
+                    resolution=(1080, 1920),
+                   xlim_degrees=(-59.7, 59.7), ylim_degrees=(-33.6, 33.6)):
+
+    # Monitor size and position variables
+    width_cm = 103; #%56.69;  % 103 width of screen, in cm
+    height_cm = 58; #%34.29;  % 58 height of screen, in cm
+    pxXmax = resolution[1] #1920; #%200; % number of pixels in an image that fills the whole screen, x
+    pxYmax = resolution[0] #1080; #%150; % number of pixels in an image that fills the whole screen, y
+
+    # Eye info
+    cx = width_cm/2. # % eye x location, in cm
+    cy = height_cm/2. # %11.42; % eye y location, in cm
+    eye_dist = 30.; #% in cm
+
+    # Distance to bottom of screen, along the horizontal eye line
+    zdistBottom = np.sqrt((cy**2) + (eye_dist**2)) #; %24.49;     % in cm
+    zdistTop    = np.sqrt((cy**2) + (eye_dist**2)) #; %14.18;     % in cm
+
+    # Internal conversions
+    top = height_cm-cy;
+    bottom = -cy;
+    right = cx;
+    left = cx - width_cm;
+
+    if cart_pointsX is None or cart_pointsY is None:
+        [xi, yi] = np.meshgrid(np.arange(0, pxXmax), np.arange(0, pxYmax))
+        print(xi.shape, yi.shape)
+
+        cart_pointsX = left + (float(width_cm)/pxXmax)*xi;
+        cart_pointsY = top - (float(height_cm)/pxYmax)*yi;
+        cart_pointsZ = zdistTop + ((zdistBottom-zdistTop)/float(pxYmax))*yi
+    else:
+        cart_pointsZ = zdistTop + ((zdistBottom-zdistTop)/float(pxYmax))*cart_pointsY
+
+    if cm_to_degrees:
+        xmin_cm=cart_pointsX.min(); xmax_cm=cart_pointsX.max();
+        ymin_cm=cart_pointsY.min(); ymax_cm=cart_pointsY.max();
+        xmin_deg, xmax_deg = xlim_degrees
+        ymin_deg, ymax_deg = ylim_degrees
+        cart_pointsX = convert_range(cart_pointsX, oldmin=xmin_cm, oldmax=xmax_cm, 
+                                       newmin=xmin_deg, newmax=xmax_deg)
+        cart_pointsY = convert_range(cart_pointsY, oldmin=ymin_cm, oldmax=ymax_cm, 
+                                       newmin=ymin_deg, newmax=ymax_deg)
+        cart_pointsZ = convert_range(cart_pointsZ, oldmin=ymin_cm, oldmax=ymax_cm, 
+                                       newmin=ymin_deg, newmax=ymax_deg)
+
+    sphr_pointsTh, sphr_pointsPh, sphr_pointsR = cart2sph(cart_pointsZ, cart_pointsX, cart_pointsY)
+    #sphr_pointsTh, sphr_pointsPh, sphr_pointsR = cart2sph(cart_pointsX, cart_pointsY, cart_pointsZ)
+
+    return cart_pointsX, cart_pointsY, sphr_pointsTh, sphr_pointsPh
+
+def warp_spherical(image_values, cart_pointsX, cart_pointsY, sphr_pointsTh, sphr_pointsPh, 
+                    normalize_range=True, in_radians=True, method='linear'):
+    from scipy.interpolate import griddata
+
+    xmaxRad = sphr_pointsTh.max()
+    ymaxRad = sphr_pointsPh.max()
+
+    # normalize max of Cartesian to max of Spherical
+    fx = xmaxRad/cart_pointsX.max() if normalize_range else 1.
+    fy = ymaxRad/cart_pointsY.max() if normalize_range else 1.
+    x0 = cart_pointsX.copy()*fx
+    y0 = cart_pointsY.copy()*fy
+   
+    if in_radians and not normalize_range:
+        points = np.array( (np.rad2deg(sphr_pointsTh).flatten(), np.rad2deg(sphr_pointsPh).flatten()) ).T
+    else:
+        points = np.array( (sphr_pointsTh.flatten(), sphr_pointsPh.flatten()) ).T
+
+    values_ = image_values.flatten()
+    #values_y = cart_pointsY.flatten()
+
+    warped_values = griddata( points, values_, (x0,y0) , method=method)
+    
+    return warped_values
+
+
+# -----------------------------------------------------------------------------
+# Plotting:
+# -----------------------------------------------------------------------------
+def set_threecolor_palette(c1='magenta', c2='orange', c3='dodgerblue', cmap=None):
+    # colors = ['k', 'royalblue', 'darkorange'] #sns.color_palette(palette='colorblind') #, n_colors=3)
+    # area_colors = {'V1': colors[0], 'Lm': colors[1], 'Li': colors[2]}
+    visual_areas = ['V1', 'Lm', 'Li']
+    if cmap is not None:
+        c1, c2, c3 = sns.color_palette(palette='colorblind') #, n_colors=3) 
+    area_colors = {'V1': c1, 'Lm': c2, 'Li': c3}
+    return visual_areas, area_colors
+
+def set_plot_params(lw_axes=1, labelsize=12, color='k'):
+    import pylab as pl
+    #### Plot params
+    pl.rcParams["axes.labelsize"] = labelsize + 4
+    pl.rcParams["axes.linewidth"] = lw_axes
+    pl.rcParams["xtick.labelsize"] = labelsize
+    pl.rcParams["ytick.labelsize"] = labelsize
+    pl.rcParams['xtick.major.width'] = lw_axes
+    pl.rcParams['ytick.major.width'] = lw_axes
+
+    for param in ['xtick.color', 'ytick.color', 'axes.labelcolor', 'axes.edgecolor']:
+        pl.rcParams[param] = color
+
+    dpi = 150
+
+    return dpi
+
+
+# -----------------------------------------------------------------------------
+# Commonly used, generic methods:
+# -----------------------------------------------------------------------------
+def get_pixel_size():
+    # Use measured pixel size from PSF (20191005, most recent)
+    # ------------------------------------------------------------------
+    xaxis_conversion = 2.3 #1  # size of x-axis pixel, goes with A-P axis
+    yaxis_conversion = 1.9 #89  # size of y-axis pixels, goes with M-L axis
+    return (xaxis_conversion, yaxis_conversion)
+
+def get_screen_dims():
+    # # adjust elevation limit to show only monitor extent
+    # screeninfo_fpath = glob.glob(os.path.join(rootdir, animalid, 'epi_maps', '*.json'))[0]
+    # with open(screeninfo_fpath, 'r') as f:
+    #     screen = json.load(f)
+
+    # screen_width = screen['screen_params']['screen_size_x_degrees']
+    # screen_height = screen['screen_params']['screen_size_t_degrees']
+
+    # screen_left = -1*screen_width/2.
+    # screen_right = screen_width/2.
+    # screen_top = screen_height/2.
+    # screen_bottom = -1*screen_height/2.
+
+    # elev_cutoff = screen_top / screen_right
+    # print("[AZ]: screen bounds: (%.2f, %.2f)" % (screen_left, screen_right))
+    # print("[EL]: screen bounds: (%.2f, %.2f)" % (screen_top, screen_bottom))
+
+    screen_x = 59.7782*2 #119.5564
+    screen_y =  33.6615*2. #67.323
+    resolution = [1920, 1080] #[1024, 768]
+
+    deg_per_pixel_x = screen_x / float(resolution[0])
+    deg_per_pixel_y = screen_y / float(resolution[1])
+    deg_per_pixel = np.mean([deg_per_pixel_x, deg_per_pixel_y])
+    # print("Screen size (deg): %.2f, %.2f (~%.2f deg/pix)" % (screen_x, screen_y, deg_per_pixel))
+
+    screen = {'azimuth_deg': screen_x,
+              'altitude_deg': screen_y,
+              'resolution': resolution,
+              'deg_per_pixel': (deg_per_pixel_x, deg_per_pixel_y)}
+
+    return screen
+
+def add_meta_to_df(cc, vardict):
+    nvals = cc.shape[0]
+    for k, v in vardict.items():
+        cc[k] = [v for _ in np.arange(0, nvals)]
+    return cc
+
+def isnumber(n):
+    try:
+        float(n)   # Type-casting the string to `float`.
+                   # If string is not a valid `float`, 
+                   # it'll raise `ValueError` exception
+    except ValueError:
+        return False
+    except TypeError:
+        return False
+
+    return True
+
+def midpoint(ptA, ptB):
+	return ((ptA[0] + ptB[0]) * 0.5, (ptA[1] + ptB[1]) * 0.5)
+
+
 def uint16_to_RGB(img):
     im = img.astype(np.float64)/img.max()
     im = 255 * im
@@ -28,9 +284,35 @@ def uint16_to_RGB(img):
     return rgb
 
 
+def adjust_image_contrast(img, clip_limit=2.0, tile_size=10):#(10,10)):
+    img[img<-50] = 0 
+    normed = cv2.normalize(img, None, 0, 255, cv2.NORM_MINMAX)
+    
+    # Convert to 8-bit
+    img8 = cv2.convertScaleAbs(normed)
+    
+    # Equalize hist:
+    tg = tile_size if isinstance(tile_size, tuple) else (tile_size, tile_size)
+    clahe = cv2.createCLAHE(clipLimit=clip_limit, tileGridSize=tg)
+    eq = clahe.apply(img8)
+
+    return eq
+
+def adjust_grayscale_image(zimg, clip_limit=0.01):
+    '''
+    if float, image must be -1, 1 normalize
+    '''
+    im_adapthist = exposure.equalize_adapthist(zimg, clip_limit=clip_limit)
+    im_adapthist *= 256
+    im_adapthist= im_adapthist.astype('uint8')
+    #ax.imshow(im_adapthist) #pl.figure(); pl.imshow(refRGB) # cmap='gray')
+    orig = im_adapthist.copy()
+
+    return orig
+ 
+
 def label_figure(fig, data_identifier):
     fig.text(0, 1,data_identifier, ha='left', va='top', fontsize=8)
-
 
 def convert_range(oldval, newmin=None, newmax=None, oldmax=None, oldmin=None):
     oldrange = (oldmax - oldmin)
@@ -38,9 +320,6 @@ def convert_range(oldval, newmin=None, newmax=None, oldmax=None, oldmin=None):
     newval = (((oldval - oldmin) * newrange) / oldrange) + newmin
     return newval
 
-# -----------------------------------------------------------------------------
-# Commonly used, generic methods:
-# -----------------------------------------------------------------------------
 def atoi(text):
     return int(text) if text.isdigit() else text
 
@@ -60,11 +339,39 @@ def print_elapsed_time(t_start):
     minutes, seconds = divmod(rem, 60)
     print "Duration: {:0>2}:{:0>2}:{:05.2f}".format(int(hours),int(minutes),seconds)
 
+def abline(slope, intercept, ax=None, color='purple', ls='-',
+           label=True, label_prefix=''):
+    """Plot a line from slope and intercept"""
+    if ax is None:
+        fig, ax = pl.subplots()
+    #axes = plt.gca()
+    #x_vals = np.array(axes.get_xlim())
+    x_vals = np.array(ax.get_xlim())
+    y_vals = intercept + slope * x_vals
+    label_str = '(%s) y=%.2fx+%.2f' % (label_prefix, slope, intercept) if label else None
+    ax.plot(x_vals, y_vals, '--', label=label_str, color=color, ls=ls)
+    ax.legend()
+    return ax
+
 # -----------------------------------------------------------------------------
 # Data-saving and -formatting methods:
 # -----------------------------------------------------------------------------
 import random
 import pandas as pd
+
+def melt_square_matrix(df, metric_name='value', add_values={}, include_diagonal=False):
+    
+    k = 0 if include_diagonal else 1
+    df = df.where(np.triu(np.ones(df.shape), k=k).astype(np.bool))
+
+    df = df.stack().reset_index()
+    df.columns=['row', 'col', metric_name]
+    
+    if len(add_values) > 0:
+        for k, v in add_values.items():
+            df[k] = [v for _ in np.arange(0, df.shape[0])]
+    
+    return df
 
 def check_counts_per_condition(raw_traces, labels):
     # Check trial counts / condn:
@@ -106,66 +413,169 @@ def reformat_morph_values(sdf):
     sizevals = np.array([round(s, 1) for s in sdf['size'].unique() if s not in ['None', None] and not np.isnan(s)])
     sdf.loc[sdf.morphlevel==-1, 'size'] = pd.Series(sizevals, index=control_ixs)
     sdf['size'] = [round(s, 1) for s in sdf['size'].values]
+    xpos = [x for x in sdf['xpos'].unique() if x is not None]
+    ypos =  [x for x in sdf['ypos'].unique() if x is not None]
+    assert len(xpos)==1 and len(ypos)==1, "More than 1 pos? x: %s, y: %s" % (str(xpos), str(ypos))
+
+    sdf.loc[sdf.morphlevel==-1, 'xpos'] = [xpos[0] for _ in np.arange(0, len(control_ixs))]
+    sdf.loc[sdf.morphlevel==-1, 'ypos'] = [ypos[0] for _ in np.arange(0, len(control_ixs))]
     return sdf
 
 
-def load_dataset(soma_fpath, trace_type='dff', add_offset=True, make_equal=False):
-    print("[loading dataset]: %s" % soma_fpath)
+def load_run_info(animalid, session, fov, run, traceid='traces001',
+                  rootdir='/n/coxfs01/2p-ddata'):
+   
+    search_str = '' if 'combined' in run else '_'  
+    labels_fpath = glob.glob(os.path.join(rootdir, animalid, session, fov, '*%s%s*' % (run, search_str),
+                           'traces', '%s*' % traceid, 'data_arrays', 'labels.npz'))[0]
+    
+    dset = np.load(labels_fpath)
+    sdf = pd.DataFrame(dset['sconfigs'][()]).T
+    if 'blobs' in run: #self.experiment_type:
+        sdf = reformat_morph_values(sdf)
+    else:
+        sdf = sdf
+    run_info = dset['run_info'][()]
+
+    return run_info, sdf
+   
+
+def zscore_dataframe(xdf):
+    rlist = [r for r in xdf.columns if isnumber(r)]
+    z_xdf = (xdf[rlist]-xdf[rlist].mean()).divide(xdf[rlist].std())
+    return z_xdf
+
+def process_and_save_traces(trace_type='dff',
+                            animalid=None, session=None, fov=None, 
+                            experiment=None, traceid='traces001',
+                            soma_fpath=None,
+                            rootdir='/n/coxfs01/2p-data'):
+
+    print("... processing + saving data arrays (%s)." % trace_type)
+
+    assert (animalid is None and soma_fpath is not None) or (soma_fpath is None and animalid is not None), "Must specify either dataset params (animalid, session, etc.) OR soma_fpath to data arrays."
+
+    if soma_fpath is None:
+        search_str = '' if 'combined' in experiment else '_'
+        soma_fpath = glob.glob(os.path.join(rootdir, animalid, session, fov,
+                                '*%s%s*' % (experiment, search_str), 'traces', '%s*' % traceid, 
+                                'data_arrays', 'np_subtracted.npz'))[0]
+
+    dset = np.load(soma_fpath)
+    
+    # Stimulus / condition info
+    labels = pd.DataFrame(data=dset['labels_data'], 
+                          columns=dset['labels_columns'])
+    sdf = pd.DataFrame(dset['sconfigs'][()]).T
+    if 'blobs' in soma_fpath: #self.experiment_type:
+        sdf = reformat_morph_values(sdf)
+    run_info = dset['run_info'][()]
+
+    xdata_df = pd.DataFrame(dset['data'][:]) # neuropil-subtracted & detrended
+    F0 = pd.DataFrame(dset['f0'][:]).mean().mean() # detrended offset
+    
+    #% Add baseline offset back into raw traces:
+    neuropil_fpath = soma_fpath.replace('np_subtracted', 'neuropil')
+    npdata = np.load(neuropil_fpath)
+    neuropil_f0 = np.nanmean(np.nanmean(pd.DataFrame(npdata['f0'][:])))
+    neuropil_df = pd.DataFrame(npdata['data'][:]) 
+    print("    adding NP offset (NP f0 offset: %.2f)" % neuropil_f0)
+
+    # # Also add raw 
+    raw_fpath = soma_fpath.replace('np_subtracted', 'raw')
+    rawdata = np.load(raw_fpath)
+    raw_f0 = np.nanmean(np.nanmean(pd.DataFrame(rawdata['f0'][:])))
+    raw_df = pd.DataFrame(rawdata['data'][:])
+    print("    adding raw offset (raw f0 offset: %.2f)" % raw_f0)
+
+    raw_traces = xdata_df + list(np.nanmean(neuropil_df, axis=0)) + raw_f0 
+    #+ neuropil_f0 + raw_f0 # list(np.nanmean(raw_df, axis=0)) #.T + F0
+     
+    # SAVE
+    data_dir = os.path.split(soma_fpath)[0]
+    data_fpath = os.path.join(data_dir, 'corrected.npz')
+    print("... Saving corrected data (%s)" %  os.path.split(data_fpath)[-1])
+    np.savez(data_fpath, data=raw_traces.values)
+  
+    # Process dff/df/etc.
+    stim_on_frame = labels['stim_on_frame'].unique()[0]
+    tmp_df = []
+    tmp_dff = []
+    for k, g in labels.groupby(['trial']):
+        tmat = raw_traces.loc[g.index]
+        bas_mean = np.nanmean(tmat[0:stim_on_frame], axis=0)
+        
+        #if trace_type == 'dff':
+        tmat_dff = (tmat - bas_mean) / bas_mean
+        tmp_dff.append(tmat_dff)
+
+        #elif trace_type == 'df':
+        tmat_df = (tmat - bas_mean)
+        tmp_df.append(tmat_df)
+
+    dff_traces = pd.concat(tmp_dff, axis=0) 
+    data_fpath = os.path.join(data_dir, 'dff.npz')
+    print("... Saving dff data (%s)" %  os.path.split(data_fpath)[-1])
+    np.savez(data_fpath, data=dff_traces.values)
+
+    df_traces = pd.concat(tmp_df, axis=0) 
+    data_fpath = os.path.join(data_dir, 'df.npz')
+    print("... Saving df data (%s)" %  os.path.split(data_fpath)[-1])
+    np.savez(data_fpath, data=df_traces.values)
+
+    if trace_type=='dff':
+        return dff_traces, labels, sdf, run_info
+    elif trace_type == 'df':
+        return df_traces, labels, sdf, run_info
+    else:
+        return raw_traces, labels, sdf, run_info
+
+    
+
+def load_dataset(soma_fpath, trace_type='dff', add_offset=True, 
+                make_equal=False, create_new=False):
+    
+    #print("... [loading dataset]")
     traces=None
     labels=None
     sdf=None
     run_info=None
+
     try:
-        dset = np.load(soma_fpath)
-        
-        # Stimulus / condition info
-        labels = pd.DataFrame(data=dset['labels_data'], columns=dset['labels_columns'])
-        sdf = pd.DataFrame(dset['sconfigs'][()]).T
-        if 'blobs' in soma_fpath: #self.experiment_type:
-            sdf = reformat_morph_values(sdf)
-        else:
-            sdf = sdf
-        run_info = dset['run_info'][()]
-        
-        # Traces
-        xdata_df = pd.DataFrame(dset['data'][:]) # neuropil-subtracted & detrended
-        F0 = pd.DataFrame(dset['f0'][:]).mean().mean() # detrended offset
-        print("NP_subtracted offset was: %.2f" % F0)
-        if add_offset:
-            #% Add baseline offset back into raw traces:
-            neuropil_fpath = soma_fpath.replace('np_subtracted', 'neuropil')
-            npdata = np.load(neuropil_fpath)
-            neuropil_f0 = np.nanmean(np.nanmean(pd.DataFrame(npdata['f0'][:])))
-            neuropil_df = pd.DataFrame(npdata['data'][:]) #+ pd.DataFrame(npdata['f0'][:]).mean().mean()
-            print("adding NP offset... (NP baseline offset: %.2f)" % neuropil_f0)
-            print(xdata_df.shape, neuropil_df.mean(axis=0).shape, F0.shape)
-            raw_traces = xdata_df + list(np.nanmean(neuropil_df, axis=0)) + F0 #.T + F0
-        else:
-            raw_traces = xdata_df + F0
+        data_fpath = soma_fpath.replace('np_subtracted', trace_type)
+        if not os.path.exists(data_fpath) or create_new is True:
+            # Process data and save
+            traces, labels, sdf, run_info = process_and_save_traces(
+                                                    trace_type=trace_type,
+                                                    soma_fpath=soma_fpath
+                                                    )
 
-        if trace_type == 'corrected':
-            traces = raw_traces
-        elif trace_type in ['dff', 'df']:
-            stim_on_frame = labels['stim_on_frame'].unique()[0]
-            tmp_df = []
-            for k, g in labels.groupby(['trial']):
-                tmat = raw_traces.loc[g.index]
-                bas_mean = np.nanmean(tmat[0:stim_on_frame], axis=0)
-                if trace_type == 'dff':
-                    tmat_df = (tmat - bas_mean) / bas_mean
-                elif trace_type == 'df':
-                    tmat_df = (tmat - bas_mean)
-                tmp_df.append(tmat_df)
-            traces = pd.concat(tmp_df, axis=0)
-            del tmp_df
-
+        else:
+            print("... loading saved data array (%s)." % trace_type)
+            traces_dset = np.load(data_fpath)
+            traces = pd.DataFrame(traces_dset['data'][:]) 
+            labels_fpath = data_fpath.replace('%s.npz' % trace_type, 'labels.npz')
+            labels_dset = np.load(labels_fpath)
+            
+            # Stimulus / condition info
+            labels = pd.DataFrame(data=labels_dset['labels_data'], 
+                                  columns=labels_dset['labels_columns'])
+            sdf = pd.DataFrame(labels_dset['sconfigs'][()]).T
+            if 'blobs' in soma_fpath: #self.experiment_type:
+                sdf = reformat_morph_values(sdf)
+            run_info = labels_dset['run_info'][()]
         if make_equal:
-            #print("... making equal")
+            print("... making equal")
             traces, labels = check_counts_per_condition(traces, labels)           
             
     except Exception as e:
         traceback.print_exc()
         print("ERROR LOADING DATA")
+
+    # Format condition info:
+    if 'image' in sdf['stimtype']:
+        aspect_ratio = sdf['aspect'].unique()[0]
+        sdf['size'] = [round(sz/aspect_ratio, 1) for sz in sdf['size']]
 
     return traces, labels, sdf, run_info
 
@@ -854,4 +1264,3 @@ def zproj_tseries(source_dir, runinfo_path, zproj_type='mean', write_dir=None, f
 
     # Sort separated tiff slice images:
     sort_deinterleaved_tiffs(write_dir, runinfo_path)  # Moves all 'vis_' files to separate subfolder 'visible'
-    #sort_deinterleaved_tiffs(os.path.join(write_dir, 'visible'), runinfo_path)

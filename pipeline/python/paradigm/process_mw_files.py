@@ -558,7 +558,8 @@ def get_stimulus_events(curr_dfn, single_run=True, boundidx=0, dynamic=False, ph
                     image_evs.append(curr_stim_evs[0])
             else:
                 #image_evs = [d for d in pixelclock_evs for i in d.value if 'type' in i.keys() and i['type']=='image']
-                image_evs = [d for d in pixelclock_evs for i in d.value if 'name' in i.keys() and i['name']!='background']
+                #image_evs = [d for d in pixelclock_evs for i in d.value if 'name' in i.keys() and i['name']!='background']
+                image_evs = [d for d in pixelclock_evs if len(d.value)==num_stimuli]
 
                 # 20181016 data -- "blank" image events:
                 tmp_imevs = []
@@ -568,7 +569,7 @@ def get_stimulus_events(curr_dfn, single_run=True, boundidx=0, dynamic=False, ph
                     if pi == len(pixelclock_evs)-1:
                         continue
                     curr_ev_dur = (pixelclock_evs[pi+1].time - pev.time) / 1E6
-                    if round(curr_ev_dur, 1) == stimulus_duration:
+                    if round(curr_ev_dur, 0) == stimulus_duration:
                         tmp_imevs.append(pev)
                 blank_images = [i for i in tmp_imevs if i not in image_evs]
                 if len(blank_images) > 0:
@@ -1189,7 +1190,7 @@ def extract_trials(curr_dfn, dynamic=False, retinobar=False, phasemod=False, tri
     else:
         # Rename MW trial info to make sense for 'rotating gratings':
         # -------------------------------------------------------------------------
-        unique_stim_durs = sorted(list(set([round(trial[t]['stim_duration']/1E3, 1) for t in trial.keys()])))
+        unique_stim_durs = sorted(list(set([round(trial[t]['stim_duration']/1E3, 0) for t in trial.keys()])))
         #print "STIM DURS:", unique_stim_durs 
         if len(unique_stim_durs) > 1: # and 'grating' in stimtype:
             print "***This is a moving-rotating grating experiment.***"
