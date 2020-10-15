@@ -6,7 +6,7 @@ Created on Wed May 30 20:36:25 2018
 @author: juliana
 """
 
-
+#%%
 import matplotlib as mpl
 mpl.use('agg')
 import matplotlib.patches as patches
@@ -34,9 +34,7 @@ def extract_options(options):
 
     parser.add_option('-D', '--root', action='store', dest='rootdir',
                           default='/n/coxfs01/2p-data',
-                          help='data root dir (dir w/ all animalids) [default: /nas/volume1/2photon/data, /n/coxfs01/2pdata if --slurm]')
-    parser.add_option('--slurm', action='store_true', dest='slurm', default=False, help="set if running as SLURM job on Odyssey")
-
+                          help='data root dir (dir w/ all animalids) [default: /n/coxfs01/2pdata]')
     parser.add_option('-i', '--animalid', action='store', dest='animalid',
                           default='', help='Animal ID')
     parser.add_option('--auto', action='store_true', dest='auto',
@@ -51,40 +49,38 @@ def extract_options(options):
                           default='', help='session dir (format: YYYMMDD_ANIMALID')
     parser.add_option('-A', '--acq', action='store', dest='acquisition',
                           default='FOV1', help="acquisition folder (ex: 'FOV1_zoom3x') [default: FOV1]")
-
     parser.add_option('-R', '--run', dest='run', default='', action='store', help="run name")
-    parser.add_option('-t', '--traceid', dest='traceid', default=None, action='store', help="datestr YYYYMMDD_HH_mm_SS")
+    parser.add_option('-t', '--traceid', dest='traceid', default=None, action='store', help="e.g., traces001")
 
     # Set specific session/run for current animal:
     parser.add_option('-d', '--datatype', action='store', dest='datatype',
                           default='corrected', help='Traces to plot (must be in dataset.npz [default: corrected]')
-     
     parser.add_option('-f', '--filetype', action='store', dest='filetype',
                           default='svg', help='File type for images [default: svg]')
+
     parser.add_option('--scale', action='store_true', dest='scale_y',
                           default=False, help='Set to scale y-axis across roi images')
-    parser.add_option('-y', '--ymax', action='store', dest='dfmax',
-                          default=None, help='Set value for y-axis scaling (if not provided, and --scale, uses max across rois)')
+    parser.add_option('-y', '--ymax', action='store', dest='dfmax', default=None,
+                          help='Set value for y-axis scaling (if not provided, and --scale, uses max across rois)')
     parser.add_option('--shade', action='store_false', dest='plot_trials',
-                          default=True, help='Set to plot mean and sem as shaded (default plots individual trials)')
+                          default=True, help='Set to plot mean/sem as shaded (default plots individual trials)')
     parser.add_option('--median', action='store_true', dest='plot_median',
                           default=False, help='Set to plot MEDIAN (default plots mean across trials)')
 
 
-    parser.add_option('-r', '--rows', action='store', dest='rows',
-                          default=None, help='Transform to plot along ROWS (only relevant if >2 trans_types) - default uses objects or morphlevel')
-    parser.add_option('-c', '--columns', action='store', dest='columns',
-                          default=None, help='Transform to plot along COLUMNS')
-    parser.add_option('-H', '--hue', action='store', dest='subplot_hue',
-                          default=None, help='Transform to plot by HUE within each subplot')
-    parser.add_option('--filter', action='store_true', dest='filter_noise',
-                          default=False, help='Set to filter our noisy spikes') 
+    parser.add_option('-r', '--rows', action='store', dest='rows', default=None,
+                        help='Transform to plot along ROWS')
+    parser.add_option('-c', '--columns', action='store', dest='columns', default=None,
+                        help='Transform to plot along COLUMNS')
+    parser.add_option('-H', '--hue', action='store', dest='subplot_hue', default=None,
+                        help='Transform to plot by HUE within each subplot')
+    parser.add_option('--filter', action='store_true', dest='filter_noise', default=False,
+                        help='Set to filter our noisy spikes') 
     parser.add_option('--no-offset', action='store_false', dest='add_offset',
                           default=True, help='Set to do offset old way') 
    
     (options, args) = parser.parse_args(options)
-    if options.slurm:
-        options.rootdir = '/n/coxfs01/2p-data'
+
     
     return options
 
@@ -99,9 +95,10 @@ def extract_options(options):
 #           '-R', 'combined_gratings_static', '-t', 'traces001', '--shade',
 #           '-r', 'ypos', '-c', 'xpos']
 
-options = ['-D', '/n/coxfs01/2p-data','-i', 'JC083', '-S', '20190511', '-A', 'FOV1_zoom2p0x',
-           '-R', 'combined_gratings_static', '-t', 'traces001', '--shade',
-           '-r', 'size,speed', '-c', 'ori', '-H', 'sf']
+options = ['-D', '/n/coxfs01/2p-data','-i', 'JC084', '-S', '20190522', 
+           '-A', 'FOV1_zoom2p0x', '-d', 'dff',
+           '-R', 'combined_rfs_static', '-t', 'traces001', '--shade',
+           '-r', 'ypos', '-c', 'xpos'] #, '-H', 'sf']
 
 #%%
 def get_data_id_from_tracedir(traceid_dir, rootdir='/n/coxfs01/2p-data/'):
@@ -110,18 +107,15 @@ def get_data_id_from_tracedir(traceid_dir, rootdir='/n/coxfs01/2p-data/'):
     return data_identifier
 #    
 def get_mean_and_sem_timecourse(rdata, sdf, plot_params, trace_type='dff'):
-    
-    if trace_type not in rdata.columns:
-        print("Requested %s -- not found" % (trace_type))
-        trace_type = [c for c in rdata.columns if c not in labels_c.columns][0]
-        print("-- averaging %s" % trace_type)
+
+    assert trace_type in rdata.columns, "[ERR]: <%s> not found in columns" % trace_type    
 
     meandfs = []
     for k, g in rdata.groupby(['config']):
         nreps = len(g['trial'].unique())
         mean_trace = g.groupby(['trial'])[trace_type].apply(np.array).mean(axis=0)
         mean_tsec = g.groupby(['trial'])['tsec'].apply(np.array).mean(axis=0)
-        sem_trace = stats.sem(np.vstack(g.groupby(['trial'])[trace_type].apply(np.array)), axis=0)
+        sem_trace = stats.sem(np.vstack(g.groupby(['trial'])[trace_type].apply(np.array)), axis=0, nan_policy='omit')
         mdf = pd.DataFrame({'%s' % trace_type: mean_trace,
                             'tsec': mean_tsec,
                             'sem': sem_trace,
@@ -132,6 +126,8 @@ def get_mean_and_sem_timecourse(rdata, sdf, plot_params, trace_type='dff'):
 
                            })
         for p in plot_params.values():
+            if p is None: 
+                continue
             mdf[p] = [round(sdf[p][cfg], 1) if isinstance(sdf[p][cfg], (float)) else sdf[p][cfg] for cfg in mdf['config']]
         meandfs.append(mdf)
     meandfs = pd.concat(meandfs, axis=0)
@@ -150,8 +146,6 @@ def add_stimulus_bar(x, start_val=0, end_val=1, color='k', alpha=0.5, **kwargs):
     ymin, ymax = ax.get_ylim()
     ax.add_patch(patches.Rectangle((start_val, ymin), end_val, (ymax-ymin), linewidth=0, 
                                   fill=True, color=color, alpha=alpha))
-
-    #ax.tick_params(axis='x', size=0)
     
     
 def fix_grid_labels(p, trace_type='trace_type'):
@@ -190,7 +184,8 @@ def plot_psth_grid(meandfs, plot_params, trace_type='trace_type', palette='color
 
     p = p.set_titles(col_template="{col_name}", size=12)   
     p.map(add_stimulus_bar, 'ntrials',  start_val=stim_start_tsec, end_val=stim_end_tsec, color='k', alpha=0.1)
-    p.map(add_text, 'ntrials', plot_params['hue'])
+    if plot_params['hue'] is not None:
+        p.map(add_text, 'ntrials', plot_params['hue'])
     pl.subplots_adjust(top=0.9, right=0.9, wspace=0.1, hspace=0.4)
     sns.despine(trim=True) #, bottom=True) 
     fix_grid_labels(p, trace_type=trace_type)
@@ -218,22 +213,23 @@ def plot_psth_and_save(rid, meandfs, plot_params, trace_type='trace_type', palet
     pl.close()
     
     
-      #%%                    
+
+#%%                    
 def make_clean_psths(options):
     #%%
     optsE = extract_options(options)
-    
-    #traceid_dir = util.get_traceid_dir(options)
     run = optsE.run #run_list[0]
     traceid = optsE.traceid #traceid_list[0]
-
     inputdata = optsE.datatype
     filetype = optsE.filetype
-        
     filter_noise = optsE.filter_noise
-
     trace_type = optsE.datatype
 
+    # Plotting options:
+    filetype = optsE.filetype
+    scale_y = optsE.scale_y
+
+    # Set data source
     acquisition_dir = os.path.join(optsE.rootdir, optsE.animalid, optsE.session, optsE.acquisition)
     if 'cnmf' in traceid:
         traceid_dirs = glob.glob(os.path.join(acquisition_dir, run, 'cnmf', '%s*' % traceid))[0]
@@ -253,8 +249,7 @@ def make_clean_psths(options):
             traceid_dirs = [traceid_dirs[0]  ]          
     add_offset = optsE.add_offset
 
-    
-    #%%   
+    #%%  Set plotting styles and params 
     subplot_hue = optsE.subplot_hue.split(',') if optsE.subplot_hue not in [None, 'None'] else [None]
     rows = optsE.rows.split(',') if optsE.rows is optsE.rows not in [None, 'None'] else [None]
     columns = optsE.columns.split(',') if optsE.columns not in [None, 'None'] else [None]
@@ -265,22 +260,15 @@ def make_clean_psths(options):
                    'rows': rows if len(rows) > 1 else rows[0],
                    'cols': columns if len(columns) > 1 else columns[0]}
     
-    if compare_param == 'color':
-        compare_param_name = 'backlight'
-    else:
-        compare_param_name = compare_param
-    
-    #if compare_runs:
+    compare_param_name = 'backlight' if compare_param=='color' else compare_param
+   
+    # Aggregate the data 
     xdata_list=[]; labels_list=[]; sdf_list=[]; data_ids=[];
     for traceid_dir in traceid_dirs:
         dataset_name = 'np_subtracted' if trace_type in ['dff', 'df', 'corrected'] else trace_type
 
         soma_fpath = os.path.join(traceid_dir, 'data_arrays', '%s.npz' % dataset_name)
         xdata, labels, sdf, run_info = util.load_dataset(soma_fpath, trace_type=trace_type)
-#        if add_offset:
-#            xdata, labels, sdf = load_data(traceid_dir, inputdata=optsE.datatype, add_offset=True)
-#        else:
-#            xdata, labels, sdf = load_traces_and_configs(traceid_dir, inputdata=optsE.datatype)
         sdf = sdf.assign(ix=[int(i.split('config')[-1]) for i in sdf.index]).sort_values('ix')
         
         data_identifier = get_data_id_from_tracedir(traceid_dir)
@@ -294,7 +282,8 @@ def make_clean_psths(options):
         data_id_list.extend([s for s in data_ids[1].split('|') if s not in data_id_list])
     data_identifier = '|'.join(data_id_list)
     print "*** %s" % data_identifier
-    
+   
+    # Fix some naming stuff for easier labeling/plotting 
     for si, sdf in enumerate(sdf_list):
         if compare_param_name == 'backlight' and compare_runs:
             if round(sdf['color'].min(), 2) == 0.06: 
@@ -320,11 +309,9 @@ def make_clean_psths(options):
             sdf.index = ['config%03d' % int(last_cfg_n + int(c[7:])) for c in sdf.index.tolist()]
             tmp_labels = labels_list[si]
             tmp_labels['config'] = ['config%03d' % int(last_cfg_n + int(c[7:])) for c in tmp_labels['config']]
-            labels_list[si] = tmp_labels
-        
+            labels_list[si] = tmp_labels        
         sdf_list[si] = sdf
-
-#%% 
+#% 
     # Combine data:
     sdf_c = pd.concat(sdf_list, axis=0) # Get rid of config labels
     xdata_c = pd.concat(xdata_list, axis=0).reset_index(drop=True)
@@ -332,6 +319,7 @@ def make_clean_psths(options):
     stim_on = labels_c['stim_on_frame'].unique()[0]
     nframes_on = labels_c['nframes_on'].unique()[0]
     mean_tsecs = labels_c.groupby(['trial'])['tsec'].apply(np.array).mean(axis=0)
+    print(xdata_c.head())
 
     for pparam in plot_params.values():
         if isinstance(pparam, list):
@@ -347,7 +335,8 @@ def make_clean_psths(options):
         labels_c = labels_c.round({'size': 0}).astype({'size': int})
         sdf_c = sdf_c.round({'size': 0})
 
-#%%
+#%
+    # Set output dirs
     if compare_runs:
         output_figdir = os.path.join(traceid_dirs[0].split('/traces/')[0], 'compare_runs', 'figures')
     else:
@@ -355,14 +344,9 @@ def make_clean_psths(options):
     if not os.path.exists(output_figdir):
         os.makedirs(output_figdir)
     print "OUTPUT saved to:", output_figdir    
-    
     #%%
-    
-    # Plotting options:
-    filetype = optsE.filetype
-    scale_y = optsE.scale_y
-    
-    
+  
+    #%% Set what gets plotted where and houes
     # Get varying transforms:
     ignore_params = ['position', 'aspect', 'stimtype']
     transform_params = [p for p in sdf_c.columns if p not in ignore_params]
@@ -399,12 +383,10 @@ def make_clean_psths(options):
         plot_params['hue'] = combo_param_name
         
         
-    trans_types = sorted([trans for trans in transform_dict.keys() if len(transform_dict[trans]) > 1])         
+    trans_types = sorted([trans for trans in transform_dict.keys() if len(transform_dict[trans]) > 1 and trans!='ix'])         
     print "Trans:", trans_types
-    #print transform_dict
-    print sdf_c.head()    
+    #print sdf_c.head()    
    
-  
     # -------------------------------------------------------------------------
     # Create PSTH plot grid:
     # -------------------------------------------------------------------------
@@ -415,7 +397,6 @@ def make_clean_psths(options):
         else:
             all_plot_params.append(v)
     unspecified_trans_types = [t for t in trans_types if t not in all_plot_params]
-
     #%
     # Filter out noisy spikes:
     figdir_append = ''
@@ -425,13 +406,11 @@ def make_clean_psths(options):
     if optsE.plot_median:
         figdir_append = '%s_median' % figdir_append 
     
-    
     # Set output dir for nice(r) psth:
     plot_type = 'trials' if optsE.plot_trials else 'shade' 
     psth_dir = os.path.join(output_figdir, 'psth_%s_%s%s' % (optsE.datatype, plot_type, figdir_append))
     if optsE.filetype == 'pdf':
         psth_dir = '%s_hq' % psth_dir
-        
        
     if not os.path.exists(psth_dir):
         os.makedirs(psth_dir)
@@ -443,15 +422,13 @@ def make_clean_psths(options):
         print "PLOTTING 1 color"
         trace_colors = ['k']
         trace_labels = ['']
-    else:
-#        
+    else: 
         print "Subplot hue: %s" % plot_params['hue']
         if plot_params['hue'] in sdf_c.columns:
             hues = sorted(sdf_c[plot_params['hue']].unique())
             trace_labels = ['%s %s' % (plot_params['hue'], str(v)) for v in sorted(sdf_c[plot_params['hue']].unique())]
         else:
             trace_labels = []
-#%%
     print trace_labels #rows, object_transformations[rows] #trace_labels
 
     # pick some colors:
@@ -483,7 +460,8 @@ def make_clean_psths(options):
                               sharex=True, sharey=True, palette=palette)
             p.map(pl.plot, "tsec", trace_type, lw=0.5, alpha=0.5)
         else:
-            meandfs = get_mean_and_sem_timecourse(rdata, sdf_c, plot_params, trace_type=trace_type)
+            meandfs = get_mean_and_sem_timecourse(rdata, sdf_c, plot_params, 
+                                                  trace_type=trace_type)
             meandfs['ntrials'] = [trial_counts.loc[cfg]['trial'] for cfg in meandfs['config']]
             
             plot_psth_and_save(ridx, meandfs, plot_params, trace_type=trace_type, palette='colorblind', 
@@ -678,7 +656,6 @@ def make_clean_psths(options):
 #        S = (1. - a) / (1. - (1./nobjects) )
         
 #%%
-    #%
 def main(options):
     
     psth_dir = make_clean_psths(options)

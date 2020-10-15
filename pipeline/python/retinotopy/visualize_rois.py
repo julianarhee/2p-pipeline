@@ -357,83 +357,6 @@ def get_metricdf(dfpaths):
     return dataframes #, gridinfo
 
 #%%
-#def get_screen_info(animalid, session, fov=None, interactive=True, rootdir='/n/coxfs01/2p-data'):
-#        
-#    screen = {}
-#    
-#    try:
-#        # Get bounding box values from epi:
-#        epi_session_paths = sorted(glob.glob(os.path.join(rootdir, animalid, 'epi_maps', '20*')), key=natural_keys)
-#        epi_sessions = sorted([os.path.split(s)[-1].split('_')[0] for s in epi_session_paths], key=natural_keys)
-#        print("Found epi sessions: %s" % str(epi_sessions))
-#        if len(epi_sessions) > 0:
-#            epi_sesh = [datestr for datestr in sorted(epi_sessions, key=natural_keys) if int(datestr) <= int(session)][-1] # Use most recent session
-#            print("Most recent: %s" % str(epi_sesh))
-#
-#            epi_fpaths = glob.glob(os.path.join(rootdir, animalid, 'epi_maps', '*%s*' % epi_sesh, 'screen_boundaries*.json'))
-#            if len(epi_fpaths) == 0:
-#                epi_fpaths = glob.glob(os.path.join(rootdir, animalid, 'epi_maps', '*%s*' % epi_sesh, '*', 'screen_boundaries*.json'))
-#
-#        else:
-#            print("No EPI maps found for session: %s * (trying to use tmp session boundaries file)")
-#            epi_fpaths = glob.glob(os.path.join(rootdir, animalid, 'epi_maps', 'screen_boundaries*.json'))
-#        
-#        assert len(epi_fpaths) > 0, "No epi screen info found!"
-#        
-#        # Each epi run should have only 2 .json files (1 for each condition):
-#        if len(epi_fpaths) > 2:
-#            print("-- found %i screen boundaries files: --" % len(epi_fpaths))
-#            repeat_epi_sessions = sorted(list(set( [os.path.split(s)[0] for s in epi_fpaths] )), key=natural_keys)
-#            for ei, repeat_epi in enumerate(sorted(repeat_epi_sessions, key=natural_keys)):
-#                print(ei, repeat_epi)
-#            if interactive:
-#                selected_epi = input("Select IDX of epi run to use: ")
-#            else:
-#                assert fov is not None, "ERROR: not interactive, but no FOV specified and multiple epis for session %s" % session
-#                
-#                selected_fovs = [fi for fi, epi_session_name in enumerate(repeat_epi_sessions) if fov in epi_session_name]
-#                print("Found FOVs: %s" % str(selected_fovs))
-#
-#                if len(selected_fovs) == 0:
-#                    selected_epi = sorted(selected_fovs, key=natural_keys)[-1]
-#                else:
-#                    selected_epi = selected_fovs[0]
-#                
-#            epi_fpaths = [s for s in epi_fpaths if repeat_epi_sessions[selected_epi] in s]
-#        
-#        print("-- getting screen info from:", epi_fpaths)
-#        
-#        for epath in epi_fpaths:
-#            with open(epath, 'r') as f:
-#                epi = json.load(f)
-#            
-#            screen['azimuth'] = epi['screen_params']['screen_size_x_degrees']
-#            screen['elevation'] = epi['screen_params']['screen_size_t_degrees']
-#            screen['resolution'] = [epi['screen_params']['screen_size_x_pixels'], epi['screen_params']['screen_size_y_pixels']]
-#
-#            if 'screen_boundaries' in epi.keys():
-#                if 'boundary_left_degrees' in epi['screen_boundaries'].keys():
-#                    screen['bb_left'] = epi['screen_boundaries']['boundary_left_degrees']
-#                    screen['bb_right'] = epi['screen_boundaries']['boundary_right_degrees']
-#                elif 'boundary_down_degrees' in epi['screen_boundaries'].keys():
-#                    screen['bb_lower'] = epi['screen_boundaries']['boundary_down_degrees']
-#                    screen['bb_upper'] = epi['screen_boundaries']['boundary_up_degrees']
-#            
-#            else:
-#                screen['bb_lower'] = -1*screen['elevation']/2.0
-#                screen['bb_upper'] = screen['elevation']/2.0
-#                screen['bb_left']  = -1*screen['azimuth']/2.0
-#                screen['bb_right'] = screen['azimuth']/2.0
-#
-#
-#        print("*********************************")
-#        pp.pprint(screen)
-#        print("*********************************")
-#      
-#    except Exception as e:
-#        traceback.print_exc()
-#        
-#    return screen
 
 #%%
 #    options = ['-D', '/mnt/odyssey', '-i', 'CE077', '-S', '20180425', '-A', 'FOV1_zoom1x',
@@ -502,20 +425,6 @@ def roi_retinotopy(options):
     else:
         interactive = True
     print("INTERACTIVE:", interactive)
-#    screen_info = get_screen_info(animalid, session, fov=acquisition.split('_')[0], interactive=interactive, rootdir=rootdir)
-#    if len(screen_info.keys()) == 0:
-#        screen_width = 81.28
-#        screen_height = 45.77
-#        screen_resolution = [1920, 1024]
-#    else:
-#        screen_width = screen_info['azimuth']
-#        screen_height = screen_info['elevation']
-#        screen_resolution = screen_info['resolution']
-#
-#    print("*********************************")
-#    pp.pprint(screen_info)
-#    print("*********************************")
-
 
     # Create DF for easy plotting:
     print "Getting DF..."

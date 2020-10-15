@@ -12,7 +12,8 @@ Created on Fri Aug 2 16:20:01 2019
 
 @author: julianarhee
 """
-
+import warnings
+warnings.filterwarnings("ignore")
 import datetime
 import os
 import cv2
@@ -41,7 +42,7 @@ import itertools
 from pipeline.python.classifications import osi_dsi as osi
 from pipeline.python.classifications import test_responsivity as resp
 #from pipeline.python.classifications import experiment_classes as util
-from pipeline.python.utils import natural_keys, label_figure#, load_data
+from pipeline.python.utils import natural_keys, label_figure, load_dataset
 from pipeline.python.traces.trial_alignment import aggregate_experiment_runs 
 
 #from pipeline.python.retinotopy import fit_2d_rfs as rf
@@ -103,18 +104,17 @@ def get_circular_variance(response_vector, thetas):
 
 def get_gratings_run(animalid, session, fov, traceid='traces001', rootdir='/n/coxfs01/2p-data'):
     
-    fovdir = os.path.join(rootdir, animalid, session, fov)
-    
-    found_dirs = glob.glob(os.path.join(fovdir, '*gratings*', 'traces', '%s*' % traceid, 'data_arrays', 'datasets.npz'))
+    fovdir = os.path.join(rootdir, animalid, session, fov) 
+    found_dirs = glob.glob(os.path.join(fovdir, 'combined_gratings*', 'traces', '%s*' % traceid, 'data_arrays', 'np_subtracted.npz'))
     if int(session) < 20190511:
         return None
     
     try:
-        if any('combined' in d for d in found_dirs):
-            extracted_dir = [d for d in found_dirs if 'combined' in d][0]
-        else:
-            assert len(found_dirs) == 1, "ERROR: [%s|%s|%s|%s] More than 1 gratings experiments found, with no combined!" % (animalid, session, fov, traceid)
-            extracted_dir = found_dirs[0]
+        #if any(['combined' in d for d in found_dirs]):
+        #    extracted_dir = [d for d in found_dirs if 'combined' in d][0]
+        #else:
+        assert len(found_dirs) == 1, "ERROR: [%s|%s|%s|%s] More than 1 gratings experiments found, with no combined!" % (animalid, session, fov, traceid)
+        extracted_dir = found_dirs[0]
     except Exception as e:
         print e
         return None
@@ -135,20 +135,34 @@ def get_experiment_data(data_fpath, add_offset=True, make_equal=False):
     soma_fpath = data_fpath.replace('datasets', 'np_subtracted')
     print soma_fpath
 
-    raw_traces, labels, sdf, run_info = util.load_dataset(soma_fpath)
+    raw_traces, labels, sdf, run_info = load_dataset(soma_fpath, trace_type='corrected')
     gdf = resp.group_roidata_stimresponse(raw_traces.values, labels, return_grouped=True) # Each group is roi's trials x metrics
-    
-    #% # Convert raw + offset traces to df/F traces
+
     stim_on_frame = labels['stim_on_frame'].unique()[0]
     tmp_df = []
     for k, g in labels.groupby(['trial']):
         tmat = raw_traces.loc[g.index]
         bas_mean = np.nanmean(tmat[0:stim_on_frame], axis=0)
+        #if trace_type == 'dff':
         tmat_df = (tmat - bas_mean) / bas_mean
+        #elif trace_type == 'df':
+        #tmat_df = (tmat - bas_mean)
         tmp_df.append(tmat_df)
     df_traces = pd.concat(tmp_df, axis=0)
     del tmp_df
 
+   
+#    #% # Convert raw + offset traces to df/F traces
+#    stim_on_frame = labels['stim_on_frame'].unique()[0]
+#    tmp_df = []
+#    for k, g in labels.groupby(['trial']):
+#        tmat = raw_traces.loc[g.index]
+#        bas_mean = np.nanmean(tmat[0:stim_on_frame], axis=0)
+#        tmat_df = (tmat - bas_mean) / bas_mean
+#        tmp_df.append(tmat_df)
+#    df_traces = pd.concat(tmp_df, axis=0)
+#    del tmp_df
+#
     return df_traces, labels, gdf, sdf
 
 
@@ -182,13 +196,13 @@ def load_tuning_results(animalid='', session='', fov='', run_name='', traceid='t
     params_fpath = os.path.join(osidir[0], 'fitparams.json')
     
     if os.path.exists(results_fpath):
-        print("Loading existing fits.")
+        print("... loading existing fits.")
         with open(results_fpath, 'rb') as f:
             bootresults = pkl.load(f)
         with open(params_fpath, 'r') as f:
             fitparams = json.load(f)
     else:
-        print "NO FITS FOUND: %s" % fit_desc
+        print "[ERROR]: NO FITS FOUND: %s" % fit_desc
         
     return bootresults, fitparams
 
@@ -648,6 +662,17 @@ def boot_roi_responses_allconfigs(roi_df, sdf, statdf=None, response_type='dff',
         print "Finished:", p
         p.join()
         
+#    except KeyboardInterrupt:
+#        print("**interupt")
+#        pool.terminate()
+#        print("***Terminating!")
+#    finally:
+#        pool.close()
+#        pool.join()
+#
+
+
+
     end_t = time.time() - start_t
     print("--> Elapsed time: {0:.2f}sec".format(end_t))
       
@@ -865,10 +890,10 @@ def plot_tuning_bootresults(roi, bootr, df_traces, labels, sdf, trace_type='dff'
         ax1.legend(loc='upper left')
         #ax1.text(0, ax1.get_ylim()[-1]*0.75, 'no fit', fontsize=10)
 
-    ymin = np.min([0, ax1.get_ylim()[0]])
-    ax1.set_ylim([ymin,  ax1.get_ylim()[1]])
-    ax1.set_yticks([ymin, ax1.get_ylim()[1]])
-    ax1.set_yticklabels([round(ymin, 2), round( ax1.get_ylim()[1], 2)])
+#    ymin = np.min([0, ax1.get_ylim()[0]])
+#    ax1.set_ylim([ymin,  ax1.get_ylim()[1]])
+#    ax1.set_yticks([ymin, ax1.get_ylim()[1]])
+#    ax1.set_yticklabels([round(ymin, 2), round( ax1.get_ylim()[1], 2)])
     sns.despine(trim=True, offset=4, ax=ax1)
     ax1.set_xticks(curr_oris)
     ax1.set_xticklabels(curr_oris)
@@ -1008,7 +1033,7 @@ def get_tuning(animalid, session, fov, run_name, return_iters=False,
                                     min_cfgs_above=min_cfgs_above, min_nframes_above=min_nframes_above)
         
         passrois = sorted([k for k, v in bootresults.items() if any(v.values())])
-        print("%i cells fit at least 1 tuning curve." % len(passrois))
+        print("... %i cells fit at least 1 tuning curve." % len(passrois))
         
         non_ori_configs = get_non_ori_params(sdf)
         fitparams = {'directory': osidir,
@@ -1114,7 +1139,7 @@ def aggregate_all_iters(bootresults, fitparams, gof_thr=0.66):
     interp = fitparams['n_intervals_interp'] > 1
     
     passrois = sorted([k for k, v in bootresults.items() if any(v.values())])
-    print("%i cells fit at least 1 tuning curve." % len(passrois))
+    print("... aggregating (%i cells fit at least 1 tuning curve)." % len(passrois))
 
     bootdata = []
     for roi in passrois:
@@ -1174,8 +1199,7 @@ def get_good_fits(bootresults, fitparams, gof_thr=0.66):
     interp = fitparams['n_intervals_interp']>1
 
     passrois = sorted([k for k, v in bootresults.items() if any(v.values())])
-    print("%i cells fit at least 1 tuning curve." % len(passrois))
-            
+           
     metrics_by_config = []
     roidfs=[]
     goodrois = []
@@ -1208,7 +1232,7 @@ def get_good_fits(bootresults, fitparams, gof_thr=0.66):
             roif.index = stimkeys
             gof =  roif.mean()['gof']
             
-            if gof >= 0.66:
+            if gof >= gof_thr: #0.66:
                 goodrois.append(roi)
              
             roidfs.append(pd.DataFrame(roif.sort_values(by='response_pref').iloc[0]).T)
@@ -1224,6 +1248,8 @@ def get_good_fits(bootresults, fitparams, gof_thr=0.66):
         new_ixs = [int(i) for i in rmetrics['cell'].values]
         rmetrics.index = new_ixs
         rmetrics_by_cfg = pd.concat(metrics_by_config, axis=0)
+    
+    print("... %i of %i cells pass GoF thr %.2f" % (len(roidfs), len(passrois), gof_thr))
     
     return rmetrics, rmetrics_by_cfg
 
@@ -1626,7 +1652,7 @@ def plot_psth_roi(roi, raw_traces, labels, curr_cfgs, sdf,  trace_type='dff', fi
         fig = pl.figure()
 
     pl.figure(fig.number)
-        
+    print('plotting roi') 
     # ---------------------------------------------------------------------
     #% plot raw traces:
     mean_traces, std_traces, tpoints = osi.get_mean_and_std_traces(roi, raw_traces, labels, curr_cfgs, sdf)
@@ -1634,8 +1660,8 @@ def plot_psth_roi(roi, raw_traces, labels, curr_cfgs, sdf,  trace_type='dff', fi
     stim_on_frame = labels['stim_on_frame'].unique()[0]
     nframes_on = labels['nframes_on'].unique()[0]
     
-    ymin = (mean_traces - std_traces ).min()
-    ymax = (mean_traces + std_traces ).max()
+    ymin = np.nanmin((mean_traces - std_traces )) #.min()
+    ymax = np.nanmax((mean_traces + std_traces )) #.max()
     for icfg in range(len(curr_cfgs)):
         ax = pl.subplot2grid((nr, nc), (s_row, icfg), colspan=colspan)
         ax.plot(tpoints, mean_traces[icfg, :], color='k')
@@ -2316,7 +2342,8 @@ def bootstrap_tuning_curves_and_evaluate(animalid, session, fov, traceid='traces
                                          n_bootstrap_iters=int(n_bootstrap_iters), 
                                          n_resamples = int(n_resamples),
                                          n_intervals_interp=int(n_intervals_interp),
-                                         responsive_test=responsive_test, responsive_thr=responsive_thr, n_stds=n_stds,
+                                         responsive_test=responsive_test, 
+                                         responsive_thr=responsive_thr, n_stds=n_stds,
                                          create_new=create_new, n_processes=n_processes, rootdir=rootdir,
                                          min_cfgs_above=min_cfgs_above, min_nframes_above=min_nframes_above, make_plots=make_plots)
 

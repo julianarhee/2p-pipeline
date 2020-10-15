@@ -25,7 +25,7 @@ import statsmodels as sm
 import cPickle as pkl
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 
-from pipeline.python.utils import natural_keys, label_figure
+from pipeline.python.utils import natural_keys, label_figure, get_screen_dims
 from pipeline.python.retinotopy import visualize_rois as visroi
 from pipeline.python.retinotopy import utils as rutils
 from scipy.signal import argrelextrema
@@ -374,8 +374,8 @@ def find_local_min_max(xvals, yvals):
     
     lmins = argrelextrema(yvals, np.less)[0]
     lmaxs = argrelextrema(yvals, np.greater)[0]
-    print "local minima:", lmins
-    print "local maxima:", lmaxs
+    #print "local minima:", lmins
+    #print "local maxima:", lmaxs
         
     lmax_value = np.max([yvals[mx] for mx in lmaxs])
     lmax = [mx for mx in lmaxs if yvals[mx] == lmax_value][0]
@@ -841,13 +841,13 @@ def main(options):
     corrected_phase = rutils.correct_phase_wrap(phase)
     
     # Get screen info:
-    screen = rutils.get_screen_info(animalid, session, rootdir=rootdir)
+    screen = get_screen_dims()
     
     # Convert phase to linear coords:
-    screen_left = -1*screen['azimuth']/2.
-    screen_right = screen['azimuth']/2. #screen['azimuth']/2.
-    screen_lower = -1*screen['elevation']/2.
-    screen_upper = screen['elevation']/2. #screen['elevation']/2.
+    screen_left = -1*screen['azimuth_deg']/2.
+    screen_right = screen['azimuth_deg']/2. #screen['azimuth']/2.
+    screen_lower = -1*screen['altitude_deg']/2.
+    screen_upper = screen['altitude_deg']/2. #screen['elevation']/2.
     
     #%%
     # Create output dir:

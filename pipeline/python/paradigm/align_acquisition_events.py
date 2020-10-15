@@ -195,6 +195,8 @@ def get_alignment_specs(paradigm_dir, si_info, iti_pre=1.0, iti_post=None, same_
         # Get presentation info (should be constant across trials and files):
         trial_list = sorted(trialdict.keys(), key=natural_keys)
         stim_durs = [round((trialdict[t]['stim_dur_ms']/1E3), 1) for t in trial_list]
+        if all(stim_durs) >= 1.0: 
+            stim_durs = [round(t, 0) for t in stim_durs]
         #assert len(list(set(stim_durs))) == 1, "More than 1 stim_dur found..."
         if len(list(set(stim_durs))) > 1:
             print "more than 1 stim_dur found:", list(set(stim_durs))

@@ -212,7 +212,7 @@ def get_rf_results(traceid_dir, trace_type='corrected', visual_area='', select_r
 
         animalid, session, fov, run, traceid = split_traceid_dir_path(traceid_dir)
         
-        results = rf.fit_2d_receptive_fields(animalid, session, fov, run, traceid, 
+        results, parms = rf.fit_2d_receptive_fields(animalid, session, fov, run, traceid, 
                                              trace_type=trace_type, visual_area=visual_area, select_rois=select_rois,
                                              metric_type=metric_type, response_thr=metric_thr)
 

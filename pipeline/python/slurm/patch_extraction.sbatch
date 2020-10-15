@@ -2,10 +2,15 @@
 # patch_extraction.sbatch
 #
 #SBATCH -p cox # run on cox gpu to use correct env 
-#SBATCH -n 8 # one core
+#SBATCH -n 16 # one core
 #SBATCH -N 1 # on one node
 #SBATCH -t 0-24:00 # Running time of 3 hours
-#SBATCH --mem=131072 #32768 #122880 #18432 #70656 # Memory request of 70 GB (inc to 98304)
+#SBATCH --mem=196608 #32768 #122880 #18432 #70656 # Memory request of 70 GB (inc to 98304)
+#SBATCH -o patch_%A_%a.out # Standard output
+#SBATCH -e patch_%A_%a.err # Standard error
+#SBATCH --mail-type=FAIL
+#SBATCH --mail-user=rhee@g.harvard.edu
+
 
 # load modules
 module load centos6/0.0.1-fasrc01
@@ -22,7 +27,7 @@ source activate /n/coxfs01/2p-pipeline/envs/caiman
 #echo "File: ${FILENAME}"
 
 # run processing on raw data
-python /n/coxfs01/2p-pipeline/repos/2p-pipeline/pipeline/python/traces/extract_caiman.py -i ${1} -S ${2} -A ${3} -E ${4} -n 8
+python /n/coxfs01/2p-pipeline/repos/2p-pipeline/pipeline/python/traces/extract_caiman.py -i ${1} -S ${2} -A ${3} -E ${4} -n 16
 
 
 #if [ -z "$7" ]; then   
