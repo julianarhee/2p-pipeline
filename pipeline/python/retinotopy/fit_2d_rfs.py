@@ -1306,8 +1306,8 @@ def plot_rfs_to_screen(fitdf, sdf, screen, sigma_scale=2.35, fit_roi_list=[]):
     majors = np.array([np.abs(fitdf['sigma_x'][rid]*sigma_scale) for rid in fit_roi_list])
     minors = np.array([np.abs(fitdf['sigma_y'][rid]*sigma_scale) for rid in fit_roi_list])
 
-    print "Avg sigma-x, -y: %.2f, %.2f (avg sz, %.2f)" % (majors.mean(), minors.mean(), 
-                                                                np.mean([majors.mean(), minors.mean()]))
+    print "Avg sigma-x, -y: %.2f, %.2f (avg sz, %.2f)" % (np.nanmean(majors), np.nanmean(minors), 
+                                                                np.nanmean([np.nanmean(majors), np.nanmean(minors)]))
     
     avg_rfs = (majors + minors) / 2.
     
@@ -1539,13 +1539,15 @@ def plot_centroids(kde_results, weights, screen, xvals=[], yvals=[], fit_roi_lis
     return fig
 
 
-def target_fov(avg_resp_by_cond, fitdf, screen, fit_roi_list=[], row_vals=[], col_vals=[], 
+def target_fov(avg_resp_by_cond, fitdf_, screen, fit_roi_list=[], row_vals=[], col_vals=[], 
                compare_kdes=False, weight_type='kde', fit_thr=0.5, target_fov_dir='/tmp',
                data_identifier='METADATA'):
-    
+  
+    fitdf = fitdf_.dropna().copy() 
+    fit_roi_list = fitdf.index.tolist() # [r for r in fit_roi_list if r in fitdf['cell']]
     compare_kdes = False
 
-    max_zscores = avg_resp_by_cond.max(axis=0)
+    max_zscores = np.nanmax(avg_resp_by_cond, 0)
     xx = fitdf['x0']
     yy = fitdf['y0']
     
