@@ -3,7 +3,7 @@
 
 '''
 Pre-extraction steps for block-reducing and moving files.
-Adapted from CE jupyter notebook.
+Adapted from CE jupyter notebook 
 
 Created May 19, 2020
 '''
