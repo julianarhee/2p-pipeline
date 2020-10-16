@@ -13,14 +13,14 @@ import shutil
 rootdir = '/n/coxfs01/2p-data'
 
 
-animalid = 'JC084' #'JC085'
-session = '20190522' #'20190624'
+animalid = 'JC097' # 'JC084' #'JC085'
+session = '20190616' #'20190522' #'20190624'
 acquisition = 'FOV1_zoom2p0x'
 run = 'all_combined'
 scratch_root = '/scratch/tmp'
 
 #analysis_header = 'suite2p_analysis001'
-analysis_header = 'suite2p_analysis001'
+analysis_header = 'suite2p001'
 
 #figure out directories to search
 data_dir = os.path.join(rootdir,animalid,session,acquisition,run)
@@ -40,7 +40,6 @@ scratch_folder = os.path.join(analysis_dir,'binaries')
 
 
 #set parameters and save bit
-
 ops_dir = os.path.join(analysis_dir,'suite2p')
 if not os.path.isdir(ops_dir):
     os.makedirs(ops_dir)
