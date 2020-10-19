@@ -387,6 +387,39 @@ def get_rf_datasets(filter_by='drop_repeats', excluded_sessions=[], as_dict=True
     else: 
         return included_sessions
    
+def get_retino_metadata(experiment='retino', animalids=None,
+                        roi_type='manual2D_circle', traceid=None,
+                        rootdir='/n/coxfs01/2p-data', 
+                        aggregate_dir='/n/coxfs01/julianarhee/aggregate-visual-areas'):
+
+    sdata_fpath = os.path.join(aggregate_dir, 'dataset_info.pkl')
+    with open(sdata_fpath, 'rb') as f:
+        sdata = pkl.load(f)
+   
+    meta_list=[]
+    for (animalid, session, fov), g in sdata.groupby(['animalid', 'session', 'fov']):
+        if animalids is not None:
+            if animalid not in animalids:
+                continue
+        exp_list = [e for e in g['experiment'].values if experiment in e] 
+        if len(exp_list)==0:
+            print('skipping, no retino (%s, %s, %s)' % (animalid, session, fov)) 
+        retino_dirs = glob.glob(os.path.join(rootdir, animalid, session, fov, '%s*' % experiment,
+                                'retino_analysis'))
+        # get analysis ids for non-pixel
+        for retino_dir in retino_dirs:
+            retino_run = os.path.split(os.path.split(retino_dir)[0])[-1]
+            if traceid is None:
+                rid_fpath = glob.glob(os.path.join(retino_dir, 'analysisids_*.json'))[0]
+                with open(rid_fpath, 'r') as f:
+                    retids = json.load(f)
+                traceids = [r for r, res in retids.items() if res['PARAMS']['roi_type']==roi_type] 
+                for traceid in traceids: 
+                    meta_list.append(tuple([animalid, session, fov, retino_run, traceid]))
+            else:
+                meta_list.append(tuple([animalid, session, fov, retino_run, traceid]))
+
+    return meta_list
 
 # Screen/stimulus-specific info
 

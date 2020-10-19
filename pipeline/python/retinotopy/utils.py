@@ -1106,6 +1106,10 @@ def plot_example_traces(soma_traces, np_traces, rid=0, cond='right',
 def plot_phase_and_delay_maps(absolute_az, absolute_el, delay_az, delay_el, 
                                 cmap='nipy_spectral', vmin=-np.pi, vmax=np.pi, 
                                 elev_cutoff=0.56):
+    if cmap=='nic_Edge':
+        screen, cmap = get_retino_legends(cmap_name=cmap, zero_center=True, 
+                                                  return_cmap=True)
+
     fig, axes = pl.subplots(2,2)
     im1 = axes[0,0].imshow(absolute_az, cmap=cmap, vmin=vmin, vmax=vmax)
     im2 = axes[0,1].imshow(absolute_el, cmap=cmap, vmin=vmin, vmax=vmax)
