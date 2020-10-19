@@ -51,7 +51,7 @@ def reduce_and_save_tif(fpath, dst_dir='/scratch'):
     fov_dir, run = os.path.split(run_dir)
     fov = os.path.split(fov_dir)[-1]
 
-    new_fn = '%s_%s_%s' % (fov, run, tif_num) #fn[i1+1:])
+    new_fn = '%s_%s_%s.tif' % (fov, run, tif_num) #fn[i1+1:])
     print(new_fn)
 
     if os.path.exists(os.path.join(dst_dir, new_fn)):
