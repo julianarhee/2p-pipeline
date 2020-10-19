@@ -6,8 +6,8 @@ Created on Thu Apr  4 16:37:13 2019
 @author: julianarhee
 """
 
-#import matplotlib as mpl
-#mpl.use('Agg')
+import matplotlib as mpl
+mpl.use('Agg')
 import os
 import h5py
 import json

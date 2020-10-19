@@ -7,6 +7,8 @@ Created on Sat Apr 13 12:06:11 2019
 """
 
 #%%
+import matplotlib as mpl
+mpl.use('agg')
 import sys
 import os
 import glob
