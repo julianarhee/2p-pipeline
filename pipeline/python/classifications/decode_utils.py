@@ -661,7 +661,7 @@ def do_fit_train_test_single(iter_num, global_rois=None, MEANS=None, sdf=None, s
 
 
 def do_fit_train_test_subset(iter_num, global_rois=None, MEANS=None, sdf=None, sample_ncells=None,
-                             train_set=[10, 30, 50], test_set=[20, 40],
+                             train_sizes=[10, 30, 50], test_sizes=[20, 40],
                              cv=True, C_value=None, test_split=0.2, cv_nfolds=5, class_a=0, class_b=106):
     '''
     Resample w/ replacement from pooled cells (across datasets). Assumes 'sdf' is same for all datasets.
@@ -710,7 +710,7 @@ def do_fit_train_test_subset(iter_num, global_rois=None, MEANS=None, sdf=None, s
     test_targets['label'] = [sdf['morphlevel'][cfg] for cfg in test_targets['config'].values]
     test_targets['group'] = [sdf['size'][cfg] for cfg in test_targets['config'].values]
 
-    #### Train SVM
+    #### Train SVM 
     iterdict, trained_svc, trained_scaler = fit_svm(train_data, targets, return_clf=True,
                                                     test_split=test_split, cv_nfolds=cv_nfolds, 
                                                     cv=cv, C_value=C_value)
@@ -757,9 +757,9 @@ def cycle_train_sets(iter_num, global_rois=None, MEANS=None, sdf=None, sample_nc
     i_list=[]
     for train_set in training_sets:
         test_set = [t for t in sizes if t not in train_set]
-        tmpdf = do_fit_test_gen_subset(iter_num, global_rois=global_rois, MEANS=MEANS, sdf=sdf, 
+        tmpdf = do_fit_train_test_subset(iter_num, global_rois=global_rois, MEANS=MEANS, sdf=sdf, 
                                         sample_ncells=sample_ncells,
-                                        train_set=train_set, test_set=test_set,
+                                        train_sizes=train_set, test_sizes=test_set,
                                         cv=cv, C_value=C_value, test_split=test_split, 
                                         cv_nfolds=cv_nfolds, class_a=class_a, class_b=class_b)
 
