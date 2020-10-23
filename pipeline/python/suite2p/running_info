@@ -1,0 +1,44 @@
+Running suite2p pipeline - from raw data to parsing extracted trace by file
+
+
+suite2p environment located here: /n/coxfs01/cechavarria/envs/suite2p
+
+1. block-reduce and move raw tiffs to single directory. I throw in all run types (retino, scenes, etc) into single directory since suite2p finds
+rois based on activity. putting data from all runs into a single folder helps ensure that ROIs returned are cells active to any one type of stim
+
+run notebook under suite2p_add_ons/pre_extraction/block_reduce_raw_tiff_multiple_runs.ipynb
+
+put in info relevant to specific session (e.g., FOV, animalid, session data)
+
+2. set analysis parameters
+
+modify session-specific arguments in suite2p_add_ons/pre_extraction/runtime_scripts/set_analysis_parameters.py
+(e.g., animalid,session,FOV)
+
+other arguments in this file have been selected for block-reduced 2x arm data already
+
+
+from command line:
+
+python suite2p_add_ons/runtime_scripts/set_analysis_parameters.py
+
+3. run analysis
+
+I usually do this in a interactive session on the cox partition of the cluster, requesting 12 hrs and 40 gb for a 6 hr session works for me
+
+from command line:
+
+python suite2p_add_ons/pre_extraction/runtime_scripts/run_analysis.py -i JC110 -S 20190909 -A FOV1_zoom4p0x -R all_combined -Y suite2p_analysis001
+
+
+4. launch suite2p GUI and select ROIs which belong to cells
+ some detected ROIs correspond to processes or cells that are drastically out of plane-of-focus. You need to classify cell ROIs with suite2p GUI. I usually do this on my workstation and takes less than 5 minutes per session. After you are happy with the selected ROIs, just exit GUI. The GUI updates the relevant file as you modify labels.
+
+
+5. parse the suite2p trace into individual files
+
+the script under suite2p_add_ons/parsing_traces/parse_suite2p_trace.py takes the very long trace of activity created by suite2p and parses it so that you end up with a file for each individual tiff. Resulting files will be under /n/coxfs01/2p-data/animalid/session/FOV/traces/traces_xxxs2p/*hdf5 . You should then be able to use these to plug into your pipeline as you usually would. Might want to modify how this script organizes the data if you need it to be in a particular place for your downstream scripts. 
+
+from command line: 
+
+python suite2p_add_ons/parsing_traces/parse_suite2p_trace.py -i JC110 -S 20190909 -A FOV1_zoom4p0x -R all_combined -Y suite2p_analysis001 -T traces001_s2p -r retino_run1,retino_run2,scenes_run1,scenes_run2,scenes_run3,scenes_run4 
