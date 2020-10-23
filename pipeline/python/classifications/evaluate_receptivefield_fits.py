@@ -1128,7 +1128,7 @@ def load_eval_results(animalid, session, fov, experiment='rfs',
 
     rfname = experiment.split('_')[1] if 'combined' in experiment else experiment
     try: 
-        print("Checking to load: %s" % fit_desc)
+        #print("Checking to load: %s" % fit_desc)
         rfdir = glob.glob(os.path.join(rootdir, animalid, session, 
                         fov, '*%s_*' % rfname,
                         'traces', '%s*' % traceid, 'receptive_fields', 
