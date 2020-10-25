@@ -249,6 +249,8 @@ def get_screen_dims():
 
     screen = {'azimuth_deg': screen_x,
               'altitude_deg': screen_y,
+              'azimuth_cm': 103.0,
+              'altitude_cm': 58.0,
               'resolution': resolution,
               'deg_per_pixel': (deg_per_pixel_x, deg_per_pixel_y)}
 
