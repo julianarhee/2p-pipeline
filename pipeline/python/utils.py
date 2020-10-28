@@ -209,6 +209,19 @@ def set_plot_params(lw_axes=1, labelsize=12, color='k'):
 
     return dpi
 
+def colorbar(mappable, label=None):
+    from mpl_toolkits.axes_grid1 import make_axes_locatable
+    import matplotlib.pyplot as plt
+    last_axes = plt.gca()
+    ax = mappable.axes
+    fig = ax.figure
+    divider = make_axes_locatable(ax)
+    cax = divider.append_axes("right", size="5%", pad=0.05)
+    cbar = fig.colorbar(mappable, cax=cax)
+    plt.sca(last_axes)
+    if label is not None:
+        cax.set_title(label)
+    return cbar
 
 # -----------------------------------------------------------------------------
 # Commonly used, generic methods:
