@@ -12,6 +12,7 @@ import cv2
 import traceback
 
 import numpy as np
+import seaborn as sns
 import tifffile as tf
 from skimage import exposure
 from skimage import img_as_ubyte
@@ -222,6 +223,13 @@ def colorbar(mappable, label=None):
     if label is not None:
         cax.set_title(label)
     return cbar
+
+def turn_off_axis_ticks(ax):
+    ax.tick_params(which='both', axis='both', size=0)
+    sns.despine(ax=ax, left=True, right=True) #('off')
+    ax.set_xticklabels([])
+    ax.set_yticklabels([])
+    
 
 # -----------------------------------------------------------------------------
 # Commonly used, generic methods:
