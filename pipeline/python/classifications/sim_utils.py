@@ -1,6 +1,7 @@
 import os
 import glob
 import pylab as pl
+import pandas as pd
 
 import numpy as np
 import scipy.signal
@@ -14,9 +15,54 @@ from matplotlib.lines import Line2D
 from matplotlib.lines import Line2D
 from matplotlib.patches import Ellipse
 from pipeline.python import utils as putils
+from pipeline.python.utils import colorbar, label_figure, turn_off_axis_ticks
+
+from pipeline.python.classifications import radial_data as radial
+
+import numpy as np
+import numpy.fft as fft
+from scipy import signal
+from scipy import fftpack
 
 
+
+#=================================================================== 
 # Stimulus drawing functions
+#===================================================================
+def draw_ellipse(x0, y0, sz_x, sz_y, theta, color='b', ax=None,
+                plot_centroid=False, centroid_color='b', centroid_marker='o'):
+    if ax is None:
+        f, ax = pl.subplots()
+    if plot_centroid:
+        ax.plot(x0, y0, color=centroid_color, marker=centroid_marke)
+    ell = Ellipse((x0, y0), sz_x, sz_y, angle=np.rad2deg(theta))
+    ell.set_alpha(0.7)
+    ell.set_edgecolor(color)
+    ell.set_facecolor('none')
+    ell.set_linewidth(1)
+    ax.add_patch(ell) 
+    
+    return ax
+
+
+def get_image_luminances(sdf, im_arrays, pix_per_deg=16.05, resolution=[1080, 1920]):
+    stim_xpos, stim_ypos = float(sdf['xpos'].unique()), float(sdf['ypos'].unique())
+    lum_=[]
+    for i, ((mp, sz), sg) in enumerate(sdf.groupby(['morphlevel', 'size'])):
+        imname = 'M%i' % mp
+        if mp==-1:
+            mean_lum=float(sg['color'].values)
+        else:
+            imarr = im_arrays[imname]
+            iscr, iex = draw_stimulus_to_screen(imarr, size_deg=sz, 
+                                        stim_pos=(stim_xpos, stim_ypos),
+                                        pix_per_deg=pix_per_deg, resolution=resolution)
+            mean_lum = iscr.mean()/255.
+        lum_.append(pd.DataFrame({'config': sg.index, 'name': imname, 
+                                    'size': sz, 'morphlevel': mp, 'lum': mean_lum}, index=[i]))
+    lumdf=pd.concat(lum_)
+    
+    return lumdf
 
 def draw_stimulus_to_screen(stimulus_im, size_deg=30., stim_pos=(0, 0),
                             pix_per_deg=16.05, resolution=[1080, 1920]):
@@ -40,7 +86,7 @@ def resize_image_to_coords(im, size_deg=30, pix_per_deg=16.05, aspect_scale=1.74
     Take original image (in pixels) and scale it to specified size for screen.
     Return resized image in pixel space.
     '''
-    print(pix_per_deg)
+    #print(pix_per_deg)
     ref_dim = max(im.shape)
     resize_factor = ((size_deg*pix_per_deg) / ref_dim ) / pix_per_deg
     scale_factor = resize_factor * aspect_scale
@@ -107,7 +153,7 @@ def convert_fitparams_to_pixels(rid, curr_rfs, pix_per_deg=16.06,
     
     return x0, y0, sz_x, sz_y, theta
 
-def load_stimuli(root='/n/home00/juliana.rhee', 
+def load_stimuli(root='/n/home00/juliana.rhee', rename_morphs=True,
                  stimulus_path='Repositories/protocols/physiology/stimuli/images'):
 
     stimulus_dir = os.path.join(root, stimulus_path)
@@ -115,7 +161,7 @@ def load_stimuli(root='/n/home00/juliana.rhee',
 
     # Get image paths:
     #object_list = ['D1', 'D2']
-    object_list = ['D1', 'M14', 'M27', 'M53', 'M66', 'M9', 'M93', 'D2']
+    object_list = ['D1', 'M14', 'M27', 'M40', 'M53', 'M66', 'M79', 'M92', 'D2']
     
     image_paths = []
     for obj in object_list:
@@ -126,14 +172,79 @@ def load_stimuli(root='/n/home00/juliana.rhee',
     images = {}
     for object_name, impath in zip(object_list, image_paths):
         im = cv2.imread(impath)
-        images[object_name] = im[:, :, 0]
-    print("im shape:", images['D1'].shape)
+        if rename_morphs and object_name in ['D1', 'D2']:
+            oname = 'M0' if object_name=='D1' else 'M106'
+        else:
+            oname = object_name
+        images[oname] = im[:, :, 0]
+    #print("im shape:", images['M14'].shape)
     
     return images
 
+def gabor_patch(size, sf=None, lambda_=None, theta=90, sigma=None, 
+                phase=0, trim=.005, pix_per_degree=16.05,return_grating=False):
+    """Create a Gabor Patch
+
+    size : int
+        Image size (n x n)
+
+    lambda_ : int
+        Spatial frequency (px per cycle)
+
+    theta : int or float
+        Grating orientation in degrees
+
+    sigma : int or float
+        gaussian standard deviation (in pixels)
+
+    phase : float
+        0 to 1 inclusive
+    """
+    assert not (sf is None and lambda_ is None), "Must specify sf or lambda)_"
+    
+    deg_per_pixel=1./pix_per_degree
+    lambda_ = 1./(sf*deg_per_pixel) # cyc per pixel (want: pix/cyc)
+    
+    if sigma is None:
+        sigma = max(size)
+    
+    sz_y, sz_x = size
+    
+    # make linear ramp
+    X0 = (np.linspace(1, sz_x, sz_x) / sz_x) - .5
+    Y0 = (np.linspace(1, sz_y, sz_y) / sz_y) - .5
+
+    # Set wavelength and phase
+    freq = sz_x / float(lambda_)
+    phaseRad = phase * 2 * np.pi
+
+    # Make 2D grating
+    Ym, Xm = np.meshgrid(X0, Y0)
+
+    # Change orientation by adding Xm and Ym together in different proportions
+    thetaRad = (theta / 360.) * 2 * np.pi
+    Xt = Xm * np.cos(thetaRad)
+    Yt = Ym * np.sin(thetaRad)
+    grating = np.sin(((Xt + Yt) * freq * 2 * np.pi) + phaseRad)
+
+    # 2D Gaussian distribution
+    gauss = np.exp(-((Xm ** 2) + (Ym ** 2)) / (2 * (sigma / float(sz_x)) ** 2))
+
+    # Trim
+    gauss[gauss < trim] = 0
+
+   
+    if return_grating:
+        print("returning grating")
+        return grating
+    else: 
+        return grating * gauss
 
 
+
+#=================================================================== 
 # Image processing
+# ===================================================================
 
 def get_bbox_around_nans(rpatch, replace_nans=True, return_indices=False):
     bb_xmax, bb_ymax = np.max(np.where(~np.isnan(rpatch)), 1)
@@ -156,34 +267,6 @@ def blur_mask(mask, ks=None):
         ks = int(min(mask_p.shape)/2.)+1
     mask_win = cv2.GaussianBlur(mask_p, (ks, ks), 0)
     return mask_win
-
-def draw_ellipse(x0, y0, sz_x, sz_y, theta, color='b', ax=None):
-    if ax is None:
-        f, ax = pl.subplots()
-    ax.plot(x0, y0, 'b*')
-    ell = Ellipse((x0, y0), sz_x, sz_y, angle=np.rad2deg(theta))
-    ell.set_alpha(0.7)
-    ell.set_edgecolor(color)
-    ell.set_facecolor('none')
-    ell.set_linewidth(1)
-    ax.add_patch(ell) 
-    
-    return ax
-
-def colorbar(mappable, label=None):
-    from mpl_toolkits.axes_grid1 import make_axes_locatable
-    import matplotlib.pyplot as plt
-    last_axes = plt.gca()
-    ax = mappable.axes
-    fig = ax.figure
-    divider = make_axes_locatable(ax)
-    cax = divider.append_axes("right", size="5%", pad=0.05)
-    cbar = fig.colorbar(mappable, cax=cax)
-    plt.sca(last_axes)
-    if label is not None:
-        cax.set_title(label)
-    return cbar
-
 
 def orig_patch_blurred(im_screen, x0, y0, sz_x, sz_y, rf_theta, ks=101):
     '''
@@ -209,7 +292,28 @@ def orig_patch_blurred(im_screen, x0, y0, sz_x, sz_y, rf_theta, ks=101):
     return result, rf_patch, win_patch
 
 
+#=================================================================== 
 # RF masking
+# ===================================================================
+
+def rfdf_deg_to_pix(curr_rfs, size_name='fwhm'):
+    #rfparams_deg = get_params_for_ellipse(rid, curr_rfs, size_name=size_name)
+    #rfparams_pix = params_deg_to_pixels(rfparams_deg)
+    #x0, y0, sz_x, sz_y, theta = rfparams_pix
+
+    convert_params=['x0', 'y0', '%s_x' % size_name, '%s_y' % size_name, 'theta']
+    rfparams_deg = (curr_rfs[convert_params].values)
+    rfparams_pix = params_deg_to_pixels(rfparams_deg)
+    x0, y0, sz_x, sz_y, theta = rfparams_pix
+    cell = int(curr_rfs['cell'])
+
+#    d = pd.DataFrame({'cell': cell, 'x0': x0, 'y0': y0, 
+#                        '%s_x' % size_name: sz_x, '%s_y' % size_name: sz_y, 
+#                        'theta': theta}, index=[cell])
+    return [cell, x0, y0, sz_x, sz_y, theta]
+
+
+
 
 def get_RF_mask_on_screen(rid, curr_rfs, sim_screen,size_name='fwhm'):
 
@@ -243,20 +347,20 @@ def rf_mask_to_screen(x0, y0, fwhm_x, fwhm_y, theta, resolution=[1080, 1920]):
     '''
     Return mask on screen (pixels), and bbox around mask
     
+    Uses cv2.ellipse(), which expects std (not fwhm), so divide fwhm by 2.
+ 
     theta is in RAD.
     
     '''
     # Create mask
-    curr_rf_theta = theta #np.deg2rad(theta) #np.pi/2.
     curr_rf_mask = np.zeros(resolution).astype(np.uint8) #_like(im_screen.astype(np.uint8))
     curr_rf_mask=cv2.ellipse(curr_rf_mask, (int(x0), int(y0)), 
                      (int(fwhm_x)/2, int(fwhm_y)/2), 
-                     np.rad2deg(curr_rf_theta), 
+                     np.rad2deg(theta), 
                      startAngle=360, endAngle=0, color=1, thickness=-1)
 
     mask_nan = curr_rf_mask.copy().astype(float)
     mask_nan[curr_rf_mask==0]=np.nan
-
     mask_bb, curr_rf_bbox = get_bbox_around_nans(mask_nan, 
                                                  replace_nans=False, return_indices=True)
     return curr_rf_mask, curr_rf_bbox
@@ -294,12 +398,9 @@ def params_deg_to_pixels((ctx, cty, sigx, sigy, theta),
 
 
 
+#=================================================================== 
 # FFT
-import numpy as np
-import numpy.fft as fft
-from scipy import signal
-from scipy import fftpack
-
+# ===================================================================
 def get_fft_magnitude(img):
     '''
     https://www.oreilly.com/library/view/elegant-scipy/9781491922927/ch04.html
@@ -385,86 +486,6 @@ def plotSpectrum(F, xf, yf, logplot=True, ax=None, label_axes=True, cmap='gray')
     return ax
 
 
-# # Sinusoid frequency, in Hz
-# x0 = 1.9
-# y0 = -2.9
-
-# # Generate data
-# im = np.exp(2j * np.pi * (y[:, np.newaxis] * y0 + x[np.newaxis, :] * x0))
-
-# Generate spectrum and plot
-# spectrum, xf, yf = makeSpectrum(result, res[1], res[0], upsample=1) #x[1] - x[0], y[1] - y[0])
-# plotSpectrum(spectrum, xf, yf)
-
-# # Report peak
-# #peak = spectrum[:, np.isclose(xf, x0)][np.isclose(yf, y0)]
-# #peak = peak[0, 0]
-# #print('spectral peak={}'.format(peak))
-
-def gabor_patch(size, sf=None, lambda_=None, theta=90, sigma=None, 
-                phase=0, trim=.005, pix_per_degree=16.05,return_grating=False):
-    """Create a Gabor Patch
-
-    size : int
-        Image size (n x n)
-
-    lambda_ : int
-        Spatial frequency (px per cycle)
-
-    theta : int or float
-        Grating orientation in degrees
-
-    sigma : int or float
-        gaussian standard deviation (in pixels)
-
-    phase : float
-        0 to 1 inclusive
-    """
-    assert not (sf is None and lambda_ is None), "Must specify sf or lambda)_"
-    
-    deg_per_pixel=1./pix_per_degree
-    lambda_ = 1./(sf*deg_per_pixel) # cyc per pixel (want: pix/cyc)
-    
-    if sigma is None:
-        sigma = max(size)
-    
-    sz_y, sz_x = size
-    
-    # make linear ramp
-    X0 = (np.linspace(1, sz_x, sz_x) / sz_x) - .5
-    Y0 = (np.linspace(1, sz_y, sz_y) / sz_y) - .5
-
-    # Set wavelength and phase
-    freq = sz_x / float(lambda_)
-    phaseRad = phase * 2 * np.pi
-
-    # Make 2D grating
-    Ym, Xm = np.meshgrid(X0, Y0)
-
-    # Change orientation by adding Xm and Ym together in different proportions
-    thetaRad = (theta / 360.) * 2 * np.pi
-    Xt = Xm * np.cos(thetaRad)
-    Yt = Ym * np.sin(thetaRad)
-    grating = np.sin(((Xt + Yt) * freq * 2 * np.pi) + phaseRad)
-
-    # 2D Gaussian distribution
-    gauss = np.exp(-((Xm ** 2) + (Ym ** 2)) / (2 * (sigma / float(sz_x)) ** 2))
-
-    # Trim
-    gauss[gauss < trim] = 0
-
-   
-    if return_grating:
-        print("returning grating")
-        return grating
-    else: 
-        return grating * gauss
-
-
-#===================================================================
-# FFT functions 
-#===================================================================
-
 def get_fft(img, map_type='mag'):
     M, N = img.shape
     y = np.fft.fft2(img)
@@ -547,7 +568,8 @@ def get_top_freq(psd_1d, freqx, is_half=False, start_ix=0, fr=1):
         freqs=freqx.copy()
     else:
         N = len(freqx)
-        freqs = freqx[int(float(N)//2):]
+        mi_ix = int(np.where(freqx==0)[0])
+        freqs = freqx[mi_ix:mi_ix+(N/2)]
 
     idx = np.nanargmax(psd_1d[start_ix:]) #np.argmax(np.abs(y)[1:])
     top_freq = freqs[start_ix:][idx]
@@ -565,7 +587,9 @@ def plot_top_freqs(psd_1d, freqs, stim_freq=None, is_half=False,
 
     top_freq_hz, freqs = get_top_freq(psd_1d, freqs, is_half=is_half,
                                           start_ix=start_ix, fr=fr)
-    
+  
+    #print(start_ix, len(freqs), len(psd_1d))
+      
     ax.plot(freqs[start_ix:n_pts_plot]*fr, psd_1d[start_ix:n_pts_plot], 'k-', 
             lw=lw, markersize=markersize)
 
@@ -579,7 +603,7 @@ def plot_top_freqs(psd_1d, freqs, stim_freq=None, is_half=False,
         ax.plot(freqs[ix_sim],  psd_1d[ix_sim], color=stim_color, 
                 marker=marker, label='sm %.2f' % stim_freq,
                 markersize=markersize)
-    sns.despine(ax=ax, trim=True, offset=2)
+    #sns.despine(ax=ax, trim=True, offset=2)
     
     return top_freq_hz, ax
 
@@ -604,5 +628,143 @@ def find_match_across_bins(find_val, bins, values):
     
     return closest_bin, closest_val
 
+
+def plot_max_theta_bin(bins, values, ax=None, color='k', lw=1, 
+                        max_color='r', max_marker='o', markersize=5):
+    if ax is None:
+        f, ax = pl.subplots()
+    ax.plot(bins, values, color=color, lw=lw)
+    found_max_theta, maxv_th = get_max_across_bins(bins,values) 
+    ax.plot(found_max_theta, maxv_th, color=max_color, marker=max_marker, markersize=markersize)
+    ax.set_xticks(np.arange(0, 180, 45))
+    ax.set_xticklabels(np.arange(0, 180, 45), fontsize=8)
+
+    return found_max_theta, ax
+
+
+def plot_psd_results(curr_image, axn=None, map_type='mag', average=False, despine=True,
+                        cmap_img='gray', cmap_psd='viridis', 
+                        zoom_img=False, rf_bbox=None, is_patch=False,
+                        psd='dB', freq_start_ix=0, n_pts_plot=-1, binsize_ang=10, yloc=1.2):
+    if axn is None:
+        f, axf = pl.subplots(1,3)
+        axn = axf.flat
+
+    # Image
+    img = curr_image - np.mean(curr_image) #np.flipud(curr_image) - np.mean(curr_image)
+    r_extent = (-img.shape[1]/2, img.shape[1]/2, -img.shape[0]/2, img.shape[0]/2)
+    M, N = img.shape
+
+    # Full: Get 2d power spec density
+    psd_2d, psd_1d, freqx, freqy = get_psd_results(img, map_type=map_type, shift=True, 
+                                                 cyc_per_deg=True, average=False)
+
+    Y, X = np.meshgrid(freqx, freqy)
+    r_freq    = np.hypot(X, Y) #.astype(np.int)
+
+
+    # plot -----------------
+
+    # orig image
+
+    ax = axn[0]
+    if zoom_img:
+        (bb_xmin, bb_xmax, bb_ymin, bb_ymax) = rf_bbox  
+        # rf_extent = (bb_ymin, bb_ymax, M-bb_xmax, M-bb_xmin)
+        rf_extent = (bb_ymin, bb_ymax, bb_xmin, bb_xmax)
+        if not is_patch:
+            zoom_im = img[bb_xmin:bb_xmax, bb_ymin:bb_ymax]
+        else:
+            zoom_im = img.copy()
+        ax.imshow(zoom_im, extent=rf_extent, origin='lower', cmap=cmap_img)
+    else:
+        ax.imshow(img, cmap=cmap_img)
+    if despine:
+        turn_off_axis_ticks(ax)
+    ax.set_title('img')
+        
+    # 2d power spec density
+    ps = axn[1].imshow(10*np.log10(psd_2d**2), extent=r_extent, cmap=cmap_psd)
+    if despine:
+        turn_off_axis_ticks(axn[1])
+    else:
+        colorbar(ps, label=psd)
+    axn[1].set_title('PSD (%s)' % psd)
+
+    # 1d along azimuth (spatial freq)
+    ax=axn[2]
+    found_max_sf, ax = plot_top_freqs(psd_1d, freqx, is_half=False,
+                                  start_ix=freq_start_ix, n_pts_plot=n_pts_plot, ax=ax)
+    #ax.legend()
+    ax.set_title('s.f.=%.2f' % (found_max_sf), fontsize=8, y=yloc)
+    if despine:
+        sns.despine(ax=ax, trim=True, offset=2)
+        
+    # 1d along radial (theta)
+    ax=axn[3]
+    rad_bins, binned_radii = radial.radialAverage(psd_2d**2, returnAz=True, steps=True, 
+                                               symmetric=1, binsize=binsize_ang)
+    found_max_theta, ax = plot_max_theta_bin(rad_bins, binned_radii, ax=ax)
+    ax.set_title('theta=%.1f deg' % (found_max_theta), fontsize=8,y=yloc)
+    if despine:
+        sns.despine(ax=ax, trim=True, offset=2)
+
+    return found_max_sf, found_max_theta
+
+def get_rf_mask_and_patch(rfparams_pix, patch_img=None, patch_nan=True, resolution=[1080, 1920]):
+    x0, y0, sz_x, sz_y, rf_theta = rfparams_pix
+    rf_mask, rf_bbox = rf_mask_to_screen(x0, y0, sz_x, sz_y, rf_theta, resolution=resolution)
+    (bb_xmin, bb_xmax, bb_ymin, bb_ymax) = rf_bbox
+
+    rf_nan = rf_mask.copy().astype(float)
+    # Replace w nans
+    if patch_nan:
+        rf_nan[rf_mask==0] = np.nan
+    # Return image captured inside RF
+    rf_patch = rf_nan * patch_img if patch_img is not None else rf_nan
+
+    # Return patch
+    return_patch = rf_patch[bb_xmin:bb_xmax, bb_ymin:bb_ymax] 
+    return_mask = rf_mask * patch_img if patch_img is not None else rf_mask
+
+    # convert to 1 range
+    if np.nanmax(return_patch)>1:
+        return_patch = return_patch/255.
+ 
+    return return_mask, return_patch #rf_mask, rf_patch
+
+def extract_tuning_from_aperture(rfparams_pix, curr_image, map_type='mag', binsize_ang=20., 
+                                    fr=1., start_ix=0, 
+                                    return_images=False, 
+                                    pix_per_deg=16.05, resolution=[1080, 1920]):
+
+
+    rf_mask, rf_patch = get_rf_mask_and_patch(rfparams_pix, patch_nan=True, patch_img=curr_image,
+                                                resolution=resolution) 
+
+    # Image
+    #curr_image = rf_mask * curr_image
+    img = rf_mask - np.mean(rf_mask) #curr_image - np.mean(curr_image) 
+    M, N = img.shape
+
+    # Full: Get 2d power spec density
+    psd_2d, psd_1d, freqx, freqy = get_psd_results(img, map_type=map_type, shift=True, 
+                                                 cyc_per_deg=True, average=False)
+
+    # Get metrics 
+    found_max_sf, freqs = get_top_freq(psd_1d, freqx, is_half=False, start_ix=start_ix, fr=fr)
+    binned_thetas, binned_radavgs = radial.radialAverage(psd_2d**2, returnAz=True, steps=True, 
+                                               symmetric=1, binsize=binsize_ang)
+ 
+    found_max_theta, maxv_th = get_max_across_bins(binned_thetas, binned_radavgs) 
+
+    measured_lum = np.nanmean(rf_patch)/1.
+
+    results = (found_max_sf, found_max_theta, measured_lum)
+
+    if return_images:
+        return results, rf_mask, rf_patch
+    else:
+        return results 
 
 
