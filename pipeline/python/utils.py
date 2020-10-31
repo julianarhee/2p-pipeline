@@ -1287,3 +1287,10 @@ def zproj_tseries(source_dir, runinfo_path, zproj_type='mean', write_dir=None, f
 
     # Sort separated tiff slice images:
     sort_deinterleaved_tiffs(write_dir, runinfo_path)  # Moves all 'vis_' files to separate subfolder 'visible'
+
+
+
+def get_run_list(animalid, session, fov, rootdir='/n/coxfs01/2p-data'):
+    run_dirs = glob.glob(os.path.join(rootdir, animalid, session, fov, '*_run*'))
+    r_list = [os.path.split(r)[-1] for r in run_dirs]
+    return [r for r in r_list if re.search('_run(\d+)', s)]
