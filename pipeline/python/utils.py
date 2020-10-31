@@ -224,12 +224,22 @@ def colorbar(mappable, label=None):
         cax.set_title(label)
     return cbar
 
-def turn_off_axis_ticks(ax):
+def turn_off_axis_ticks(ax, despine=True):
     ax.tick_params(which='both', axis='both', size=0)
-    sns.despine(ax=ax, left=True, right=True) #('off')
+    if despine: 
+        sns.despine(ax=ax, left=True, right=True, bottom=True, top=True) #('off')
     ax.set_xticklabels([])
     ax.set_yticklabels([])
     
+def custom_legend_markers(colors=['m', 'c'], labels=['label1', 'label2'], marker='o'):
+    from matplotlib.patches import Patch
+    from matplotlib.lines import Line2D
+
+    leg_elements=[]
+    for col, label in zip(colors, labels):
+        leg_elements.append(Line2D([0], [0], marker=marker, color=col, label=label))
+                          
+    return leg_elements
 
 # -----------------------------------------------------------------------------
 # Commonly used, generic methods:

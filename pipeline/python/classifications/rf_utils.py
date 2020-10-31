@@ -13,7 +13,7 @@ import traceback
 import matplotlib as mpl
 import matplotlib.cm as cm
 from matplotlib import colors as mcolors
-from pipeline.python.utils import convert_range
+from pipeline.python.utils import convert_range, get_screen_dims
 
 # ------------------------------------------------------------------------------------
 # General stats
@@ -685,9 +685,9 @@ def pairwise_compare_single_metric(comdf, curr_metric='avg_size',
     
     return ax
 
-def set_split_xlabels(ax, offset=0.25, a_label='rfs', b_label='rfs10'):
+def set_split_xlabels(ax, offset=0.25, a_label='rfs', b_label='rfs10', rotation=0, ha='center'):
     ax.set_xticks([0-offset, 0+offset, 1-offset, 1+offset, 2-offset, 2+offset])
-    ax.set_xticklabels([a_label, b_label, a_label, b_label, a_label, b_label])
+    ax.set_xticklabels([a_label, b_label, a_label, b_label, a_label, b_label], rotation=rotation, ha=ha)
     ax.set_xlabel('')
     ax.tick_params(axis='x', size=0)
     sns.despine(bottom=True, offset=4)
@@ -836,6 +836,17 @@ def rfs_to_polys(rffits, sigma_scale=2.35):
     
     returns list of polygons to do calculations with
     '''
+    sz_param_names = [f for f in rffits.columns if '_' in f]
+    sz_metrics = np.unique([f.split('_')[0] for f in sz_param_names])
+    sz_metric = sz_metrics[0]
+    assert sz_metric in ['fwhm', 'std'], "Unknown size metric: %s" % str(sz_metrics)
+
+    sigma_scale = 1.0 if sz_metric=='fwhm' else sigma_scale
+    roi_param = 'cell' if 'cell' in rffits.columns else 'rid'
+
+    rf_columns=[roi_param, '%s_x' % sz_metric, '%s_y' % sz_metric, 'theta', 'x0', 'y0']
+    #print(rf_columns, '[%s] Scale sigma: %.2f' % (sz_metric, sigma_scale))
+    rffits = rffits[rf_columns]
     rf_polys=[(rid, 
         create_ellipse((x0, y0), (abs(sx)*sigma_scale, abs(sy)*sigma_scale), np.rad2deg(th))) \
         for rid, sx, sy, th, x0, y0 in rffits.values]
@@ -870,3 +881,139 @@ def get_proportion_overlap(poly_tuple1, poly_tuple2):
                         'perc_overlap': perc_overlap}, index=[0])
     
     return odf
+
+
+# ===================================================
+# plotting
+# ===================================================
+def anisotropy_polarplot(rdf, metric='anisotropy', cmap='spring_r', alpha=0.5, marker='o', ax=None, dpi=150):
+
+    vmin=0; vmax=1;
+    norm = mpl.colors.Normalize(vmin=vmin, vmax=vmax)
+    iso_cmap = cm.ScalarMappable(norm=norm, cmap=cmap)
+    
+    if ax is None:
+        fig, ax = pl.subplots(1, subplot_kw=dict(projection='polar'), figsize=(4,3), dpi=dpi)
+
+    thetas = rdf['theta_Mm_c'].values #% np.pi
+    ratios = rdf[metric].values
+    ax.scatter(thetas, ratios, s=30, c=ratios, cmap=cmap, alpha=alpha) # c=thetas, cmap='hsv', alpha=0.7)
+
+    ax.set_theta_zero_location("E")
+    ax.set_theta_direction(1)
+    # ax.set_theta_direction(1)
+    ax.set_xticklabels(['0$^\circ$', '', '90$^\circ$', '', '', '', '-90$^\circ$', ''])
+    ax.set_rlabel_position(135) #315)
+    ax.set_xlabel('')
+    ax.set_yticklabels(['', 0.4, '', 0.8])
+    ax.set_ylabel(metric, fontsize=12)
+
+    # Grid lines and such
+    ax.spines['polar'].set_visible(False)
+    pl.subplots_adjust(left=0.1, right=0.9, wspace=0.2, bottom=0.3, top=0.8, hspace=0.5)
+
+    # Colorbar
+    iso_cmap._A = []
+    cbar_ax = ax.figure.add_axes([0.4, 0.15, 0.2, 0.03])
+    cbar = ax.figure.colorbar(iso_cmap, cax=cbar_ax, orientation='horizontal', ticks=[0, 1])
+    if metric == 'anisotropy':
+        xlabel_min = 'Iso\n(%.1f)' % (vmin) 
+        xlabel_max= 'Aniso\n(%.1f)' % (vmax) 
+    else:             
+        xlabel_min = 'H\n(%.1f)' % (vmin) if hue_param in ['angle', 'aniso_index'] else '%.2f' % vmin
+        xlabel_max= 'V\n(%.1f)' % (vmax) if hue_param in ['angle', 'aniso_index'] else '%.2f' % vmax
+    cbar.ax.set_xticklabels([xlabel_min, xlabel_max])  # horizontal colorbar
+    cbar.ax.tick_params(which='both', size=0)
+
+    return ax
+
+def draw_rf_on_screen(rdf, hue_param='aniso_index', shape_str='ellipse', ax=None, dpi=150,
+                      ellipse_scale=0.3, ellipse_alpha=0.2, ellipse_lw=1, ellipse_facecolor='none', 
+                      axis_lw=2, axis_alpha=0.9, n_plot_rfs=-1, n_plot_skip=1, 
+                      centroid_size=5, centroid_alpha=0.3, vmin=-1, vmax=1):
+
+    # Get screen info
+    screen = get_screen_dims()
+    screenleft, screenright = [-screen['azimuth_deg']*0.5, screen['azimuth_deg']*0.5]
+    screenbottom, screentop = [-screen['altitude_deg']*0.5, screen['altitude_deg']*0.5]
+
+    metric = 'anisotropy' if hue_param=='angle' else hue_param
+    sat_param = 'aniso' if hue_param=='angle' else 'none'
+    cmap = cm.cool if hue_param in ['angle', 'aniso_index'] else cm.spring_r
+    #n_plot_rfs = -1
+    #n_plot_skip = 1
+    #axis_lw=2
+    #axis_alpha=0.9
+    #ellipse_lw=1
+    #ellipse_alpha=0.2
+    #ellipse_facecolor = 'none'
+    borderpad=0
+
+    centroid_size = centroid_size if shape_str=='centroid' else 2
+    centroid_alpha = centroid_alpha if shape_str=='centroid' else 1.0
+    ellipse_scale = ellipse_scale if shape_str=='ellipse' else 1.0
+
+    vmin = vmin if metric=='aniso_index' else 0 
+    vmax = vmax if metric=='aniso_index' else 1
+
+    norm = mpl.colors.Normalize(vmin=vmin, vmax=vmax)
+    scalar_cmap = cm.ScalarMappable(norm=norm, cmap=cmap)
+
+    if ax is None:
+        fig, ax = pl.subplots(1, figsize=(5,4), dpi=dpi)
+        
+    ax.set_xlim([screenleft-borderpad, screenright+borderpad])
+    ax.set_ylim([screenbottom-borderpad, screentop+borderpad])
+    
+    rf_indices = rdf.index.tolist()[0::n_plot_skip] #n_plot_rfs]
+    for i in rf_indices:
+                      
+        # Current ROI's RF fit params
+        x0, y0, std_x, std_y, theta, theta_c, aniso, aniso_v = rdf[[
+            'x0', 'y0', 'std_x', 'std_y', 'theta', 'theta_Mm_c', metric, 'anisotropy']].loc[i]
+        
+        # Set color based on hue_param and cmap
+        if hue_param == 'angle':
+            theta_col = rfutils.assign_saturation(theta_c, aniso, cmap=cmap, min_v=vmin, max_v=vmax)
+        elif hue_param == 'aniso_index':
+            theta_col = scalar_cmap.to_rgba(aniso)
+        elif hue_param == 'aniso':
+            theta_col = scalar_cmap.to_rgba(aniso)
+                      
+        # PLOT
+        if 'centroid' in shape_str:
+            ax.plot(x0, y0, marker='o', color=theta_col, alpha=centroid_alpha, markersize=centroid_size)
+
+        if 'ellipse' in shape_str:
+            el = Ellipse((x0, y0), width=std_x*ellipse_scale, height=std_y*ellipse_scale, 
+                         angle=theta, edgecolor=theta_col, facecolor=ellipse_facecolor, 
+                         alpha=ellipse_alpha, lw=ellipse_lw)
+            ax.add_artist(el)
+
+        if 'major' in shape_str:
+            M = rdf[['std_x', 'std_y']].loc[i].max()  
+            m = rdf[['std_x', 'std_y']].loc[i].min()  
+            xe = (M/2.) * np.cos(np.deg2rad(theta)) if std_x>std_y else -(M/2.) * np.sin(np.deg2rad(theta))
+            ye = (M/2.) * np.sin(np.deg2rad(theta)) if std_x>std_y else (M/2.) * np.cos(np.deg2rad(theta))
+            ax.plot([x0, x0+xe], [y0, y0+ye], color=theta_col, alpha=axis_alpha, lw=axis_lw)
+
+        if 'minor' in shape_str:
+            xe2 = (m/2.) * np.sin(np.deg2rad(theta)) if std_x>std_y else -(m/2.) * np.cos(np.deg2rad(180-theta))
+            ye2 = (m/2.) * np.cos(np.deg2rad(theta)) if std_x>std_y else (m/2.) * np.sin(np.deg2rad(180-theta))
+            ax.plot([x0, x0+xe2], [y0, y0+ye2], color=theta_col, alpha=axis_alpha, lw=axis_lw)
+    ax.set_aspect('equal')
+
+    # COLOR BAR
+    scalar_cmap._A = []
+    cbar_ax = ax.figure.add_axes([0.43, 0.1, 0.15, 0.05])
+    cbar = ax.figure.colorbar(scalar_cmap, cax=cbar_ax, orientation='horizontal', ticks=[vmin, vmax])
+    if hue_param == 'anisotropy':
+        xlabel_min = 'Iso\n(%.1f)' % (vmin) 
+        xlabel_max= 'Aniso\n(%.1f)' % (vmax) 
+    else:             
+        xlabel_min = 'H\n(%.1f)' % (vmin) if hue_param in ['angle', 'aniso_index'] else '%.2f' % vmin
+        xlabel_max= 'V\n(%.1f)' % (vmax) if hue_param in ['angle', 'aniso_index'] else '%.2f' % vmax
+                 
+    cbar.ax.set_xticklabels([xlabel_min, xlabel_max])  # horizontal colorbar
+
+    return ax

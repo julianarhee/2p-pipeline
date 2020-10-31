@@ -296,14 +296,15 @@ def orig_patch_blurred(im_screen, x0, y0, sz_x, sz_y, rf_theta, ks=101):
 # RF masking
 # ===================================================================
 
-def rfdf_deg_to_pix(curr_rfs, size_name='fwhm'):
+def rfdf_deg_to_pix(curr_rfs, size_name='fwhm', pix_per_deg=16.05, resolution=[1080, 1929]):
     #rfparams_deg = get_params_for_ellipse(rid, curr_rfs, size_name=size_name)
     #rfparams_pix = params_deg_to_pixels(rfparams_deg)
     #x0, y0, sz_x, sz_y, theta = rfparams_pix
 
     convert_params=['x0', 'y0', '%s_x' % size_name, '%s_y' % size_name, 'theta']
+    assert [c in curr_rfs.index for c in convert_params], "Columns not found: %s" % str(convert_params)
     rfparams_deg = (curr_rfs[convert_params].values)
-    rfparams_pix = params_deg_to_pixels(rfparams_deg)
+    rfparams_pix = params_deg_to_pixels(rfparams_deg, pix_per_deg=pix_per_deg, resolution=resolution)
     x0, y0, sz_x, sz_y, theta = rfparams_pix
     cell = int(curr_rfs['cell'])
 
@@ -315,12 +316,13 @@ def rfdf_deg_to_pix(curr_rfs, size_name='fwhm'):
 
 
 
-def get_RF_mask_on_screen(rid, curr_rfs, sim_screen,size_name='fwhm'):
+def get_RF_mask_on_screen(rid, curr_rfs, sim_screen, size_name='fwhm', pix_per_deg=16.05):
 
     #x0_deg, y0_deg, fwhm_x_deg, fwhm_y_deg, std_x_deg, std_y_deg = curr_rfs.loc[rid][convert_params].values
+    resolution = sim_screen.shape
 
     rfparams_deg = get_params_for_ellipse(rid, curr_rfs, size_name=size_name)
-    rfparams_pix = params_deg_to_pixels(rfparams_deg)
+    rfparams_pix = params_deg_to_pixels(rfparams_deg, pix_per_deg=pix_per_deg, resolution=resolution)
     x0, y0, sz_x, sz_y, theta = rfparams_pix
 
     mask = np.zeros_like(sim_screen.astype(np.uint8))
