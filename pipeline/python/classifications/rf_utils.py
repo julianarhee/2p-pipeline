@@ -685,9 +685,9 @@ def pairwise_compare_single_metric(comdf, curr_metric='avg_size',
     
     return ax
 
-def set_split_xlabels(ax, offset=0.25, a_label='rfs', b_label='rfs10'):
+def set_split_xlabels(ax, offset=0.25, a_label='rfs', b_label='rfs10', rotation=0, ha='center'):
     ax.set_xticks([0-offset, 0+offset, 1-offset, 1+offset, 2-offset, 2+offset])
-    ax.set_xticklabels([a_label, b_label, a_label, b_label, a_label, b_label])
+    ax.set_xticklabels([a_label, b_label, a_label, b_label, a_label, b_label], rotation=rotation, ha=ha)
     ax.set_xlabel('')
     ax.tick_params(axis='x', size=0)
     sns.despine(bottom=True, offset=4)
