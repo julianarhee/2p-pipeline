@@ -31,6 +31,17 @@ import cPickle as pkl
 
 #%%
 
+def load_segmentation_results(animalid, session, fov, retinorun='retino_run1', rootdir='/n/coxfs01/2p-data'):
+    results_fpath = os.path.join(rootdir, animalid, session, fov, retinorun, 
+                              'retino_analysis', 'segmentation', 'results.pkl')
+    
+    assert os.path.exists(results_fpath), "Segmentation not found: %s" % results_fpath
+    with open(results_fpath, 'r') as f:
+        seg_areas = pkl.load(f)
+        
+    return seg_areas
+
+
 
 def load_roi_coords(animalid, session, fov, roiid=None, 
                     convert_um=True, traceid='traces001', 
@@ -104,10 +115,43 @@ def load_roi_masks(animalid, session, fov, rois=None, rootdir='/n/coxfs01/2p-dat
 
 
 #%% PLOTTING..................................................................
+def assign_int_to_masks(roi_masks):
+    d1, d2, nrois = roi_masks.shape
 
-
-def get_roi_contours(roi_masks, roi_axis=0):
+    int_rois = np.dstack([roi_masks[:, :, r].astype(bool).astype(int)*(r+1) for r in np.arange(0, nrois)])
     
+    int_rois_sum = np.zeros((d1, d2))
+    for ri in np.arange(0, nrois):
+        curr_msk = int_rois[:, :, ri].copy()
+        int_rois_sum[curr_msk>0] = ri+1
+        
+    #int_rois_sum = int_rois.sum(axis=-1)
+    int_roi_overlay = int_rois_sum.copy().astype(float)
+    int_roi_overlay[int_rois_sum==0] = np.nan
+    #np.ma.masked_array(int_rois_sum==0, int_rois_sum)
+    print(nrois, int_rois_sum.min(), int_rois_sum.max())
+    
+    return int_roi_overlay
+
+def plot_roi_overlay(roi_img, roi_zproj, ax=None, cmap='jet', vmin=None, vmax=None):
+    '''Combine one image with another as overlay
+    '''
+    
+    if vmin is None or vmax is None:
+        vmin, vmax = (roi_img.min(), roi_img.max())
+        
+    roi_img_overlay = np.ma.masked_where(roi_img == 0, roi_img)
+    
+    if ax is None:
+        fig, ax = pl.subplots()
+        
+    ax.imshow(roi_zproj, cmap='gray')
+    ax.imshow(roi_img_overlay, cmap=cmap, vmin=vmin, vmax=vmax)
+    ax.axis('off')
+    
+    return 
+
+def get_roi_contours(roi_masks, roi_axis=0):    
     cnts = []
     nrois = roi_masks.shape[roi_axis]
     for ridx in range(nrois):

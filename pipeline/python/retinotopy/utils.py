@@ -626,10 +626,10 @@ def trials_to_dataframes(processed_fpaths, conditions_fpath):
                 print("No analysis found for file: %s" % tifnum)
                 excluded_tifs.append(tifnum)
         trials_by_cond[cond] = [t for t in tif_list if t not in excluded_tifs]
-    print("TRIALS BY COND:")
+    print("Trials by cond:")
     print(trials_by_cond) 
     trial_list = [int(t) for t in conds.keys() if int(t) not in excluded_tifs]
-    print("Trials:", trial_list)
+    #print("Trials:", trial_list)
 
     fits = []
     phases = []
@@ -934,12 +934,12 @@ def get_interp_positions(condname, mwinfo, stiminfo, trials_by_cond):
 # Load colormap
 
 def get_retino_legends(cmap_name='nic_edge', zero_center=True, return_cmap=False,
-                    cmap_dir='/n/coxfs01/julianarhee/aggregate-visual-areas/colormaps', 
+                    cmap_dir='/n/coxfs01/julianarhee/colormaps', 
                     dst_dir='/n/coxfs01/julianarhee/aggregate-visual-areas/retinotopy'):
     #colormap = 'nic_Edge'
     #cmapdir = os.path.join(aggr_dir, 'colormaps')
     cdata = np.loadtxt(os.path.join(cmap_dir, cmap_name) + ".txt")
-    cmap_phase = LinearSegmentedColormap.from_list('my_colormap', cdata[::-1])
+    cmap_phase = LinearSegmentedColormap.from_list(cmap_name, cdata[::-1])
     screen = make_legends(cmap=cmap_phase, cmap_name=cmap_name, zero_center=zero_center,
                             dst_dir=dst_dir)
     if return_cmap:
@@ -1159,5 +1159,20 @@ def plot_filtered_maps(cond, currmags_map, currphase_map_c, mag_thr):
     fig.suptitle('%s (mag_thr: %.4f)' % (cond, mag_thr))
 
     return fig
+
+def load_2p_surface(animalid, session, fov, ch_num=1, retinorun='retino_run1', 
+                    rootdir='/n/coxfs01/2p-data'):
+    from skimage.measure import block_reduce
+    run_dir = os.path.join(rootdir, animalid, session, fov, retinorun)
+    fov_imgs = glob.glob(os.path.join(run_dir, 'processed', 'processed*', 
+                                        'mcorrected_*mean_deinterleaved',\
+                                        'Channel%02d' % ch_num, 'File*', '*.tif')) 
+    imlist = []
+    for anat in fov_imgs:
+        im = tf.imread(anat)
+        imlist.append(im)
+    surface_img = np.array(imlist).mean(axis=0)
+    
+    return surface_img
 
 
