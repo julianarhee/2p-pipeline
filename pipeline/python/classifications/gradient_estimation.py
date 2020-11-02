@@ -314,7 +314,7 @@ def plot_retinomap_processing(azim_phase_soma, azim_phase_np, azim_smoothed, az_
 
     ax = axn[0, 3]
     im0 = ax.imshow(az_fill, cmap=cmap, vmin=vmin, vmax=vmax)
-    pl.colorbar(im0, ax=ax, orientation='horizontal', shrink=0.7)
+    pl.colorbar(im0, ax=ax, orientation='vertical', shrink=0.7)
     ax.set_title('filled NaNs')
 
     ax = axn[1, 0]
@@ -343,42 +343,66 @@ def plot_retinomap_processing(azim_phase_soma, azim_phase_np, azim_smoothed, az_
 def plot_retinomap_processing_pixels(filt_az, azim_smoothed, azim_fillnan, az_fill,
                                     filt_el, elev_smoothed, elev_fillnan, el_fill,
                                     cmap_phase='nipy_spectral', 
-                                    vmin=-np.pi, vmax=np.pi,
+                                    vmin=-np.pi, vmax=np.pi, full_cmap_range=True,
                                     smooth_fwhm=7, delay_map_thr=1):
 
     fig, axn = pl.subplots(2,4, figsize=(10,6))
 
     ax = axn[0,0]
-    ax.imshow(filt_az, cmap=cmap_phase, vmin=vmin, vmax=vmax)
+    if full_cmap_range:
+        ax.imshow(filt_az, cmap=cmap_phase, vmin=vmin, vmax=vmax)
+    else:
+        ax.imshow(filt_az, cmap=cmap_phase)
     ax.set_ylabel('Azimuth')
     ax.set_title('abs map (delay thr=%.2f)' % delay_map_thr)
 
     ax = axn[0, 1]
-    ax.imshow(azim_smoothed, cmap=cmap_phase, vmin=vmin, vmax=vmax)
+    if full_cmap_range:
+        ax.imshow(azim_smoothed, cmap=cmap_phase, vmin=vmin, vmax=vmax)
+    else:
+        ax.imshow(azim_smoothed, cmap=cmap_phase)
     ax.set_title('spatial smooth (%i)' % smooth_fwhm)
 
     ax = axn[0, 2]
-    im0 = ax.imshow(azim_fillnan, cmap=cmap_phase) #, vmin=vmin, vmax=vmax)
+    if full_cmap_range:
+        im0 = ax.imshow(azim_fillnan, cmap=cmap_phase, vmin=vmin, vmax=vmax)
+    else:
+        im0 = ax.imshow(azim_fillnan, cmap=cmap_phase)
     ax.set_title('filled NaNs')
     
     ax = axn[0, 3]
-    im0 = ax.imshow(az_fill, cmap=cmap_phase) #, vmin=vmin, vmax=vmax)
+    if full_cmap_range:
+        im0 = ax.imshow(az_fill, cmap=cmap_phase, vmin=vmin, vmax=vmax)
+    else:
+        im0 = ax.imshow(az_fill, cmap=cmap_phase)
     ax.set_title('final')
-    pl.colorbar(im0, ax=ax, orientation='horizontal', shrink=0.7)
+    pl.colorbar(im0, ax=ax, orientation='vertical', shrink=0.7)
 
     ax = axn[1, 0]
-    ax.imshow(filt_el, cmap=cmap_phase, vmin=vmin, vmax=vmax)
+    if full_cmap_range:
+        ax.imshow(filt_el, cmap=cmap_phase, vmin=vmin, vmax=vmax)
+    else:
+        ax.imshow(filt_el, cmap=cmap_phase)
     ax.set_ylabel('Altitude')
 
     ax = axn[1, 1]
-    ax.imshow(elev_smoothed, cmap=cmap_phase, vmin=vmin, vmax=vmax)
-    
+    if full_cmap_range:
+        ax.imshow(elev_smoothed, cmap=cmap_phase, vmin=vmin, vmax=vmax)
+    else:
+        ax.imshow(elev_smoothed, cmap=cmap_phase) 
+
     ax = axn[1, 2]
-    ax.imshow(elev_fillnan, cmap=cmap_phase, vmin=vmin, vmax=vmax)
+    if full_cmap_range:
+        ax.imshow(elev_fillnan, cmap=cmap_phase, vmin=vmin, vmax=vmax)
+    else:
+        ax.imshow(elev_fillnan, cmap=cmap_phase)
     #ax.set_title('filled NaNs')
 
     ax = axn[1, 3]
-    im1= ax.imshow(el_fill, cmap=cmap_phase) #, vmin=vmin, vmax=vmax)
+    if full_cmap_range:
+        im1= ax.imshow(el_fill, cmap=cmap_phase, vmin=vmin, vmax=vmax)
+    else:
+        im1 = ax.imshow(el_fill, cmap=cmap_phase)
     #ax.set_title('final')
     pl.colorbar(im1, ax=ax, orientation='vertical', shrink=0.7)
 
@@ -1158,6 +1182,7 @@ def roi_gradients(animalid, session, fov, retinorun='retino_run1',
             'smooth_fwhm': smooth_fwhm,
             'd1': d1, 'd2': d2,
             'pixel_size': pixel_size,
+            'ds_factor': ds_factor,
             'kernel_size': kernel_size,
             'retinoid': retinoid,
             'zimg': zimg_r}
@@ -1167,8 +1192,8 @@ def roi_gradients(animalid, session, fov, retinorun='retino_run1',
 
 def pixel_gradients(animalid, session, fov, retinorun='retino_run1', 
                 traceid='traces001', mag_thr=0.003, delay_map_thr=1, 
-                cmap='nipy_spectral', smooth_fwhm=7, use_phase_smooth=True,
-                rootdir='/n/coxfs01/2p-data'): 
+                cmap='nipy_spectral', smooth_fwhm=7, use_phase_smooth=False,
+                full_cmap_range=True, dst_dir=None, rootdir='/n/coxfs01/2p-data'): 
 
                 #desired_radius_um=10, regr_plot_spacing=200,
                 #regr_line_color='magenta', zero_center=True, regr_model='ols',
@@ -1186,14 +1211,15 @@ def pixel_gradients(animalid, session, fov, retinorun='retino_run1',
     trials_by_cond = scaninfo['trials']
 
     # Set current animal's retino output dir
-    #curr_dst_dir = os.path.join(RETID['DST'], 'retino-structure')
-    run_dir = os.path.join(rootdir, animalid, session, fov, retinorun)
-    curr_dst_dir = os.path.join(run_dir, 'retino_analysis', 'retino_structure')
-    if not os.path.exists(curr_dst_dir):
+    curr_dst_dir = dst_dir
+    if curr_dst_dir is None:
+        run_dir = os.path.join(rootdir, animalid, session, fov, retinorun)
+        curr_dst_dir = os.path.join(run_dir, 'retino_analysis', 'retino_structure')
+        if not os.path.exists(curr_dst_dir):
             os.makedirs(curr_dst_dir)
             print("Saving output to:\n %s" % curr_dst_dir)
 
-    # Move old stuff
+        # Move old stuff
     old_dir = os.path.join(curr_dst_dir, 'tests')
     if not os.path.exists(old_dir):
         os.makedirs(old_dir)
@@ -1250,6 +1276,7 @@ def pixel_gradients(animalid, session, fov, retinorun='retino_run1',
 
     #%% Spatial smooth neuropil dilated masks 
     nan_smooth=1
+    use_phase_smooth=False
     #smooth_fwhm=7
     if use_phase_smooth:
         azim_smoothed = ret_utils.smooth_phase_nans(filt_az, smooth_fwhm, smooth_fwhm)
@@ -1258,8 +1285,8 @@ def pixel_gradients(animalid, session, fov, retinorun='retino_run1',
         azim_smoothed = ret_utils.smooth_neuropil(filt_az, smooth_fwhm=smooth_fwhm)
         elev_smoothed = ret_utils.smooth_neuropil(filt_el, smooth_fwhm=smooth_fwhm)
 
-    azim_fillnan = fill_and_smooth_nans(azim_smoothed, kx=nan_smooth, ky=nan_smooth)
-    elev_fillnan = fill_and_smooth_nans(elev_smoothed, kx=nan_smooth, ky=nan_smooth)
+    azim_fillnan = fill_and_smooth_nans_missing(azim_smoothed, kx=nan_smooth, ky=nan_smooth)
+    elev_fillnan = fill_and_smooth_nans_missing(elev_smoothed, kx=nan_smooth, ky=nan_smooth)
 
     # Transform FOV to match widefield
     azim_r = coreg.transform_2p_fov(azim_fillnan, pixel_size, normalize=False)
@@ -1277,6 +1304,7 @@ def pixel_gradients(animalid, session, fov, retinorun='retino_run1',
                                            filt_el, elev_smoothed, elev_fillnan, el_fill, 
                                            cmap_phase=cmap_phase, 
                                            vmin=vmin, vmax=vmax, 
+                                           full_cmap_range=full_cmap_range,
                                            smooth_fwhm=smooth_fwhm,
                                            delay_map_thr=delay_map_thr)
     putils.label_figure(fig, data_id)
@@ -1290,6 +1318,7 @@ def pixel_gradients(animalid, session, fov, retinorun='retino_run1',
             'vmin': vmin, 
             'vmax': vmax,
             'pixel_size': pixel_size,
+            'ds_factor': ds_factor,
             'smooth_fwhm': smooth_fwhm,
             'd1': d1, 'd2': d2,
             'retinoid': retinoid}
@@ -1449,6 +1478,7 @@ def main(options):
                                     if plot_degrees else el_fill.copy()
     grad_az = calculate_gradients(img_az)
     grad_el = calculate_gradients(img_el)
+    
     vmin, vmax = (screen_min, screen_max) if plot_degrees else (-np.pi, np.pi)
 
     #%% Plot gradients 
