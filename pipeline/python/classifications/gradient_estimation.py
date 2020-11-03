@@ -344,7 +344,7 @@ def plot_retinomap_processing_pixels(filt_az, azim_smoothed, azim_fillnan, az_fi
                                     filt_el, elev_smoothed, elev_fillnan, el_fill,
                                     cmap_phase='nipy_spectral', 
                                     vmin=-np.pi, vmax=np.pi, full_cmap_range=True,
-                                    smooth_fwhm=7, delay_map_thr=1):
+                                    smooth_fwhm=7, delay_map_thr=1, smooth_spline=1):
 
     fig, axn = pl.subplots(2,4, figsize=(10,6))
 
@@ -368,7 +368,7 @@ def plot_retinomap_processing_pixels(filt_az, azim_smoothed, azim_fillnan, az_fi
         im0 = ax.imshow(azim_fillnan, cmap=cmap_phase, vmin=vmin, vmax=vmax)
     else:
         im0 = ax.imshow(azim_fillnan, cmap=cmap_phase)
-    ax.set_title('filled NaNs')
+    ax.set_title('filled NaNs (spline=%i)' % smooth_spline)
     
     ax = axn[0, 3]
     if full_cmap_range:
@@ -1192,7 +1192,7 @@ def roi_gradients(animalid, session, fov, retinorun='retino_run1',
 
 def pixel_gradients(animalid, session, fov, retinorun='retino_run1', 
                 traceid='traces001', mag_thr=0.003, delay_map_thr=1, 
-                cmap='nipy_spectral', smooth_fwhm=7, use_phase_smooth=False,
+                cmap='nipy_spectral', smooth_fwhm=7, use_phase_smooth=False, smooth_spline=1,
                 full_cmap_range=True, dst_dir=None, rootdir='/n/coxfs01/2p-data'): 
 
                 #desired_radius_um=10, regr_plot_spacing=200,
@@ -1275,8 +1275,8 @@ def pixel_gradients(animalid, session, fov, retinorun='retino_run1',
     print("... pixel size: %s (ds_factor=%.2f)" % (str(pixel_size), ds_factor))
 
     #%% Spatial smooth neuropil dilated masks 
-    nan_smooth=1
-    use_phase_smooth=False
+    #nan_smooth=1
+    #use_phase_smooth=False
     #smooth_fwhm=7
     if use_phase_smooth:
         azim_smoothed = ret_utils.smooth_phase_nans(filt_az, smooth_fwhm, smooth_fwhm)
@@ -1285,8 +1285,8 @@ def pixel_gradients(animalid, session, fov, retinorun='retino_run1',
         azim_smoothed = ret_utils.smooth_neuropil(filt_az, smooth_fwhm=smooth_fwhm)
         elev_smoothed = ret_utils.smooth_neuropil(filt_el, smooth_fwhm=smooth_fwhm)
 
-    azim_fillnan = fill_and_smooth_nans_missing(azim_smoothed, kx=nan_smooth, ky=nan_smooth)
-    elev_fillnan = fill_and_smooth_nans_missing(elev_smoothed, kx=nan_smooth, ky=nan_smooth)
+    azim_fillnan = fill_and_smooth_nans_missing(azim_smoothed, kx=smooth_spline, ky=smooth_spline)
+    elev_fillnan = fill_and_smooth_nans_missing(elev_smoothed, kx=smooth_spline, ky=smooth_spline)
 
     # Transform FOV to match widefield
     azim_r = coreg.transform_2p_fov(azim_fillnan, pixel_size, normalize=False)
@@ -1305,7 +1305,7 @@ def pixel_gradients(animalid, session, fov, retinorun='retino_run1',
                                            cmap_phase=cmap_phase, 
                                            vmin=vmin, vmax=vmax, 
                                            full_cmap_range=full_cmap_range,
-                                           smooth_fwhm=smooth_fwhm,
+                                           smooth_fwhm=smooth_fwhm, smooth_spline=smooth_spline,
                                            delay_map_thr=delay_map_thr)
     putils.label_figure(fig, data_id)
     figname = 'pixelmaps_smooth-%i_magthr-%.3f_delaymapthr-%.2f' % (smooth_fwhm, mag_thr, delay_map_thr)
@@ -1320,6 +1320,7 @@ def pixel_gradients(animalid, session, fov, retinorun='retino_run1',
             'pixel_size': pixel_size,
             'ds_factor': ds_factor,
             'smooth_fwhm': smooth_fwhm,
+            'smooth_spline': smooth_spline,
             'd1': d1, 'd2': d2,
             'retinoid': retinoid}
 
@@ -1372,6 +1373,8 @@ def extract_options(options):
     
     parser.add_option('-s', '--smooth', action='store', dest='smooth_fwhm', 
             default=7.0, help="FWHM for spatial smoothing (default: 7)")
+    parser.add_option('-k', '--spline', action='store', dest='smooth_spline', 
+            default=1, help="degree of spline for smoothing (default: 1, use 2+ for multiple areas)")
     parser.add_option('-d', '--dilate', action='store', dest='dilate_um', 
             default=10.0, help="Desired radius for dilation (default: 10.0 um)")
     parser.add_option('-M', '--model', action='store', dest='regr_model', 
@@ -1402,6 +1405,7 @@ def main(options):
     regr_model = opts.regr_model
 
     smooth_fwhm=opts.smooth_fwhm
+    smooth_spline = opts.smooth_spline
     desired_radius_um=float(opts.dilate_um)
     regr_plot_spacing=int(opts.regr_plot_spacing)
     regr_line_color=opts.regr_line_color 
@@ -1422,7 +1426,7 @@ def main(options):
         az_fill, el_fill, params, RETID = pixel_gradients(animalid, session, fov,
                             retinorun=retinorun, traceid=traceid, 
                             mag_thr=mag_thr, cmap=cmap_name, 
-                            smooth_fwhm=smooth_fwhm)                
+                            smooth_fwhm=smooth_fwhm, smooth_spline=smooth_spline)                
                 
         vmin, vmax = (params['vmin'], params['vmax'])
         smooth_fwhm = params['smooth_fwhm']
