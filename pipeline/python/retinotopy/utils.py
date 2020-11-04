@@ -34,9 +34,9 @@ import glob
 import scipy as sp
 import pandas as pd
 import seaborn as sns
-
+import scipy.stats as spstats
 from mpl_toolkits.axes_grid1 import make_axes_locatable
-from pipeline.python.utils import natural_keys, label_figure, replace_root, convert_range, get_screen_dims
+from pipeline.python.utils import natural_keys, label_figure, replace_root, convert_range, get_screen_dims, colorbar
 #from matplotlib.patches import Ellipse, Rectangle
 
 pp = pprint.PrettyPrinter(indent=4)
@@ -1110,11 +1110,37 @@ def plot_phase_and_delay_maps(absolute_az, absolute_el, delay_az, delay_el,
         screen, cmap = get_retino_legends(cmap_name=cmap, zero_center=True, 
                                                   return_cmap=True)
 
+    abs_vmin, abs_vmax = (-np.pi, np.pi)
+    del_vmin, del_vmax = (0, 2.*np.pi)
+
     fig, axes = pl.subplots(2,2)
-    im1 = axes[0,0].imshow(absolute_az, cmap=cmap, vmin=vmin, vmax=vmax)
-    im2 = axes[0,1].imshow(absolute_el, cmap=cmap, vmin=vmin, vmax=vmax)
-    axes[1,0].imshow(delay_az, cmap=cmap, vmin=vmin, vmax=vmax)
-    axes[1,1].imshow(delay_el, cmap=cmap, vmin=vmin, vmax=vmax)
+    az_mean = spstats.circmean(absolute_az[~np.isnan(absolute_az)], low=abs_vmin, high=abs_vmax)
+    az_std = spstats.circstd(absolute_az[~np.isnan(absolute_az)], low=abs_vmin, high=abs_vmax)
+    im1 = axes[0,0].imshow(absolute_az, cmap=cmap, vmin=abs_vmin, vmax=abs_vmax)
+    axes[0,0].set_title('Azimuth', fontsize=12, loc='left')
+    axes[0,0].set_title('mean AZ %.2f (+/- %.2f)' % (az_mean, az_std), fontsize=8, loc='left')
+    colorbar(im1)
+
+    el_mean = spstats.circmean(absolute_el[~np.isnan(absolute_el)], low=abs_vmin, high=abs_vmax)
+    el_std = spstats.circstd(absolute_el[~np.isnan(absolute_el)], low=abs_vmin, high=abs_vmax)
+    im2 = axes[0,1].imshow(absolute_el, cmap=cmap, vmin=abs_vmin, vmax=abs_vmax)
+    axes[0,1].set_title('mean EL %.2f (+/- %.2f)' % (el_mean, el_std), fontsize=8, loc='left')
+    colorbar(im2)
+
+    # Print some info to plot
+    d_az_mean = spstats.circmean(delay_az[~np.isnan(delay_az)], low=del_vmin, high=del_vmax)
+    d_az_std = spstats.circstd(delay_az[~np.isnan(delay_az)], low=del_vmin, high=del_vmax)
+    im1b=axes[1,0].imshow(delay_az, cmap=cmap, vmin=del_vmin, vmax=del_vmax)
+    axes[1,0].set_title('mean del %.2f (+/- %.2f)' % (d_az_mean, d_az_std),
+                        loc='left', fontsize=8)
+    colorbar(im1b)
+
+    d_el_mean = spstats.circmean(delay_el[~np.isnan(delay_el)], low=del_vmin, high=del_vmax)
+    d_el_std = spstats.circstd(delay_el[~np.isnan(delay_el)], low=del_vmin, high=del_vmax)
+    im2b=axes[1,1].imshow(delay_el, cmap=cmap, vmin=del_vmin, vmax=del_vmax)
+    axes[1,1].set_title('mean del %.2f (+/- %.2f)' % (d_el_mean, d_el_std),
+                        loc='left', fontsize=8)
+    colorbar(im2b)
 
     cbar1_orientation='horizontal'
     cbar1_axes = [0.35, 0.85, 0.1, 0.1]
@@ -1133,12 +1159,74 @@ def plot_phase_and_delay_maps(absolute_az, absolute_el, delay_az, delay_el,
     cb.ax.axhline(y=cb.norm(vmax*elev_cutoff), color='w', lw=1)
     cb.ax.axis('off')
     cb.outline.set_visible(False)
-    pl.subplots_adjust(top=0.8)
+    pl.subplots_adjust(top=0.8, hspace=0.5, wspace=0.5)
 
     for ax in axes.flat:
         ax.axis('off')
  
     return fig
+
+
+def filter_by_delay_map(absolute_az, absolute_el, delay_az, delay_el, delay_map_thr=0.5, plot=True, cmap_phase='nipy_spectral'):
+    delay_diff = abs(delay_az-delay_el)
+
+    filt_az = absolute_az.copy()
+    filt_az[delay_diff>delay_map_thr] = np.nan
+
+    filt_el = absolute_el.copy()
+    filt_el[delay_diff>delay_map_thr] = np.nan
+
+    delay_filt = delay_diff.copy()
+    delay_filt[delay_diff>delay_map_thr] = np.nan
+
+    if plot:
+        fig, axn = pl.subplots(2,3, figsize=(9,6))
+        ax=axn[0,0]
+        ax.set_title("Delay diff")
+        im0 = ax.imshow(delay_diff, cmap=cmap_phase) #, vmin=-np.pi, vmax=np.pi)
+        colorbar(im0)
+        ax = axn[1,0]
+        im1 = ax.imshow(delay_filt, cmap=cmap_phase) #, vmin=-np.pi, vmax=np.pi)
+        colorbar(im1)
+
+
+        filt_delay_az = delay_az.copy()
+        filt_delay_az[delay_diff>delay_map_thr] = np.nan
+
+        ax=axn[0,1]
+        im0 = ax.imshow(filt_az, cmap=cmap_phase, vmin=-np.pi, vmax=np.pi)
+        colorbar(im0)
+        ax.set_title('Azimuth')
+
+        ax=axn[1,1]
+        im0 = ax.imshow(filt_delay_az, cmap=cmap_phase, vmin=0, vmax=2*np.pi)
+        colorbar(im0)
+        ax.set_title('(delay)')
+
+
+        # Visualize for delay map, too
+        filt_delay_el = delay_el.copy()
+        filt_delay_el[delay_diff>delay_map_thr] = np.nan
+
+        ax=axn[0,2]
+        ax.set_title('Elevation')
+        im1 = ax.imshow(filt_el, cmap=cmap_phase, vmin=-np.pi, vmax=np.pi)
+        colorbar(im1)
+
+        ax=axn[1,2]
+        im1 = ax.imshow(filt_delay_el, cmap=cmap_phase, vmin=0, vmax=2*np.pi)
+        colorbar(im1)
+        ax.set_title('(delay)')
+
+        pl.suptitle("delay map thr=%.2f" % delay_map_thr)
+        pl.subplots_adjust(wspace=0.5)
+        
+    if plot:
+        return fig, filt_az, filt_el
+    else:
+        return filt_az, filt_el
+                           
+
 
 def plot_filtered_maps(cond, currmags_map, currphase_map_c, mag_thr):
     '''
@@ -1154,7 +1242,7 @@ def plot_filtered_maps(cond, currmags_map, currphase_map_c, mag_thr):
     divider = make_axes_locatable(axes[1])
     cax = divider.append_axes('right', size='5%', pad=0.05)
     fig.colorbar(im2, cax=cax, orientation='vertical')
-    
+    print("--- %.2f, %.2f" % (np.nanmin(currphase_map_c), np.nanmax(currphase_map_c))) 
     pl.subplots_adjust(wspace=0.5)
     fig.suptitle('%s (mag_thr: %.4f)' % (cond, mag_thr))
 
