@@ -32,7 +32,7 @@ import cPickle as pkl
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 from pipeline.python.utils import convert_range
 
-from pipeline.python.utils import natural_keys, label_figure
+from pipeline.python.utils import natural_keys, label_figure, colorbar, turn_off_axis_ticks
 from pipeline.python import utils as putils
 from pipeline.python.retinotopy import utils as ret_utils
 from pipeline.python.rois import utils as roi_utils
@@ -342,26 +342,32 @@ def plot_retinomap_processing(azim_phase_soma, azim_phase_np, azim_smoothed, az_
 
 def plot_retinomap_processing_pixels(filt_az, azim_smoothed, azim_fillnan, az_fill,
                                     filt_el, elev_smoothed, elev_fillnan, el_fill,
-                                    cmap_phase='nipy_spectral', 
+                                    cmap_phase='nipy_spectral', show_cbar=False,
                                     vmin=-np.pi, vmax=np.pi, full_cmap_range=True,
                                     smooth_fwhm=7, delay_map_thr=1, smooth_spline=1):
 
-    fig, axn = pl.subplots(2,4, figsize=(10,6))
+    fig, axn = pl.subplots(2,4, figsize=(12,6))
 
     ax = axn[0,0]
     if full_cmap_range:
-        ax.imshow(filt_az, cmap=cmap_phase, vmin=vmin, vmax=vmax)
+        im0=ax.imshow(filt_az, cmap=cmap_phase, vmin=vmin, vmax=vmax)
     else:
-        ax.imshow(filt_az, cmap=cmap_phase)
+        im0=ax.imshow(filt_az, cmap=cmap_phase)
     ax.set_ylabel('Azimuth')
     ax.set_title('abs map (delay thr=%.2f)' % delay_map_thr)
+    if show_cbar:
+        colorbar(im0)
+
 
     ax = axn[0, 1]
     if full_cmap_range:
-        ax.imshow(azim_smoothed, cmap=cmap_phase, vmin=vmin, vmax=vmax)
+        im0=ax.imshow(azim_smoothed, cmap=cmap_phase, vmin=vmin, vmax=vmax)
     else:
-        ax.imshow(azim_smoothed, cmap=cmap_phase)
+        im0=ax.imshow(azim_smoothed, cmap=cmap_phase)
     ax.set_title('spatial smooth (%i)' % smooth_fwhm)
+    if show_cbar:
+        colorbar(im0)
+
 
     ax = axn[0, 2]
     if full_cmap_range:
@@ -369,34 +375,45 @@ def plot_retinomap_processing_pixels(filt_az, azim_smoothed, azim_fillnan, az_fi
     else:
         im0 = ax.imshow(azim_fillnan, cmap=cmap_phase)
     ax.set_title('filled NaNs (spline=%i)' % smooth_spline)
-    
+    if show_cbar:
+        colorbar(im0)
+ 
     ax = axn[0, 3]
     if full_cmap_range:
         im0 = ax.imshow(az_fill, cmap=cmap_phase, vmin=vmin, vmax=vmax)
     else:
         im0 = ax.imshow(az_fill, cmap=cmap_phase)
     ax.set_title('final')
-    pl.colorbar(im0, ax=ax, orientation='vertical', shrink=0.7)
+    if show_cbar:
+        colorbar(im0)
 
     ax = axn[1, 0]
     if full_cmap_range:
-        ax.imshow(filt_el, cmap=cmap_phase, vmin=vmin, vmax=vmax)
+        im1=ax.imshow(filt_el, cmap=cmap_phase, vmin=vmin, vmax=vmax)
     else:
-        ax.imshow(filt_el, cmap=cmap_phase)
+        im1=ax.imshow(filt_el, cmap=cmap_phase)
     ax.set_ylabel('Altitude')
+    if show_cbar:
+        colorbar(im1)
 
     ax = axn[1, 1]
     if full_cmap_range:
-        ax.imshow(elev_smoothed, cmap=cmap_phase, vmin=vmin, vmax=vmax)
+        im1=ax.imshow(elev_smoothed, cmap=cmap_phase, vmin=vmin, vmax=vmax)
     else:
-        ax.imshow(elev_smoothed, cmap=cmap_phase) 
+        im1=ax.imshow(elev_smoothed, cmap=cmap_phase) 
+    if show_cbar:
+        colorbar(im1)
+
 
     ax = axn[1, 2]
     if full_cmap_range:
-        ax.imshow(elev_fillnan, cmap=cmap_phase, vmin=vmin, vmax=vmax)
+        im1=ax.imshow(elev_fillnan, cmap=cmap_phase, vmin=vmin, vmax=vmax)
     else:
-        ax.imshow(elev_fillnan, cmap=cmap_phase)
+        im1=ax.imshow(elev_fillnan, cmap=cmap_phase)
     #ax.set_title('filled NaNs')
+    if show_cbar:
+        colorbar(im1)
+
 
     ax = axn[1, 3]
     if full_cmap_range:
@@ -404,10 +421,12 @@ def plot_retinomap_processing_pixels(filt_az, azim_smoothed, azim_fillnan, az_fi
     else:
         im1 = ax.imshow(el_fill, cmap=cmap_phase)
     #ax.set_title('final')
-    pl.colorbar(im1, ax=ax, orientation='vertical', shrink=0.7)
+    if show_cbar:
+        colorbar(im1)
 
-    pl.subplots_adjust(wspace=0.3, hspace=0.3)
-
+    pl.subplots_adjust(wspace=0.8, hspace=0.2)
+    for ax in axn.flat:
+        turn_off_axis_ticks(ax, despine=False)
     return fig
 
 
