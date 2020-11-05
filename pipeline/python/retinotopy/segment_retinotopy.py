@@ -402,18 +402,24 @@ def load_segmentation_results(animalid, session, fov, retinorun='retino_run1', r
     return seg_areas
 
 
-def load_roi_assignments(animalid, session, fov, retinorun='retino_run1', rootdir='/n/coxfs01/2p-data'):
+
+def load_roi_assignments(animalid, session, fov, retinorun=None, rootdir='/n/coxfs01/2p-data'):
     
-    results_fpath = os.path.join(rootdir, animalid, session, fov, retinorun, 
-                              'retino_analysis', 'segmentation', 'roi_assignments.json')
+    if retinorun is None:
+        retinorun='retino_run*'
+    results_fpath = glob.glob(os.path.join(rootdir, animalid, session, fov, retinorun, 
+                              'retino_analysis', 'segmentation', 'roi_assignments.json'))
+    datakey = '%s_%s_%s' % (session, animalid, fov)
+    assert len(results_fpath)>0, "No roi assignments found: %s" % datakey
     
-    assert os.path.exists(results_fpath), "Assignment results not found: %s" % results_fpath
-    with open(results_fpath, 'r') as f:
+    #assert os.path.exists(results_fpath[0]), "Assignment results not found: %s" % results_fpath
+    with open(results_fpath[0], 'r') as f:
         roi_assignments = json.load(f)
     #roi_assignments = r_['roi_assignments']
     #roi_masks_labeled = r_['roi_masks_labeled']
     
     return roi_assignments #, roi_masks_labeled
+
 
 # Relevant calcs
 def get_gradients_in_area(curr_segmented_mask, img_az, img_el):
@@ -428,184 +434,212 @@ def get_gradients_in_area(curr_segmented_mask, img_az, img_el):
     return grad_az, grad_el
 
 
+def get_cells_by_area(sdata, visual_areas=['V1', 'Lm', 'Li'],
+                  excluded_datasets=['20190602_JC080_fov1', '20190605_JC090_fov1', 
+                                     '20191003_JC111_fov1', '20191104_JC117_fov1']):
+    dsets = sdata[~sdata['datakey'].isin(excluded_datasets)]
+    
+    missing_cells=[]
+    d_ = []
+    for (animalid, session, fovnum, datakey), g in dsets.groupby(['animalid', 'session', 'fovnum', 'datakey']):
+        fov = g['fov'].iloc[0]
+        try:
+            roi_assignments = load_roi_assignments(animalid, session, fov, retinorun=None)
+        except AssertionError:
+            missing_cells.append(datakey)
+            continue
+        for v, rlist in roi_assignments.items():
+            if v in visual_areas:
+                tmpd = pd.DataFrame({'cell': rlist})
+                metainfo = {'visual_area': v, 'datakey': datakey, 'fovnum': fovnum, 
+                            'animalid': animalid, 'session': session}
+                tmpd = putils.add_meta_to_df(tmpd, metainfo)
+                d_.append(tmpd)
+
+    rois = pd.concat(d_, axis=0).reset_index(drop=True)
+    print("Need to segment %i datasets" % len(missing_cells))
+    
+    return rois
+
+
 # ------------------------------------------------------------------------------------------
 
-datakey = '20190522_JC089_fov1'
-session, animalid, fovn = datakey.split('_')
-fovnum = int(fovn[3:])
-
-# animalid = 'JC097'
-# session = '20190613'
-# fovnum = 1
-
-fov = 'FOV%i_zoom2p0x' % fovnum
-traceid = 'traces001'
-
-datakey='%s_%s_fov%i' % (session, animalid, fovnum)
-
-# Get retino runs
-found_retinodirs = glob.glob(os.path.join(rootdir, animalid, session, fov, 'retino*'))
-found_retinoruns = [os.path.split(d)[-1] for d in found_retinodirs]
-print("Found %i runs" % len(found_retinoruns))
-
-# Set current animal's retino output dir
-run_ix = 0
-retinorun = found_retinoruns[run_ix]
-curr_dst_dir = os.path.join(found_retinodirs[run_ix], 'retino_analysis', 'segmentation')
-print(curr_dst_dir)
-
-data_id = '_'.join([animalid, session, fov, retinorun, traceid])
-
-# Map smoothing
-# ----------------------------------------------------------
-delay_map_thr = 0.8
-pix_mag_thr = 0.002
-smooth_fwhm = 5
-smooth_spline=2
-cmap_name = 'nic_Edge'
-# ----------------------------------------------------------
-# Segmenting params
-sign_map_thr = 0.2
-min_region_area = 500
-
-
-
-# Smooth retino maps
-az_fill, el_fill, params, RETID = grd.pixel_gradients(animalid, session, fov, traceid=traceid, 
-                                                    retinorun=retinorun, 
-                                                    mag_thr=pix_mag_thr, 
-                                                    delay_map_thr=delay_map_thr, 
-                                                    dst_dir=curr_dst_dir, 
-                                                    cmap=cmap_name, 
-                                                    smooth_fwhm=smooth_fwhm, 
-                                                    smooth_spline=smooth_spline,
-                                                    full_cmap_range=False) 
-
-
-# Get surface image
-surface_img = ret_utils.load_2p_surface(animalid, session, fov, ch_num=1, retinorun=retinorun)
-pixel_size = putils.get_pixel_size()
-surface_2p = coreg.transform_2p_fov(surface_img, pixel_size, normalize=False)
-surface_2p = putils.adjust_image_contrast(surface_2p, clip_limit=5.0, tile_size=5)
-
-# Convert to screen units
-vmin, vmax = (-np.pi, np.pi)
-img_az = putils.convert_range(az_fill, oldmin=vmin, oldmax=vmax, newmin=screen_min, newmax=screen_max)
-img_el = putils.convert_range(el_fill, oldmin=vmin, oldmax=vmax, newmin=screen_min, newmax=screen_max)
-vmin, vmax = (screen_min, screen_max)   
-
-
-# Segment areas
-# -------------------------------------------------------------------
-O, S_thr = segment_areas(img_az, img_el, sign_map_thr=sign_map_thr, 
-                         min_region_area=min_region_area, surface=surface_2p)
-# Label image
-region_props, labeled_image  = segment_and_label(S_thr)
-region_labels = [region.label for region in region_props]
-print('Found %i regions: %s' % (len(region_labels), str(region_labels)))
-
-# Save
-orig_d1, orig_d2 = surface_2p.shape
-labeled_image_2p = cv2.resize(labeled_image.astype(np.uint8), (orig_d2, orig_d1)) #surface_2p.shape)
-results = {'labeled_image_ds': labeled_image, 
-           'labeled_image': labeled_image_2p,
-           'region_props': region_props}
-
-# Plot segmentation results
-proc_info_str = 'pixthr=%.3f (delay thr=%.2f), smooth=%i' % (pix_mag_thr, delay_map_thr, smooth_fwhm)
-fig = plot_segmentation_steps(img_az, img_el, surface=surface_2p, O=O, S_thr=S_thr, 
-                                sign_map_thr=sign_map_thr, cmap=cmap_phase, 
-                                labeled_image=labeled_image, region_props=region_props)
-
-putils.label_figure(fig, '%s | %s' % (data_id, proc_info_str))
-pl.subplots_adjust(hspace=0.5, bottom=0.2)    
-pl.savefig(os.path.join(curr_dst_dir, 'segemented_areas.png'))
-pl.show()
-
-# Label
-region_dict = {}
-while True:
-    for ri, region in enumerate(region_props):
-        user_sel = raw_input('[%i] Enter name: ' % region.label)
-        if len(user_sel)>0 and putils.isnumber(user_sel):
-            region_dict.update({str(user_sel): int(region.label)})
-    for rname, rlabel in region_dict.items():
-        print('  %s: %i' %(rname, rlabel))
-    user_approve = raw_input("Press <ENTER> to keep, <r> to redo: ")
-    if user_approve != 'r':
-        break
-
-# Assign labels
-seg_areas = {}
-label_keys=[]
-for ri, region in enumerate(region_props):
-    region_id = region.label
-    if region.label in region_dict.keys():
-        region_name = region_dict[region.label]
-        label_keys.append((region_name, region_id))
-    else:
-        region_name = region.label
-
-    # save mask
-    region_mask = np.copy(labeled_image.astype('float'))
-    region_mask[labeled_image != region_id] = 0
-    region_mask[labeled_image == region_id] = 1
-    seg_areas[region_name] = {'id': region_id, 'mask': region_mask}
-   
-
-# Plot and confirm
-# double check labeling/naming of segmented areas
-area_ids = [k[1] for k in label_keys]
-labeled_image_incl = np.ones(labeled_image.shape)*np.nan #labeled_image.copy()
-for idx in area_ids:
-    labeled_image_incl[labeled_image==idx] = idx
-
-fig, ax = pl.subplots()
-ax.imshow(labeled_image_incl, cmap='jet')    
-for region in region_props:
-    if region.label in area_ids:
-        region_name = str([k[0] for k in label_keys if k[1]==region.label][0])
-        ax.text(region.centroid[1], region.centroid[0], 
-                        '%s (%i)' % (region_name, region.label), fontsize=24, color='k')
-    # plot
-    contour = skmeasure.find_contours(labeled_image == region.label, 0.5)[0]
-    ax.plot(contour[:, 1], contour[:, 0], 'w', lw=5)
-ax.set_title('Labeled (%i patches)' % len(area_ids))
-ax.axis('off')
-putils.label_figure(fig, '%s | %s' % (data_id, proc_info_str))
-pl.savefig(os.path.join(curr_dst_dir, 'labeled_areas.png'))
-
-
-# Save
-# Load data metainfo
-print("Current run: %s" % retinorun)
-retinoid, RETID = ret_utils.load_retino_analysis_info(animalid, session, fov, retinorun, traceid, use_pixels=True)
-data_id = '_'.join([animalid, session, fov, retinorun, retinoid])
-print("DATA ID: %s" % data_id)
-
-# Get ROIID and projection image
-ds_factor = int(RETID['PARAMS']['downsample_factor'])
-print('Data were downsampled by %i.' % ds_factor)
-
-
-segparams_fpath = os.path.join(curr_dst_dir, 'params.json')
-segresults_fpath = os.path.join(curr_dst_dir, 'results.pkl')
-
-seg_params = {'pixel_mag_thr': pix_mag_thr,
-              'downsample_factor': ds_factor,
-              'delay_map_thr': delay_map_thr,
-              'smooth_fwhm': smooth_fwhm,
-              'smooth_spline': smooth_spline,
-              'sign_map_thr': sign_map_thr,
-              'min_region_area': min_region_area,
-              'retino_id': retinoid, 
-              'retino_run': retinorun}
-
-results.update({'areas': seg_areas})
-results.update({'label_keys': label_keys})
-
-with open(segparams_fpath, 'w') as f:
-    json.dump(seg_params, f, indent=4, sort_keys=True)
-    
-with open(segresults_fpath, 'wb') as f:
-    pkl.dump(results, f, protocol=pkl.HIGHEST_PROTOCOL)
+#datakey = '20190522_JC089_fov1'
+#session, animalid, fovn = datakey.split('_')
+#fovnum = int(fovn[3:])
+#
+## animalid = 'JC097'
+## session = '20190613'
+## fovnum = 1
+#
+#fov = 'FOV%i_zoom2p0x' % fovnum
+#traceid = 'traces001'
+#
+#datakey='%s_%s_fov%i' % (session, animalid, fovnum)
+#
+## Get retino runs
+#found_retinodirs = glob.glob(os.path.join(rootdir, animalid, session, fov, 'retino*'))
+#found_retinoruns = [os.path.split(d)[-1] for d in found_retinodirs]
+#print("Found %i runs" % len(found_retinoruns))
+#
+## Set current animal's retino output dir
+#run_ix = 0
+#retinorun = found_retinoruns[run_ix]
+#curr_dst_dir = os.path.join(found_retinodirs[run_ix], 'retino_analysis', 'segmentation')
+#print(curr_dst_dir)
+#
+#data_id = '_'.join([animalid, session, fov, retinorun, traceid])
+#
+## Map smoothing
+## ----------------------------------------------------------
+#delay_map_thr = 0.8
+#pix_mag_thr = 0.002
+#smooth_fwhm = 5
+#smooth_spline=2
+#cmap_name = 'nic_Edge'
+## ----------------------------------------------------------
+## Segmenting params
+#sign_map_thr = 0.2
+#min_region_area = 500
+#
+#
+#
+## Smooth retino maps
+#az_fill, el_fill, params, RETID = grd.pixel_gradients(animalid, session, fov, traceid=traceid, 
+#                                                    retinorun=retinorun, 
+#                                                    mag_thr=pix_mag_thr, 
+#                                                    delay_map_thr=delay_map_thr, 
+#                                                    dst_dir=curr_dst_dir, 
+#                                                    cmap=cmap_name, 
+#                                                    smooth_fwhm=smooth_fwhm, 
+#                                                    smooth_spline=smooth_spline,
+#                                                    full_cmap_range=False) 
+#
+#
+## Get surface image
+#surface_img = ret_utils.load_2p_surface(animalid, session, fov, ch_num=1, retinorun=retinorun)
+#pixel_size = putils.get_pixel_size()
+#surface_2p = coreg.transform_2p_fov(surface_img, pixel_size, normalize=False)
+#surface_2p = putils.adjust_image_contrast(surface_2p, clip_limit=5.0, tile_size=5)
+#
+## Convert to screen units
+#vmin, vmax = (-np.pi, np.pi)
+#img_az = putils.convert_range(az_fill, oldmin=vmin, oldmax=vmax, newmin=screen_min, newmax=screen_max)
+#img_el = putils.convert_range(el_fill, oldmin=vmin, oldmax=vmax, newmin=screen_min, newmax=screen_max)
+#vmin, vmax = (screen_min, screen_max)   
+#
+#
+## Segment areas
+## -------------------------------------------------------------------
+#O, S_thr = segment_areas(img_az, img_el, sign_map_thr=sign_map_thr, 
+#                         min_region_area=min_region_area, surface=surface_2p)
+## Label image
+#region_props, labeled_image  = segment_and_label(S_thr)
+#region_labels = [region.label for region in region_props]
+#print('Found %i regions: %s' % (len(region_labels), str(region_labels)))
+#
+## Save
+#orig_d1, orig_d2 = surface_2p.shape
+#labeled_image_2p = cv2.resize(labeled_image.astype(np.uint8), (orig_d2, orig_d1)) #surface_2p.shape)
+#results = {'labeled_image_ds': labeled_image, 
+#           'labeled_image': labeled_image_2p,
+#           'region_props': region_props}
+#
+## Plot segmentation results
+#proc_info_str = 'pixthr=%.3f (delay thr=%.2f), smooth=%i' % (pix_mag_thr, delay_map_thr, smooth_fwhm)
+#fig = plot_segmentation_steps(img_az, img_el, surface=surface_2p, O=O, S_thr=S_thr, 
+#                                sign_map_thr=sign_map_thr, cmap=cmap_phase, 
+#                                labeled_image=labeled_image, region_props=region_props)
+#
+#putils.label_figure(fig, '%s | %s' % (data_id, proc_info_str))
+#pl.subplots_adjust(hspace=0.5, bottom=0.2)    
+#pl.savefig(os.path.join(curr_dst_dir, 'segemented_areas.png'))
+#pl.show()
+#
+## Label
+#region_dict = {}
+#while True:
+#    for ri, region in enumerate(region_props):
+#        user_sel = raw_input('[%i] Enter name: ' % region.label)
+#        if len(user_sel)>0 and putils.isnumber(user_sel):
+#            region_dict.update({str(user_sel): int(region.label)})
+#    for rname, rlabel in region_dict.items():
+#        print('  %s: %i' %(rname, rlabel))
+#    user_approve = raw_input("Press <ENTER> to keep, <r> to redo: ")
+#    if user_approve != 'r':
+#        break
+#
+## Assign labels
+#seg_areas = {}
+#label_keys=[]
+#for ri, region in enumerate(region_props):
+#    region_id = region.label
+#    if region.label in region_dict.keys():
+#        region_name = region_dict[region.label]
+#        label_keys.append((region_name, region_id))
+#    else:
+#        region_name = region.label
+#
+#    # save mask
+#    region_mask = np.copy(labeled_image.astype('float'))
+#    region_mask[labeled_image != region_id] = 0
+#    region_mask[labeled_image == region_id] = 1
+#    seg_areas[region_name] = {'id': region_id, 'mask': region_mask}
+#   
+#
+## Plot and confirm
+## double check labeling/naming of segmented areas
+#area_ids = [k[1] for k in label_keys]
+#labeled_image_incl = np.ones(labeled_image.shape)*np.nan #labeled_image.copy()
+#for idx in area_ids:
+#    labeled_image_incl[labeled_image==idx] = idx
+#
+#fig, ax = pl.subplots()
+#ax.imshow(labeled_image_incl, cmap='jet')    
+#for region in region_props:
+#    if region.label in area_ids:
+#        region_name = str([k[0] for k in label_keys if k[1]==region.label][0])
+#        ax.text(region.centroid[1], region.centroid[0], 
+#                        '%s (%i)' % (region_name, region.label), fontsize=24, color='k')
+#    # plot
+#    contour = skmeasure.find_contours(labeled_image == region.label, 0.5)[0]
+#    ax.plot(contour[:, 1], contour[:, 0], 'w', lw=5)
+#ax.set_title('Labeled (%i patches)' % len(area_ids))
+#ax.axis('off')
+#putils.label_figure(fig, '%s | %s' % (data_id, proc_info_str))
+#pl.savefig(os.path.join(curr_dst_dir, 'labeled_areas.png'))
+#
+#
+## Save
+## Load data metainfo
+#print("Current run: %s" % retinorun)
+#retinoid, RETID = ret_utils.load_retino_analysis_info(animalid, session, fov, retinorun, traceid, use_pixels=True)
+#data_id = '_'.join([animalid, session, fov, retinorun, retinoid])
+#print("DATA ID: %s" % data_id)
+#
+## Get ROIID and projection image
+#ds_factor = int(RETID['PARAMS']['downsample_factor'])
+#print('Data were downsampled by %i.' % ds_factor)
+#
+#
+#segparams_fpath = os.path.join(curr_dst_dir, 'params.json')
+#segresults_fpath = os.path.join(curr_dst_dir, 'results.pkl')
+#
+#seg_params = {'pixel_mag_thr': pix_mag_thr,
+#              'downsample_factor': ds_factor,
+#              'delay_map_thr': delay_map_thr,
+#              'smooth_fwhm': smooth_fwhm,
+#              'smooth_spline': smooth_spline,
+#              'sign_map_thr': sign_map_thr,
+#              'min_region_area': min_region_area,
+#              'retino_id': retinoid, 
+#              'retino_run': retinorun}
+#
+#results.update({'areas': seg_areas})
+#results.update({'label_keys': label_keys})
+#
+#with open(segparams_fpath, 'w') as f:
+#    json.dump(seg_params, f, indent=4, sort_keys=True)
+#    
+#with open(segresults_fpath, 'wb') as f:
+#    pkl.dump(results, f, protocol=pkl.HIGHEST_PROTOCOL)
