@@ -31,18 +31,6 @@ import cPickle as pkl
 
 #%%
 
-def load_segmentation_results(animalid, session, fov, retinorun='retino_run1', rootdir='/n/coxfs01/2p-data'):
-    results_fpath = os.path.join(rootdir, animalid, session, fov, retinorun, 
-                              'retino_analysis', 'segmentation', 'results.pkl')
-    
-    assert os.path.exists(results_fpath), "Segmentation not found: %s" % results_fpath
-    with open(results_fpath, 'r') as f:
-        seg_areas = pkl.load(f)
-        
-    return seg_areas
-
-
-
 def load_roi_coords(animalid, session, fov, roiid=None, 
                     convert_um=True, traceid='traces001', 
                     create_new=False,rootdir='/n/coxfs01/2p-data'):
