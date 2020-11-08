@@ -650,7 +650,7 @@ def trials_to_dataframes(processed_fpaths, conditions_fpath):
     return fit, magratio, phase, trials_by_cond
 
 
-def load_retino_analysis_info(animalid, session, fov, run, retinoid, use_pixels=False, rootdir='/n/coxfs01/2p-data'):
+def load_retino_analysis_info(animalid, session, fov, run, retinoid=None, use_pixels=False, rootdir='/n/coxfs01/2p-data'):
     
     run_dir = glob.glob(os.path.join(rootdir, animalid, session, '%s*' % fov, run))[0]
     fov = os.path.split(os.path.split(run_dir)[0])[-1]

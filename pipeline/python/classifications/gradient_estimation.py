@@ -1522,7 +1522,7 @@ def gradient_full_fov(options):
 
     # Save gradients
     gradients = {'az': grad_az, 'el': grad_el}
-    grad_fpath = os.path.join(curr_dst_dir, 'gradients_%s.pkl' % (gradient_source))
+    grad_fpath = os.path.join(curr_dst_dir, 'gradients.pkl')
     with open(grad_fpath, 'wb') as f:
         pkl.dump(gradients, f, protocol=pkl.HIGHEST_PROTOCOL)
 
@@ -1636,6 +1636,8 @@ def gradient_within_visual_area():
                                                   return_cmap=True, 
                                                   dst_dir=curr_dst_dir)  
 
+
+
     # -----------------------------------------------
     #%% ## Calculate gradient on retino map
     # ------------------------------------------------
@@ -1652,111 +1654,136 @@ def gradient_within_visual_area():
                                     if plot_degrees else el_fill.copy()
     grad_az = calculate_gradients(img_az)
     grad_el = calculate_gradients(img_el)
- 
-    vmin, vmax = (screen_min, screen_max) if plot_degrees else (-np.pi, np.pi)
 
-    #%% Plot gradients 
-    spacing = 200
-    scale = None #0.0001
-    width = 0.01 #0.01
+    # ---------------------------------------------------------------------
+    # ## Calculate gradient for segmented areas
+    seg_results, seg_params = load_segmentation_results(animalid, session, fov, 
+                                                        retinorun=retinorun)
+    segmented_areas = seg_results['areas']
+    region_props = seg_results['region_props']
+
+
+    contour_lc='r'
+    contour_lw=1
+    spacing =100
+    scale = 0.001 #0.0001
+    width = 0.01 #1 #0.01
     headwidth=5
 
-    plot_str = 'degrees' if plot_degrees else ''
-    fig = plot_retinomap_gradients(grad_az, grad_el, cmap=cmap_phase)
-    putils.label_figure(fig, data_id)
-    
-    figname = 'gradients_%s__%s' % (plot_str, figname_str)
-    pl.savefig(os.path.join(curr_dst_dir, '%s.svg' % figname))
-    print('-- [f] %s' % figname)
-
-    fig = plot_unit_vectors(grad_az, grad_el)
-    label_figure(fig, data_id)
-    pl.subplots_adjust(left=0.1, wspace=0.5)
-    figname = 'unitvec_%s__%s' % (plot_str, figname_str)
-    pl.savefig(os.path.join(curr_dst_dir, '%s.svg' % figname))
-    print('-- [f] %s' % figname)
-
-    # Save gradients
-    gradients = {'az': grad_az, 'el': grad_el}
-    grad_fpath = os.path.join(curr_dst_dir, 'gradients_%s.pkl' % (gradient_source))
-    with open(grad_fpath, 'wb') as f:
-        pkl.dump(gradients, f, protocol=pkl.HIGHEST_PROTOCOL)
-
-    uvectors = {'az': grad_az['vhat'], 'el': grad_el['vhat']}
-    vec_fpath = os.path.join(curr_dst_dir, 'vectors_%s.pkl' % (gradient_source))
-    with open(vec_fpath, 'wb') as f:
-        pkl.dump(uvectors, f, protocol=pkl.HIGHEST_PROTOCOL)
-
-
-    #%% ## Calculate gradients and projec to get mean
-    projections = get_projection_points(grad_az, grad_el)
-
-    d1, d2 = grad_az['image'].shape
-    fig = test_plot_projections(projections, ncyc=5, startcyc=800, imshape=(d1,d2))
-    label_figure(fig, data_id)
-    pl.subplots_adjust(left=0.1, wspace=0.5)
-    figname = 'test_projections__%s' % (figname_str) 
-    pl.savefig(os.path.join(curr_dst_dir, '%s.png' % figname))
-
-    #%% ## Fit linear  
-    proj_fit_results = {}
-    d_list = []
-    di = 0
-    for i, cond in enumerate(['az', 'el']):
-        proj_v = projections['proj_%s' % cond].copy()
-        ret_v = projections['retino_%s' % cond].copy()
-        fitv, regr = evalrf.fit_linear_regr(proj_v[~np.isnan(ret_v)], 
-                                            ret_v[~np.isnan(ret_v)],
-                                            return_regr=True, model=regr_model)
-     
-        rmse = np.sqrt(skmetrics.mean_squared_error(ret_v[~np.isnan(ret_v)], fitv))
-        r2 = skmetrics.r2_score(ret_v[~np.isnan(ret_v)], fitv)
-        pearson_r, pearson_p = spstats.pearsonr(proj_v[~np.isnan(ret_v)], ret_v[~np.isnan(ret_v)]) 
-        slope = float(regr.coef_)
-        intercept = float(regr.intercept_)
-
-        proj_fit_results.update({'fitv_%s' % cond: fitv, 
-                                 'regr_%s' % cond: regr})
-
-        d_ = pd.DataFrame({'cond': cond, 
-                          'R2': r2,
-                          'RMSE': rmse,
-                          'pearson_p': pearson_p,
-                          'pearson_r': pearson_r,
-                          'coefficient': slope, # float(regr.coef_), 
-                          'intercept': intercept, #float(regr.intercept_)
-                          }, index=[di])
-        print("~~~regr results: y = %.2f + %.2f (R2=%.2f)" % (slope, intercept, r2))
-
-        d_list.append(d_)
-        di += 1
-    regr_df = pd.concat(d_list, axis=0)
-
-    proj_fit_results.update({'projections': projections, 
-                             'model': regr_model,
-                             'mag_thr': mag_thr,
-                             'pass_criterion': pass_criterion, 
-                             'regr_df': regr_df})
-
-    proj_fpath = os.path.join(curr_dst_dir, 'projection_results_%s.pkl' % gradient_source)
-    with open(proj_fpath, 'wb') as f:
-        pkl.dump(proj_fit_results, f, protocol=pkl.HIGHEST_PROTOCOL)
-    print(proj_fpath)
-    
-    df_fpath = os.path.join(curr_dst_dir, 'projections_%s.pkl' % (gradient_source))
-    p_df = {'regr_df': regr_df}
-    with open(df_fpath, 'wb') as f:
-        pkl.dump(p_df, f, protocol=pkl.HIGHEST_PROTOCOL)
+    for vi, (curr_visual_area, area_results) in enumerate(segmented_areas.items()):
+        print(vi, curr_visual_area)
+        if putils.isnumber(curr_visual_area):
+            continue
+        curr_segmented_mask = area_results['mask']
+        grad_az, grad_el = calculate_gradients(curr_segmented_mask, img_az, img_el)
         
-    #%% Plot linear fit
-    fig = plot_projected_vs_retino_positions(projections, proj_fit_results,
-                                             spacing=regr_plot_spacing, 
-                                             regr_color=regr_line_color)
+        # Plot results ------------
+        curr_labeled_image = np.zeros(labeled_image.shape)
+        curr_labeled_image[labeled_image==area_results['id']] = 1
+        fig = plot_gradients_in_area(curr_labeled_image, img_az, img_el, grad_az, grad_el, 
+                                    cmap_phase=cmap_phase,
+                                    contour_lc=contour_lc, contour_lw=contour_lw, 
+                                    spacing=spacing, scale=scale, width=width, 
+                                    headwidth=headwidth)
+        pl.subplots_adjust(wspace=0.5, hspace=0.5, top=0.8)
+        putils.label_figure(fig, data_id)
+        fig.suptitle(curr_visual_area)
 
-    label_figure(fig, data_id)
-    pl.subplots_adjust(left=0.1, wspace=0.5)
-    figname = 'Proj_versus_Retinopos__%s' % (figname_str)
-    pl.savefig(os.path.join(curr_dst_dir, '%s.svg' % figname))
+        figname = 'gradients_%s' % curr_visual_area
+        pl.savefig(os.path.join(curr_dst_dir, '%s.png' % figname))
+        print(curr_dst_dir, figname)
+
+    # ---------------------------------------------------------------------
+ 
+        vmin, vmax = (screen_min, screen_max) if plot_degrees else (-np.pi, np.pi)
+
+        #%% Plot gradients 
+        spacing = 200
+        scale = None #0.0001
+        width = 0.01 #0.01
+        headwidth=5
+
+        # Save gradients
+        gradients = {'az': grad_az, 'el': grad_el}
+        grad_fpath = os.path.join(curr_dst_dir, 'gradients_%s.pkl' % (gradient_source))
+        with open(grad_fpath, 'wb') as f:
+            pkl.dump(gradients, f, protocol=pkl.HIGHEST_PROTOCOL)
+
+        uvectors = {'az': grad_az['vhat'], 'el': grad_el['vhat']}
+        vec_fpath = os.path.join(curr_dst_dir, 'vectors_%s.pkl' % (gradient_source))
+        with open(vec_fpath, 'wb') as f:
+            pkl.dump(uvectors, f, protocol=pkl.HIGHEST_PROTOCOL)
+
+
+        #%% ## Calculate gradients and projec to get mean
+        projections = get_projection_points(grad_az, grad_el)
+
+        d1, d2 = grad_az['image'].shape
+        fig = test_plot_projections(projections, ncyc=5, startcyc=800, imshape=(d1,d2))
+        label_figure(fig, data_id)
+        pl.subplots_adjust(left=0.1, wspace=0.5)
+        figname = 'test_projections__%s' % (figname_str) 
+        pl.savefig(os.path.join(curr_dst_dir, '%s.png' % figname))
+
+        #%% ## Fit linear  
+        proj_fit_results = {}
+        d_list = []
+        di = 0
+        for i, cond in enumerate(['az', 'el']):
+            proj_v = projections['proj_%s' % cond].copy()
+            ret_v = projections['retino_%s' % cond].copy()
+            fitv, regr = evalrf.fit_linear_regr(proj_v[~np.isnan(ret_v)], 
+                                                ret_v[~np.isnan(ret_v)],
+                                                return_regr=True, model=regr_model)
+         
+            rmse = np.sqrt(skmetrics.mean_squared_error(ret_v[~np.isnan(ret_v)], fitv))
+            r2 = skmetrics.r2_score(ret_v[~np.isnan(ret_v)], fitv)
+            pearson_r, pearson_p = spstats.pearsonr(proj_v[~np.isnan(ret_v)], ret_v[~np.isnan(ret_v)]) 
+            slope = float(regr.coef_)
+            intercept = float(regr.intercept_)
+
+            proj_fit_results.update({'fitv_%s' % cond: fitv, 
+                                     'regr_%s' % cond: regr})
+
+            d_ = pd.DataFrame({'cond': cond, 
+                              'R2': r2,
+                              'RMSE': rmse,
+                              'pearson_p': pearson_p,
+                              'pearson_r': pearson_r,
+                              'coefficient': slope, # float(regr.coef_), 
+                              'intercept': intercept, #float(regr.intercept_)
+                              }, index=[di])
+            print("~~~regr results: y = %.2f + %.2f (R2=%.2f)" % (slope, intercept, r2))
+
+            d_list.append(d_)
+            di += 1
+        regr_df = pd.concat(d_list, axis=0)
+
+        proj_fit_results.update({'projections': projections, 
+                                 'model': regr_model,
+                                 'mag_thr': mag_thr,
+                                 'pass_criterion': pass_criterion, 
+                                 'regr_df': regr_df})
+
+        proj_fpath = os.path.join(curr_dst_dir, 'projection_results_%s.pkl' % gradient_source)
+        with open(proj_fpath, 'wb') as f:
+            pkl.dump(proj_fit_results, f, protocol=pkl.HIGHEST_PROTOCOL)
+        print(proj_fpath)
+        
+        df_fpath = os.path.join(curr_dst_dir, 'projections_%s.pkl' % (gradient_source))
+        p_df = {'regr_df': regr_df}
+        with open(df_fpath, 'wb') as f:
+            pkl.dump(p_df, f, protocol=pkl.HIGHEST_PROTOCOL)
+            
+        #%% Plot linear fit
+        fig = plot_projected_vs_retino_positions(projections, proj_fit_results,
+                                                 spacing=regr_plot_spacing, 
+                                                 regr_color=regr_line_color)
+
+        label_figure(fig, data_id)
+        pl.subplots_adjust(left=0.1, wspace=0.5)
+        figname = 'Proj_versus_Retinopos__%s' % (figname_str)
+        pl.savefig(os.path.join(curr_dst_dir, '%s.svg' % figname))
 
 
     return None
