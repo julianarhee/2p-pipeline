@@ -15,6 +15,40 @@ def atoi(text):
 def natural_keys(text):
     return [ atoi(c) for c in re.split('(\d+)', text) ]
 
+def get_datasets_with_dlc(sdata):
+    # This stuff is hard-coded because we only have 1
+    #### Set source/dst paths
+    dlc_home_dir = '/n/coxfs01/julianarhee/face-tracking'
+    dlc_project = 'facetracking-jyr-2020-01-25' #'sideface-jyr-2020-01-09'
+    dlc_project_dir = os.path.join(dlc_home_dir, dlc_project)
+
+    dlc_video_dir = os.path.join(dlc_home_dir, dlc_project, 'videos')
+    dlc_results_dir = os.path.join(dlc_project_dir, 'pose-analysis') # DLC analysis output dir
+
+    #### Training iteration info
+    dlc_projectid = 'facetrackingJan25'
+    scorer='DLC_resnet50'
+    iteration = 1
+    shuffle = 1
+    trainingsetindex=0
+    videotype='.mp4'
+    snapshot = 391800 #430200 #20900
+    DLCscorer = '%s_%sshuffle%i_%i' % (scorer, dlc_projectid, shuffle, snapshot)
+    print("Extracting results from scorer: %s" % DLCscorer)
+
+    
+    print("Checking for existing results: %s" % dlc_results_dir)
+    dlc_runkeys = list(set([ os.path.split(f)[-1].split('DLC')[0] \
+                           for f in glob.glob(os.path.join(dlc_results_dir, '*.h5'))]))
+    dlc_analyzed_experiments = ['_'.join(s.split('_')[0:4]) for s in dlc_runkeys]
+
+    # Get sdata indices that have experiments analyzed
+    ixs_wth_dlc = [i for i in sdata.index.tolist() 
+                    if '%s_%s' % (sdata.loc[i]['datakey'], sdata.loc[i]['experiment']) in dlc_analyzed_experiments]
+    dlc_dsets = sdata.iloc[ixs_wth_dlc]
+
+    return dlc_dsets
+
 def load_pose_data(animalid, session, fovnum, curr_exp, analysis_dir, feature_list=['pupil'],
                    epoch='stimulus_on', pre_ITI_ms=1000, post_ITI_ms=1000,
                    traceid='traces001', eyetracker_dir='/n/coxfs01/2p-data/eyetracker_tmp'):
