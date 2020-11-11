@@ -141,7 +141,7 @@ def pool_bootstrap(global_rois, MEANS, sdf, sample_ncells, n_iterations=50, n_pr
 
 def decode_vs_ncells(rfs_and_blobs, stim_datakeys, MEANS, sdf, train_str='clf-by-ncells',
                     n_iterations=100, overlap_thr=0.8, n_processes=1, 
-                    test_split=0.2, cv_nfolds=5, C_value=None, cv=True, 
+                    test_split=0.2, cv_nfolds=5, C_value=None,
                     class_a=0, class_b=106, data_id='DATAID', 
                     dst_dir='/n/coxfs01/julianarhee/aggregate-data/decoding'):
 
@@ -205,7 +205,7 @@ def decode_vs_ncells(rfs_and_blobs, stim_datakeys, MEANS, sdf, train_str='clf-by
         pkl.dump(pooled, f, protocol=pkl.HIGHEST_PROTOCOL) 
     print("-- results: %s" % results_outfile)
 
-    params = {'test_split': test_split, 'cv_nfolds': cv_nfolds, 'C_value': C_value, 'cv':cv,
+    params = {'test_split': test_split, 'cv_nfolds': cv_nfolds, 'C_value': C_value,
               'n_iterations': n_iterations, 'overlap_thr': overlap_thr,
               'class_a': m0, 'class_b': m100, 'train_str': train_str, 'data_id': data_id}
     with open(params_outfile, 'w') as f:
@@ -241,7 +241,7 @@ n_processes = 2
 test_split=0.2
 cv_nfolds=5
 C_value=None
-cv=True
+#cv=True
 
 min_ncells = 20
 overlap_thr=0.
@@ -318,7 +318,7 @@ def main(options):
     has_gratings = experiment!='blobs'
 
     # -------------------------------------------------
-    cv =True 
+    #cv =True 
     test_split=0.2
     cv_nfolds=5
     C_value=None
@@ -471,7 +471,7 @@ def main(options):
     decode_vs_ncells(rfs_and_blobs, curr_datakeys, MEANS, sdf, train_str=train_str,
                     n_iterations=n_iterations, overlap_thr=overlap_thr, 
                     n_processes=n_processes, 
-                    test_split=test_split, cv_nfolds=cv_nfolds, C_value=C_value, cv=cv, 
+                    test_split=test_split, cv_nfolds=cv_nfolds, C_value=C_value,# cv=cv, 
                     class_a=m0, class_b=m100, data_id='%s|%s' % (traceid, fig_str), #data_id,
                     dst_dir=decoding_dir)
 
