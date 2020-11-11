@@ -2475,6 +2475,8 @@ def extract_traces(options):
     trace_extraction_opts = vars(options)
     with open(os.path.join(TID['DST'], 'extraction_params.json'), 'w') as f:
         json.dump(trace_extraction_opts, f, indent=4, sort_keys=True)
+    with open(os.path.join(TID['DST'], 'event_alignment.json'), 'w') as f:
+        json.dump(trace_extraction_opts, f, indent=4, sort_keys=True)
 
 
     #%

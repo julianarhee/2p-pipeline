@@ -421,6 +421,45 @@ def get_retino_metadata(experiment='retino', animalids=None,
 
     return meta_list
 
+
+def get_neuraldf_for_cells_in_area(cells, MEANS, datakey=None, visual_area=None):
+    '''
+    For a given dataframe (index=trials, columns=cells), only return cells
+    in specified visual area
+    '''
+    assert datakey in MEANS.keys(), "%s--not found in RESPONSES" % datakey
+    assert datakey in cells['datakey'].values, "%s--not found in SEGMENTED" % datakey
+
+    #neuraldf = MEANS[datakey].copy() 
+    curr_rois = cells[(cells['datakey']==datakey) 
+                    & (cells['visual_area']==visual_area)]['cell'].values
+    curr_cols = list(curr_rois.copy())
+    neuraldf = MEANS[datakey][curr_cols].copy()
+    neuraldf['config'] = MEANS[datakey]['config'].copy()
+    
+    return neuraldf
+
+
+def get_active_cells_in_current_datasets(rois, MEANS, verbose=False):
+    '''
+    For segmented cells, return those cells that are responsive (MEANS)
+    '''
+    d_=[]
+    for (visual_area, datakey), g in rois.groupby(['visual_area', 'datakey']):
+        if datakey not in MEANS.keys():
+            #print("missing: %s" % datakey)
+            continue
+        included_cells = [i for i in MEANS[datakey].columns if i in g['cell'].values]
+        tmpd = g[g['cell'].isin(included_cells)].copy()
+        if verbose:
+            print('[%s] %s: %i of %i responsive' % (visual_area, datakey, len(included_cells), len(g)))
+        d_.append(tmpd)
+
+    cells = pd.concat(d_, axis=0).reset_index(drop=True)
+    
+    return cells
+
+
 # Screen/stimulus-specific info
 
 def get_stim_info(animalid, session, fov):
@@ -646,10 +685,18 @@ def isnumber(n):
 
 def get_trial_alignment(animalid, session, fovnum, curr_exp, traceid='traces001',
         rootdir='/n/coxfs01/2p-data'):
-    extraction_files = glob.glob(os.path.join(rootdir, animalid, session, 'FOV%i*' % fovnum, 
-                '*%s*' % curr_exp, 'traces', '%s*' % traceid, 'extraction_params.json'))
-    assert len(extraction_files) > 0, "No extraction info found..."
-
+    try:
+        extraction_files = sorted(glob.glob(os.path.join(rootdir, animalid, session, 'FOV%i*' % fovnum, 
+                                '*%s*' % curr_exp, 'traces', 
+                                '%s*' % traceid,'event_alignment.json')), key=natural_keys) 
+            # 'extraction_params.json'))
+        assert len(extraction_files) > 0, "(%s|%s|fov%i) No extraction info found..." % (animalid, session, fovnum)
+    except AssertionError:
+#        extraction_files = sorted(glob.glob(os.path.join(rootdir, animalid, session, 'FOV%i*' % fovnum, 
+#                                '*%s*' % curr_exp, 'traces', 
+#                                '%s*' % traceid,'extraction_params.json')), key=natural_keys) 
+        return None
+    
     for i, ifile in enumerate(extraction_files):
         with open(ifile, 'r') as f:
             info = json.load(f)
@@ -657,13 +704,17 @@ def get_trial_alignment(animalid, session, fovnum, curr_exp, traceid='traces001'
             infodict = dict((k, [v]) for k, v in info.items() if isnumber(v)) 
         else:
             for k, v in info.items():
-                if isnumber(v):
+                if isnumber(v): 
                     infodict[k].append(v)
-    
-    for k, v in infodict.items():
-        nvs = np.unique(v)
-        assert len(nvs)==1, "more than 1 value found: (%s, %s)" % (k, str(nvs))
-        infodict[k] = np.unique(v)[0]
+    try: 
+        dkey = '%s_%s_fov%i' % (session, animalid, fovnum)
+        for k, v in infodict.items():
+            nvs = np.unique(v)
+            assert len(nvs)==1, "%s: more than 1 value found: (%s, %s)" % (dkey, k, str(nvs))
+            infodict[k] = np.unique(v)[0]
+    except AssertionError:
+        return -1
+
     return infodict
 
             

@@ -21,7 +21,7 @@ import numpy as np
 from pipeline.python.utils import natural_keys, get_frame_info
 from pipeline.python.paradigm import align_acquisition_events as alignacq
 from pipeline.python.traces import trial_alignment as talignment
-
+from pipeline.python.paradigm.plot_responses import make_clean_psths
 from pipeline.python.classifications import experiment_classes as cutils
 
 
@@ -85,6 +85,19 @@ def parse_trial_epochs(animalid, session, fov, experiment, traceid,
         with open(alignment_info_filepath, 'w') as f:
             json.dump(trial_info, f, sort_keys=True, indent=4)       
 
+        # Update extraction_params.json
+        extraction_info_filepath = os.path.join(traceid_dir, 'extraction_params.json')
+        if os.path.exists(extraction_info_filepath):
+            with open(extraction_info_filepath, 'r') as f:
+                eparams = json.load(f)
+            for k, v in trial_info.items():
+                if k in eparams:
+                    eparams[k] = v
+        else:
+            eparams = trial_info
+        with open(extraction_info_filepath, 'w') as f:
+            json.dump(eparams, f, sort_keys=True, indent=4)       
+
         # Get parsed frame indices
         parsed_frames_filepath = alignacq.assign_frames_to_trials(si_info, trial_info, paradigm_dir, create_new=True)
 
@@ -133,7 +146,7 @@ def main(options):
 
         plot_opts = ['-i', animalid, '-S', session, '-A', fov, '-t', traceid, '-R', 'combined_%s_static' % experiment, 
                      '--shade', '-r', row_str, '-c', col_str, '-H', hue_str, '-d', response_type, '-f', file_type]
-        para.make_clean_psths(plot_opts) 
+        make_clean_psths(plot_opts) 
     
 if __name__ == '__main__':
     main(sys.argv[1:])

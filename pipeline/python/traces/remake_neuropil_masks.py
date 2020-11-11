@@ -297,7 +297,8 @@ def main(options):
     print("---- applied NP masks to tifs ----")
 
     traceid_dir = os.path.split(filetraces_dir)[0]
-    with open(os.path.join(traceid_dir, 'extraction_params.json'), 'r') as f:
+    #with open(os.path.join(traceid_dir, 'extraction_params.json'), 'r') as f:
+    with open(os.path.join(traceid_dir, 'event_alignment.json'), 'r') as f:
         eparams = json.load(f)
     eparams.update({'np_niterations': np_niterations,
                     'gap_niterations': gap_niterations,
