@@ -157,7 +157,7 @@ def fit_svm_mp(neuraldf, sdf, n_iterations=50, n_processes=1,
             #### Fit
             r_.append(curr_iter)
         curr_iterdf = pd.concat(r_, axis=0)
-        out_q.put(curr_results)
+        out_q.put(curr_iterdf)
         
     try:        
         # Each process gets "chunksize' filenames and a queue to put his out-dict into:
