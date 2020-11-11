@@ -16,6 +16,7 @@ import itertools
 import datetime
 import pprint 
 pp = pprint.PrettyPrinter(indent=4)
+import traceback
 
 import numpy as np
 import pylab as pl
@@ -386,31 +387,29 @@ def get_trials_for_N_cells(curr_ncells, gdf, MEANS):
 # Fitting functions 
 # ======================================================================
 def tune_C(sample_data, target_labels, scoring_metric='accuracy', 
-                        cv_nfolds=5, test_split=0.2, verbose=False):
+                        cv_nfolds=5, test_split=0.2, verbose=False, n_processes=1):
     
-    train_data, test_data, train_labels, test_labels = train_test_split(sample_data, target_labels,
-                                                                        test_size=test_split)
-    
+    #train_data, test_data, train_labels, test_labels = train_test_split(sample_data, target_labels,
+    #                                                                    test_size=test_split)
+    train_data = sample_data.copy()
+    train_labels = target_labels
+ 
     #### DATA - Fit classifier
     scaler = StandardScaler()
     scaler.fit(train_data)
     train_data = scaler.transform(train_data)
-    test_data = scaler.transform(test_data)
+    #test_data = scaler.transform(test_data)
 
     # Set the parameters by cross-validation
     tuned_parameters = [{'C': [0.001, 0.01, 0.1, 1, 10, 100, 1000]}]
 
-    #scores = ['accuracy', 'precision_macro', 'recall_macro']
-    scoring = ('accuracy') #, 'precision_macro', 'recall_macro')
-    # scoring_metric = 'accuracy' 
     results ={}
-    #for scorer in scoring:
-    scorer = scoring_metric
     
     if verbose:
-        print("# Tuning hyper-parameters for %s" % scorer)
+        print("# Tuning hyper-parameters for %s" % scoring_metric)
     #print()
-    clf = GridSearchCV(svm.SVC(kernel='linear'), tuned_parameters, scoring=scorer, cv=cv_nfolds)
+    clf = GridSearchCV(svm.SVC(kernel='linear'), tuned_parameters, 
+                        scoring=scoring_metric, cv=cv_nfolds, n_jobs=-1) #n_processes)
     clf.fit(train_data, train_labels)
     if verbose:
         print("Best parameters set found on development set:")
@@ -422,25 +421,30 @@ def tune_C(sample_data, target_labels, scoring_metric='accuracy',
         for mean, std, params in zip(means, stds, clf.cv_results_['params']):
             print("%0.3f (+/-%0.03f) for %r"
                   % (mean, std * 2, params))
-    y_true, y_pred = test_labels, clf.predict(test_data)
-    if verbose:
-        print("Detailed classification report:")
-        print("The model is trained on the full development set.")
-        print("The scores are computed on the full evaluation set.")
-        print(classification_report(y_true, y_pred))
-    test_score = clf.score(test_data, test_labels)
-    if verbose:
-        print("Held out test score: %.2f" % test_score)
-    results.update({'%s' % scorer: {'C': clf.best_params_['C'], 'test_score': test_score}})
-    return results #clf.best_params_
+
+#    y_true, y_pred = test_labels, clf.predict(test_data)
+#    if verbose:
+#        print("Detailed classification report:")
+#        print("The model is trained on the full development set.")
+#        print("The scores are computed on the full evaluation set.")
+#        print(classification_report(y_true, y_pred))
+#
+#    test_score = clf.score(test_data, test_labels)
+#    if verbose:
+#        print("Held out test score: %.2f" % test_score)
+#    results.update({'%s' % scorer: {'C': clf.best_params_['C'], 'test_score': test_score}})
+#    
+    return clf #results #clf.best_params_
 
 
-def fit_svm_shuffle(zdata, targets, test_split=0.2, cv_nfolds=5, verbose=False, cv=True, C_value=None):
+def fit_svm_shuffle(zdata, targets, test_split=0.2, cv_nfolds=5, verbose=False, C_value=None, randi=10):
 
+    cv=C_value is None
     #### For each transformation, split trials into 80% and 20%
-    train_data, test_data, train_labels, test_labels = train_test_split(zdata, targets['label'].values, 
-                                                        test_size=test_split, stratify=targets['group'])
-    #print("CV:", cv)
+    train_data, test_data, train_labels, test_labels = train_test_split(zdata, 
+                                                        targets['label'].values, 
+                                                        test_size=test_split, 
+                                                        stratify=targets['group'], shuffle=True,                                                                random_state=randi)
     #### Cross validate (tune C w/ train data)
     if cv:
         cv_results = tune_C(train_data, train_labels, scoring_metric='accuracy', cv_nfolds=cv_nfolds, 
@@ -450,9 +454,10 @@ def fit_svm_shuffle(zdata, targets, test_split=0.2, cv_nfolds=5, verbose=False, 
         assert C_value is not None, "Provide value for hyperparam C..."
 
     #### Fit SVM
+    #print("... CV: %.2f" % C_value)
     scaler = StandardScaler().fit(train_data)
     train_data = scaler.transform(train_data)
-    trained_svc = svm.SVC(kernel='linear', C=C_value, random_state=10)
+    trained_svc = svm.SVC(kernel='linear', C=C_value) #, random_state=10)
     scores = cross_validate(trained_svc, train_data, train_labels, cv=5,
                             scoring=('precision_macro', 'recall_macro', 'accuracy'),
                             return_train_score=True)
@@ -469,7 +474,8 @@ def fit_svm_shuffle(zdata, targets, test_split=0.2, cv_nfolds=5, verbose=False, 
     ami = skmetrics.adjusted_mutual_info_score(test_labels, predicted_labels)
     log2_mi = computeMI(test_labels, predicted_labels)
     iterdict.update({'heldout_test_score': test_score, 
-                     'heldout_MI': mi, 'heldout_aMI': ami, 'heldout_log2MI': log2_mi,
+                     'heldout_MI': mi, 'heldout_aMI': ami, 
+                     'heldout_log2MI': log2_mi,
                      'C': C_value})
     # ------------------------------------------------------------------
     # Shuffle LABELS to calculate chance level
@@ -496,41 +502,42 @@ def fit_svm_shuffle(zdata, targets, test_split=0.2, cv_nfolds=5, verbose=False, 
     log2_mi = computeMI(test_labels, predicted_labels)
 
     iterdict_chance.update({'heldout_test_score': test_score_chance, 
-                            'heldout_MI': mi, 'heldout_aMI': ami, 'heldout_log2MI': log2_mi})
+                            'heldout_MI': mi, 'heldout_aMI': ami, 
+                            'heldout_log2MI': log2_mi})
 
     return iterdict, iterdict_chance
 
 
-def fit_svm(zdata, targets, test_split=0.2, cv_nfolds=5, cv=True, 
-                C_value=None, verbose=False, return_clf=False, return_predictions=False):
-
-    #### For each transformation, split trials into 80% and 20%
-    train_data, test_data, train_labels, test_labels = train_test_split(zdata, targets['label'].values, 
-                                                        test_size=test_split, stratify=targets['group'])
-    #### Cross validate (tune C w/ train data)
-    if cv:
-        cv_results = tune_C(train_data, train_labels, scoring_metric='accuracy', cv_nfolds=cv_nfolds, 
-                           test_split=test_split, verbose=verbose)
-        C_value = cv_results['accuracy']['C']
-    else:
-        assert C_value is not None, "Provide value for hyperparam C..."
-
+def fit_svm_no_C(train_data, test_data,train_labels, test_labels, C_value=None, cv_nfolds=5):
     #### Fit SVM
     scaler = StandardScaler().fit(train_data)
     train_data = scaler.transform(train_data)
+
     trained_svc = svm.SVC(kernel='linear', C=C_value, random_state=10)
+    print("... cv")
     scores = cross_validate(trained_svc, train_data, train_labels, cv=cv_nfolds,
-                            scoring=('precision_macro', 'recall_macro', 'accuracy'),
+                            scoring=('accuracy'),
+                            #scoring=('precision_macro', 'recall_macro', 'accuracy'),
                             return_train_score=True)
     iterdict = dict((s, values.mean()) for s, values in scores.items())
+    print('train (C=%.2f):' % C_value, iterdict)
+    print("... fit")
     trained_svc = svm.SVC(kernel='linear', C=C_value, random_state=10).fit(train_data, train_labels)
-        
+       
+    print("... test") 
     #### DATA - Test with held-out data
     test_data = scaler.transform(test_data)
     test_score = trained_svc.score(test_data, test_labels)
 
     #### DATA - Calculate MI
     predicted_labels = trained_svc.predict(test_data)
+    if verbose:    
+        print("Detailed classification report:")
+        print("The model is trained on the full development set.")
+        print("The scores are computed on the full evaluation set.")
+        print(classification_report(test_labels, predicted_labels))
+
+    #predicted_labels = trained_svc.predict(test_data)
     mi = skmetrics.mutual_info_score(test_labels, predicted_labels)
     ami = skmetrics.adjusted_mutual_info_score(test_labels, predicted_labels)
     log2_mi = computeMI(test_labels, predicted_labels)
@@ -546,7 +553,103 @@ def fit_svm(zdata, targets, test_split=0.2, cv_nfolds=5, cv=True,
         return iterdict
 
 
-def do_fit(iter_num, global_rois=None, MEANS=None, sdf=None, sample_ncells=None, cv=True,
+
+def fit_svm(zdata, targets, test_split=0.2, cv_nfolds=5,  n_processes=1,
+                C_value=None, verbose=False, return_clf=False, return_predictions=False,
+                randi=10):
+
+    cv = C_value is None
+
+    #### For each transformation, split trials into 80% and 20%
+    train_data, test_data, train_labels, test_labels = train_test_split(zdata, targets['label'].values, 
+                                                        test_size=test_split, stratify=targets['group'],                                                        shuffle=True, random_state=randi)
+    print("first few:", test_labels[0:10])
+    #### Cross validate (tune C w/ train data)
+    if cv:
+        cv_grid = tune_C(train_data, train_labels, scoring_metric='accuracy', 
+                            cv_nfolds=3, #cv_nfolds, 
+                           test_split=test_split, verbose=verbose) #, n_processes=n_processes)
+
+        C_value = cv_grid.best_params_['C'] #cv_results['accuracy']['C']
+    else:
+        assert C_value is not None, "Provide value for hyperparam C..."
+
+    #trained_svc = cv_grid.best_estimator_
+
+    #### Fit SVM
+    scaler = StandardScaler().fit(train_data)
+    train_data = scaler.transform(train_data)
+
+    trained_svc = svm.SVC(kernel='linear', C=C_value, random_state=10)
+    #print("... cv")
+    scores = cross_validate(trained_svc, train_data, train_labels, cv=cv_nfolds,
+                            scoring=('accuracy'),
+                            #scoring=('precision_macro', 'recall_macro', 'accuracy'),
+                            return_train_score=True)
+    iterdict = dict((s, values.mean()) for s, values in scores.items())
+    print('train (C=%.2f): %.2f, test: %.2f' % (C_value, iterdict['train_score'], iterdict['test_score']))
+    trained_svc = svm.SVC(kernel='linear', C=C_value, random_state=10).fit(train_data, train_labels)
+       
+    #### DATA - Test with held-out data
+    test_data = scaler.transform(test_data)
+    test_score = trained_svc.score(test_data, test_labels)
+
+    #### DATA - Calculate MI
+    predicted_labels = trained_svc.predict(test_data)
+    if verbose:    
+        print("Detailed classification report:")
+        print("The model is trained on the full development set.")
+        print("The scores are computed on the full evaluation set.")
+        print(classification_report(test_labels, predicted_labels))
+
+    #predicted_labels = trained_svc.predict(test_data)
+    mi = skmetrics.mutual_info_score(test_labels, predicted_labels)
+    ami = skmetrics.adjusted_mutual_info_score(test_labels, predicted_labels)
+    log2_mi = computeMI(test_labels, predicted_labels)
+    iterdict.update({'heldout_test_score': test_score, 
+                     'heldout_MI': mi, 'heldout_aMI': ami, 'heldout_log2MI': log2_mi,
+                     'C': C_value})
+    if return_clf:
+        if return_predictions:
+            return iterdict, trained_svc, scaler, (predicted_labels, test_labels)
+        else:
+            return iterdict, trained_svc, scaler
+    else:
+        return iterdict
+
+
+def do_fit_within_fov(iter_num, curr_data=None, sdf=None, verbose=False,
+                        C_value=None, test_split=0.2, cv_nfolds=5, class_a=0, class_b=106):
+    #[gdf, MEANS, sdf, sample_ncells, cv] * n_times)
+    '''
+    Do SVC fit for cells within FOV (no global rois). Assumes 'config' column in curr_data.
+    Do n_iterations, return mean/sem/std over iterations as dict of results.
+    Classes (class_a, class_b) should be the actual labels of the target (i.e., value of morph level)
+    '''   
+    #### Select train/test configs for clf A vs B
+    train_configs = sdf[sdf['morphlevel'].isin([class_a, class_b])].index.tolist() 
+
+    #### Get trial data for selected cells and config types
+    curr_roi_list = [int(c) for c in curr_data.columns if c != 'config']
+    sample_data = curr_data[curr_data['config'].isin(train_configs)]
+    data = sample_data.drop('config', 1) #sample_data[curr_roi_list].copy()
+    zdata = (data - np.nanmean(data)) / np.nanstd(data)
+
+    #### Get labels
+    targets = pd.DataFrame(sample_data['config'].copy(), columns=['config'])
+    targets['label'] = [sdf['morphlevel'][cfg] for cfg in targets['config'].values]
+    targets['group'] = [sdf['size'][cfg] for cfg in targets['config'].values]
+
+    #### Fit
+    cv = C_value is None
+    randi = random.randint(1, 10000)
+    curr_iter = fit_svm(zdata, targets, C_value=C_value, verbose=verbose,
+                            test_split=test_split, cv_nfolds=cv_nfolds, randi=randi)
+
+    return pd.DataFrame(curr_iter, index=[iter_num])
+
+
+def do_fit(iter_num, global_rois=None, MEANS=None, sdf=None, sample_ncells=None, 
            C_value=None, test_split=0.2, cv_nfolds=5, class_a=0, class_b=106):
     #[gdf, MEANS, sdf, sample_ncells, cv] * n_times)
     '''
@@ -574,7 +677,10 @@ def do_fit(iter_num, global_rois=None, MEANS=None, sdf=None, sample_ncells=None,
     #### Fit
     #curr_iter, _ = fit_svm_shuffle(zdata, targets, cv=cv, C_value=C_value,
     #                                      test_split=test_split, cv_nfolds=cv_nfolds)
-    curr_iter = fit_svm(zdata, targets, cv=cv, C_value=C_value, test_split=test_split, cv_nfolds=cv_nfolds)
+
+    randi = random.randint(1, 10000)
+    curr_iter = fit_svm(zdata, targets, C_value=C_value, test_split=test_split, 
+                            cv_nfolds=cv_nfolds, randi=randi)
 
     return pd.DataFrame(curr_iter, index=[iter_num])
 
@@ -582,6 +688,8 @@ def do_fit(iter_num, global_rois=None, MEANS=None, sdf=None, sample_ncells=None,
 def do_fit_train_test_single(iter_num, global_rois=None, MEANS=None, sdf=None, sample_ncells=None,
            cv=True, C_value=None, test_size=0.2, cv_nfolds=5, class_a=0, class_b=106):
     '''
+    Train/test PER SIZE.
+
     Resample w/ replacement from pooled cells (across datasets). Assumes 'sdf' is same for all datasets.
     Return fit results for 1 iteration.
     Classes (class_a, class_b) should be the actual labels of the target (i.e., value of morph level)
@@ -626,9 +734,10 @@ def do_fit_train_test_single(iter_num, global_rois=None, MEANS=None, sdf=None, s
         test_targets['group'] = [sdf['size'][cfg] for cfg in test_targets['config'].values]
 
         #### Train SVM
+        randi = random.randint(1, 10000)
         iterdict, trained_svc, trained_scaler = fit_svm(train_data, targets, return_clf=True,
                                                 test_split=test_size, cv_nfolds=cv_nfolds, 
-                                                cv=cv, C_value=C_value)
+                                                C_value=C_value, randi=randi)
         iterdict.update({'train_transform': train_transform, 'test_transform': train_transform})
         i_list.append(pd.DataFrame(iterdict, index=[i]))
         i+=1
@@ -711,9 +820,10 @@ def do_fit_train_test_subset(iter_num, global_rois=None, MEANS=None, sdf=None, s
     test_targets['group'] = [sdf['size'][cfg] for cfg in test_targets['config'].values]
 
     #### Train SVM 
+    randi = random.randint(1, 10000)
     iterdict, trained_svc, trained_scaler = fit_svm(train_data, targets, return_clf=True,
                                                     test_split=test_split, cv_nfolds=cv_nfolds, 
-                                                    cv=cv, C_value=C_value)
+                                                     C_value=C_value, randi=randi)
     iterdict.update({'train_transform': '_'.join([str(s) for s in train_sizes]),
                      'test_transform': '_'.join([str(s) for s in train_sizes])})
 
@@ -819,11 +929,12 @@ def do_fit_train_test_morph(iter_num, global_rois=None, MEANS=None, sdf=None, sa
     test_targets['group'] = [sdf['size'][cfg] for cfg in test_targets['config'].values]
 
     #### Train SVM ----------------------------------------------------------------------
+    randi = random.randint(1, 10000)
     iterdict, trained_svc, trained_scaler, (predicted_labels, true_labels) = fit_svm(
                                                         train_data, targets, 
                                                         return_clf=True, return_predictions=True,
                                                         test_split=test_size, cv_nfolds=cv_nfolds, 
-                                                        cv=cv, C_value=C_value)
+                                                        C_value=C_value, randi=randi)
     for anchor in [class_a, class_b]:
         a_ixs = np.array([i for i, v in enumerate(true_labels) if v==anchor])
         p_chooseB = sum([1 if p==class_b else 0 \
@@ -903,11 +1014,12 @@ def do_fit_train_single_test_morph(iter_num, global_rois=None, MEANS=None, sdf=N
         test_targets['group'] = [sdf['size'][cfg] for cfg in test_targets['config'].values]
 
         #### Train SVM ----------------------------------------------------------------------
+        randi = random.randint(1, 10000)
         iterdict, trained_svc, trained_scaler, (predicted_labels, true_labels) = fit_svm(
                                                             train_data, targets, 
                                                             return_clf=True, return_predictions=True,
                                                             test_split=test_size, cv_nfolds=cv_nfolds, 
-                                                            cv=cv, C_value=C_value)
+                                                            C_value=C_value, randi=randi)
         for anchor in [class_a, class_b]:
             a_ixs = np.array([i for i, v in enumerate(true_labels) if v==anchor])
             p_chooseB = sum([1 if p==class_b else 0 \
