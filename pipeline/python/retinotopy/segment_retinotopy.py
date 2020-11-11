@@ -166,7 +166,7 @@ def plot_segmentation_steps(img_az, img_el, surface=None, O=None, S_thr=None, pa
     for contour in contours:
         ax.plot(contour[:, 1], contour[:, 0], label_color, lw=lw)
         
-    ax.set_title('Labeled (%i patches)' % len(region_labels))
+    ax.set_title('Labeled (%i patches)' % len(region_props))
     ax.axis('off')
 
     return fig
@@ -295,7 +295,8 @@ def load_roi_assignments(animalid, session, fov, retinorun='retino_run1',
 def get_cells_by_area(sdata, excluded_datasets=[]):
     excluded_datasets = ['20190602_JC080_fov1', '20190605_JC090_fov1',
                          '20191003_JC111_fov1', '20191104_JC117_fov1', 
-                         '20191108_JC113_fov1', '20191004_JC110_fov3'] 
+                         '20191108_JC113_fov1', '20191004_JC110_fov3',
+                         '20191008_JC091_fov'] 
     missing_segmentation=[]
     d_ = []
     for (animalid, session, fov, datakey), g in sdata.groupby(['animalid', 'session', 'fov', 'datakey']):
@@ -318,7 +319,7 @@ def get_cells_by_area(sdata, excluded_datasets=[]):
 
     cells = pd.concat(d_, axis=0).reset_index(drop=True)
     
-    print("Missing %i datasets for segmentation:" % len(missing_segmentation))
+    #print("Missing %i datasets for segmentation:" % len(missing_segmentation))
     for r in missing_segmentation:
         print(r)
 
