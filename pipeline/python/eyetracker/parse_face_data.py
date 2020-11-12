@@ -39,9 +39,10 @@ from pipeline.python.eyetracker import dlc_utils as dlcutils
 
 def load_frame_labels(animalid, session, fov, experiment, traceid='traces001',
         rootdir='/n/coxfs01/2p-data'):
+    print(glob.glob(os.path.join(rootdir, animalid, session, fov, 'combined_%s_static' % experiment, 'traces', '%s*' % traceid)))
 
     labels_dfile = glob.glob(os.path.join(rootdir, animalid, session, fov, 
-                        'combined_%s_*' % experiment, 'traces', 
+                        'combined_%s_static' % experiment, 'traces', 
                         '%s*' % traceid, 'data_arrays', 'labels.npz'))[0]
     l = np.load(labels_dfile)
     labels = pd.DataFrame(data=l['labels_data'], columns=l['labels_columns'])
@@ -62,11 +63,12 @@ def parse_traces_for_experiment(animalid, session, fov, experiment,
                                 traceid=traceid, rootdir=rootdir)
 
     #### Get sources
-    dlc_results_dir, dlc_video_dir = dlcutils.get_dlc_sources(snapshot=snapshot)
+    dlc_results_dir, dlc_video_dir = dlcutils.get_dlc_sources()
 
 
     #### Load pupil data
-    facemeta, pupildata, bad_files = dlcutils.load_pose_data(
+    fovnum = int(fov.split('_')[0][3:])
+    facemeta, pupildata, missing_dlc, bad_files = dlcutils.load_pose_data(
                                         animalid, session, 
                                         fovnum, experiment, 
                                         dlc_results_dir, 
@@ -84,8 +86,12 @@ def parse_traces_for_experiment(animalid, session, fov, experiment,
                                     labels, feature=feature_name,
                                     return_missing=True)
 
+    missing_data = {'no_dlc_files': missing_dlc,
+                    'empty_dlc_files': bad_files,
+                    'missing_trials': missing_trials}
+
     if return_errors:
-        return pupiltraces, bad_files, missing_trials
+        return pupiltraces, missing_data
     else:
         return pupiltraces
 
@@ -98,14 +104,16 @@ def parse_pose_data(animalid, session, fov, experiment,
                     eyetracker_dir='/n/coxfs01/2p-data/eyetracker_tmp'):
 
     # Set output dir
-    dst_dir = os.path.join(rootdir, animalid, session, fov, 
-                            'combined_%s_*' % experiment, 'facetracker')
+    rundir = glob.glob(os.path.join(rootdir, animalid, session, fov, 
+                            'combined_%s_static' % experiment))[0]
+
+    dst_dir = os.path.join(rundir, 'facetracker')
     if not os.path.exists(dst_dir):
         os.makedirs(dst_dir)
     print("Saving output to: %s" % dst_dir)
     
     # Create parse id
-    parse_id = dlcutils.create_parse_id(experiment=experiment, 
+    parse_id = dlcutils.create_parsed_traces_id(experiment=experiment, 
                                alignment_type=alignment_type,
                                feature_name=feature_name,
                                snapshot=snapshot) 
@@ -114,7 +122,7 @@ def parse_pose_data(animalid, session, fov, experiment,
     results_fpath = os.path.join(dst_dir, '%s.pkl' % parse_id)
 
     # parse
-    ptraces, files_, trials_ =  parse_traces_for_experiment(
+    ptraces, missing_data =  parse_traces_for_experiment(
                                     animalid, session, fov, experiment, 
                                     traceid=traceid,
                                     iti_pre=iti_pre, iti_post=iti_post, 
@@ -130,12 +138,14 @@ def parse_pose_data(animalid, session, fov, experiment,
               'iti_pre': iti_pre, 
               'iti_post': iti_post,
               'alignment_type': alignment_type,
-              'bad_files': files_,
-              'missing_trials': trials_,
+              'missing_dlc_files': missing_data['no_dlc_files'],
+              'empty_dlc_files': missing_data['empty_dlc_files'], #files_,
+              'missing_trials': missing_data['missing_trials'], #trials_,
+              'n_missing_trials': len(trials_),
               'feature_name': feature_name, 
               'raw_src': eyetracker_dir}
     with open(params_fpath, 'w') as f:
-        json.dump(params, f, indent=4)
+        json.dump(params, f, indent=4, sort_keys=True)
 
     # Save results
     with open(results_fpath, 'wb') as f:
@@ -188,6 +198,12 @@ def extract_options(options):
             default=default_c, type='choice', choices=choices_c,
             help="Alignment choices: %s. (default: %s" % (choices_c, default_c))
 
+    choices_p = ('pupil_area', 'snout')
+    default_p = 'pupil_area'
+    parser.add_option('-f', '--feature', action='store', dest='feature_name', 
+            default=default_p, type='choice', choices=choices_p,
+            help="Feature to extract, choices: %s. (default: %s" % (choices_p, default_p))
+
 
        
     # data filtering 
@@ -227,7 +243,7 @@ def main(options):
                         snapshot=snapshot,
                         rootdir=rootdir,
                         eyetracker_dir=eyetracker_dir)
-    print("******Finished parsing eyetracker data (snapshot=%i)" % snapshot)
+    print("******[%s|%s|%s] Finished parsing eyetracker data (snapshot=%i)" % (animalid, session, experiment, snapshot))
 
     return
 

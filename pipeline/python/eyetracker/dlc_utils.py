@@ -277,7 +277,7 @@ def get_aggregate_pupildfs(experiment='blobs', feature_name='pupil_area',
 
 def get_dlc_sources(
                     dlc_home_dir='/n/coxfs01/julianarhee/face-tracking',
-                    dlc_projct='facetracking-jyr-2020-01-25'):
+                    dlc_project='facetracking-jyr-2020-01-25'):
 
     project_dir = os.path.join(dlc_home_dir, dlc_project)
     video_dir = os.path.join(project_dir, 'videos')
@@ -333,10 +333,11 @@ def load_pose_data(animalid, session, fovnum, curr_exp, analysis_dir,
    
     print("Loading pose data (dlc)") 
     # Get metadata for facetracker
-    facemeta = align_trials_to_facedata(animalid, session, fovnum, curr_exp, 
+    facemeta, missing_dlc = align_trials_to_facedata(animalid, session, fovnum, curr_exp, 
                                         alignment_type=alignment_type, 
                                         pre_ITI_ms=pre_ITI_ms, 
                                         post_ITI_ms=post_ITI_ms,
+                                        return_missing=True,
                                         eyetracker_dir=eyetracker_dir)
     
     # Get pupil data
@@ -354,7 +355,7 @@ def load_pose_data(animalid, session, fovnum, curr_exp, analysis_dir,
             print("    %s" % b)
 
     if return_bad_files:
-        return facemeta, pupildata, badfiles
+        return facemeta, pupildata, missing_dlc, bad_files
     else:
         return facemeta, pupildata
 
@@ -654,8 +655,9 @@ def align_trials_to_facedata(animalid, session, fovnum, curr_exp,
                              alignment_type='stimulus', pre_ITI_ms=1000, post_ITI_ms=1000,
                              rootdir='/n/coxfs01/2p-data',
                             eyetracker_dir='/n/coxfs01/2p-data/eyetracker_tmp',
-                            blacklist=['20191018_JC113_fov1_blobs_run5'], verbose=False):
-    
+                            verbose=False, return_missing=False,
+                            blacklist=['20191018_JC113_fov1_blobs_run5']):
+ 
     '''
     Align MW trial events/epochs to eyetracker frames for each trial, 
     Matches eyetracker data to each "run" of a given experiment type. 
@@ -665,6 +667,8 @@ def align_trials_to_facedata(animalid, session, fovnum, curr_exp,
         'trial' : aligned frames to pre/post stimulus period, around stimulus 
         'stimulus': align frames to stimulus ON frames (no pre/post)
 
+    blacklist (list)
+        20191018_JC113_fov1_blobs_run5:  paradigm file is f'ed up?
        
     Returns:
     
@@ -682,7 +686,7 @@ def align_trials_to_facedata(animalid, session, fovnum, curr_exp,
 
     # Get all runs for the current experiment
     all_runs = sorted(glob.glob(os.path.join(rootdir, animalid, session, 'FOV%i*' % fovnum,\
-                          '%s*_run*' % curr_exp)), key=natural_keys)
+                          '%s_run*' % curr_exp)), key=natural_keys)
 
     #run_list = [int(os.path.split(rundir)[-1].split('_run')[-1]) for rundir in all_runs]
     run_list = [os.path.split(rundir)[-1].split('_run')[-1] for rundir in all_runs] 
@@ -696,6 +700,7 @@ def align_trials_to_facedata(animalid, session, fovnum, curr_exp,
         print(si, sd)
 
     # Align facetracker frames to MW trials based on time stamps
+    missing_dlc=[]
     facemeta = []
     for run_num in run_list:
         print("----- File %s.-----" % run_num)
@@ -709,10 +714,10 @@ def align_trials_to_facedata(animalid, session, fovnum, curr_exp,
         
         # Get MW info for this run
         n_files = len( glob.glob(os.path.join(rootdir, animalid, session, 'FOV%i*' % fovnum,\
-                                        '*%s*_run%i' % (curr_exp, run_numeric), 'raw*', '*.tif')) )
+                                        '*%s_run%i' % (curr_exp, run_numeric), 'raw*', '*.tif')) )
         
         mw_file = glob.glob(os.path.join(rootdir, animalid, session, 'FOV%i*' % fovnum,\
-                                        '*%s*_run%i' % (curr_exp, run_numeric), \
+                                        '*%s_run%i' % (curr_exp, run_numeric), \
                                         'paradigm', 'trials_*.json'))[0]
         with open(mw_file, 'r') as f:
             mw = json.load(f)
@@ -729,12 +734,13 @@ def align_trials_to_facedata(animalid, session, fovnum, curr_exp,
 
         # Get corresponding eyetracker dir for run
         try:
-            curr_face_srcdir = [s for s in facetracker_srcdirs if '_f%s_' % run_num in s][0]
+            curr_face_srcdir = [s for s in facetracker_srcdirs if '%s_f%s_' % (curr_exp, run_num) in s][0]
             print('... Eyetracker dir: %s' % os.path.split(curr_face_srcdir)[-1])
         except Exception as e:
             print("... ERROR (%s): Unable to load run %s" % (datakey, run_num))
             traceback.print_exc()
-            print(facetracker_srcdirs)
+            print('... Check for: %s|%s|fov%i -- %s_run%s \n(%s)' % (animalid, session, fovnum, curr_exp, run_num, eyetracker_dir))
+            missing_dlc.append(('%s_%s_fov%i' % (session, animalid, fovnum), '%s_%s' % (curr_exp, run_num)))
             continue
  
         # Get eyetracker metadata
@@ -795,6 +801,12 @@ def align_trials_to_facedata(animalid, session, fovnum, curr_exp,
             facemeta.append(tmpdf)
     facemeta = pd.concat(facemeta, axis=0).reset_index(drop=True)
 
+
+    print("There were %i missing DLC results." % len(missing_dlc))
+    for d in missing_dlc:
+        print(d)
+    if return_missing:
+        return facemeta, missing_dlc
     return facemeta
 
 
