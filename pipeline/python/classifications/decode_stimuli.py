@@ -717,7 +717,7 @@ def main(options):
 
     #### Get pupil responses
     if 'pupil' in analysis_type:
-        pupildata = dlcutils.load_pupil_data(experiment=experiment, 
+        pupildata = dlcutils.get_aggregate_pupildfs(experiment=experiment, 
                                     feature_name=pupil_feature, trial_epoch=pupil_epoch,
                                     iti_pre=iti_pre, iti_post=iti_post, stim_dur=stim_dur,
                                     in_rate=pupil_framerate, out_rate=pupil_framerate,
