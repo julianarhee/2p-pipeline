@@ -149,8 +149,8 @@ def get_pose_traces(facemeta, pupildata, labels, feature='pupil', verbose=False)
                             index=np.arange(0, len(eye_values)) )
         pupiltraces.append(pdf)
 
-    pupiltraces = pd.concat(pupiltraces, axis=0).fillna(method='pad')  
-    print("Missing %i trials total" % (len(missing_trials)))
+    pupiltraces = pd.concat(pupiltraces, axis=0) #.fillna(method='pad')  
+    print("Missing %i trials total" % (len(missing_trials)), missing_trials)
 
     return pupiltraces
 
