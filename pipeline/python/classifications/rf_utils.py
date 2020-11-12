@@ -669,14 +669,15 @@ def pairwise_compare_single_metric(comdf, curr_metric='avg_size',
         by_exp = [(a, e) for a, e in zip(a_vals, b_vals)]
         for pi, p in enumerate(by_exp):
             ax.plot([aix-offset, aix+offset], p, marker=marker, color=area_colors[visual_area], 
-                    alpha=1, lw=0.5,  zorder=0, markerfacecolor=None, markeredgecolor=area_colors[visual_area])
+                    alpha=1, lw=0.5,  zorder=0, markerfacecolor=None, 
+                    markeredgecolor=area_colors[visual_area])
         tstat, pval = spstats.ttest_rel(a_vals, b_vals)
         print("%s: (t-stat:%.2f, p=%.2f)" % (visual_area, tstat, pval))
         aix = aix+1
 
     # Plot average
     sns.barplot("visual_area", curr_metric, data=comdf, 
-                hue=compare_var, #zorder=0,
+                hue=compare_var, hue_order=[c1, c2], #zorder=0,
                 ax=ax, order=visual_areas,
                 errcolor="k", edgecolor=('k', 'k', 'k'), facecolor=(1,1,1,0), linewidth=2.5)
     ax.legend_.remove()

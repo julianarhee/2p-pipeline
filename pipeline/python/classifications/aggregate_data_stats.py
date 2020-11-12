@@ -21,7 +21,6 @@ from pipeline.python.utils import label_figure, natural_keys, reformat_morph_val
 # ===============================================================
 # Dataset selection
 # ===============================================================
-
 def get_sorted_fovs(filter_by='drop_repeats', excluded_sessions=[]):
     '''
     For each animal, dict of visual areas and list of tuples (each tuple is roughly similar fov)
@@ -422,6 +421,8 @@ def get_retino_metadata(experiment='retino', animalids=None,
     return meta_list
 
 
+# Overlaps, cell assignments, etc.
+
 def get_neuraldf_for_cells_in_area(cells, MEANS, datakey=None, visual_area=None):
     '''
     For a given dataframe (index=trials, columns=cells), only return cells
@@ -459,65 +460,80 @@ def get_active_cells_in_current_datasets(rois, MEANS, verbose=False):
     
     return cells
 
-
-# Screen/stimulus-specific info
-
-def get_stim_info(animalid, session, fov):
-    S = util.Session(animalid, session, fov) #'FOV%i_zoom2p0x' % fovnum)
-    xpos, ypos = S.get_stimulus_coordinates()
-
-    screenleft, screenright = S.screen['linminW'], S.screen['linmaxW']
-    screenbottom, screentop = S.screen['linminH'], S.screen['linmaxH']
-    screenaspect = S.screen['resolution'][0] / S.screen['resolution'][1]
+def load_aggregate_data(experiment, traceid='traces001', response_type='dff', epoch='stimulus',
+                       responsive_test='ROC', responsive_thr=0.05, n_stds=0.0,
+                       aggregate_dir='/n/coxfs01/julianarhee/aggregate-visual-areas'):
     
-    screen_width_deg = S.screen['linmaxW']*2.
-    screen_height_deg = S.screen['linmaxH']*2.
+    data_outfile = get_aggregate_data_filepath(experiment, traceid=traceid, 
+                        response_type=response_type, epoch=epoch,
+                        responsive_test=responsive_test, 
+                        responsive_thr=responsive_thr, n_stds=n_stds,
+                       aggregate_dir=aggregate_dir)
+    # print("...loading: %s" % data_outfile)
 
-    pix_per_degW = S.screen['resolution'][0] / screen_width_deg
-    pix_per_degH = S.screen['resolution'][1] / screen_height_deg 
+    with open(data_outfile, 'rb') as f:
+        DATA = pkl.load(f)
+    print("...loading: %s" % data_outfile)
 
-    #print(pix_per_degW, pix_per_degH)
-    pix_per_deg = np.mean([pix_per_degW, pix_per_degH])
-    print("avg pix/deg: %.2f" % pix_per_deg)
+    return DATA
 
-    stiminfo = {#'screen_bounds': [screenbottom, screenleft, screentop, screenright],
-                'screen_aspect': screenaspect,
-                'pix_per_deg': pix_per_deg,
-                'stimulus_xpos': xpos,
-                'stimulus_ypos': ypos,
-                'screen_left': -1*screen_width_deg, #screenleft,
-                  'screen_right': screen_width_deg, #screenright,
-                  'screen_top': screen_height_deg, #screentop,
-                  'screen_bottom': -1*screen_height_deg, #screenbottom,
-                  'screen_xres': S.screen['resolution'][0],
-                  'screen_yres': S.screen['resolution'][1]}
+def equal_counts_per_condition(MEANS):
+    '''
+    MEANS: dict
+        keys = datakeys
+        values = neural dataframes (columns=rois, index=trial numbers)
+    
+    Resample so that N trials per condition is the same as min N.
+        '''
 
-    return stiminfo
+    for k, v in MEANS.items():
+        v_df = equal_counts_df(v)
+        
+        MEANS[k] = v_df
 
-def get_aggregate_stimulation_info(expdf):
-    s_list = []
-    i=0
-    for (visual_area, animalid, session, fovnum), tmpd in expdf.groupby(['visual_area', 'animalid', 'session', 'fovnum']):
-        datakey = '_'.join([session, animalid, 'fov%i' % fovnum])
-        fov = 'FOV%i_zoom2p0x' % fovnum
-        stiminfo = get_stim_info(animalid, session, fov)
-#        if experiment is not None:
-#            if experiment=='blobs':
-#                E = util.Objects(animalid, session, fov)
-#            elif experiment=='gratings':
-#                E = util.Gratings(animalid, session, fov) 
-#            sdf = E.get_stimuli() 
-#            stiminfo.update({'stimulus_sizes': sorted(sdf['size'].unique())})
-#        
-  
-        s_ = pd.DataFrame(stiminfo, index=[i])
-        metadict={'visual_area': visual_area, 'animalid': animalid, 
-                  'session': session, 'fovnum': fovnum, 'datakey': datakey}
-        s_ = add_meta_to_df(s_, metadict)
-        s_list.append(s_)
-        i+=1
-    screeninfo = pd.concat(s_list, axis=0)
-    return screeninfo
+    return MEANS
+
+
+def get_source_data(experiment, equalize_now=False,
+                    responsive_test='nstds', responsive_thr=10., response_type='dff',
+                    trial_epoch='stimulus', fov_type='zoom2p0x', state='awake', verbose=False): 
+    #### Get neural responses
+    MEANS = aggr.load_aggregate_data(experiment, 
+                responsive_test=responsive_test, responsive_thr=responsive_thr, 
+                response_type=response_type, epoch=trial_epoch)
+
+    if equalize_now:
+        # Get equal counts
+        print("---equalizing now---")
+        MEANS = aggr.equal_counts_per_condition(MEANS)
+
+    # Get data set metainfo and cells
+    sdata = aggr.get_aggregate_info(traceid=traceid, fov_type=fov_type, state=state)
+    edata = sdata[sdata['experiment']==experiment].copy()
+    rois = seg.get_cells_by_area(edata)
+    cells = get_active_cells_in_current_datasets(rois, MEANS, verbose=False)
+
+    return edata, cells, MEANS
+
+def equal_counts_df(neuraldf):
+    curr_counts = neuraldf['config'].value_counts()
+    if len(curr_counts.unique())==1:
+        return neuraldf #continue
+        
+    min_ntrials = curr_counts.min()
+    all_cfgs = neuraldf['config'].unique()
+
+    kept_trials=[]
+    for cfg in all_cfgs:
+        curr_trials = neuraldf[neuraldf['config']==cfg].index.tolist()
+        np.random.shuffle(curr_trials)
+        kept_trials.extend(curr_trials[0:min_ntrials])
+    kept_trials=np.array(kept_trials)
+
+    assert len(neuraldf.loc[kept_trials]['config'].value_counts().unique())==1, "Bad resampling... Still >1 n_trials"
+
+    return neuraldf.loc[kept_trials]
+
 
 
 # ===============================================================
@@ -668,20 +684,60 @@ def get_counts_for_legend(df, area_colors=None, markersize=10, marker='_',
     return legend_elements
 
 # ===============================================================
+# Screen info 
+# ===============================================================
+def get_stim_info(animalid, session, fov):
+    S = util.Session(animalid, session, fov) #'FOV%i_zoom2p0x' % fovnum)
+    xpos, ypos = S.get_stimulus_coordinates()
+
+    screenleft, screenright = S.screen['linminW'], S.screen['linmaxW']
+    screenbottom, screentop = S.screen['linminH'], S.screen['linmaxH']
+    screenaspect = S.screen['resolution'][0] / S.screen['resolution'][1]
+    
+    screen_width_deg = S.screen['linmaxW']*2.
+    screen_height_deg = S.screen['linmaxH']*2.
+
+    pix_per_degW = S.screen['resolution'][0] / screen_width_deg
+    pix_per_degH = S.screen['resolution'][1] / screen_height_deg 
+
+    #print(pix_per_degW, pix_per_degH)
+    pix_per_deg = np.mean([pix_per_degW, pix_per_degH])
+    print("avg pix/deg: %.2f" % pix_per_deg)
+
+    stiminfo = {#'screen_bounds': [screenbottom, screenleft, screentop, screenright],
+                'screen_aspect': screenaspect,
+                'pix_per_deg': pix_per_deg,
+                'stimulus_xpos': xpos,
+                'stimulus_ypos': ypos,
+                'screen_left': -1*screen_width_deg, #screenleft,
+                  'screen_right': screen_width_deg, #screenright,
+                  'screen_top': screen_height_deg, #screentop,
+                  'screen_bottom': -1*screen_height_deg, #screenbottom,
+                  'screen_xres': S.screen['resolution'][0],
+                  'screen_yres': S.screen['resolution'][1]}
+
+    return stiminfo
+
+def get_aggregate_stimulation_info(expdf):
+    s_list = []
+    i=0
+    for (visual_area, animalid, session, fovnum), tmpd in expdf.groupby(['visual_area', 'animalid', 'session', 'fovnum']):
+        datakey = '_'.join([session, animalid, 'fov%i' % fovnum])
+        fov = 'FOV%i_zoom2p0x' % fovnum
+        stiminfo = get_stim_info(animalid, session, fov) 
+        s_ = pd.DataFrame(stiminfo, index=[i])
+        metadict={'visual_area': visual_area, 'animalid': animalid, 
+                  'session': session, 'fovnum': fovnum, 'datakey': datakey}
+        s_ = add_meta_to_df(s_, metadict)
+        s_list.append(s_)
+        i+=1
+    screeninfo = pd.concat(s_list, axis=0)
+    return screeninfo
+
+
+# ===============================================================
 # Data loading
 # ===============================================================
-def isnumber(n):
-    try:
-        float(n)   # Type-casting the string to `float`.
-                   # If string is not a valid `float`, 
-                   # it'll raise `ValueError` exception
-    except ValueError:
-        return False
-    except TypeError:
-        return False
-
-    return True
-
 
 def get_trial_alignment(animalid, session, fovnum, curr_exp, traceid='traces001',
         rootdir='/n/coxfs01/2p-data'):
@@ -718,6 +774,31 @@ def get_trial_alignment(animalid, session, fovnum, curr_exp, traceid='traces001'
     return infodict
 
             
+def aggregate_alignment_info(edata, experiment='blobs', traceid='traces001'):
+    i=0
+    d_=[]
+    for (visual_area, animalid, session, fovnum, datakey), g in edata[edata['experiment']==experiment].groupby(['visual_area', 'animalid', 'session', 'fovnum', 'datakey']):
+
+        # Alignment info
+        alignment_info = get_trial_alignment(animalid, session, fovnum, experiment, traceid=traceid)
+        if alignment_info==-1:
+            print("Realign: %s" % datakey)
+            continue
+        iti_pre_ms = float(alignment_info['iti_pre'])*1000
+        iti_post_ms = float(alignment_info['iti_post'])*1000
+        #print("ITI pre/post: %.1f ms, %.1f ms" % (iti_pre_ms, iti_post_ms))
+        d_.append(pd.DataFrame({'visual_area': visual_area, 
+                                 'iti_pre': float(alignment_info['iti_pre']),
+                                 'iti_post': float(alignment_info['iti_post']),
+                                 'stim_dur': float(alignment_info['stim_on_sec']),
+                                 'datakey': datakey, 
+                                'animalid': animalid, 'session': session, 
+                                'fovnum': fovnum}, index=[i]))
+        i+=1
+    A = pd.concat(d_, axis=0).reset_index(drop=True)  
+
+    return A
+
 
 def load_traces(animalid, session, fovnum, curr_exp, traceid='traces001',
                 response_type='dff', 
@@ -844,22 +925,6 @@ def get_aggregate_data_filepath(experiment, traceid='traces001', response_type='
     return data_outfile #print(data_desc)
     
 
-def load_aggregate_data(experiment, traceid='traces001', response_type='dff', epoch='stimulus',
-                       responsive_test='ROC', responsive_thr=0.05, n_stds=0.0,
-                       aggregate_dir='/n/coxfs01/julianarhee/aggregate-visual-areas'):
-    
-    data_outfile = get_aggregate_data_filepath(experiment, traceid=traceid, 
-                        response_type=response_type, epoch=epoch,
-                        responsive_test=responsive_test, 
-                        responsive_thr=responsive_thr, n_stds=n_stds,
-                       aggregate_dir=aggregate_dir)
-    # print("...loading: %s" % data_outfile)
-
-    with open(data_outfile, 'rb') as f:
-        DATA = pkl.load(f)
-    print("...loading: %s" % data_outfile)
-
-    return DATA
 
 
 def aggregate_and_save(experiment, traceid='traces001', 

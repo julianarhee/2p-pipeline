@@ -8,35 +8,169 @@ import numpy as np
 import pandas as pd
 
 
-
 def atoi(text):
     return int(text) if text.isdigit() else text
 
 def natural_keys(text):
     return [ atoi(c) for c in re.split('(\d+)', text) ]
 
-def get_datasets_with_dlc(sdata):
+def isnumber(n):
+    try:
+        float(n)   # Type-casting the string to `float`.
+                   # If string is not a valid `float`, 
+                   # it'll raise `ValueError` exception
+    except ValueError:
+        return False
+    except TypeError:
+        return False
+
+    return True
+
+
+# ===================================================================
+# Data loading 
+# ====================================================================
+def create_pupildf_name(experiment, feature_name, trial_epoch, snapshot):
+    fname = '%s_%s_%s_snapshot-%i' % (experiment, feature_name, trial_epoch, snapshot)
+    return fname
+
+def load_pupildf(snapshot, experiment='blobs', feature_name='pupil_area', trial_epoch='pre',
+                aggregate_dir='/n/coxfs01/julianarhee/aggregate-visual-areas'):
+    '''
+    Load presaved dict of pupil dfs.
+
+    Returns:
+
+    pupildata (dict)
+        keys: datakeys (like MEANS dict)
+        values: dataframes (pupildf, trial metrics) 
+    '''
+    import cPickle as pkl
+
+    fname = create_pupildf_name(experiment, feature_name, trial_epoch, snapshot)
+    pupildf_fpath = os.path.join(aggregate_dir, 'behavior-state', '%s.pkl' % fname)
+    pupildata=None
+    try:
+        with open(pupildf_fpath, 'rb') as f:
+            pupildata = pkl.load(f)
+    except Exception as e:
+        print('File not found: %s' % pupildf_fpath)
+    return pupildata
+
+
+def load_pupil_traces(experiment='blobs', feature_name='pupil_area', snapshot=391800, 
+                aggregate_dir='/n/coxfs01/julianarhee/aggregate-visual-areas'):
+    import cPickle as pkl
+
+    '''
+    Get pupil traces extracted from DLC for all FOVs.
+    '''
+    pupiltraces=None
+    #### Loading existing extracted pupil data
+    if feature_name == 'pupil_area':
+        traces_fname = '%s_pupil_area_traces_snapshot-%i' % (experiment, snapshot)
+    else:
+        traces_fname = '%s_pupil-traces_snapshot-%i' % (experiment, snapshot)
+       
+    pupil_fpath = os.path.join(aggregate_dir, 'behavior-state', '%s.pkl' % traces_fname) 
+    assert os.path.exists(pupil_fpath), "NOT found: %s" % traces_fname 
+    #print(pupil_fpath)
+
+    # This is a dict, keys are datakeys
+    with open(pupil_fpath, 'rb') as f:
+        pupiltraces = pkl.load(f)
+
+    return pupiltraces
+        
+def make_pupildf(pupiltraces, fname, feature_name='pupil_fraction', in_rate=20., out_rate=20., 
+                    iti_pre=1., iti_post=1., stim_dur=1.):
+    '''
+    Takes pupil traces, resamples, then returns dict of pupil dataframes.
+    Durations are in seconds.
+ 
+    Returns:
+
+    pupildata (dict)
+        keys: datakeys (like MEANS dict)
+        values: dataframes (pupildf, trial metrics)
+    '''
+    import cPickle as pkl
+
+    desired_nframes = int((stim_dur + iti_pre + iti_post)*out_rate)
+    iti_pre_ms=iti_pre*1000
+    new_stim_on = int(round(iti_pre*out_rate))
+    
+    pupildata={}
+    for k, ptraces in pupiltraces.items():
+        dkey = '_'.join(k.split('_')[0:-1])
+
+        pupil_r = resample_pupil_traces(ptraces, 
+                                in_rate=in_rate, out_rate=out_rate, 
+                                desired_nframes=desired_nframes, feature_name=feature_name, 
+                                iti_pre_ms=iti_pre_ms)
+        pupildf = get_pupil_df(pupil_r, 
+                                trial_epoch=pupil_epoch, new_stim_on=new_stim_on)
+        pupildata[dkey] = pupildf
+    with open(pupildf_fpath, 'wb') as f:
+        pkl.dump(pupildata, f, protocol=pkl.HIGHEST_PROTOCOL)
+
+    return pupildata
+ 
+
+def load_pupil_data(experiment='blobs', feature_name='pupil_area', trial_epoch='pre',
+                snapshot=391800, in_rate=20., out_rate=20., iti_pre=1., iti_post=1., stim_dur=1.,
+                aggregate_dir='/n/coxfs01/julianarhee/aggregate-visual-areas', create_new=False):
+    '''
+    Returns:
+
+    pupildata (dict)
+        keys: datakeys (like MEANS dict)
+        values: dataframes (pupildf, trial metrics)
+    '''
+    if not create_new:
+        try:
+            pupildata = load_pupildf(snapshot, experiment=experiment, feature_name=feature_name, 
+                            trial_epoch=trial_epoch, aggregate_dir=aggregate_dir)
+            assert pupildata is not None, "No pupil df. Creating new."
+        except Exception as e:
+            create_new=True
+
+    if create_new:
+        pupiltraces = load_pupil_traces(experiment=experiment, feature_name=feature_name, 
+                                    snapshot=snapshot, aggregate_dir=aggregate_dir)
+        fname = create_pupildf_name(experiment, feature_name, trial_epoch, snapshot)
+        pupildata = make_pupildf(pupiltraces, fname, in_rate=in_rate, out_rate=out_rate, 
+                        iti_pre=iti_pre, iti_post=iti_post, stim_dur=stim_dur)
+
+    return pupildata
+
+
+
+def get_datasets_with_dlc(sdata, dlc_projectid='facetrackingJan25',
+                        scorer='DLC_resnet50', iteration=1, shuffle=1, 
+                        trainingsetindex=0, snapshot=391800,
+                        dlc_home_dir='/n/coxfs01/julianarhee/face-tracking',
+                        dlc_project = 'facetracking-jyr-2020-01-25'):
     # This stuff is hard-coded because we only have 1
     #### Set source/dst paths
-    dlc_home_dir = '/n/coxfs01/julianarhee/face-tracking'
-    dlc_project = 'facetracking-jyr-2020-01-25' #'sideface-jyr-2020-01-09'
+    #dlc_home_dir = '/n/coxfs01/julianarhee/face-tracking'
+    #dlc_project = 'facetracking-jyr-2020-01-25' #'sideface-jyr-2020-01-09'
     dlc_project_dir = os.path.join(dlc_home_dir, dlc_project)
 
     dlc_video_dir = os.path.join(dlc_home_dir, dlc_project, 'videos')
     dlc_results_dir = os.path.join(dlc_project_dir, 'pose-analysis') # DLC analysis output dir
 
     #### Training iteration info
-    dlc_projectid = 'facetrackingJan25'
-    scorer='DLC_resnet50'
-    iteration = 1
-    shuffle = 1
-    trainingsetindex=0
+    #dlc_projectid = 'facetrackingJan25'
+    #scorer='DLC_resnet50'
+    #iteration = 1
+    #shuffle = 1
+    #trainingsetindex=0
     videotype='.mp4'
-    snapshot = 391800 #430200 #20900
+    #snapshot = 391800 #430200 #20900
     DLCscorer = '%s_%sshuffle%i_%i' % (scorer, dlc_projectid, shuffle, snapshot)
     print("Extracting results from scorer: %s" % DLCscorer)
-
-    
+ 
     print("Checking for existing results: %s" % dlc_results_dir)
     dlc_runkeys = list(set([ os.path.split(f)[-1].split('DLC')[0] \
                            for f in glob.glob(os.path.join(dlc_results_dir, '*.h5'))]))
@@ -73,8 +207,10 @@ def load_pose_data(animalid, session, fovnum, curr_exp, analysis_dir, feature_li
 
     return facemeta, pupildata
 
+# ===================================================================
+# Feature extraction (traces)
+# ====================================================================
 
-#def calculate_pupil_stats(facemeta, pupildata, labels):
 def get_pose_traces(facemeta, pupildata, labels, feature='pupil', verbose=False):
     '''
     Combines indices for MW trials (facemeta) with pupil traces (pupildata)
@@ -155,8 +291,9 @@ def get_pose_traces(facemeta, pupildata, labels, feature='pupil', verbose=False)
     return pupiltraces
 
 
-
-#def calculate_pupil_stats(facemeta, pupildata, labels):
+# ===================================================================
+# Calculate metrics (trial stats)
+# ====================================================================
 def calculate_pose_stats(facemeta, pupildata, labels, feature='pupil'):
     '''
     Combines indices for MW trials (facemeta) with pupil traces (pupildata)
@@ -250,6 +387,10 @@ def get_per_trial_metrics(pupildata, facemeta, feature_name='pupil_maj', feature
     return pupilstats
 
 
+
+# ===================================================================
+# Data processing 
+# ====================================================================
 # Data cleanup
 
 def get_metaface_for_run(curr_src):
@@ -685,3 +826,369 @@ def subtract_condition_mean(neuraldata, labels, included_trials):
         residuals_neural.loc[g.index] = neuraldata.loc[g.index] - neuraldata.loc[g.index].mean(axis=0)
 
     return residuals_neural
+
+
+# ===================================================================
+# Trace processing 
+# ====================================================================
+from scipy import interpolate
+
+def resample_traces(samples, in_rate=44.65, out_rate=20.0):
+
+    n_in_samples= len(samples)
+    in_samples = samples.copy() #[rid, :] #np.array(tracef['File%03d' % curr_file][trace_type][:])
+    in_tpoints = np.arange(0, n_in_samples) #len(in_samples))
+
+    n_out_samples = round(n_in_samples * out_rate/in_rate)
+    #print("N out samples: %i" % n_out_samples)
+
+    flinear = interpolate.interp1d(in_tpoints, in_samples, axis=0)
+
+    out_tpoints = np.linspace(in_tpoints[0], in_tpoints[-1], n_out_samples)
+    out_samples = flinear(out_tpoints)
+    #print("Out samples:", out_samples.shape)
+    
+    return out_tpoints, out_samples
+
+def bin_pupil_traces(pupiltraces, feature_name='pupil',in_rate=20.0, out_rate=22.325, 
+                          min_nframes=None, iti_pre_ms=1000):
+    pupildfs = []
+    if min_nframes is None:
+        min_nframes = int(round(np.mean([len(g) for p, g in pupiltraces.groupby(['trial'])])))
+    #print(min_nframes)
+    for trial, g in pupiltraces.groupby(['trial']):
+        if len(g[feature_name]) < min_nframes:
+            npad = min_nframes - len(g[feature_name])
+            vals = np.pad(g[feature_name].values, pad_width=((0, npad)), mode='edge')
+        else:
+            vals = g[feature_name].values[0:min_nframes]
+        #print(len(vals))
+        out_ixs, out_s = resample_traces(vals, in_rate=in_rate, out_rate=out_rate)
+        currconfig = g['config'].unique()[0]
+        new_stim_on = (iti_pre_ms/1E3)*out_rate #int(np.where(abs(out_ixs-stim_on) == min(abs(out_ixs-stim_on)))[0])
+        pupildfs.append(pd.DataFrame({feature_name: out_s, 
+                                       'stim_on': [new_stim_on for _ in np.arange(0, len(out_s))],
+                                       'config': [currconfig for _ in np.arange(0, len(out_s))],
+                                       'trial': [trial for _ in np.arange(0, len(out_s))]} ))
+    pupildfs = pd.concat(pupildfs, axis=0).reset_index(drop=True)
+    return pupildfs
+
+
+def zscore_array(v):
+    return (v-v.mean())/v.std()
+
+
+def get_pupil_df(pupil_r, trial_epoch='pre', new_stim_on=20., nframes_on=20.):
+    '''
+    Turn resampled pupil traces into reponse vectors
+    
+    trial_epoch : (str)
+        'pre': Use PRE-stimulus period for response metric.
+        'stim': Use stimulus period
+        'all': Use full trial period
+    
+    new_stim_on: (int)
+        Frame index for stimulus start (only needed if trial_epoch is 'pre' or 'stim')
+        
+    pupil_r : resampled pupil traces (columns are trial, frame, pupil_area, frame_int, frame_ix)
+    '''
+    if trial_epoch=='pre':
+        pupildf = pd.concat([g[g['frame_ix'].isin(np.arange(0, new_stim_on))].mean(axis=0) \
+                            for t, g in pupil_r.groupby(['trial'])], axis=1).T
+    elif trial_epoch=='stim':
+        pupildf = pd.concat([g[g['frame_ix'].isin(np.arange(new_stim_on, new_stim_on+nframes_on))].mean(axis=0) \
+                            for t, g in pupil_r.groupby(['trial'])], axis=1).T
+    else:
+        pupildf = pd.concat([g.mean(axis=0) for t, g in pupil_r.groupby(['trial'])], axis=1).T
+    #print(pupildf.shape)
+
+    return pupildf
+
+def resample_pupil_traces(pupiltraces, in_rate=20., out_rate=20., iti_pre_ms=1000, desired_nframes=60, 
+                         feature_name='pupil_area'):
+    '''
+    resample pupil traces to make sure we have exactly the right # of frames to match neural data
+    '''
+    binned_pupil = bin_pupil_traces(pupiltraces, feature_name=feature_name,
+                                         in_rate=in_rate, out_rate=out_rate, 
+                                         min_nframes=desired_nframes, iti_pre_ms=iti_pre_ms)
+    trials_ = sorted(pupiltraces['trial'].unique())
+    frames_ = np.arange(0, desired_nframes)
+    pupil_trialmat = pd.DataFrame(np.vstack([p[feature_name].values for trial, p in binned_pupil.groupby(['trial'])]),
+                                  index=trials_, columns=frames_)
+    pupil_r = pupil_trialmat.T.unstack().reset_index().rename(columns={'level_0': 'trial', 
+                                                                       'level_1': 'frame',
+                                                                       0: feature_name})
+    pupil_r['frame_int'] = [int(round(f)) for f in pupil_r['frame']]
+    interp_frame_ixs = list(sorted(pupil_r['frame'].unique()))
+    pupil_r['frame_ix'] = [interp_frame_ixs.index(f) for f in pupil_r['frame']]
+
+    return pupil_r
+    
+def match_trials(neuraldf, pupiltraces, labels_all):
+    '''
+    make sure neural data trials = pupil data trials
+    '''
+    trials_with_pupil = list(pupiltraces['trial'].unique())
+    trials_with_neural = list(labels_all['trial_num'].unique())
+    n_pupil_trials = len(trials_with_pupil)
+    n_neural_trials = len(trials_with_neural)
+
+    labels = labels_all[labels_all['trial_num'].isin(trials_with_pupil)].copy()
+    if n_pupil_trials > n_neural_trials:
+        pupiltraces = pupiltraces[pupiltraces['trial'].isin(trials_with_neural)]
+    elif n_pupil_trials < n_neural_trials:    
+        print(labels.shape, labels_all.shape)
+        neuraldf = neuraldf.loc[trials_with_pupil]
+    
+    return neuraldf, pupiltraces
+
+def match_trials_df(neuraldf, pupildf, equalize_conditions=False):
+    '''
+    make sure neural data trials = pupil data trials
+    '''
+    from pipeline.python.classifications.aggregate_data_stats import equal_counts_df
+    trials_with_pupil = list(pupildf['trial'].unique())
+    trials_with_neural = neuraldf.index.tolist()
+    n_pupil_trials = len(trials_with_pupil)
+    n_neural_trials = len(trials_with_neural)
+
+    if n_pupil_trials > n_neural_trials:
+        pupildf = pupildf[pupildf['trial'].isin(trials_with_neural)]
+    elif n_pupil_trials < n_neural_trials:    
+        neuraldf = neuraldf.loc[trials_with_pupil]
+  
+    # Equalize trial numbers after all neural and pupil trials matched 
+    if equalize_conditions:
+        neuraldf = equal_counts_df(neuraldf)
+        new_trials_neural = neuraldf.index.tolist()
+        new_trials_pupil = pupildf['trial'].unique()
+        if len(new_trials_neural) < len(new_trials_pupil):
+            pupildf = pupildf[pupildf['trial'].isin(new_trials_neural)]
+            
+    return neuraldf, pupildf
+
+def neural_trials_from_pupil_trials(neuraldf, pupildf):
+    '''
+    Given pupildf, with trial numbers (trial is column in pupildf),
+    return the corresponding neuraldf trials.
+    Also return subset of pupil df as needed.
+
+    '''
+    return None
+
+def split_pupil_range(pupildf, feature_name='pupil_area', n_cuts=3, return_bins=False):
+    '''
+    n_cuts (int)
+        4: use quartiles (0.25,  0.5 ,  0.75)
+        3: use H/M/L (0.33, 0.66)
+    '''
+
+    bins = np.linspace(0, 1, n_cuts+1)[1:-1]
+    low_bin = bins[0]
+    high_bin = bins[-1]
+    pupil_quantiles = pupildf[feature_name].quantile(bins)
+    low_pupil_thr = pupil_quantiles[low_bin]
+    high_pupil_thr = pupil_quantiles[high_bin]
+    pupil_low = pupildf[pupildf[feature_name]<=low_pupil_thr].copy()
+    pupil_high = pupildf[pupildf[feature_name]>=high_pupil_thr].copy()
+    # Can also bin into low, mid, high
+    #pupildf['quantile'] = pd.qcut(pupildf[face_feature], n_cuts, labels=False)
+    
+    if return_bins:
+        return bins, pupil_low, pupil_high
+    else:
+        return pupil_low, pupil_high
+
+
+
+
+
+
+
+
+
+
+# ===================================================================
+# Neural trace processing (should prob go somewhere else)
+# ====================================================================
+def resample_neural_traces(roi_traces, labels=None, in_rate=44.65, out_rate=20.0, 
+                           zscore=True, return_labels=True):
+
+    # Create trial mat, downsampled: shape = (ntrials, nframes_per_trial)
+    trialmat = pd.DataFrame(np.vstack([roi_traces[tg.index] for trial, tg in labels.groupby(['trial'])]),\
+                            index=[int(trial[5:]) for trial, tg in labels.groupby(['trial'])])
+
+    #### Bin traces - Each tbin is a column, each row is a sample 
+    sample_data = trialmat.fillna(method='pad').copy()
+    ntrials, nframes_per_trial = sample_data.shape
+
+    #### Get resampled indices of trial epochs
+    #print("%i frames/trial" % nframes_per_trial)
+    out_tpoints, out_ixs = resample_traces(np.arange(0, nframes_per_trial), 
+                                           in_rate=in_rate, out_rate=out_rate)
+    
+    #### Bin traces - Each tbin is a column, each row is a sample 
+    df = trialmat.fillna(method='pad').copy().T
+    xdf = df.reindex(df.index.union(out_ixs)).interpolate('values').loc[out_ixs]
+    binned_trialmat = xdf.T
+    n_tbins = binned_trialmat.shape[1]
+
+    #### Zscore traces 
+    if zscore:
+        traces_r = binned_trialmat / binned_trialmat.values.ravel().std()
+    else:
+        traces_r = binned_trialmat.copy()
+        
+    # Reshape roi traces
+    curr_roi_traces = traces_r.T.unstack().reset_index() # level_0=trial number, level_1=frame number
+    curr_roi_traces.rename(columns={0: roi_traces.name}, inplace=True)
+    
+    if return_labels:
+        configs_on_included_trials = [tg['config'].unique()[0] for trial, tg in labels.groupby(['trial'])]
+        included_trials = [trial for trial, tg in labels.groupby(['trial'])]
+        cfg_list = np.hstack([[c for _ in np.arange(0, n_tbins)] for c in configs_on_included_trials])
+        curr_roi_traces.rename(columns={'level_0': 'trial', 'level_1': 'frame_interp'}, inplace=True)
+        curr_roi_traces['config'] = cfg_list
+        return curr_roi_traces
+    else:
+        return curr_roi_traces[roi_traces.name]
+
+def resample_labels(labels, in_rate=44.65, out_rate=20):
+    # Create trial mat, downsampled: shape = (ntrials, nframes_per_trial)
+    trialmat = pd.DataFrame(np.vstack([tg.index for trial, tg in labels.groupby(['trial'])]),\
+                            index=[int(trial[5:]) for trial, tg in labels.groupby(['trial'])])
+    configs_on_included_trials = [tg['config'].unique()[0] for trial, tg in labels.groupby(['trial'])]
+    included_trials = [trial for trial, tg in labels.groupby(['trial'])]
+
+    #### Bin traces - Each tbin is a column, each row is a sample 
+    sample_data = trialmat.fillna(method='pad').copy()
+    ntrials, nframes_per_trial = sample_data.shape
+    
+
+    #### Get resampled indices of trial epochs
+    print("%i frames/trial" % nframes_per_trial)
+    out_tpoints, out_ixs = resample_traces(np.arange(0, nframes_per_trial), 
+                                           in_rate=in_rate, out_rate=out_rate)
+    
+    #### Bin traces - Each tbin is a column, each row is a sample 
+    df = trialmat.fillna(method='pad').copy().T
+    xdf = df.reindex(df.index.union(out_ixs)).interpolate('values').loc[out_ixs]
+    binned_trialmat = xdf.T
+    n_tbins = binned_trialmat.shape[1]
+
+    # Reshape roi traces
+    curr_roi_traces = binned_trialmat.T.unstack().reset_index() # level_0=trial number, level_1=frame number
+    curr_roi_traces.rename(columns={0: 'index'}, inplace=True)
+    
+
+    cfg_list = np.hstack([[c for _ in np.arange(0, n_tbins)] for c in configs_on_included_trials])
+    curr_roi_traces.rename(columns={'level_0': 'trial', 'level_1': 'frame_interp'}, inplace=True)
+    curr_roi_traces['config'] = cfg_list
+    
+    return curr_roi_traces
+
+def roi_traces_to_trialmat(curr_roi_traces, trial_ixs):
+    '''Assumes that label info in curr_roi_traces dataframe (return_labels=True, for resample_neural_traces())
+    '''
+    rid = [i for i in curr_roi_traces.columns if isnumber(i)][0]
+    
+    curr_ntrials = len(trial_ixs)
+    curr_nframes = curr_roi_traces[curr_roi_traces['trial'].isin(trial_ixs)][rid].shape[0]/curr_ntrials
+    trial_tmat = curr_roi_traces[curr_roi_traces['trial'].isin(trial_ixs)][rid].reshape((curr_ntrials,curr_nframes))
+    
+    return trial_tmat
+
+import multiprocessing as mp
+from functools import partial 
+
+def initializer(terminating_):
+    # This places terminating in the global namespace of the worker subprocesses.
+    # This allows the worker function to access `terminating` even though it is
+    # not passed as an argument to the function.
+    global terminating
+    terminating = terminating_
+
+
+def apply_to_columns(df, labels, in_rate=44.65, out_rate=20, zscore=True):
+    print("is MP")
+    df = df.T
+    curr_rois = df.columns
+    
+    newdf = pd.concat([resample_neural_traces(df[x], labels, in_rate=framerate, out_rate=face_framerate, 
+                                             zscore=zscore, return_labels=False) for x in curr_rois])
+    return newdf
+    
+def resample_roi_traces_mp(df, labels, in_rate=44.65, out_rate=20., zscore=True, n_processes=4):
+    #cart_x=None, cart_y=None, sphr_th=None, sphr_ph=None,
+    #                      row_vals=None, col_vals=None, resolution=None, n_processes=4):
+    results = []
+    terminating = mp.Event()
+    
+    df_split = np.array_split(df.T, n_processes)
+    pool = mp.Pool(processes=n_processes, initializer=initializer, initargs=(terminating,))
+    try:
+        results = pool.map(partial(apply_to_columns, labels=labels,
+                                   in_rate=in_rate, out_rate=out_rate, zscore=zscore), df_split)
+        print("done!")
+    except KeyboardInterrupt:
+        pool.terminate()
+        print("terminating")
+    finally:
+        pool.close()
+        pool.join()
+  
+    print(results[0].shape)
+    df = pd.concat(results, axis=1)
+    print(df.shape)
+    return df #results
+
+def resample_all_roi_traces(traces, labels, in_rate=44.65, out_rate=20.):
+    roi_list = traces.columns.tolist()
+    configs_on_included_trials = [tg['config'].unique()[0] for trial, tg in labels.groupby(['trial'])]
+    included_trials = [trial for trial, tg in labels.groupby(['trial'])]
+
+    r_list=[]
+
+    for ri, rid in enumerate(roi_list):
+        if ri%20==0:
+            print("... %i of %i cells" % (int(ri+1), len(roi_list)))
+            
+        # Create trial mat, downsampled: shape = (ntrials, nframes_per_trial)
+        trialmat = pd.DataFrame(np.vstack([traces[rid][tg.index] for trial, tg in labels.groupby(['trial'])]),\
+                                index=[int(trial[5:]) for trial, tg in labels.groupby(['trial'])])
+
+        #### Bin traces - Each tbin is a column, each row is a sample 
+        sample_data = trialmat.fillna(method='pad').copy()
+        ntrials, nframes_per_trial = sample_data.shape
+
+        #### Get resampled indices of trial epochs
+        out_tpoints, out_ixs = resample_traces(np.arange(0, nframes_per_trial), 
+                                               in_rate=in_rate, out_rate=out_rate)
+
+        #### Bin traces - Each tbin is a column, each row is a sample 
+        df = sample_data.T
+        xdf = df.reindex(df.index.union(out_ixs)).interpolate('values').loc[out_ixs] # Interpolate resampled values
+        binned_trialmat = xdf.T # should be Ntrials # Nframes
+        n_trials, n_tbins = binned_trialmat.shape
+
+        #### Zscore traces 
+        zscored_neural = binned_trialmat / binned_trialmat.values.ravel().std()
+
+        # Reshape roi traces
+        cfg_list = np.hstack([[c for _ in np.arange(0, n_tbins)] for c in configs_on_included_trials])
+        curr_roi_traces = zscored_neural.T.unstack().reset_index() # level_0=trial number, level_1=frame number
+        curr_roi_traces.rename(columns={'level_0': 'trial', 'level_1': 'frame_ix', 0: rid}, inplace=True)
+        r_list.append(curr_roi_traces)
+
+    # Combine all traces into 1 dataframe (all frames x nrois)
+    traces_r = pd.concat(r_list, axis=1)
+    traces_r['config'] = cfg_list
+
+    _, dii = np.unique(traces_r.columns, return_index=True)
+    traces_r = traces_r.iloc[:, dii]
+    
+    return traces_r
+
+
+
