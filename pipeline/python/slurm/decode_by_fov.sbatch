@@ -2,10 +2,10 @@
 # decode_by_fov.sbatch
 #
 #SBATCH -J decode_fov # A single job name for the array
-#SBATCH -p shared # run on cox gpu to use correct env 
-#SBATCH -n 16 # one core
+#SBATCH -p cox # run on cox gpu to use correct env 
+#SBATCH -n 8 # one core
 #SBATCH -N 1 # on one node
-#SBATCH -t 0-03:00 # Running time of 3 hours
+#SBATCH -t 0-00:30 # Running time of 3 hours
 #SBATCH --mem 16384 #70656 # Memory request of 70 GB (set to 98304 if exceed lim)
 #SBATCH -o decodefov_%A_%a.out # Standard output
 #SBATCH -e decodefov_%A_%a.err # Standard error
@@ -32,6 +32,8 @@ SESSION="$2"
 FOV="$3"
 EXP="$4"
 TRACEID="$5"
+ANALYSIS="$6"
+CVAL="$7"
 
 echo "ANIMALID: ${ANIMALID}"
 echo "SESSION: ${SESSION}"
@@ -49,5 +51,6 @@ echo "SESSION: ${SESSION}"
 #cd ${OUTDIR}
 
 # run processing on raw data
-python /n/coxfs01/2p-pipeline/repos/2p-pipeline/pipeline/python/classifications/decode_by_fov.py -i $ANIMALID -S $SESSION -A $FOV -E $EXP -t $TRACEID -n 16 -N 50 --new -V --cv
+
+python /n/coxfs01/2p-pipeline/repos/2p-pipeline/pipeline/python/classifications/decode_stimuli.py -i $ANIMALID -S $SESSION -A $FOV -E $EXP -t $TRACEID -X $ANALYSIS -n 8 -N 100 --new -C $CVAL
 

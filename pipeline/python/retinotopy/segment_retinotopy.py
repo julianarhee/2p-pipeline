@@ -320,6 +320,7 @@ def get_cells_by_area(sdata, excluded_datasets=[]):
     cells = pd.concat(d_, axis=0).reset_index(drop=True)
     
     #print("Missing %i datasets for segmentation:" % len(missing_segmentation))
+    print("Segmentation, missing:")
     for r in missing_segmentation:
         print(r)
 

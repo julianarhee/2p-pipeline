@@ -392,6 +392,7 @@ def abline(slope, intercept, ax=None, color='purple', ls='-',
 import random
 import pandas as pd
 
+
 def melt_square_matrix(df, metric_name='value', add_values={}, include_diagonal=False):
     
     k = 0 if include_diagonal else 1
@@ -406,6 +407,35 @@ def melt_square_matrix(df, metric_name='value', add_values={}, include_diagonal=
     
     return df
 
+
+def get_equal_counts_per_condition(labels, return_labels=True):
+    # Check trial counts / condn:
+    #print("Checking counts / condition...")
+    min_n = labels.groupby(['config'])['trial'].unique().apply(len).min()
+    conds_to_downsample = np.where(labels.groupby(['config'])['trial'].unique().apply(len) != min_n)[0]
+    if len(conds_to_downsample) > 0:
+        print("... adjusting for equal reps / condn...")
+        d_cfgs = [sorted(labels.groupby(['config']).groups.keys())[i]\
+                  for i in conds_to_downsample]
+        trials_kept = []
+        for cfg in labels['config'].unique():
+            c_trialnames = labels[labels['config']==cfg]['trial'].unique()
+            if cfg in d_cfgs:   
+                # In-place shuffle
+                random.shuffle(c_trialnames) 
+                # Take the first 2 elements of the now randomized array
+                trials_kept.extend(c_trialnames[0:min_n])
+            else:
+                trials_kept.extend(c_trialnames)
+    
+        ixs_kept = labels[labels['trial'].isin(trials_kept)].index.tolist() 
+        tmp_labels = labels[labels['trial'].isin(trials_kept)].reset_index(drop=True)
+    if return_labels:
+        return tmp_labels
+    else:
+        return labels['trial'].unique()
+ 
+ 
 def check_counts_per_condition(raw_traces, labels):
     # Check trial counts / condn:
     #print("Checking counts / condition...")
@@ -453,6 +483,28 @@ def reformat_morph_values(sdf):
     sdf.loc[sdf.morphlevel==-1, 'xpos'] = [xpos[0] for _ in np.arange(0, len(control_ixs))]
     sdf.loc[sdf.morphlevel==-1, 'ypos'] = [ypos[0] for _ in np.arange(0, len(control_ixs))]
     return sdf
+
+
+def get_stimulus_configs(sdf, experiment='blobs', include_stimuli='all'):
+
+    # Stimulus info
+    all_configs = ['config%03d' % i for i in np.arange(1, sdf.shape[0]+1)]
+    if experiment=='blobs':
+        control_configs = ['config001', 'config002', 'config003', 'config004', 'config005']
+    elif experiment=='gratings':
+        control_configs = sdf[sdf['size']>100].index.tolist()
+
+    if include_stimuli=='fullscreen':
+        included_configs = [c for c in all_configs if c in control_configs]
+    elif include_stimuli=='image':
+        included_configs = [c for c in all_configs if c not in control_configs]
+    elif include_stimuli=='all':
+        included_configs = all_configs
+    else:
+        print("UNKNOWN: %s" % include_stimuli)
+    print("Restricting stimuli to: %s (%i conditions)" % (include_stimuli, len(included_configs)))
+    
+    return included_configs
 
 
 def load_run_info(animalid, session, fov, run, traceid='traces001',
