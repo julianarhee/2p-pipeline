@@ -13,8 +13,7 @@ import traceback
 import matplotlib as mpl
 import matplotlib.cm as cm
 from matplotlib import colors as mcolors
-from pipeline.python.utils import convert_range, get_screen_dims
-
+from pipeline.python.utils import convert_range, get_screen_dims, isnumber
 # ------------------------------------------------------------------------------------
 # General stats
 # ------------------------------------------------------------------------------------
@@ -80,9 +79,184 @@ def compare_rf_size(df, metric='avg_size', cdf=False, ax=None, alpha=1, lw=2,
     return ax
 
 
+def plot_all_rfs(RFs, MEANS, screeninfo, cmap='cubehelix', dpi=150):
+    '''
+    Plot ALL receptive field pos, mark CoM by FOV. Colormap = datakey.
+    One subplot per visual area.
+    '''
+    screenright = float(screeninfo['azimuth_deg']/2)
+    screenleft = -1*screenright #float(screeninfo['screen_right'].unique())
+    screentop = float(screeninfo['altitude_deg']/2)
+    screenbottom = -1*screentop
+    screenaspect = float(screeninfo['resolution'][0]) / float(screeninfo['resolution'][1])
+
+
+    visual_areas = ['V1', 'Lm', 'Li']
+    is_split_by_area = 'V1' in MEANS.keys()
+
+    fig, axn = pl.subplots(1,3, figsize=(10,8), dpi=dpi)
+    for visual_area, v_df in RFs.groupby(['visual_area']):
+        ai = visual_areas.index(visual_area)
+        ax = axn[ai]
+        dcolors = sns.color_palette(cmap, n_colors=len(v_df['datakey'].unique()))
+        for di, (datakey, d_df) in enumerate(v_df.groupby(['datakey'])):
+           
+            if is_split_by_area:
+                exp_rids = [r for r in MEANS[visual_area][datakey] if isnumber(r)]
+            else: 
+                exp_rids = [r for r in MEANS[datakey] if isnumber(r)]     
+            rf_rids = d_df['cell'].unique()
+            common_to_rfs_and_blobs = np.intersect1d(rf_rids, exp_rids)
+            curr_df = d_df[d_df['cell'].isin(common_to_rfs_and_blobs)].copy()
+            
+            sns.scatterplot('x0', 'y0', data=curr_df, ax=ax, color=dcolors[di],
+                           s=10, marker='o', alpha=0.5) 
+
+            x = curr_df['x0'].values
+            y=curr_df['y0'].values
+            
+            ncells_rfs = len(rf_rids)
+            ncells_common = len(common_to_rfs_and_blobs) #curr_df.shape[0]
+            m=np.ones(curr_df['x0'].shape)
+            cgx = np.sum(x*m)/np.sum(m)
+            cgy = np.sum(y*m)/np.sum(m)
+            #print('The center of mass: (%.2f, %.2f)' % (cgx, cgy))
+            ax.plot(cgx, cgy, marker='+', markersize=20, color=dcolors[di], 
+                    label='%s (%s, %i/%i)' 
+                            % (visual_area, datakey, ncells_common, ncells_rfs), lw=3) 
+        ax.set_title(visual_area)
+        ax.legend(bbox_to_anchor=(0.95, -0.4), fontsize=8) #1))
+
+    for ax in axn:
+        ax.set_xlim([screenleft, screenright])
+        ax.set_ylim([screenbottom, screentop])
+        ax.set_aspect('equal')
+        ax.set_ylabel('')
+        ax.set_xlabel('')
+        
+    pl.subplots_adjust(top=0.9, bottom=0.4)
+
+    return fig
+
+
+
+
 # ------------------------------------------------------------------------------------
 # Data loading
 # ------------------------------------------------------------------------------------
+def load_aggregate_rfs(rf_dsets, traceid='traces001', 
+                        fit_desc='fit-2dgaus_dff-no-cutoff', 
+                        reliable_only=True, verbose=False):
+    rf_dpaths, no_fits = get_fit_dpaths(rf_dsets, traceid=traceid, fit_desc=fit_desc)
+    rfdf = aggregate_rf_data(rf_dpaths, reliable_only=reliable_only, 
+                                        fit_desc=fit_desc, traceid=traceid, verbose=verbose)
+    rfdf = rfdf.reset_index(drop=True)
+    return rfdf
+
+
+def get_rf_positions(rf_dsets, df_fpath, traceid='traces001', 
+                        fit_desc='fit-2dgaus_dff-no-cutoff', reliable_only=True, verbose=False):
+    from pipeline.python.rois.utils import load_roi_coords
+
+    rfdf = load_aggregate_rfs(rf_dsets, traceid=traceid, fit_desc=fit_desc, 
+                                reliable_only=reliable_only, verbose=verbose)
+    get_positions = False
+    if os.path.exists(df_fpath) and get_positions is False:
+        print("Loading existing RF coord conversions...")
+        try:
+            with open(df_fpath, 'rb') as f:
+                df= pkl.load(f)
+            rfdf = df['df']
+        except Exception as e:
+            get_positions = True
+
+    if get_positions:
+        print("Calculating RF coord conversions...")
+        pos_params = ['fov_xpos', 'fov_xpos_pix', 'fov_ypos', 'fov_ypos_pix', 'ml_pos','ap_pos']
+        for p in pos_params:
+            rfdf[p] = ''
+        p_list=[]
+        for (animalid, session, fovnum), g in rfdf.groupby(['animalid', 'session', 'fovnum']):
+            fcoords = load_roi_coords(animalid, session, 'FOV%i_zoom2p0x' % fovnum, 
+                                      traceid=traceid, create_new=False)
+
+            for ei, e_df in g.groupby(['experiment']):
+                cell_ids = e_df['cell'].unique()
+                p_ = fcoords['roi_positions'].loc[cell_ids]
+                for p in pos_params:
+                    rfdf[p][e_df.index] = p_[p].values
+        with open(df_fpath, 'wb') as f:
+            pkl.dump(rfdf, f, protocol=pkl.HIGHEST_PROTOCOL)
+    return rfdf
+
+
+# OVERLAPS
+def pick_rfs_with_most_overlap(rfdf, MEANS):
+    r_list=[]
+    for datakey, expdf in MEANS.items(): #corrs.groupby(['datakey']):
+        # Get active blob cells
+        exp_rids = [r for r in expdf.columns if isnumber(r)]     
+        # Get current fov's RFs
+        rdf = rfdf[rfdf['datakey']==datakey].copy()
+        
+        # If have both rfs/rfs10, pick the best one
+        if len(rdf['experiment'].unique())>1:
+            rf_rids = rdf[rdf['experiment']=='rfs']['cell'].unique()
+            rf10_rids = rdf[rdf['experiment']=='rfs10']['cell'].unique()
+            same_as_rfs = np.intersect1d(rf_rids, exp_rids)
+            same_as_rfs10 = np.intersect1d(rf10_rids, exp_rids)
+            rfname = 'rfs' if len(same_as_rfs) > len(same_as_rfs10) else 'rfs10'
+            print("%s: Selecting %s, overlappig rfs, %i | rfs10, %i (of %i cells)" 
+                  % (datakey, rfname, len(same_as_rfs), len(same_as_rfs10), len(exp_rids)))
+            r_list.append(rdf[rdf['experiment']==rfname])
+        else:
+            r_list.append(rdf)
+    RFs = pd.concat(r_list, axis=0)
+
+    return RFs
+
+def calculate_overlaps(RFs, datakeys=None, experiment='blobs'):
+    from pipeline.python.classifications import experiment_classes as util
+    from pipeline.python.classifications.aggregate_data_stats import add_meta_to_df
+    
+    rf_fit_params = ['cell', 'std_x', 'std_y', 'theta', 'x0', 'y0']
+    if datakeys is None:
+        datakeys=RFs['datakey'].unique()
+
+    o_list=[]
+    for (visual_area, animalid, session, fovnum, datakey), g in RFs.groupby(['visual_area', 'animalid', 'session', 'fovnum', 'datakey']):  
+        if datakey not in datakeys: #MEANS.keys():
+            continue
+        
+        # Convert RF fit params to polygon
+        rfname = g['experiment'].unique()[0]
+        #print(rfname) 
+        g.index = g['cell'].values
+        rf_polys = rfs_to_polys(g[rf_fit_params])
+
+        S = util.Session(animalid, session, 'FOV%i_zoom2p0x' % fovnum)
+        stim_xpos, stim_ypos = S.get_stimulus_coordinates(experiments=[experiment])
+        stim_sizes = S.get_stimulus_sizes(size_tested=[experiment])
+
+        # Convert stimuli to polyon bounding boxes
+        stim_polys = [(blob_sz, stimsize_poly(blob_sz, xpos=stim_xpos, ypos=stim_ypos))                   for blob_sz in stim_sizes[experiment]]
+        
+        # Get all pairwise overlaps (% of smaller ellipse that overlaps larger ellipse)
+        overlaps = pd.concat([get_proportion_overlap(rf_poly, stim_poly) \
+                    for stim_poly in stim_polys \
+                    for rf_poly in rf_polys]).rename(columns={'row': 'cell', 'col': 'stim_size'})
+        metadict={'visual_area': visual_area, 'animalid': animalid, 'rfname': rfname,
+                  'session': session, 'fovnum': fovnum, 'datakey': datakey}
+        o_ = add_meta_to_df(overlaps, metadict)
+        o_list.append(o_)
+
+    stim_overlaps = pd.concat(o_list, axis=0).reset_index(drop=True)
+    return stim_overlaps
+
+
+
+
+
 def aggregate_rf_dataframes(filter_by, fit_desc=None, scale_sigma=True, fit_thr=0.5, 
                             traceid='traces001',
                             reliable_only=True, verbose=False,
@@ -405,7 +579,7 @@ def get_rf_luminances(animalid, session, fovnum, curr_exp, traceid='traces001', 
 
 def calculate_rf_luminances(images, rfstats, rfparams, sdf, roi_list=None):
     from pipeline.python.utils import natural_keys
-    
+
     if roi_list is None:
         roi_list = rfstats['fit_results'].keys()
     image_list = sorted(images.keys(), key=natural_keys)
