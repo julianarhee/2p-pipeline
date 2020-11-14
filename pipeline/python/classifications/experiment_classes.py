@@ -488,16 +488,20 @@ def get_responsive_cells(animalid, session, fov, run=None, traceid='traces001',
                             n_processes=n_processes, rootdir=rootdir, 
                             create_new=True)
                 #print(fdf.head())
-            print('@@@ finished responsivity test @@@')
+            print('@@@@@@ finished responsivity test (%s|%s|%s) @@@@@@' % (animalid, session, fov))
 
         except Exception as e:
             print("JK ERROR")
             print(e)
+            return None, None 
 
     stats_dir = os.path.join(traceid_dir, 'summary_stats', responsive_test)
-    assert os.path.exists(stats_dir), "Stats dir does not exist: %s" % stats_dir
+    if not os.path.exists(stats_dir):
+        os.makedirs(stats_dir)
+    #assert os.path.exists(stats_dir), "Stats dir does not exist: %s" % stats_dir
     #results_str = '' % responsive_thr if responsive_test=='nstds' else ''
-    stats_fpath = glob.glob(os.path.join(stats_dir, '*results*.pkl'))
+    stats_fpath = glob.glob(os.path.join(stats_dir, '%s-%.2f_result*.pkl' % (responsive_test, responsive_thr)))
+
     #if len(stats_fpath)==0:
     #    print("-- using old stats")
     #    stats_dir = os.path.join(traceid_dir, 'summary_stats', '_%s' % responsive_test)
@@ -571,6 +575,7 @@ def calculate_nframes_above_nstds(animalid, session, fov, run=None, traceid='tra
         ncells_total = traces.shape[-1]
         
         # Calculate N frames 
+        print("... Traces: %s, Labels: %s" % (str(traces.shape), str(labels.shape)))
         framesdf = pd.concat([resp.find_n_responsive_frames(traces[roi], labels, 
                                 n_stds=n_stds) for roi in range(ncells_total)], axis=1)
         results = {'nframes_above': framesdf,
@@ -733,7 +738,7 @@ class Session():
             assert len(ypos)==1, "blobs and gratings have different YPOS: %s" % str(ypos)
             xpos = xpos[0]
             ypos = ypos[0]
-            print("Stimuli presented at coords: (%i, %i)" % (xpos, ypos))
+            #print("Stimuli presented at coords: (%i, %i)" % (xpos, ypos))
             
             return xpos, ypos
         else:
@@ -1154,7 +1159,7 @@ class Experiment(object):
         
         if not(isinstance(self.source, list)):
             assert os.path.exists(self.source), "Path does not exist! -- %s" % self.source
-            print("... exp.load()") 
+            #print("... exp.load()") 
             try:
                 if self.source.endswith('npz'):
                     basename = os.path.splitext(os.path.split(self.source)[-1])[0]
@@ -1193,7 +1198,7 @@ class Experiment(object):
                                                     self.source, info=self.data.info)       
                 # Update self:"
                 if update_self:
-                    print("... updating self")
+                    #print("... updating self")
                     self.data.traces = traces
                 else:
                     #print(".... returning")
@@ -1343,14 +1348,14 @@ class Experiment(object):
                                             n_processes=n_processes)
             assert roi_list is not None, "--- no stats on initial pass"
         except Exception as e:
-            if responsive_test == 'nstds':
-                print("... trying calculating nframes above/below nstd")
-                framesdf = self.calculate_nframes_above_nstds(n_stds=n_stds, 
-                                                                trace_type=response_type) #'dff')
-                roi_list = [roi for roi in framesdf.columns \
-                                if any(framesdf[roi] > responsive_thr)]
-                nrois_total = framesdf.shape[-1]
-            else:
+#            if responsive_test == 'nstds':
+#                print("... trying calculating nframes above/below nstd")
+#                framesdf = self.calculate_nframes_above_nstds(n_stds=n_stds, 
+#                                                        trace_type=response_type) #'dff')
+#                roi_list = [roi for roi in framesdf.columns \
+#                                if any(framesdf[roi] > responsive_thr)]
+#                nrois_total = framesdf.shape[-1]
+#            else:
                 return None, None
             
         return roi_list, nrois_total
@@ -1572,6 +1577,9 @@ class Gratings(Experiment):
                                                     n_stds=n_stds, 
                                                     create_new=create_new, 
                                                     n_processes=n_processes)
+        if rstats is None:
+            return None, None
+
         if responsive_test == 'nstds':
             statdf = rstats['nframes_above']
         else:

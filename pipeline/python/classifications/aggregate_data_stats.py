@@ -593,7 +593,7 @@ def experiment_datakeys(sdata, experiment='blobs', has_gratings=False, stim_filt
                      
     return edata, expmeta
 
-def get_neuraldata_and_rfdata(cells, rfdf, MEANS, visual_areas=['V1','Lm','Li']):
+def get_neuraldata_and_rfdata(cells, rfdf, MEANS, visual_areas=['V1','Lm','Li'], verbose=False):
     '''
     cells (dataframe)
         Cells assigned to each datakey/visual area 
@@ -624,7 +624,8 @@ def get_neuraldata_and_rfdata(cells, rfdf, MEANS, visual_areas=['V1','Lm','Li'])
         # Which cells with RFs are in assigned area
         curr_assigned = curr_c[curr_c['cell'].isin(cells_with_rfs)]
         assigned_with_rfs = curr_assigned['cell'].unique()
-        print("[%s] %s: %i cells with RFs (%i responsive)" % (visual_area, datakey, len(cells_with_rfs), len(assigned_with_rfs)))
+        if verbose:
+            print("[%s] %s: %i cells with RFs (%i responsive)" % (visual_area, datakey, len(cells_with_rfs), len(assigned_with_rfs)))
 
         if len(assigned_with_rfs) > 0:
             # Get neuradf for these cells only
@@ -978,6 +979,7 @@ def load_traces(animalid, session, fovnum, curr_exp, traceid='traces001',
                                                 n_processes=n_processes)
         #print("%i responsive" % len(responsive_cells))
         if responsive_cells is None:
+            print("NO LOADING")
             return None, None, None
         traces = exp.data.traces[responsive_cells]
     else:
