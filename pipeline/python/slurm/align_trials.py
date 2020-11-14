@@ -17,9 +17,14 @@ parser.add_argument('-A', '--fov', dest='fov_type', action='store', default='zoo
 parser.add_argument('-E', '--exp', dest='experiment_type', action='store', default='rfs', help='Experiment type (e.g., rfs')
 parser.add_argument('-e', '--email', dest='email', action='store', default='rhee@g.harvard.edu', help='Email to send log files')
 parser.add_argument('-t', '--traceid', dest='traceid', action='store', default=None, help='Traceid to use as reference for selecting retino analysis')
+parser.add_argument('-v', '--visual_area', dest='visual_area', action='store', default=None, help='Add to only process datasets for a given visual area')
+
 
 parser.add_argument('-p', '--pre', dest='iti_pre', action='store', default=1.0, help='PRE stimulus dur (sec, default=1)')
 parser.add_argument('-P', '--post', dest='iti_post', action='store', default=1.0, help='POST stimulus dur (sec, default=1)')
+
+parser.add_argument( '--all', dest='run_all', action='store_true', default=False, help='Run on all specified datasets, ignoring extraction_info')
+
 
 
 args = parser.parse_args()
@@ -38,25 +43,7 @@ def fatal(error_str):
     sys.exit(1)
 
 
-# Create a (hopefully) unique prefix for the names of all jobs in this 
-# particular run of the pipeline. This makes sure that runs can be
-# identified unambiguously
-piper = uuid.uuid4()
-piper = str(piper)[0:8]
-if not os.path.exists('log'):
-    os.mkdir('log')
 
-old_logs = glob.glob(os.path.join('log', '*.err'))
-old_logs.extend(glob.glob(os.path.join('log', '*.out')))
-for r in old_logs:
-    os.remove(r)
-
-#####################################################################
-#                          find XID files                           #
-#####################################################################
-
-# Get PID(s) based on name
-# Note: the syntax a+=(b) adds b to the array a
 ROOTDIR = '/n/coxfs01/2p-data'
 FOV = args.fov_type
 EXP = args.experiment_type
@@ -64,9 +51,33 @@ email = args.email
 traceid = args.traceid
 iti_pre = float(args.iti_pre)
 iti_post = float(args.iti_post)
+visual_area = args.visual_area
+run_all = args.run_all
+
+# Create a (hopefully) unique prefix for the names of all jobs in this 
+# particular run of the pipeline. This makes sure that runs can be
+# identified unambiguously
+piper = uuid.uuid4()
+piper = str(piper)[0:8]
+logdir='LOG__%s_%s' % (EXP, visual_area)
+if not os.path.exists(logdir):
+    os.mkdir(logdir)
+
+old_logs = glob.glob(os.path.join(logdir, '*.err'))
+old_logs.extend(glob.glob(os.path.join(logdir, '*.out')))
+old_logs.extend(glob.glob(os.path.join(logdir, '*.txt')))
+
+for r in old_logs:
+    os.remove(r)
+
+#####################################################################
+#                          find XID files                           #
+#####################################################################
+# Get PID(s) based on name
+# Note: the syntax a+=(b) adds b to the array a
 
 # Open log lfile
-sys.stdout = open('loginfo_%s.txt' % EXP, 'w')
+sys.stdout = open('%s/INFO_%s.txt' % (logdir, EXP), 'w')
 
 
 def get_trial_alignment(animalid, session, fovnum, curr_exp, traceid='traces001',
@@ -84,8 +95,7 @@ def get_trial_alignment(animalid, session, fovnum, curr_exp, traceid='traces001'
         else:
             for k, v in info.items():
                 if isnumber(v):
-                    infodict[k].append(v)
-    
+                    infodict[k].append(v) 
     for k, v in infodict.items():
         nvs = np.unique(v)
         assert len(nvs)==1, "more than 1 value found: (%s, %s)" % (k, str(nvs))
@@ -95,6 +105,7 @@ def get_trial_alignment(animalid, session, fovnum, curr_exp, traceid='traces001'
 
 def load_metadata(experiment, iti_pre=1.0, iti_post=1., 
                   run_datakeys=[],
+                  visual_area=None,run_all=False,
                   rootdir='/n/coxfs01/2p-data', 
                   aggregate_dir='/n/coxfs01/julianarhee/aggregate-visual-areas',
                   traceid='traces001'):
@@ -102,10 +113,17 @@ def load_metadata(experiment, iti_pre=1.0, iti_post=1.,
     sdata = aggr.get_aggregate_info(traceid=traceid) #, fov_type=fov_type, state=state)
 
     dsets = sdata[sdata['experiment']==experiment] 
+    if visual_area is not None:
+        dsets = dsets[dsets['visual_area']==visual_area]
+
     meta_list=[]
     for (animalid, session, fovnum, datakey), g in dsets.groupby(['animalid', 'session', 'fovnum', 'datakey']):
         fov = g['fov'].values[0]
- 
+        
+        if run_all:
+            meta_list.append(tuple([animalid, session, fov, experiment, traceid]))
+            continue
+
         # Get alignment info
         alignment_info = aggr.get_trial_alignment(animalid, session, 
                                                 fovnum, experiment, traceid=traceid)
@@ -127,13 +145,13 @@ def load_metadata(experiment, iti_pre=1.0, iti_post=1.,
     return meta_list
 
 
-#meta_list = [('JC120', '20191111', 'FOV1_zoom2p0x', 'rfs10', 'traces001')] #,
+#meta_list = [('JC084', '20190522', 'FOV1_zoom2p0x', 'blobs', 'traces001')] #,
 #             ('JC083', '20190510', 'FOV1_zoom2p0x', 'rfs', 'traces001'),
 #             ('JC083', '20190508', 'FOV1_zoom2p0x', 'rfs', 'traces001'),
 #             ('JC084', '20190525', 'FOV1_zoom2p0x', 'rfs', 'traces001')]
 #
 
-meta_list = load_metadata(EXP, run_datakeys=['20191008_JC091_fov1'])
+meta_list = load_metadata(EXP, visual_area=visual_area, run_all=run_all)
 
 if len(meta_list)==0:
     fatal("NO FOVs found.")
@@ -154,10 +172,11 @@ jobids = [] # {}
 for (animalid, session, fov, experiment, traceid) in meta_list:
     mtag = '-'.join([session, animalid, fov, experiment])
     cmd = "sbatch --job-name={PROCID}.{EXP}.{MTAG} \
-            -o 'log/{PROCID}.{EXP}.{MTAG}.out' \
-            -e 'log/{PROCID}.{EXP}.{MTAG}.err' \
+            -o '{LOG}/{PROCID}.{EXP}.{MTAG}.out' \
+            -e '{LOG}/{PROCID}.{EXP}.{MTAG}.err' \
             /n/coxfs01/2p-pipeline/repos/2p-pipeline/pipeline/python/slurm/align_trials.sbatch \
             {ANIMALID} {SESSION} {FOV} {EXP} {TRACEID} {PRE} {POST}".format(
+            LOG=logdir,
             PROCID=piper, MTAG=mtag, ANIMALID=animalid,
             SESSION=session, FOV=fov, EXP=experiment, TRACEID=traceid, PRE=iti_pre, POST=iti_post) 
     status, joboutput = commands.getstatusoutput(cmd)
