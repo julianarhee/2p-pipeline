@@ -221,6 +221,7 @@ def get_alignment_specs(paradigm_dir, si_info, iti_pre=1.0, iti_post=None, same_
         if iti_post is None:
             iti_post = iti_full - iti_pre
         print "ITI POST:", iti_post
+        assert (stim_on_sec + iti_pre + iti_post) <= (stim_on_sec + iti_full), "Requested ITI pre/post plus stim_dur is greater than allowed (iti_full=%.1f, stim_dur=%.1f)" % (iti_full, stim_on_sec)
 
         # Check whether acquisition method is one-to-one (1 aux file per SI tif) or single-to-many:
         if trialdict[trial_list[0]]['ntiffs_per_auxfile'] == 1:
