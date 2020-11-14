@@ -139,22 +139,28 @@ def pool_bootstrap(neuraldf, sdf, n_iterations=50, n_processes=1, C_value=None,
     return output #results
 
 
-def fit_svm_mp(neuraldf, sdf, n_iterations=50, n_processes=1, 
-                   C_value=None, cv_nfolds=5, test_split=0.2, 
-                   test=None, single=False, n_train_configs=4, verbose=False,
-                   class_a=0, class_b=106):   
+# -----------------------------------------------------------------------
+# by NCELLS
+# ----------------------------------------------------------------------
+def by_ncells_fit_svm_mp(ncells, celldf, NEURALDATA, sdf, 
+                           n_iterations=50, n_processes=1, 
+                           C_value=None, cv_nfolds=5, test_split=0.2, 
+                           test=None, single=False, n_train_configs=4, verbose=False,
+                           class_a=0, class_b=106):   
     results = []
     terminating = mp.Event()
     
     #### Select train/test configs for clf A vs B
     train_configs = sdf[sdf['morphlevel'].isin([class_a, class_b])].index.tolist() 
 
-    def worker(n_iters, neuraldf, sdf, C_value, verbose, class_a, class_b, out_q):
+    def worker(n_iters, ncells, celldf, sdf, NEURALDATA, C_value, class_a, class_b, out_q):
         r_ = []        
         for ni in n_iters:
             print('... %i' % ni)
-            curr_iter = dutils.do_fit_within_fov(ni, curr_data=neuraldf, sdf=sdf, verbose=verbose,
-                                            C_value=C_value, class_a=class_a, class_b=class_b)
+            curr_iter = dutils.do_fit(ni, sample_ncells=ncells,
+                                        global_rois=celldf, sdf=sdf,
+                                        MEANS=NEURALDATA, df_is_split=True, 
+                                        C_value=C_value, class_a=class_a, class_b=class_b)
             #### Fit
             r_.append(curr_iter)
         curr_iterdf = pd.concat(r_, axis=0)
@@ -193,7 +199,118 @@ def fit_svm_mp(neuraldf, sdf, n_iterations=50, n_processes=1,
             p.join    
 
     return results
+
+
+
+# --------------------------------------------------------------------------
+# within FOV
+# -------------------------------------------------------------------------
+def fit_svm_mp(neuraldf, sdf, n_iterations=50, n_processes=1, 
+                   C_value=None, cv_nfolds=5, test_split=0.2, 
+                   test=None, single=False, n_train_configs=4, verbose=False,
+                   class_a=0, class_b=106):   
+    results = []
+    terminating = mp.Event() 
+    #### Select train/test configs for clf A vs B
+    train_configs = sdf[sdf['morphlevel'].isin([class_a, class_b])].index.tolist() 
+
+    def worker(n_iters, neuraldf, sdf, C_value, verbose, class_a, class_b, out_q):
+        r_ = []        
+        for ni in n_iters:
+            print('... %i' % ni)
+            curr_iter = dutils.do_fit_within_fov(ni, curr_data=neuraldf, sdf=sdf, 
+                                            C_value=C_value, class_a=class_a, class_b=class_b,                                            verbose=verbose)
+            #### Fit
+            r_.append(curr_iter)
+        curr_iterdf = pd.concat(r_, axis=0)
+        out_q.put(curr_iterdf) 
+    try:        
+        # Each process gets "chunksize' filenames and a queue to put his out-dict into:
+        iter_list = np.arange(0, n_iterations) #gdf.groups.keys()
+        out_q = mp.Queue()
+        chunksize = int(math.ceil(len(iter_list) / float(n_processes)))
+        procs = []
+        for i in range(n_processes):
+            p = mp.Process(target=worker,
+                           args=(iter_list[chunksize * i:chunksize * (i + 1)],
+                                          neuraldf, sdf, C_value, verbose, class_a, class_b,
+                                          out_q))
+            procs.append(p)
+            p.start()
+
+        # Collect all results into 1 results dict. We should know how many dicts to expect:
+        results = []
+        for i in range(n_processes):
+            results.append(out_q.get())
+
+        # Wait for all worker processes to finish
+        for p in procs:
+            print "Finished:", p
+            p.join()
+    except KeyboardInterrupt:
+        terminating.set()
+        print("***Terminating!")
+    except Exception as e:
+        traceback.print_exc()
+    finally:
+        for p in procs:
+            p.join    
+
+    return results
 #%%
+def decode_from_cell(datakey, rid, neuraldf, sdf, return_shuffle=False, 
+                    C_value=None, experiment='blobs',
+                    n_iterations=50, n_processes=2, results_id='single_cell',
+                    class_a=0, class_b=0, 
+                    rootdir='/n/coxfs01/2p-data', create_new=False, verbose=False):
+    # tmp save
+    session, animalid, fov_ = datakey.split('_')
+    fovnum = int(fov_[3:])
+    fov = 'FOV%i_zoom2p0x' % fovnum
+    traceid_dir = glob.glob(os.path.join(rootdir, animalid, session, 
+                            fov, 'combined_%s*' % experiment, 'traces', '%s*' % traceid))[0]
+    curr_dst_dir = os.path.join(traceid_dir, 'decoding')
+    if not os.path.exists(curr_dst_dir):
+        os.makedirs(curr_dst_dir)
+        print("... saving tmp results to:\n  %s" % curr_dst_dir)
+    results_outfile = os.path.join(curr_dst_dir, 'single_cell', 
+                                        '%s_%3d.pkl' % (results_id, int(rid+1)))
+    if create_new is False: 
+        try:
+            with open(results_outfile, 'rb') as f:
+                iter_results = pkl.load(f)
+        except Exception as e:
+            create_new=True 
+
+    if create_new:    
+        print("... Stating decoding analysis")
+        # zscore full
+        neuraldf = aggr.zscore_neuraldf(neuraldf)
+
+        # Decodinng -----------------------------------------------------
+        iter_list = decutils.fit_svm_mp(neuraldf, sdf, C_value=C_value, 
+                                    n_iterations=n_iterations, 
+                                    n_processes=n_processes, verbose=verbose,
+                                    class_a=class_a, class_b=class_b)
+        print("%i items in mp list" % len(iter_list))
+        # DATA - get mean across items
+        iter_results = pd.concat(iter_list, axis=0) 
+        with open(results_outfile, 'wb') as f:
+            pkl.dump(iter_results, f, protocol=pkl.HIGHEST_PROTOCOL)
+    # Pool mean
+    print("... finished all iters: %s" % str(iter_results.shape))
+    iterd = dict(iter_results.mean())
+    iterd.update( dict(('%s_std' % k, v) \
+            for k, v in zip(iter_results.std().index, iter_results.std().values)) )
+    iterd.update( dict(('%s_sem' % k, v) \
+            for k, v in zip(iter_results.sem().index, iter_results.sem().values)) )
+    iterd.update({'n_units': n_cells, 
+                  'visual_area': visual_area, 'datakey': datakey})
+    print("::FINAL::")
+    pp.pprint(iterd)
+
+    return iterd
+
 
 def decode_from_fov(datakey, visual_area, cells, MEANS, min_ncells=5,
                     C_value=None, experiment='blobs',
@@ -228,7 +345,7 @@ def decode_from_fov(datakey, visual_area, cells, MEANS, min_ncells=5,
             return None
 
         # zscore full
-        neuraldf = zscore_neuraldf(neuraldf)
+        neuraldf = aggr.zscore_neuraldf(neuraldf)
 
         n_cells = int(neuraldf.shape[1]-1) 
         print("... [%s] %s, n=%i cells" % (visual_area, datakey, n_cells))
@@ -267,13 +384,6 @@ def decode_from_fov(datakey, visual_area, cells, MEANS, min_ncells=5,
     pp.pprint(iterd)
 
     return iterd
-
-def zscore_neuraldf(neuraldf):
-    data = neuraldf.drop('config', 1) #sample_data[curr_roi_list].copy()
-    zdata = (data - np.nanmean(data)) / np.nanstd(data)
-    zdf = pd.DataFrame(zdata, index=neuraldf.index, columns=data.columns)
-    zdf['config'] = neuraldf['config']
-    return zdf
 
 def decode_split_pupil(datakey, visual_area, cells, MEANS, pupildata,
                     results_id='splitpupil_results',
@@ -319,7 +429,7 @@ def decode_split_pupil(datakey, visual_area, cells, MEANS, pupildata,
         neuraldf, pupildf = dlcutils.match_trials_df(neuraldf, pupildf, equalize_conditions=True)
        
         # zscore full
-        neuraldf = zscore_neuraldf(neuraldf)
+        neuraldf = aggr.zscore_neuraldf(neuraldf)
  
         # ------ Split trials by quantiles ---------------------------------
         pupil_low, pupil_high = dlcutils.split_pupil_range(pupildf, 
@@ -350,7 +460,122 @@ def decode_split_pupil(datakey, visual_area, cells, MEANS, pupildata,
                                     n_processes=n_processes, verbose=verbose,
                                     class_a=class_a, class_b=class_b)
             
-            print("%i items in mp list" % len(iter_list))
+            print("%i items in mp list" % len(a_list))
+            # DATA - get mean across items
+            arousal_df = pd.concat(a_list, axis=0)
+            arousal_df['arousal'] = [arousal_cond for _ in np.arange(0, arousal_df.shape[0])]
+            arousal_df['n_cells'] = [n_cells for _ in np.arange(0, arousal_df.shape[0])]
+            iter_list.append(arousal_df)
+       
+        print("%i items in split-pupil list" % len(iter_list))
+        # DATA - get mean across items
+        iter_results = pd.concat(iter_list, axis=0)
+        with open(results_outfile, 'wb') as f:
+            pkl.dump(iter_results, f, protocol=pkl.HIGHEST_PROTOCOL)
+
+    # Pool mean
+    #print(iter_results)
+    print("... finished all iters: %s" % str(iter_results.shape))
+    iterd = dict(iter_results.mean())
+    iterd.update( dict(('%s_std' % k, v) \
+            for k, v in zip(iter_results.std().index, iter_results.std().values)) )
+    iterd.update( dict(('%s_sem' % k, v) \
+            for k, v in zip(iter_results.sem().index, iter_results.sem().values)) )
+    iterd.update({'n_units': n_cells, 
+                  'visual_area': visual_area, 'datakey': datakey})
+    print("::FINAL::")
+    pp.pprint(iterd)
+
+    return iterd
+
+
+def decode_by_ncells(datakey, visual_area, cells, MEANS, pupildata,
+                    results_id='splitpupil_results',
+                    n_cuts=3, feature_name='pupil_fraction',
+                    experiment='blobs', min_ncells=5, C_value=None, 
+                    n_iterations=50, n_processes=2, 
+                    class_a=0, class_b=106,
+                    rootdir='/n/coxfs01/2p-data', create_new=False, verbose=False):
+
+    #### Get metadata for experiment type
+    #sdata = aggr.get_aggregate_info(traceid=traceid, fov_type=fov_type, state=state)
+    edata, expmeta = aggr.experiment_datakeys(sdata, experiment=experiment,
+                                    has_gratings=has_gratings, stim_filterby=stim_filterby)
+        
+    # Get blob metadata only - and only if have RFs
+    dsets = pd.concat([g for k, g in edata.groupby(['animalid', 'session', 'fov']) if 
+                            (experiment in g['experiment'].values 
+                             and ('rfs' in g['experiment'].values or 'rfs10' in g['experiment'].values)) ])
+    dsets[['visual_area', 'datakey']].drop_duplicates().groupby(['visual_area']).count()
+
+
+    # tmp save
+    session, animalid, fov_ = datakey.split('_')
+    fovnum = int(fov_[3:])
+    fov = 'FOV%i_zoom2p0x' % fovnum
+    traceid_dir = glob.glob(os.path.join(rootdir, animalid, session, fov, 
+                            'combined_%s*' % experiment, 'traces', '%s*' % traceid))[0]
+    curr_dst_dir = os.path.join(traceid_dir, 'decoding')
+    if not os.path.exists(curr_dst_dir):
+        os.makedirs(curr_dst_dir)
+        print("... saving tmp results to:\n  %s" % curr_dst_dir)
+
+    results_outfile = os.path.join(curr_dst_dir, '%s.pkl' % results_id)
+    if create_new is False: 
+        try:
+            with open(results_outfile, 'rb') as f:
+                iter_results = pkl.load(f)
+        except Exception as e:
+            create_new=True 
+
+    if create_new:    
+        #### Get neural means
+        print("... Stating decoding analysis")
+        neuraldf = aggr.get_neuraldf_for_cells_in_area(cells, MEANS, 
+                                                       datakey=datakey, visual_area=visual_area)
+        if int(neuraldf.shape[1]-1)<min_ncells:
+            return None
+
+        n_cells = int(neuraldf.shape[1]-1) 
+        print("... [%s] %s, n=%i cells" % (visual_area, datakey, n_cells))
+
+        #### Get pupil means\
+        pupildf = pupildata[datakey].copy()
+        
+        #### Match trial numbers
+        neuraldf, pupildf = dlcutils.match_trials_df(neuraldf, pupildf, equalize_conditions=True)
+       
+        # zscore full
+        neuraldf = aggr.zscore_neuraldf(neuraldf)
+ 
+        # ------ Split trials by quantiles ---------------------------------
+        pupil_low, pupil_high = dlcutils.split_pupil_range(pupildf, 
+                                                    feature_name=feature_name, n_cuts=n_cuts)
+        assert pupil_low.shape==pupil_high.shape, "Unequal pupil trials: %s, %s" % (str(pupil_low.shape), str(pupil_high.shape))
+        print("SPLIT PUPIL: %s (low), %s (high)" % (str(pupil_low.shape), str(pupil_high.shape)))
+
+        # trial indices of low/high pupil 
+        low_trial_ixs = pupil_low['trial'].unique()
+        high_trial_ixs = pupil_high['trial'].unique()
+        all_trial_ixs = pupildf['trial'].unique()
+
+        # ------ STIMULUS INFO -----------------------------------------
+        session, animalid, fov_ = datakey.split('_')
+        fovnum = int(fov_[3:])
+        obj = util.Objects(animalid, session, 'FOV%i_zoom2p0x' %  fovnum, traceid=traceid)
+        sdf = obj.get_stimuli()
+
+        # Decoding -----------------------------------------------------
+        arousal_conds = ['all', 'low', 'high']
+        arousal_trial_ixs = [all_trial_ixs, low_trial_ixs, high_trial_ixs]
+        iter_list=[]
+        for arousal_cond, curr_trial_ixs in zip(arousal_conds, arousal_trial_ixs):
+            curr_data = neuraldf.loc[curr_trial_ixs].copy()
+            a_list = by_ncells_fit_svm_mp(ncells, celldf, NEURALDATA, sdf, 
+                            n_iterations=n_iterations, n_processes=n_processes, 
+                            C_value=C_value, cv_nfolds=cv_nfolds, test_split=test_split, 
+                            class_a=0, class_b=106):   
+            print("%i items in mp list" % len(a_list))
             # DATA - get mean across items
             arousal_df = pd.concat(a_list, axis=0)
             arousal_df['arousal'] = [arousal_cond for _ in np.arange(0, arousal_df.shape[0])]
@@ -380,7 +605,9 @@ def decode_split_pupil(datakey, visual_area, cells, MEANS, pupildata,
     return iterd
 
 
-
+# --------------------------------------------------------------------
+# Loading, saving, ec.
+# -------------------------------------------------------------------
 def set_results_prefix(analysis_type='by_fov'):
     prefix=None
     if analysis_type=='by_fov':
