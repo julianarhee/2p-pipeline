@@ -6,8 +6,9 @@ import traceback
 
 import numpy as np
 import pandas as pd
+import cPickle as pkl
 
-
+from pipeline.python.classifications import aggregate_data_stats as aggr
 def atoi(text):
     return int(text) if text.isdigit() else text
 
@@ -41,60 +42,76 @@ def create_parsed_traces_id(experiment='EXP', alignment_type='ALIGN',
 
 def load_pupil_traces_fov(animalid, session, fov, experiment, 
                         alignment_type='stimulus', snapshot=391800, 
+                        feature_name='pupil_area', 
                         rootdir='/n/coxfs01/2p-data'):
     '''
     Load pupil traces for one dataset
     '''
+    results=None
+    params=None
 
     # Set output stuff
     dst_dir = os.path.join(rootdir, animalid, session, fov, 
-                            'combined_%s_*' % experiment, 'facetracker')
+                            'combined_%s_static' % experiment, 'facetracker')
     if not os.path.exists(dst_dir):
         os.makedirs(dst_dir)
-    print("Saving output to: %s" % dst_dir)
+    #print("Saving output to: %s" % dst_dir)
     
     # Create parse id
-    parse_id = create_parse_traces_id(experiment=experiment, 
+    parse_id = create_parsed_traces_id(experiment=experiment, 
                                alignment_type=alignment_type,
                                feature_name=feature_name,
                                snapshot=snapshot) 
     params_fpath = os.path.join(dst_dir, '%s_params.json' % parse_id)
     results_fpath = os.path.join(dst_dir, '%s.pkl' % parse_id)
 
-    # load results
-    with open(results_fpath, 'rb') as f:
-        results = pkl.load(f)
+    try:
+        # load results
+        with open(results_fpath, 'rb') as f:
+            results = pkl.load(f)
 
-    # load params
-    with open(params_fpath, 'r') as f:
-        params = json.load(f)
+        # load params
+        with open(params_fpath, 'r') as f:
+            params = json.load(f)
+    except Exception as e:
+        #print(e)
+        return None, None    
 
     return results, params
 
 
-def aggregate_pupil_traces(animalid, session, fov, experiment, 
+def aggregate_pupil_traces(experiment, traceid='traces001', 
+                feature_name='pupil_area', 
                 snapshot=391800, alignment_type='stimulus',
-                rootdir='/n/coxfs01/2p-data',
+                rootdir='/n/coxfs01/2p-data', fov_type='zoom2p0x', state='awake',
                 aggregate_dir='/n/coxfs01/julianarhee/aggregate-visual-areas'):
 
     '''
     Create AGGREGATED pupiltraces dict (from all FOVS w dlc)
     '''
+    print("~~~~~ Aggregating pupil traces. ~~~~~~")
+
+    missing_dsets=[]
     pupiltraces={}
     # Get all datasets
     sdata = aggr.get_aggregate_info(traceid=traceid, 
                                     fov_type=fov_type, state=state)
     edata = sdata[sdata['experiment']==experiment]
+
     for (animalid, session, fov), g in edata.groupby(['animalid', 'session', 'fov']):
         fovnum = int(fov.split('_')[0][3:])  
 
         datakey ='%s_%s_fov%i' % (session, animalid, fovnum)
 
         # for aggregrating.................
-        results, params = load_parsed_pupil_traces(animalid, session, fov, 
-                                experiment, snapshot=snapshot, 
+        results, params = load_pupil_traces_fov(animalid, session, fov, 
+                                feature_name=feature_name,
+                                alignment_type=alignment_type,
+                                experiment=experiment, snapshot=snapshot, 
                                 rootdir=rootdir)
-
+        if results is None:
+            missing_dsets.append(datakey)
+            continue
         #### Add to dict
         pupiltraces[datakey] = results
 
@@ -104,8 +121,15 @@ def aggregate_pupil_traces(animalid, session, fov, experiment,
                             feature_name=feature_name, snapshot=snapshot)
     pupil_fpath = os.path.join(aggregate_dir, 
                                 'behavior-state', '%s.pkl' % traces_fname) 
+    if not os.path.exists(os.path.join(aggregate_dir, 'behavior-state')):
+        os.makedirs(os.path.join(aggregate_dir, 'behavior-state'))
+
     with open(pupil_fpath, 'wb') as f:
         pkl.dump(pupiltraces, f, protocol=pkl.HIGHEST_PROTOCOL)
+
+    print("Aggregated pupil traces. Missing %i datasets." % len(missing_dsets))
+    for m in missing_dsets:
+        print(m)
 
     return pupiltraces
 
@@ -116,6 +140,7 @@ def load_pupil_traces(experiment='blobs', feature_name='pupil_area',
     '''
     Load AGGREGATED pupiltraces dict (from all FOVS w dlc)
     '''
+
     import cPickle as pkl
 
     pupiltraces=None
@@ -130,36 +155,44 @@ def load_pupil_traces(experiment='blobs', feature_name='pupil_area',
        
     pupil_fpath = os.path.join(aggregate_dir, 
                                 'behavior-state', '%s.pkl' % traces_fname) 
-    assert os.path.exists(pupil_fpath), "NOT found: %s" % traces_fname 
+    
+    if not os.path.exists(pupil_fpath):
+        print( "NOT found: %s" % traces_fname)
+        return None
     #print(pupil_fpath)
 
     # This is a dict, keys are datakeys
     with open(pupil_fpath, 'rb') as f:
         pupiltraces = pkl.load(f)
 
+    print(">>>> Loaded aggregated pupil traces.")
+
     return pupiltraces
  
-def get_aggregate_pupil_traces(animalid, session, fov, experiment, 
-                    snapshot=391800, alignment_type='stimulus',
-                    rootdir='/n/coxfs01/2p-data',
-                    aggregate_dir='/n/coxfs01/2p-data/aggregate-visual-areas'):
+def get_aggregate_pupil_traces(experiment, feature_name='pupil_area',
+                    alignment_type='stimulus', snapshot=391800, 
+                    traceid='traces001', rootdir='/n/coxfs01/2p-data',
+                    aggregate_dir='/n/coxfs01/2p-data/aggregate-visual-areas',
+                    create_new=False):
     '''
     Load or create AGGREGATED pupiltraces dict.
     '''
-    try:
-        pupiltraces = load_pupil_traces(experiment=experiment, 
-                        feature_name=feature_name,
-                        alignment_type=alignment_type, snapshot=snapshot,
-                        aggregate_dir=aggregate_dir)
-    except Exception as e:
-        traceback.print_exc()
-        print("ERROR. Re-aggregating (creating pupiltraces)")
-        create_new=True
+    if not create_new:
+        try:
+            pupiltraces = load_pupil_traces(experiment=experiment, 
+                            feature_name=feature_name,
+                            alignment_type=alignment_type, snapshot=snapshot,
+                            aggregate_dir=aggregate_dir)
+            assert pupiltraces is not None, "ERROR. Re-aggregating (creating pupiltraces)"
+        except Exception as e:
+            traceback.print_exc()
+            create_new=True
 
     if create_new:
-        pupiltraces = aggregate_pupil_traces(animalid, session, fov, 
-                    experiment, snapshot=snapshot, 
-                    rootdir=rootdir, aggregate_dir=aggregate_dir)
+        pupiltraces = aggregate_pupil_traces(experiment, traceid=traceid,
+                            feature_name=feature_name,alignment_type=alignment_type, 
+                            snapshot=snapshot, 
+                            rootdir=rootdir, aggregate_dir=aggregate_dir)
     return pupiltraces
 
 
@@ -191,6 +224,8 @@ def load_pupil_dataframes(snapshot, experiment='blobs',
     try:
         with open(pupildf_fpath, 'rb') as f:
             pupildata = pkl.load(f)
+        print(">>>> Loaded aggregate pupil dataframes.")
+
     except Exception as e:
         print('File not found: %s' % pupildf_fpath)
     return pupildata
@@ -198,7 +233,7 @@ def load_pupil_dataframes(snapshot, experiment='blobs',
 
        
 def aggregate_pupil_dataframes(pupiltraces, fname, 
-                    feature_name='pupil_fraction', 
+                    feature_name='pupil_fraction', trial_epoch='pre',
                     in_rate=20., out_rate=20., 
                     iti_pre=1., iti_post=1., stim_dur=1.):
     '''
@@ -213,6 +248,7 @@ def aggregate_pupil_dataframes(pupiltraces, fname,
         keys: datakeys (like MEANS dict)
         values: dataframes (pupildf, trial metrics)
     '''
+    print("~~~~~~~~~~~~ Aggregating pupil dataframes. ~~~~~~~~~~~")
     import cPickle as pkl
 
     desired_nframes = int((stim_dur + iti_pre + iti_post)*out_rate)
@@ -220,28 +256,26 @@ def aggregate_pupil_dataframes(pupiltraces, fname,
     new_stim_on = int(round(iti_pre*out_rate))
     
     pupildata={}
-    for k, ptraces in pupiltraces.items():
-        dkey = '_'.join(k.split('_')[0:-1])
-
+    for dkey, ptraces in pupiltraces.items():
+        #dkey = '_'.join(k.split('_')[0:-1])
         pupil_r = resample_pupil_traces(ptraces, 
-                            in_rate=in_rate, out_rate=out_rate, 
-                            desired_nframes=desired_nframes, 
-                            feature_name=feature_name, 
-                            iti_pre_ms=iti_pre_ms)
-        pupildf = get_pupil_df(pupil_r, 
-                            trial_epoch=pupil_epoch, new_stim_on=new_stim_on)
+                                    in_rate=in_rate, 
+                                    out_rate=out_rate, 
+                                    desired_nframes=desired_nframes, 
+                                    feature_name=feature_name, 
+                                    iti_pre_ms=iti_pre_ms)
+        pupildf = get_pupil_df(pupil_r, trial_epoch=trial_epoch, new_stim_on=new_stim_on)
         pupildata[dkey] = pupildf
-    with open(pupildf_fpath, 'wb') as f:
-        pkl.dump(pupildata, f, protocol=pkl.HIGHEST_PROTOCOL)
 
     return pupildata
  
 
 def get_aggregate_pupildfs(experiment='blobs', feature_name='pupil_area', 
-                trial_epoch='pre', snapshot=391800, 
-                in_rate=20., out_rate=20., iti_pre=1., iti_post=1., stim_dur=1.,
-                aggregate_dir='/n/coxfs01/julianarhee/aggregate-visual-areas', 
-                create_new=False):
+                           trial_epoch='pre', alignment_type='stimulus', 
+                           in_rate=20., out_rate=20., iti_pre=1., iti_post=1., stim_dur=1.,
+                           snapshot=391800, 
+                           aggregate_dir='/n/coxfs01/julianarhee/aggregate-visual-areas', 
+                           create_new=False):
     '''
     Load or create AGGREGATED dit of pupil dataframes (per-trial metrics).
     (prev called load_pupil_data)
@@ -262,15 +296,23 @@ def get_aggregate_pupildfs(experiment='blobs', feature_name='pupil_area',
             create_new=True
 
     if create_new:
-        pupiltraces = load_pupil_traces(experiment=experiment, 
-                                    feature_name=feature_name, 
+        fname = create_dataframes_name(experiment, feature_name, trial_epoch, snapshot)
+        pupildf_fpath = os.path.join(aggregate_dir, 'behavior-state', '%s.pkl' % fname)
+        pupiltraces = get_aggregate_pupil_traces(experiment, feature_name=feature_name, 
+                                    alignment_type=alignment_type, 
                                     snapshot=snapshot, 
-                                    aggregate_dir=aggregate_dir)
-        fname = create_dataframes_name(experiment, feature_name, 
-                                    trial_epoch, snapshot)
+                                    aggregate_dir=aggregate_dir,
+                                    create_new=create_new)
+        fname = create_dataframes_name(experiment, feature_name, trial_epoch, snapshot)
         pupildata = aggregate_pupil_dataframes(pupiltraces, fname, 
-                        in_rate=in_rate, out_rate=out_rate, 
-                        iti_pre=iti_pre, iti_post=iti_post, stim_dur=stim_dur)
+                                    feature_name=feature_name,
+                                    trial_epoch=trial_epoch,
+                                    in_rate=in_rate, out_rate=out_rate, 
+                                    iti_pre=iti_pre, iti_post=iti_post, stim_dur=stim_dur)
+
+        with open(pupildf_fpath, 'wb') as f:
+            pkl.dump(pupildata, f, protocol=pkl.HIGHEST_PROTOCOL)
+        print("---> Saved aggr dataframes: %s" % pupildf_fpath)
 
     return pupildata
 

@@ -38,8 +38,12 @@ from pipeline.python.eyetracker import dlc_utils as dlcutils
 
 
 def load_frame_labels(animalid, session, fov, experiment, traceid='traces001',
-        rootdir='/n/coxfs01/2p-data'):
-    print(glob.glob(os.path.join(rootdir, animalid, session, fov, 'combined_%s_static' % experiment, 'traces', '%s*' % traceid)))
+                        rootdir='/n/coxfs01/2p-data'):
+    
+    ds =glob.glob(os.path.join(rootdir, animalid, session, fov, 'combined_%s_static' % experiment, 'traces', '%s*' % traceid))
+    print(ds)
+    if len(ds)==0:
+        print("Animalid:%s, Session:%s, fov:%s, Exp: %s|%s" % (animalid, session, fov, experiment, traceid))
 
     labels_dfile = glob.glob(os.path.join(rootdir, animalid, session, fov, 
                         'combined_%s_static' % experiment, 'traces', 
@@ -141,7 +145,7 @@ def parse_pose_data(animalid, session, fov, experiment,
               'missing_dlc_files': missing_data['no_dlc_files'],
               'empty_dlc_files': missing_data['empty_dlc_files'], #files_,
               'missing_trials': missing_data['missing_trials'], #trials_,
-              'n_missing_trials': len(trials_),
+              'n_missing_trials': len(missing_data['missing_trials']),
               'feature_name': feature_name, 
               'raw_src': eyetracker_dir}
     with open(params_fpath, 'w') as f:
@@ -234,6 +238,7 @@ def main(options):
     snapshot=int(opts.dlc_snapshot)
     rootdir = opts.rootdir
     eyetracker_dir = opts.eyetracker_dir
+    print("TRACEID: %s" % traceid)
 
     ptraces, params = parse_pose_data(animalid, session, fov, experiment, 
                         traceid=traceid, 
