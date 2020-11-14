@@ -1063,6 +1063,12 @@ def get_aggregate_data_filepath(experiment, traceid='traces001', response_type='
     sdata = get_aggregate_info(traceid=traceid)
     #### Get DATA
     #load_data = False
+    data_desc_base = create_dataframe_name(traceid=traceid, 
+                                            response_type=response_type, 
+                                            responsive_test=responsive_test,
+                                            responsive_thr=responsive_thr,
+                                            epoch=epoch)
+    
     if responsive_test is None:
         if use_all:
             data_desc = 'aggr_%s_trialmeans_%s_ALL_%s_%s' % (experiment, traceid, response_type, epoch)
@@ -1070,71 +1076,114 @@ def get_aggregate_data_filepath(experiment, traceid='traces001', response_type='
             data_desc = 'aggr_%s_trialmeans_%s_None-thr-%.2f_%s_%s' % (experiment, traceid, responsive_thr, response_type, epoch)
 
     else:
-        data_desc = 'aggr_%s_trialmeans_%s_%s-thr-%.2f_%s_%s' % (experiment, traceid, responsive_test, responsive_thr, response_type, epoch)
+        data_desc = 'aggr_%s_%s' % (experiment, data_desc_base)
     data_outfile = os.path.join(data_dir, '%s.pkl' % data_desc)
 
     return data_outfile #print(data_desc)
     
+
+def create_dataframe_name(traceid='traces001', response_type='dff', 
+                             epoch='stimulus',
+                             responsive_test='ROC', responsive_thr=0.05, n_stds=0.0): 
+
+    data_desc = 'trialmeans_%s_%s-thr-%.2f_%s_%s' % (traceid, responsive_test, responsive_thr, response_type, epoch)
+    return data_desc
+
+def get_neuraldf(animalid, session, fovnum, experiment, traceid='traces001', 
+                   response_type='dff', epoch='stimulus',
+                   responsive_test='ROC', responsive_thr=0.05, n_stds=2.5, 
+                   create_new=False, redo_stats=False, n_processes=1,
+                   rootdir='/n/coxfs01/2p-data'):
+    # output
+    traceid_dir = glob.glob(os.path.join(rootdir, animalid, session, 
+                            'FOV%i_*' % fovnum, 'combined_%s_static' % experiment,
+                            'traces', '%s*' % traceid))[0]
+    statdir = os.path.join(traceid_dir, 'summary_stats', responsive_test)
+    data_desc_base = create_dataframe_name(traceid=traceid, 
+                                            response_type=response_type, 
+                                            responsive_test=responsive_test,
+                                            responsive_thr=responsive_thr,
+                                            epoch=epoch)
+    ndf_fpath = os.path.join(statdir, '%s.pkl' % data_desc_base)
+    
+    create_new = redo_stats is True
+    if not create_new:
+        try:
+            with open(ndf_fpath, 'rb') as f:
+                mean_responses = pkl.load(f)
+        except Exception as e:
+            print("Unable to get neuraldf. Creating now.")
+            create_new=True
+    
+    if create_new:
+        # Load traces
+        trace_type = 'df' if response_type=='zscore' else response_type
+        traces, labels, sdf = load_traces(animalid, session, fovnum, 
+                                          experiment, traceid=traceid, 
+                                          response_type=trace_type,
+                                          responsive_test=responsive_test, 
+                                          responsive_thr=responsive_thr, 
+                                          n_stds=n_stds,
+                                          redo_stats=redo_stats, 
+                                          n_processes=n_processes)
+        if traces is None:
+            return None
+        # Calculate mean trial metric
+        metric = 'zscore' if response_type=='zscore' else 'mean'
+        mean_responses = traces_to_trials(traces, labels, epoch=epoch, metric=response_type)
+
+        # save
+        with open(ndf_fpath, 'wb') as f:
+            pkl.dump(mean_responses, f, protocol=pkl.HIGHEST_PROTOCOL)
+
+    return mean_responses
 
 
 
 def aggregate_and_save(experiment, traceid='traces001', 
                        response_type='dff', epoch='stimulus',
                        responsive_test='ROC', responsive_thr=0.05, n_stds=2.5, 
-                       create_new=False, redo_stats=False,
+                       create_new=False, redo_stats=False, redo_fov=False,
                        always_exclude=['20190426_JC078'], n_processes=1,
                        aggregate_dir='/n/coxfs01/julianarhee/aggregate-visual-areas'):
-
+    '''
+    create_new: remake aggregate file
+    redo_stats: for each loaded FOV, re-calculate stats 
+    redo_fov: create new neuraldf (otherwise just loads existing)
+    '''
     #### Load mean trial info for responsive cells
     data_dir = os.path.join(aggregate_dir, 'data-stats')
     sdata = get_aggregate_info(traceid=traceid)
     
     #### Get DATA   
-    #data_desc = '%s_%s-%s_%s-thr-%.2f_%s' % (experiment, traceid, response_type, responsive_test, responsive_thr, epoch)
     data_outfile = get_aggregate_data_filepath(experiment, traceid=traceid, 
                         response_type=response_type, epoch=epoch,
                         responsive_test=responsive_test, 
                         responsive_thr=responsive_thr, n_stds=n_stds,
                         aggregate_dir=aggregate_dir)
     data_desc = os.path.splitext(os.path.split(data_outfile)[-1])[0]
-
-    #if not os.path.exists(data_outfile):
-    #    load_data = True
     print(data_desc)
 
     if create_new:
-
         print("Getting data: %s" % experiment)
         print("Saving data to %s" % data_outfile)
-
         dsets = sdata[sdata['experiment']==experiment].copy()
         no_stats = []
         DATA = {}
         for (animalid, session, fovnum), g in dsets.groupby(['animalid', 'session', 'fovnum']):
             datakey = '%s_%s_fov%i' % (session, animalid, fovnum)
             if '%s_%s' % (session, animalid) in always_exclude:
-                continue
-                 
-            # Load traces
-            trace_type = 'df' if response_type=='zscore' else response_type
-            traces, labels, sdf = load_traces(animalid, session, fovnum, 
-                                              experiment, traceid=traceid, 
-                                              response_type=trace_type,
-                                              responsive_test=responsive_test, 
-                                              responsive_thr=responsive_thr, 
-                                              n_stds=n_stds,
-                                              redo_stats=redo_stats, 
-                                              n_processes=n_processes)
-            if traces is None:
+                continue 
+            mean_responses = get_neuraldf(experiment, traceid=traceid,
+                                response_type=response_type, epoch=epoch,
+                                responsive_test=responsive_test, 
+                                responsive_thr=responsive_thr, n_stds=n_stds,
+                                create_new=redo_fov, redo_stats=redo_stats)          
+            if mean_responses is None:
                 print("NO stats, rerun: %s" % datakey)
                 no_stats.append(datakey)
                 continue
-            # Calculate mean trial metric
-            metric = 'zscore' if response_type=='zscore' else 'mean'
-            mean_responses = traces_to_trials(traces, labels, epoch=epoch, 
-                                                metric=response_type)
-            DATA[datakey] = mean_responses #{'data': mean_responses,
-                                    #'sdf': sdf}
+            DATA[datakey] = mean_responses
 
         # Save
         with open(data_outfile, 'wb') as f:
@@ -1181,9 +1230,24 @@ def extract_options(options):
     parser.add_option('-n', '--nproc', action='store', dest='n_processes', 
                       default=1,
                       help="N processes (default=1)")
-    parser.add_option('--do-stats', action='store_true', dest='redo_stats', 
+    parser.add_option('--redo-stats', action='store_true', dest='redo_stats', 
                       default=False,
                       help="Flag to redo tests for responsivity")
+    parser.add_option('--redo-fov', action='store_true', dest='redo_fov', 
+                      default=False,
+                      help="Flag to recalculate neuraldf from traces")
+
+    parser.add_option('-i', '--animalid', action='store', dest='animalid', default='IDD',
+                      help="animalid (e.g., JC110)")
+    parser.add_option('-S', '--session', action='store', dest='session', default='YYYYMMDD',
+                      help="session (format: YYYYMMDD)")
+    parser.add_option('-A', '--fovnum', action='store', dest='fovnum', default=1,
+                      help="fovnum (default: 1)")
+
+    parser.add_option('--aggr',  action='store_true', dest='aggregate', default=False,
+                      help="Set flag to cycle thru ALL dsets")
+
+
 
 
 
@@ -1209,21 +1273,40 @@ def main(options):
     responsive_test = opts.responsive_test
     if responsive_test in ['None', 'none']:
         responsive_test = None
-    responsive_thr = float(opts.responsive_thr)
-    n_stds = float(opts.nstds_above)
+    responsive_thr = float(opts.responsive_thr) 
+    n_stds = float(opts.nstds_above) if responsive_test=='nstds' else 0.
     create_new = opts.create_new
     epoch = opts.epoch
     n_processes = int(opts.n_processes)
     redo_stats = opts.redo_stats 
-    data_outfile = aggregate_and_save(experiment, traceid=traceid, 
+    redo_fov = opts.redo_fov
+
+    run_aggregate = opts.aggregate
+
+    if run_aggregate: 
+        data_outfile = aggregate_and_save(experiment, traceid=traceid, 
                                        response_type=response_type, epoch=epoch,
                                        responsive_test=responsive_test, 
                                        n_stds=n_stds,
                                        responsive_thr=responsive_thr, 
                                        create_new=create_new,
-                                        n_processes=n_processes,
-                                        redo_stats=redo_stats)
-    
+                                       n_processes=n_processes,
+                                       redo_stats=redo_stats, redo_fov=redo_fov)
+   
+    else:
+        animalid = opts.animalid
+        session = opts.session
+        fovnum = int(opts.fovnum)
+
+        neuraldf = get_neuraldf(animalid, session, fovnum, experiment, traceid=traceid, 
+                                       response_type=response_type, epoch=epoch,
+                                       responsive_test=responsive_test, 
+                                       n_stds=n_stds,
+                                       responsive_thr=responsive_thr, 
+                                       create_new=redo_fov,
+                                       n_processes=n_processes,
+                                       redo_stats=redo_stats)
+ 
     print("saved data.")
    
 
