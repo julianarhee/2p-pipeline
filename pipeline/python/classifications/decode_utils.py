@@ -207,7 +207,7 @@ def fit_svm_mp(neuraldf, sdf, n_iterations=50, n_processes=1,
             results.append(out_q.get())
         # Wait for all worker processes to finish
         for p in procs:
-            print "Finished:", p
+            #print "Finished:", p
             p.join()
     except KeyboardInterrupt:
         terminating.set()

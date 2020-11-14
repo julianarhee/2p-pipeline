@@ -134,7 +134,7 @@ def by_ncells_fit_svm_mp(ncells, celldf, NEURALDATA, sdf,
 
         # Wait for all worker processes to finish
         for p in procs:
-            print "Finished:", p
+            # print "Finished:", p
             p.join()
     except KeyboardInterrupt:
         terminating.set()
@@ -215,7 +215,13 @@ def decode_from_cell(datakey, rid, neuraldf, sdf, return_shuffle=False,
     curr_dst_dir = os.path.join(traceid_dir, 'decoding', 'single_cells', subdir)
     if not os.path.exists(curr_dst_dir):
         os.makedirs(curr_dst_dir)
-    print("***** Saving tmp results to:\n  %s" % curr_dst_dir)
+    C_str = analysis_flag.split('_')[-1]
+    bd_files = glob.glob(os.path.join(curr_dst_dir, '*%s*_%i.pkl' % (C_str, int(rid+1))))
+    print("... deleting %i old files" % len(bd_files))
+    for f in bd_files:
+        os.remove(f)
+
+    #print("***** Saving tmp results to:\n  %s" % curr_dst_dir)
     results_outfile = os.path.join(curr_dst_dir,'%s_%03d.pkl' % (analysis_flag, int(rid+1)))
     if create_new is False: 
         try:
@@ -226,7 +232,7 @@ def decode_from_cell(datakey, rid, neuraldf, sdf, return_shuffle=False,
     
     metainfo = {'cell': rid, 'datakey': datakey}
     if create_new:    
-        print("... Stating decoding analysis")
+        print("... Starting decoding analysis (rid=%i, %s)" % (rid, analysis_flag))
         # zscore full
         #neuraldf = aggr.zscore_neuraldf(neuraldf)
 
@@ -258,7 +264,10 @@ def decode_from_cell(datakey, rid, neuraldf, sdf, return_shuffle=False,
             iter_results = putils.add_meta_to_df(iter_results, metainfo)
             with open(results_outfile, 'wb') as f:
                 pkl.dump(iter_results, f, protocol=pkl.HIGHEST_PROTOCOL)
+
     # Pool mean
+    print("... saved: %s" % os.path.split(results_outfile)[-1])
+
     print("... finished all iters: %s" % str(iter_results.shape))
     iterd = dict(iter_results.mean())
     iterd.update( dict(('%s_std' % k, v) \
@@ -269,7 +278,6 @@ def decode_from_cell(datakey, rid, neuraldf, sdf, return_shuffle=False,
     #print("::FINAL::")
     #pp.pprint(iterd)
     print("@@@@@@@@@ done. %s, rid=%i @@@@@@@@@@" % (datakey, rid))
-    print(results_outfile)
 
     return iterd
 
@@ -681,14 +689,16 @@ def main(options):
     if not os.path.exists(dst_dir):
         os.makedirs(dst_dir)
         print("...making dir")
-    print(dst_dir)
+    print("DST: %s" % dst_dir)
 
 
     #### Calculate overlap with stimulus
+    print("... calculating overlaps (thr=%.2f)" % overlap_thr)
     stim_overlaps = rfutils.calculate_overlaps(RFDATA, experiment=experiment)
     pass_overlap = stim_overlaps[stim_overlaps['perc_overlap']>=overlap_thr].copy()
 
     #### Ignore datasets with too few cells
+    print("remove")
     curr_datakeys = pass_overlap['datakey'].unique() #RFDATA['datakey'].unique()
     if remove_too_few:
         too_few = [datakey for (visual_area, datakey), g \
@@ -725,35 +735,37 @@ def main(options):
             print("... skipping %s (%s) - no cells." % (curr_datakey, curr_visual_area))
             return None
         results_id = create_results_id(prefix=results_prefix, 
-                                visual_area=visual_area, C_value=C_value, 
+                                visual_area=curr_visual_area, C_value=C_value, 
                                 response_type=response_type, responsive_test=responsive_test)
 
         for ri, rid in enumerate(gdf['dset_roi'].values):
-            #if rid % 20 == 0:
-            print("... rid %i (%i of %i cells, %s, %s)." % (rid, int(ri+1), gdf.shape[0], curr_datakey, curr_visual_area))
+            if ri % 10 == 0:
+                print("... rid %i (%i of %i cells, %s, %s)." % (rid, int(ri+1), gdf.shape[0], curr_datakey, curr_visual_area))
             neuraldf = NEURALDATA[curr_visual_area][curr_datakey][[rid, 'config']].copy()
-            decode_from_cell(curr_datakey, rid, neuraldf, sdf, experiment=experiment,                                          C_value=C_value, return_shuffle=False, 
+            decode_from_cell(curr_datakey, rid, neuraldf, sdf, experiment=experiment,                                     C_value=C_value, return_shuffle=False, 
                             n_iterations=n_iterations, n_processes=n_processes, 
                             results_id=results_id,
                             class_a=class_a, class_b=class_b,
                             create_new=create_new, verbose=verbose)          
-        print("... finished %s (%s). ID=%s" % (datakey, visual_area, results_id))
+        print("... finished %s (%s). ID=%s" % (curr_datakey, curr_visual_area, results_id))
 
     elif analysis_type=='by_ncells':
         curr_visual_area = opts.visual_area
-        ncells = int(opts.ncells)
+        curr_ncells = int(opts.ncells)
         if curr_visual_area is not None:
             gdf = globalcells[globalcells['visual_area']==curr_visual_area]
             results_id = create_results_id(prefix=results_prefix, 
                             visual_area=curr_visual_area, C_value=C_value, 
                             response_type=response_type, responsive_test=responsive_test)
 
-            decode_by_ncells(ncells, gdf, sdf, NEURALDATA, 
+            decode_by_ncells(curr_ncells, gdf, sdf, NEURALDATA, 
                             C_value=C_value,
                             n_iterations=n_iterations, n_processes=n_processes, 
                             results_id=results_id,
                             class_a=class_a, class_b=class_b,
                             dst_dir=dst_dir, create_new=create_new, verbose=verbose)
+            print("***** finished %s, ncells=%i *******" % (curr_visual_area, curr_ncells))
+
         else:               
             #### Do eeeeeet
             #### Get NCELLS
@@ -764,21 +776,24 @@ def main(options):
             NCELLS = incl_range
 
             try:
-                for visual_area, gdf in globalcells.groupby(['visual_area']):    
+                for curr_visual_area, gdf in globalcells.groupby(['visual_area']):    
                     results_id = create_results_id(prefix=results_prefix, 
-                                    visual_area=visual_area, C_value=C_value, 
-                                    response_type=response_type, 
-                                    responsive_test=responsive_test)
-                    
-                    for ncells in NCELLS:
-                        print("**********%s (n=%i cells)***********" % (visual_area, ncells))
+                                        visual_area=curr_visual_area, 
+                                        C_value=C_value, 
+                                        response_type=response_type, 
+                                        responsive_test=responsive_test)
+                        
+                    for curr_ncells in NCELLS:
+                        print("**** %s (n=%i cells)****" % (curr_visual_area, curr_ncells))
 
-                        decode_by_ncells(ncells, gdf, sdf, NEURALDATA, 
+                        decode_by_ncells(curr_ncells, gdf, sdf, NEURALDATA, 
                                         C_value=C_value,
                                         n_iterations=n_iterations, n_processes=n_processes, 
                                         results_id=results_id,
                                         class_a=class_a, class_b=class_b,
-                                        dst_dir=dst_dir, create_new=create_new, verbose=verbose)
+                                        dst_dir=dst_dir, create_new=create_new, 
+                                        verbose=verbose)
+                    print("********* finished **********")
 
         #            if analysis_type=='by_fov':
         #                decode_from_fov(datakey, visual_area, cells, MEANS, 

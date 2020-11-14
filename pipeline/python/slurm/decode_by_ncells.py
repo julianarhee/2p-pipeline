@@ -83,7 +83,7 @@ c_value = None if args.c_value in ['None', None] else float(args.c_value)
 # identified unambiguously
 piper = uuid.uuid4()
 piper = str(piper)[0:4]
-logdir = 'LOG__%s_%s_overlap%i' % (analysis_type, EXPERIMENT, int(overlap_thr*10)) 
+logdir = 'LOG__%s_%s_%s_overlap%i' % (analysis_type, str(visual_area), EXPERIMENT, int(overlap_thr*10)) 
 if not os.path.exists(logdir):
     os.mkdir(logdir)
 
@@ -160,8 +160,8 @@ else:
 
     ncells=None
     dsets = load_metadata(EXPERIMENT, visual_area=visual_area)
-    incl = ['20190616_JC097_fov1']
-    dsets = dsets[dsets['datakey'].isin(incl)]
+    incl = ['20190614_JC091_fov1']
+    #dsets = dsets[dsets['datakey'].isin(incl)]
     if len(dsets)==0:
         fatal("NO FOVs found.")
     info("Found %i [%s] datasets to process." % (len(dsets), EXPERIMENT))
