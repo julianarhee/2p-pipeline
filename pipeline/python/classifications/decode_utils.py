@@ -14,6 +14,7 @@ import copy
 import copy
 import itertools
 import datetime
+import math
 import pprint 
 pp = pprint.PrettyPrinter(indent=4)
 import traceback
@@ -24,7 +25,7 @@ import seaborn as sns
 import pandas as pd
 import statsmodels as sm
 import cPickle as pkl
-
+import multiprocessing as mp
 from scipy import stats as spstats
 
 from pipeline.python.classifications import experiment_classes as util
@@ -62,163 +63,165 @@ from sklearn import svm
 # ======================================================================
 # Load/Aggregate data functions 
 # ======================================================================
-def load_aggregate_rfs(rf_dsets, traceid='traces001', 
-                        fit_desc='fit-2dgaus_dff-no-cutoff', 
-                        reliable_only=True, verbose=False):
-    rf_dpaths, no_fits = rfutils.get_fit_dpaths(rf_dsets, traceid=traceid, fit_desc=fit_desc)
-    rfdf = rfutils.aggregate_rf_data(rf_dpaths, reliable_only=reliable_only, 
-                                        fit_desc=fit_desc, traceid=traceid, verbose=verbose)
-    rfdf = rfdf.reset_index(drop=True)
-    return rfdf
+# load_aggregate_rfs : now in rf_utils.py
+# get_rf_positions: in rf_utils.py
 
-def get_rf_positions(rf_dsets, df_fpath, traceid='traces001', 
-                        fit_desc='fit-2dgaus_dff-no-cutoff', reliable_only=True, verbose=False):
-    rfdf = load_aggregate_rfs(rf_dsets, traceid=traceid, fit_desc=fit_desc, 
-                                reliable_only=reliable_only, verbose=verbose)
-    get_positions = False
-    if os.path.exists(df_fpath) and get_positions is False:
-        print("Loading existing RF coord conversions...")
-        try:
-            with open(df_fpath, 'rb') as f:
-                df= pkl.load(f)
-            rfdf = df['df']
-        except Exception as e:
-            get_positions = True
-
-    if get_positions:
-        print("Calculating RF coord conversions...")
-        pos_params = ['fov_xpos', 'fov_xpos_pix', 'fov_ypos', 'fov_ypos_pix', 'ml_pos','ap_pos']
-        for p in pos_params:
-            rfdf[p] = ''
-        p_list=[]
-        for (animalid, session, fovnum), g in rfdf.groupby(['animalid', 'session', 'fovnum']):
-            fcoords = load_roi_coords(animalid, session, 'FOV%i_zoom2p0x' % fovnum, 
-                                      traceid=traceid, create_new=False)
-
-            for ei, e_df in g.groupby(['experiment']):
-                cell_ids = e_df['cell'].unique()
-                p_ = fcoords['roi_positions'].loc[cell_ids]
-                for p in pos_params:
-                    rfdf[p][e_df.index] = p_[p].values
-        with open(df_fpath, 'wb') as f:
-            pkl.dump(rfdf, f, protocol=pkl.HIGHEST_PROTOCOL)
-    return rfdf
-
-def pick_rfs_with_most_overlap(rfdf, MEANS):
-    r_list=[]
-    for datakey, expdf in MEANS.items(): #corrs.groupby(['datakey']):
-        # Get active blob cells
-        exp_rids = [r for r in expdf.columns if putils.isnumber(r)]     
-        # Get current fov's RFs
-        rdf = rfdf[rfdf['datakey']==datakey].copy()
-        
-        # If have both rfs/rfs10, pick the best one
-        if len(rdf['experiment'].unique())>1:
-            rf_rids = rdf[rdf['experiment']=='rfs']['cell'].unique()
-            rf10_rids = rdf[rdf['experiment']=='rfs10']['cell'].unique()
-            same_as_rfs = np.intersect1d(rf_rids, exp_rids)
-            same_as_rfs10 = np.intersect1d(rf10_rids, exp_rids)
-            rfname = 'rfs' if len(same_as_rfs) > len(same_as_rfs10) else 'rfs10'
-            print("%s: Selecting %s, overlappig rfs, %i | rfs10, %i (of %i cells)" 
-                  % (datakey, rfname, len(same_as_rfs), len(same_as_rfs10), len(exp_rids)))
-            r_list.append(rdf[rdf['experiment']==rfname])
-        else:
-            r_list.append(rdf)
-    RFs = pd.concat(r_list, axis=0)
-
-    return RFs
-
-def plot_all_rfs(RFs, MEANS, screeninfo, cmap='cubehelix', dpi=150):
-    '''
-    Plot ALL receptive field pos, mark CoM by FOV. Colormap = datakey.
-    One subplot per visual area.
-    '''
-    screenright = float(screeninfo['azimuth_deg']/2)
-    screenleft = -1*screenright #float(screeninfo['screen_right'].unique())
-    screentop = float(screeninfo['altitude_deg']/2)
-    screenbottom = -1*screentop
-    screenaspect = float(screeninfo['resolution'][0]) / float(screeninfo['resolution'][1])
+#def load_aggregate_rfs(rf_dsets, traceid='traces001', 
+#                        fit_desc='fit-2dgaus_dff-no-cutoff', 
+#                        reliable_only=True, verbose=False):
+#    rf_dpaths, no_fits = rfutils.get_fit_dpaths(rf_dsets, traceid=traceid, fit_desc=fit_desc)
+#    rfdf = rfutils.aggregate_rf_data(rf_dpaths, reliable_only=reliable_only, 
+#                                        fit_desc=fit_desc, traceid=traceid, verbose=verbose)
+#    rfdf = rfdf.reset_index(drop=True)
+#    return rfdf
+#
+#def get_rf_positions(rf_dsets, df_fpath, traceid='traces001', 
+#                        fit_desc='fit-2dgaus_dff-no-cutoff', reliable_only=True, verbose=False):
+#    rfdf = load_aggregate_rfs(rf_dsets, traceid=traceid, fit_desc=fit_desc, 
+#                                reliable_only=reliable_only, verbose=verbose)
+#    get_positions = False
+#    if os.path.exists(df_fpath) and get_positions is False:
+#        print("Loading existing RF coord conversions...")
+#        try:
+#            with open(df_fpath, 'rb') as f:
+#                df= pkl.load(f)
+#            rfdf = df['df']
+#        except Exception as e:
+#            get_positions = True
+#
+#    if get_positions:
+#        print("Calculating RF coord conversions...")
+#        pos_params = ['fov_xpos', 'fov_xpos_pix', 'fov_ypos', 'fov_ypos_pix', 'ml_pos','ap_pos']
+#        for p in pos_params:
+#            rfdf[p] = ''
+#        p_list=[]
+#        for (animalid, session, fovnum), g in rfdf.groupby(['animalid', 'session', 'fovnum']):
+#            fcoords = load_roi_coords(animalid, session, 'FOV%i_zoom2p0x' % fovnum, 
+#                                      traceid=traceid, create_new=False)
+#
+#            for ei, e_df in g.groupby(['experiment']):
+#                cell_ids = e_df['cell'].unique()
+#                p_ = fcoords['roi_positions'].loc[cell_ids]
+#                for p in pos_params:
+#                    rfdf[p][e_df.index] = p_[p].values
+#        with open(df_fpath, 'wb') as f:
+#            pkl.dump(rfdf, f, protocol=pkl.HIGHEST_PROTOCOL)
+#    return rfdf
 
 
-    visual_areas = ['V1', 'Lm', 'Li']
-    fig, axn = pl.subplots(1,3, figsize=(10,6), dpi=dpi)
-    for visual_area, v_df in RFs.groupby(['visual_area']):
-        ai = visual_areas.index(visual_area)
-        ax = axn[ai]
-        dcolors = sns.color_palette(cmap, n_colors=len(v_df['datakey'].unique()))
-        for di, (datakey, d_df) in enumerate(v_df.groupby(['datakey'])):
-            
-            exp_rids = [r for r in MEANS[datakey] if putils.isnumber(r)]     
-            rf_rids = d_df['cell'].unique()
-            common_to_rfs_and_blobs = np.intersect1d(rf_rids, exp_rids)
-            curr_df = d_df[d_df['cell'].isin(common_to_rfs_and_blobs)].copy()
-            
-            sns.scatterplot('x0', 'y0', data=curr_df, ax=ax, color=dcolors[di],
-                           s=10, marker='o', alpha=0.5) 
 
-            x = curr_df['x0'].values
-            y=curr_df['y0'].values
-            
-            ncells_rfs = len(rf_rids)
-            ncells_common = len(common_to_rfs_and_blobs) #curr_df.shape[0]
-            m=np.ones(curr_df['x0'].shape)
-            cgx = np.sum(x*m)/np.sum(m)
-            cgy = np.sum(y*m)/np.sum(m)
-            #print('The center of mass: (%.2f, %.2f)' % (cgx, cgy))
-            ax.plot(cgx, cgy, marker='+', markersize=20, color=dcolors[di], 
-                    label='%s (%s, %i/%i)' 
-                            % (visual_area, datakey, ncells_common, ncells_rfs), lw=3) 
-        ax.set_title(visual_area)
-        ax.legend(bbox_to_anchor=(0.95, -0.4), fontsize=8) #1))
+def fit_svm_mp_shuffle(neuraldf, sdf, n_iterations=50, n_processes=1, 
+                   C_value=None, cv_nfolds=5, test_split=0.2, 
+                   test=None, single=False, n_train_configs=4, verbose=False,
+                   class_a=0, class_b=106):   
+    results = []
+    terminating = mp.Event() 
+    #### Select train/test configs for clf A vs B
+    train_configs = sdf[sdf['morphlevel'].isin([class_a, class_b])].index.tolist() 
 
-    for ax in axn:
-        ax.set_xlim([screenleft, screenright])
-        ax.set_ylim([screenbottom, screentop])
-        ax.set_aspect('equal')
-        ax.set_ylabel('')
-        ax.set_xlabel('')
-        
-    pl.subplots_adjust(top=0.9, bottom=0.4)
+    def worker(n_iters, neuraldf, sdf, C_value, verbose, class_a, class_b, out_q, shu_q):
+        r_ = []; s_=[];
+        for ni in n_iters:
+            #print('... %i' % ni)
+            curr_iter, curr_shuf = do_fit_within_fov(ni, curr_data=neuraldf, sdf=sdf, 
+                                        C_value=C_value, class_a=class_a, class_b=class_b,                                            verbose=verbose, return_shuffle=True)
+            #### Fit
+            r_.append(curr_iter)
+            s_.append(curr_shuf)
 
-    return fig
+        curr_iterdf = pd.concat(r_, axis=0)
+        curr_shufdf = pd.concat(s_, axis=0)
+        out_q.put(curr_iterdf) 
+        shu_q.put(curr_shufdf)
+    try:        
+        # Each process gets "chunksize' filenames and a queue to put his out-dict into:
+        iter_list = np.arange(0, n_iterations) #gdf.groups.keys()
+        out_q = mp.Queue()
+        shu_q = mp.Queue()
+        chunksize = int(math.ceil(len(iter_list) / float(n_processes)))
+        procs = []
+        for i in range(n_processes):
+            p = mp.Process(target=worker,
+                           args=(iter_list[chunksize * i:chunksize * (i + 1)],
+                                          neuraldf, sdf, C_value, verbose, class_a, class_b,
+                                          out_q, shu_q))
+            procs.append(p)
+            p.start()
 
+        # Collect all results into 1 results dict. We should know how many dicts to expect:
+        results = []
+        results_shuffled = []
+        for i in range(n_processes):
+            results.append(out_q.get())
+            results_shuffled.append(shu_q.get())
+        # Wait for all worker processes to finish
+        for p in procs:
+            print "Finished:", p
+            p.join()
+    except KeyboardInterrupt:
+        terminating.set()
+        print("***Terminating!")
+    except Exception as e:
+        traceback.print_exc()
+    finally:
+        for p in procs:
+            p.join    
+    return results, results_shuffled
+
+def fit_svm_mp(neuraldf, sdf, n_iterations=50, n_processes=1, 
+                   C_value=None, cv_nfolds=5, test_split=0.2, 
+                   test=None, single=False, n_train_configs=4, verbose=False,
+                   class_a=0, class_b=106):   
+    results = []
+    terminating = mp.Event() 
+    #### Select train/test configs for clf A vs B
+    train_configs = sdf[sdf['morphlevel'].isin([class_a, class_b])].index.tolist() 
+
+    def worker(n_iters, neuraldf, sdf, C_value, verbose, class_a, class_b, out_q):
+        r_ = []        
+        for ni in n_iters:
+            #print('... %i' % ni)
+            curr_iter = do_fit_within_fov(ni, curr_data=neuraldf, sdf=sdf, 
+                                        C_value=C_value, class_a=class_a, class_b=class_b,                                            verbose=verbose)
+            #### Fit
+            r_.append(curr_iter)
+        curr_iterdf = pd.concat(r_, axis=0)
+        out_q.put(curr_iterdf) 
+    try:        
+        # Each process gets "chunksize' filenames and a queue to put his out-dict into:
+        iter_list = np.arange(0, n_iterations) #gdf.groups.keys()
+        out_q = mp.Queue()
+        chunksize = int(math.ceil(len(iter_list) / float(n_processes)))
+        procs = []
+        for i in range(n_processes):
+            p = mp.Process(target=worker,
+                           args=(iter_list[chunksize * i:chunksize * (i + 1)],
+                                          neuraldf, sdf, C_value, verbose, class_a, class_b,
+                                          out_q))
+            procs.append(p)
+            p.start()
+
+        # Collect all results into 1 results dict. We should know how many dicts to expect:
+        results = []
+        for i in range(n_processes):
+            results.append(out_q.get())
+        # Wait for all worker processes to finish
+        for p in procs:
+            print "Finished:", p
+            p.join()
+    except KeyboardInterrupt:
+        terminating.set()
+        print("***Terminating!")
+    except Exception as e:
+        traceback.print_exc()
+    finally:
+        for p in procs:
+            p.join    
+    return results
+#
 # ======================================================================
 # Calculation functions 
 # ======================================================================
-def calculate_overlaps(RFs, datakeys, experiment='blobs'):
-    rf_fit_params = ['cell', 'std_x', 'std_y', 'theta', 'x0', 'y0']
-
-    o_list=[]
-    for (visual_area, animalid, session, fovnum, datakey), g in RFs.groupby(['visual_area', 'animalid', 'session', 'fovnum', 'datakey']):  
-        if datakey not in datakeys: #MEANS.keys():
-            continue
-        
-        # Convert RF fit params to polygon
-        rfname = g['experiment'].unique()[0]
-        #print(rfname) 
-        g.index = g['cell'].values
-        rf_polys = rfutils.rfs_to_polys(g[rf_fit_params])
-
-        S = util.Session(animalid, session, 'FOV%i_zoom2p0x' % fovnum)
-        stim_xpos, stim_ypos = S.get_stimulus_coordinates(experiments=[experiment])
-        stim_sizes = S.get_stimulus_sizes(size_tested=[experiment])
-
-        # Convert stimuli to polyon bounding boxes
-        stim_polys = [(blob_sz, rfutils.stimsize_poly(blob_sz, xpos=stim_xpos, ypos=stim_ypos))                   for blob_sz in stim_sizes[experiment]]
-        
-        # Get all pairwise overlaps (% of smaller ellipse that overlaps larger ellipse)
-        overlaps = pd.concat([rfutils.get_proportion_overlap(rf_poly, stim_poly) \
-                    for stim_poly in stim_polys \
-                    for rf_poly in rf_polys]).rename(columns={'row': 'cell', 'col': 'stim_size'})
-        metadict={'visual_area': visual_area, 'animalid': animalid, 'rfname': rfname,
-                  'session': session, 'fovnum': fovnum, 'datakey': datakey}
-        o_ = putils.add_meta_to_df(overlaps, metadict)
-        o_list.append(o_)
-
-    stim_overlaps = pd.concat(o_list, axis=0).reset_index(drop=True)
-    return stim_overlaps
-
-
 def computeMI(x, y):
     sum_mi = 0.0
     x_value_list = np.unique(x)
@@ -383,6 +386,82 @@ def get_trials_for_N_cells(curr_ncells, gdf, MEANS):
     return df
 
 
+def get_ntrials_per_config(neuraldf, n_trials=10):
+    t_list=[]
+    for cfg, trialmat in neuraldf.groupby(['config']):
+        trial_ixs = trialmat.index.tolist() # trial numbers
+        np.random.shuffle(trial_ixs) # shuffle the trials randomly
+        curr_trials = trialmat.loc[trial_ixs[0:n_trials]].copy()
+        t_list.append(curr_trials)
+    resampled_df = pd.concat(t_list, axis=0)
+
+    return resampled_df
+
+def get_trials_for_N_cells_split(curr_ncells, gdf, NEURALDATA):
+    '''
+    Randomly select N cells from global roi list (gdf), get cell's responses to all trials.
+    NEURALDATA (dict)
+        keys : visual areas
+        vals : same as MEANS() -- i.e., dict, k=datakey, v=neuraldf
+ 
+    gdf = dataframe (subset of global_rois dataframe), contains 
+    - all rois for a given visual area
+    - corresponding within-datakey roi IDs
+    '''
+
+
+    # Get current global RIDs
+    ncells_t = gdf.shape[0]
+    roi_ids = np.array(gdf['roi'].values.copy())
+    len(roi_ids)
+
+    # Random sample w/ replacement
+    rand_ixs = np.array([random.randint(0, ncells_t-1) for _ in np.arange(0, curr_ncells)])
+    curr_roi_list = roi_ids[rand_ixs] # can have repeats 
+    curr_roidf = gdf[gdf['roi'].isin(curr_roi_list)].copy() # N rows=N unique cells
+    # len(curr_roidf['roi'].unique()), len(curr_roi_list), len(np.unique(curr_roi_list))
+
+    # Make sure equal num trials per condition for all dsets
+    min_ntrials_per_cfg = min([NEURALDATA[visual_area][datakey]['config'].value_counts().min() \
+                            for (visual_area, datakey), g in \
+                            curr_roidf.groupby(['visual_area', 'datakey'])])
+
+    # Get data samples for these cells
+    d_list=[]; c_list=[];
+    for (varea, dkey), dkey_rois in curr_roidf.groupby(['visual_area', 'datakey']):
+            
+        neuraldf = NEURALDATA[varea][dkey].copy()
+        resampled_df = get_ntrials_per_config(neuraldf, n_trials=min_ntrials_per_cfg)
+        #resampled_df.sort_index(inplace=True) # resort by trial index
+        
+        # For each RID sample belonging to current dataset, get RID order
+        sampled_cells = pd.concat([dkey_rois[dkey_rois['roi']==globalid][['roi', 'dset_roi']] 
+                                   for globalid in curr_roi_list])
+        # sampled_cells['roi'].value_counts()
+        sampled_dset_rois = sampled_cells['dset_roi'].values
+        sampled_global_rois = sampled_cells['roi'].values
+
+
+        # Get trial responses (some columns are repeats)
+        curr_roidata = resampled_df[sampled_dset_rois].copy().reset_index(drop=True)
+        assert len(sampled_global_rois)==curr_roidata.shape[1], "Incorrect column grabbing"
+        curr_roidata.columns = sampled_global_rois # Rename ROI columns to global-rois
+        config_list = resampled_df['config'].reset_index(drop=True)  # Get configs on selected trials
+        d_list.append(curr_roidata)
+        c_list.append(config_list)
+
+    curr_neuraldf = pd.concat(d_list, axis=1).reset_index(drop=True)
+    curr_configdf = pd.concat(c_list, axis=1).T.drop_duplicates().T
+
+    assert curr_configdf.shape[0]==curr_neuraldf.shape[0], "Bad trials"
+    assert curr_configdf.shape[1]==1, "Bad configs"
+    df = pd.concat([curr_neuraldf, curr_configdf], axis=1)
+
+    return df
+
+
+
+
 # ======================================================================
 # Fitting functions 
 # ======================================================================
@@ -470,8 +549,8 @@ def fit_svm_shuffle(zdata, targets, test_split=0.2, cv_nfolds=5, verbose=False, 
                             #scoring=('precision_macro', 'recall_macro', 'accuracy'),
                             return_train_score=True)
     iterdict = dict((s, values.mean()) for s, values in scores.items())
-    if verbose:
-        print('... train (C=%.2f): %.2f, test: %.2f' % (C_value, iterdict['train_score'], iterdict['test_score']))
+    #if verbose:
+    #    print('... train (C=%.2f): %.2f, test: %.2f' % (C_value, iterdict['train_score'], iterdict['test_score']))
     trained_svc = svm.SVC(kernel='linear', C=C_value, random_state=10).fit(train_data, train_labels)
        
     #### DATA - Test with held-out data
@@ -679,7 +758,8 @@ def fit_svm(zdata, targets, test_split=0.2, cv_nfolds=5,  n_processes=1,
                             #scoring=('precision_macro', 'recall_macro', 'accuracy'),
                             return_train_score=True)
     iterdict = dict((s, values.mean()) for s, values in scores.items())
-    print('... train (C=%.2f): %.2f, test: %.2f' % (C_value, iterdict['train_score'], iterdict['test_score']))
+    if verbose:
+        print('... train (C=%.2f): %.2f, test: %.2f' % (C_value, iterdict['train_score'], iterdict['test_score']))
     trained_svc = svm.SVC(kernel='linear', C=C_value, random_state=10).fit(train_data, train_labels)
        
     #### DATA - Test with held-out data
@@ -741,8 +821,9 @@ def do_fit_within_fov(iter_num, curr_data=None, sdf=None, return_shuffle=False, 
     cv = C_value is None
     randi = random.randint(1, 10000)
     if return_shuffle:
-        curr_iter, curr_shuff = fit_svm_shuffle(zdata, targets, C_value=C_value, verbose=verbose,
-                            test_split=test_split, cv_nfolds=cv_nfolds, randi=randi)
+        curr_iter, curr_shuff = fit_svm_shuffle(zdata, targets, C_value=C_value, 
+                                verbose=verbose,
+                                test_split=test_split, cv_nfolds=cv_nfolds, randi=randi)
         curr_iter.update({'n_cells': zdata.shape[1], 'n_trials': zdata.shape[0]})
         curr_shuff.update({'n_cells': zdata.shape[1], 'n_trials': zdata.shape[0]})
         iter_df = pd.DataFrame(curr_iter, index=[iter_num])
@@ -757,16 +838,21 @@ def do_fit_within_fov(iter_num, curr_data=None, sdf=None, return_shuffle=False, 
     return iter_df 
 
 
+
+
 def do_fit(iter_num, global_rois=None, MEANS=None, sdf=None, sample_ncells=None, 
-           C_value=None, test_split=0.2, cv_nfolds=5, class_a=0, class_b=106):
+           C_value=None, test_split=0.2, cv_nfolds=5, class_a=0, class_b=106, df_is_split=True):
     #[gdf, MEANS, sdf, sample_ncells, cv] * n_times)
     '''
     Resample w/ replacement from pooled cells (across datasets). Assumes 'sdf' is same for all datasets.
     Do n_iterations, return mean/sem/std over iterations as dict of results.
     Classes (class_a, class_b) should be the actual labels of the target (i.e., value of morph level)
     '''   
-    # Get new sample set
-    curr_data = get_trials_for_N_cells(sample_ncells, global_rois, MEANS)
+    #### Get new sample set
+    if df_is_split:
+        curr_data = get_trials_for_N_cells_split(sample_ncells, global_rois, MEANS)
+    else:
+        curr_data = get_trials_for_N_cells(sample_ncells, global_rois, MEANS)
 
     #### Select train/test configs for clf A vs B
     train_configs = sdf[sdf['morphlevel'].isin([class_a, class_b])].index.tolist() 
