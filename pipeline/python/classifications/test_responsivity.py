@@ -356,20 +356,22 @@ def find_n_responsive_frames(roi_traces, labels, n_stds=2.5):
     stimon = labels['stim_on_frame'].unique()[0]
     nframes_on = labels['nframes_on'].unique()[0]
     rtraces = pd.concat([pd.DataFrame(data=roi_traces.values, columns=['values'], index=labels.index), labels], axis=1)
-    
+
     n_resp_frames = {}
     for config, g in rtraces.groupby(['config']):
         tmat = np.vstack(g.groupby(['trial'])['values'].apply(np.array))
         tr = tmat.mean(axis=0)
+        b_mean = np.nanmean(tr[0:stimon])
         b_std = np.nanstd(tr[0:stimon])
-        nframes_trial = len(tr[0:stimon+nframes_on])
-        n_frames_above = len(np.where(np.abs(tr[stimon:stimon+nframes_on]) > b_std*n_stds)[0])
+        threshold = abs(b_mean) + (b_std*n_stds)
+        #nframes_trial = len(tr[0:stimon+nframes_on])
+        n_frames_above = len(np.where(np.abs(tr[stimon:stimon+nframes_on]) > threshold)[0])
         n_resp_frames[config] = n_frames_above
 
     #rconfigs = [k for k, v in n_resp_frames.items() if v>=min_nframes]
     #[stimdf['sf'][cfg] for cfg in rconfigs]
     cfs = pd.DataFrame(n_resp_frames, index=[roi]).T #columns=[roi])
-    
+   
     return cfs
     
 def group_roidata_stimresponse(roidata, labels_df, roi_list=None, return_grouped=True, nframes_post=0): #None):

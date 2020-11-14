@@ -18,7 +18,7 @@ import sys
 
 import pandas as pd
 import numpy as np
-from pipeline.python.utils import natural_keys, get_frame_info
+from pipeline.python.utils import natural_keys, get_frame_info, load_dataset
 from pipeline.python.paradigm import align_acquisition_events as alignacq
 from pipeline.python.traces import trial_alignment as talignment
 from pipeline.python.paradigm.plot_responses import make_clean_psths
@@ -102,7 +102,9 @@ def parse_trial_epochs(animalid, session, fov, experiment, traceid,
         parsed_frames_filepath = alignacq.assign_frames_to_trials(si_info, trial_info, paradigm_dir, create_new=True)
 
     print("Done!")
-   
+  
+    return
+ 
 def align_traces(animalid, session, fov, experiment, traceid, rootdir='/n/coxfs01/2p-data'):
 
     talignment.aggregate_experiment_runs(animalid, session, fov, experiment, traceid=traceid)
@@ -114,6 +116,19 @@ def align_traces(animalid, session, fov, experiment, traceid, rootdir='/n/coxfs0
 #
 #    exp.load(trace_type='dff', update_self=True, make_equal=False, create_new=True)
     print("Aligned traces!") 
+    return 
+
+def remake_dataframes(animalid, session, fov, experiment, traceid, rootdir='/n/coxfs01/2p-data'):
+    soma_fpath = glob.glob(os.path.join(rootdir, animalid, session, fov, 
+                        'combined_%s_*' % experiment, 'traces', '%s*' % traceid,
+                        'data_arrays', 'np_subtracted.npz'))[0]
+
+    tr, lb, rinfo, sdf = load_dataset(soma_fpath, trace_type='dff', add_offset=True, 
+                                    make_equal=False, create_new=True)
+    
+    print("Remade all the other dataframes.")
+    return
+
 
 
 def main(options):
@@ -136,6 +151,9 @@ def main(options):
 
     align_traces(animalid, session, fov, experiment, traceid, rootdir=rootdir)
 
+
+    remake_dataframes(animalid, session, fov, experiment, traceid, rootdir=rootdir)
+    
     if plot_psth:
         print("3. Plotting")
         row_str = opts.rows
