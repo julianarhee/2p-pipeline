@@ -24,15 +24,25 @@ from scipy import ndimage
 from scipy.interpolate import griddata
 
 
-# -----------------------------------------------------------------------------
-# Screen:
-# -----------------------------------------------------------------------------
 def cart2sph(x,y,z):
     azimuth = np.arctan2(y,x)
     elevation = np.arctan2(z,np.sqrt(x**2 + y**2))
     r = np.sqrt(x**2 + y**2 + z**2)
     return azimuth, elevation, r
 
+
+def get_empirical_ci(stat, ci=0.95):
+    p = ((1.0-ci)/2.0) * 100
+    lower = np.percentile(stat, p) #max(0.0, np.percentile(stat, p))
+    p = (ci+((1.0-ci)/2.0)) * 100
+    upper = np.percentile(stat, p) # min(1.0, np.percentile(x0, p))
+    #print('%.1f confidence interval %.2f and %.2f' % (alpha*100, lower, upper))
+    return lower, upper
+
+
+# -----------------------------------------------------------------------------
+# Screen:
+# -----------------------------------------------------------------------------
 
 def get_lin_coords(resolution=[1080, 1920], cm_to_deg=True, 
                    xlim_degrees=(-59.7, 59.7), ylim_degrees=(-33.6, 33.6)):
