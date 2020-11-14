@@ -460,7 +460,8 @@ def get_active_cells_in_current_datasets(rois, MEANS, verbose=False):
     
     return cells
 
-def load_aggregate_data(experiment, traceid='traces001', response_type='dff', epoch='stimulus',
+def load_aggregate_data(experiment, traceid='traces001', response_type='dff', 
+                        epoch='stimulus', use_all=True,
                        responsive_test='ROC', responsive_thr=0.05, n_stds=0.0,
                        aggregate_dir='/n/coxfs01/julianarhee/aggregate-visual-areas'):
     
@@ -468,7 +469,8 @@ def load_aggregate_data(experiment, traceid='traces001', response_type='dff', ep
                         response_type=response_type, epoch=epoch,
                         responsive_test=responsive_test, 
                         responsive_thr=responsive_thr, n_stds=n_stds,
-                       aggregate_dir=aggregate_dir)
+                       aggregate_dir=aggregate_dir,
+                        use_all=use_all)
     # print("...loading: %s" % data_outfile)
 
     with open(data_outfile, 'rb') as f:
@@ -493,27 +495,47 @@ def equal_counts_per_condition(MEANS):
 
     return MEANS
 
+def zscore_neuraldf(neuraldf):
+    data = neuraldf.drop('config', 1) #sample_data[curr_roi_list].copy()
+    zdata = (data - np.nanmean(data)) / np.nanstd(data)
+    zdf = pd.DataFrame(zdata, index=neuraldf.index, columns=data.columns)
+    zdf['config'] = neuraldf['config']
+    return zdf
 
-def get_source_data(experiment, equalize_now=False,
+
+
+def get_source_data(experiment, traceid='traces001', equalize_now=False,zscore_now=False,
                     responsive_test='nstds', responsive_thr=10., response_type='dff',
-                    trial_epoch='stimulus', fov_type='zoom2p0x', state='awake', verbose=False): 
+                    trial_epoch='stimulus', fov_type='zoom2p0x', state='awake', 
+                    verbose=False, use_all=True): 
+    from pipeline.python.retinotopy import segment_retinotopy as seg
     #### Get neural responses
-    MEANS = aggr.load_aggregate_data(experiment, 
+    MEANS = load_aggregate_data(experiment, 
                 responsive_test=responsive_test, responsive_thr=responsive_thr, 
-                response_type=response_type, epoch=trial_epoch)
+                response_type=response_type, epoch=trial_epoch, use_all=use_all)
 
     if equalize_now:
         # Get equal counts
         print("---equalizing now---")
-        MEANS = aggr.equal_counts_per_condition(MEANS)
+        MEANS = equal_counts_per_condition(MEANS)
+
+    if zscore_now:
+        MEANS = zscore_data(MEANS)
 
     # Get data set metainfo and cells
-    sdata = aggr.get_aggregate_info(traceid=traceid, fov_type=fov_type, state=state)
+    sdata = get_aggregate_info(traceid=traceid, fov_type=fov_type, state=state)
     edata = sdata[sdata['experiment']==experiment].copy()
     rois = seg.get_cells_by_area(edata)
     cells = get_active_cells_in_current_datasets(rois, MEANS, verbose=False)
 
     return edata, cells, MEANS
+
+def zscore_data(MEANS):
+    for k, v in MEANS.items():
+        zdf = zscore_neuraldf(v)
+        MEANS[k] = zdf
+
+    return MEANS
 
 def equal_counts_df(neuraldf):
     curr_counts = neuraldf['config'].value_counts()
@@ -534,6 +556,128 @@ def equal_counts_df(neuraldf):
 
     return neuraldf.loc[kept_trials]
 
+def check_sdfs(stim_datakeys, traceid='traces001'):
+
+    #### Check that all datasets have same stim configs
+    SDF={}
+    for datakey in stim_datakeys:
+        session, animalid, fov_ = datakey.split('_')
+        fovnum = int(fov_[3:])
+        obj = util.Objects(animalid, session, 'FOV%i_zoom2p0x' %  fovnum, traceid=traceid)
+        sdf = obj.get_stimuli()
+        SDF[datakey] = sdf
+    nonpos_params = [p for p in sdf.columns if p not in ['xpos', 'ypos', 'position']] 
+    assert all([all(sdf[nonpos_params]==d[nonpos_params]) for k, d in SDF.items()]), "Incorrect stimuli..."
+    return SDF
+
+
+def experiment_datakeys(sdata, experiment='blobs', has_gratings=False, stim_filterby='first'):
+
+    # Drop duplicates and whatnot fovs
+    if experiment=='blobs':
+        g_str = 'hasgratings' if has_gratings else 'blobsonly'
+        exp_dkeys = get_blob_datasets(filter_by=stim_filterby, has_gratings=has_gratings, as_dict=True)
+    else:
+        g_str = 'gratingsonly'
+        exp_dkeys = get_gratings_datasets(filter_by=stim_filterby, as_dict=True)
+
+
+    dictkeys = [d for d in list(itertools.chain(*exp_dkeys.values()))]
+    stim_datakeys = ['%s_%s_fov%i' % (s.split('_')[0], s.split('_')[1], 
+                       sdata[(sdata['animalid']==s.split('_')[1]) 
+                        & (sdata['session']==s.split('_')[0])]['fovnum'].unique()[0]) for s in dictkeys]
+    expmeta = dict((k, [dv for dv in stim_datakeys for vv in v \
+                    if vv in dv]) for k, v in exp_dkeys.items())
+                     
+    edata = sdata[sdata['datakey'].isin(stim_datakeys)]
+                     
+    return edata, expmeta
+
+def get_neuraldata_and_rfdata(cells, rfdf, MEANS, visual_areas=['V1','Lm','Li']):
+    '''
+    cells (dataframe)
+        Cells assigned to each datakey/visual area 
+        From: get_source_data()
+    MEANS (dict)
+        Aggregated neuraldfs (dict, keys=dkey, values=dfs).
+        From: get_source_data()
+    rfdf (dataframe)
+        Loaded RF params and positions (from rf_utils.get_rf_positions())
+
+    Returns:
+    
+    NEURALDATA (dict)
+        keys=visual areas
+        values = MEANS (i.e., dict of dfs) for each visual area
+        Only inclues cells that are assigned to the specified area.
+
+    RFDATA (dataframe)
+        Corresponding rfdf info for NEURALDATA cells.
+    '''
+    NEURALDATA = dict((visual_area, {}) for visual_area in visual_areas)
+    rf_=[]
+    for (visual_area, datakey), curr_c in cells.groupby(['visual_area', 'datakey']):
+
+        # Which cells have receptive fields
+        cells_with_rfs = rfdf[rfdf['datakey']==datakey]['cell'].unique()
+
+        # Which cells with RFs are in assigned area
+        curr_assigned = curr_c[curr_c['cell'].isin(cells_with_rfs)]
+        assigned_with_rfs = curr_assigned['cell'].unique()
+        print("[%s] %s: %i cells with RFs (%i responsive)" % (visual_area, datakey, len(cells_with_rfs), len(assigned_with_rfs)))
+
+        if len(assigned_with_rfs) > 0:
+            # Get neuradf for these cells only
+            neuraldf = get_neuraldf_for_cells_in_area(curr_assigned, MEANS, 
+                                                           datakey=datakey, visual_area=visual_area)
+            NEURALDATA[visual_area].update({datakey: neuraldf})
+            curr_rfdf = rfdf[(rfdf['datakey']==datakey) & (rfdf['cell'].isin(assigned_with_rfs))]
+
+            # Means by cell id (some dsets have rf-5 and rf10 measurements, average these)
+            meanrf = curr_rfdf.groupby(['cell']).mean().reset_index()
+            mean_thetas = curr_rfdf.groupby(['cell'])['theta'].apply(spstats.circmean, low=0, high=2*np.pi).values
+            meanrf['theta'] = mean_thetas
+            meanrf['visual_area'] = [visual_area for _ in  np.arange(0, len(assigned_with_rfs))] # reassign area
+            meanrf['experiment'] = ['average_rfs' for _ in np.arange(0, len(assigned_with_rfs))]
+            # Add the meta/non-numeric info
+            non_num = [c for c in curr_rfdf.columns if c not in meanrf.columns and c!='experiment']
+            metainfo = pd.concat([g[non_num].iloc[0] for c, g in curr_rfdf.groupby(['cell'])], axis=1).T.reset_index(drop=True)
+            final_rf = pd.concat([metainfo, meanrf], axis=1)
+            rf_.append(final_rf)
+
+    RFDATA = pd.concat(rf_, axis=0)
+
+    return NEURALDATA, RFDATA
+
+
+def load_rfdf_and_pos(dsets, response_type='dff', rf_filter_by=None, reliable_only=True,
+                        rf_fit_thr=0.05, traceid='traces001',
+                        aggregate_dir='/n/coxfs01/2p-data'):
+    from pipeline.python.retinotopy import fit_2d_rfs as fitrf
+    from pipeline.python.classifications import rf_utils as rfutils
+
+    rf_fit_desc = fitrf.get_fit_desc(response_type=response_type)
+    aggr_rf_dir = os.path.join(aggregate_dir, 
+                        'receptive-fields', '%s__%s' % (traceid, rf_fit_desc))
+    # load presaved data
+    reliable_str = 'reliable' if reliable_only else ''
+    df_fpath =  os.path.join(aggr_rf_dir, 
+                        'fits_and_coords_%s_%s.pkl' % (rf_filter_by, reliable_str))
+    rf_dsets = dsets[dsets['experiment'].isin(['rfs', 'rfs10'])].copy()
+    rfdf = rfutils.get_rf_positions(rf_dsets, df_fpath)
+
+    return rfdf
+
+def get_counts_by_datakey(stim_overlaps):
+    c_list=[]
+    i=0
+    for (visual_area, datakey), g in stim_overlaps.groupby(['visual_area', 'datakey']):
+        rf_rids = sorted(g['cell'].unique())
+        c_list.append(pd.DataFrame({'visual_area': visual_area, 'datakey': datakey, 
+                                     'n_cells': len(rf_rids)}, index=[i]))
+        i+=1
+    counts_by_dset = pd.concat(c_list, axis=0)
+    return counts_by_dset
 
 
 # ===============================================================
@@ -638,7 +782,7 @@ def annotate_stats_areas(statresults, ax, lw=1, color='k',
 
     return ax
 
-def get_counts_for_legend(df, area_colors=None, markersize=10, marker='_',
+def get_counts_for_legend(df, area_colors=None, markersize=10, marker='_', lw=1,
               visual_areas=['V1', 'Lm', 'Li']):
     from matplotlib.lines import Line2D
 
@@ -668,14 +812,14 @@ def get_counts_for_legend(df, area_colors=None, markersize=10, marker='_',
     if 'cell' in df.columns.tolist():
         n_cells = dict((v, g['n_cells'].sum()) \
                         for v, g in counts.groupby(['visual_area']))
-        legend_elements = [Line2D([0], [0], marker='_', markersize=10, \
-                                  lw=1, color=area_colors[v], 
+        legend_elements = [Line2D([0], [0], marker=marker, markersize=markersize, \
+                                  lw=lw, color=area_colors[v], 
                                   markerfacecolor=area_colors[v],
                                   label='%s (n=%i rats, %i fovs, %i cells)' % (v, n_rats[v], n_fovs[v], n_cells[v]))\
                            for v in visual_areas]
     else:
-        legend_elements = [Line2D([0], [0], marker='_', markersize=10, \
-                                  lw=1, color=area_colors[v], 
+        legend_elements = [Line2D([0], [0], marker=marker, markersize=markersize, \
+                                  lw=lw, color=area_colors[v], 
                                   markerfacecolor=area_colors[v],
                                   label='%s (n=%i rats, %i fovs)' % (v, n_rats[v], n_fovs[v]))\
                            for v in visual_areas]
@@ -908,7 +1052,8 @@ def get_aggregate_info(traceid='traces001', fov_type='zoom2p0x', state='awake', 
 
     return sdata
 
-def get_aggregate_data_filepath(experiment, traceid='traces001', response_type='dff', epoch='stimulus',
+def get_aggregate_data_filepath(experiment, traceid='traces001', response_type='dff', 
+                        epoch='stimulus', use_all=True,
                        responsive_test='ROC', responsive_thr=0.05, n_stds=0.0,
                        aggregate_dir='/n/coxfs01/julianarhee/aggregate-visual-areas'):
     
@@ -917,7 +1062,11 @@ def get_aggregate_data_filepath(experiment, traceid='traces001', response_type='
     #### Get DATA
     #load_data = False
     if responsive_test is None:
-        data_desc = 'aggr_%s_trialmeans_%s_ALL_%s_%s' % (experiment, traceid, response_type, epoch)
+        if use_all:
+            data_desc = 'aggr_%s_trialmeans_%s_ALL_%s_%s' % (experiment, traceid, response_type, epoch)
+        else:
+            data_desc = 'aggr_%s_trialmeans_%s_None-thr-%.2f_%s_%s' % (experiment, traceid, responsive_thr, response_type, epoch)
+
     else:
         data_desc = 'aggr_%s_trialmeans_%s_%s-thr-%.2f_%s_%s' % (experiment, traceid, responsive_test, responsive_thr, response_type, epoch)
     data_outfile = os.path.join(data_dir, '%s.pkl' % data_desc)
