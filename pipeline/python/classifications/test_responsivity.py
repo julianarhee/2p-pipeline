@@ -363,10 +363,15 @@ def find_n_responsive_frames(roi_traces, labels, n_stds=2.5):
         tr = tmat.mean(axis=0)
         b_mean = np.nanmean(tr[0:stimon])
         b_std = np.nanstd(tr[0:stimon])
-        threshold = abs(b_mean) + (b_std*n_stds)
+        #threshold = abs(b_mean) + (b_std*n_stds)
         #nframes_trial = len(tr[0:stimon+nframes_on])
-        n_frames_above = len(np.where(np.abs(tr[stimon:stimon+nframes_on]) > threshold)[0])
-        n_resp_frames[config] = n_frames_above
+        #n_frames_above = len(np.where(np.abs(tr[stimon:stimon+nframes_on]) > threshold)[0])
+        thr_lo = abs(b_mean) - (b_std*n_stds)
+        thr_hi = abs(b_mean) + (b_std*n_stds)
+        nframes_above = len(np.where(np.abs(tr[stimon:stimon+nframes_on]) > thr_hi)[0])
+        nframes_below = len(np.where(np.abs(tr[stimon:stimon+nframes_on]) < thr_lo)[0])
+
+        n_resp_frames[config] = nframes_above + nframes_below
 
     #rconfigs = [k for k, v in n_resp_frames.items() if v>=min_nframes]
     #[stimdf['sf'][cfg] for cfg in rconfigs]
