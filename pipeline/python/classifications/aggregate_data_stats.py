@@ -1174,7 +1174,8 @@ def aggregate_and_save(experiment, traceid='traces001',
             datakey = '%s_%s_fov%i' % (session, animalid, fovnum)
             if '%s_%s' % (session, animalid) in always_exclude:
                 continue 
-            mean_responses = get_neuraldf(experiment, traceid=traceid,
+            mean_responses = get_neuraldf(animalid, session, fovnum, experiment, 
+                                traceid=traceid, 
                                 response_type=response_type, epoch=epoch,
                                 responsive_test=responsive_test, 
                                 responsive_thr=responsive_thr, n_stds=n_stds,
@@ -1296,7 +1297,11 @@ def main(options):
     else:
         animalid = opts.animalid
         session = opts.session
-        fovnum = int(opts.fovnum)
+        fov = opts.fovnum
+        if isnumber(fov):
+            fovnum = int(fov)
+        else:
+            fovnum = int(fov.split('_')[0][3:]) 
 
         neuraldf = get_neuraldf(animalid, session, fovnum, experiment, traceid=traceid, 
                                        response_type=response_type, epoch=epoch,
