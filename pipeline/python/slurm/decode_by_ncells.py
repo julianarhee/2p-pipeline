@@ -118,11 +118,8 @@ def load_metadata(experiment, responsive_test='nstds', responsive_thr=10.,
 ################################################################################
 #                               run the pipeline                               #
 ################################################################################
-# STEP1: TIFF PROCESSING. All PIDs will be processed in parallel since they don't
-#        have any dependencies
 
 C_str = 'tuneC' if c_value is None else 'C-%.2f' % c_value
-
 jobids = [] # {}
 if analysis_type=='by_ncells':
     # -----------------------------------------------------------------
@@ -134,9 +131,8 @@ if analysis_type=='by_ncells':
     info("Testing %i areas: %s" % (len(visual_areas), str(visual_areas)))
     info("Testing %i sample size: %s" % (len(ncells_test), str(ncells_test)))
 
-    for visual_area in visual_areas: #['V1', 'Lm', 'Li']:
+    for visual_area in visual_areas:
         for ncells in ncells_test:
-            #print("[%s]: %i (%s)" % (visual_area, ncells, C_str))
             mtag = '%s_%s_%i' % (visual_area, C_str, ncells) 
             #
             cmd = "sbatch --job-name={PROCID}.{ANALYSIS}.{MTAG} \
@@ -157,7 +153,6 @@ else:
     # -----------------------------------------------------------------
     # SINGLE CELLS
     # -----------------------------------------------------------------
-
     ncells=None
     dsets = load_metadata(EXPERIMENT, visual_area=visual_area)
     incl = ['20190614_JC091_fov1']
@@ -166,7 +161,6 @@ else:
         fatal("NO FOVs found.")
     info("Found %i [%s] datasets to process." % (len(dsets), EXPERIMENT))
     for (visual_area, datakey), g in dsets.groupby(['visual_area', 'datakey']):
-        #print("[%s]: %s (%s)" % (visual_area, datakey, C_str))
         mtag = '%s_%s_%s' % (datakey, visual_area, C_str) 
         #
         cmd = "sbatch --job-name={PROCID}.{MTAG}.{ANALYSIS} \
