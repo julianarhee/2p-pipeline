@@ -528,7 +528,7 @@ def get_responsive_cells(animalid, session, fov, run=None, traceid='traces001',
             nrois_total = len(rstats.keys())
         elif responsive_test == 'nstds':
             assert n_stds == rstats['nstds'], "... incorrect nstds, need to recalculate"
-            print rstats
+            #print rstats
             roi_list = [r for r in rstats['nframes_above'].columns \
                             if any(rstats['nframes_above'][r] > responsive_thr)]
             nrois_total = rstats['nframes_above'].shape[-1]
