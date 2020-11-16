@@ -1413,7 +1413,7 @@ class Experiment(object):
         estats.rois = roi_list
         estats.nrois = self.data.traces.shape[-1]
         
-        estats.gdf = esp.group_roidata_stimresponse(self.data.traces[roi_list], 
+        estats.gdf = resp.group_roidata_stimresponse(self.data.traces[roi_list], 
                                                     self.data.labels, 
                                                     roi_list=roi_list,
                                                     return_grouped=get_grouped,
