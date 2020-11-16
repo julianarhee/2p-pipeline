@@ -127,7 +127,10 @@ if analysis_type=='by_ncells':
     # -----------------------------------------------------------------
     datakey=None
     ncells_test = [2**i for i in np.arange(0, 9)]  
-    visual_areas = ['V1', 'Lm', 'Li']
+    if visual_area is not None:
+        visual_areas = [visual_area]    
+    else:
+        visual_areas = ['V1', 'Lm', 'Li']
     info("Testing %i areas: %s" % (len(visual_areas), str(visual_areas)))
     info("Testing %i sample size: %s" % (len(ncells_test), str(ncells_test)))
 
@@ -155,7 +158,7 @@ else:
     # -----------------------------------------------------------------
     ncells=None
     dsets = load_metadata(EXPERIMENT, visual_area=visual_area)
-    incl = ['20190614_JC091_fov1']
+    #incl = ['20190614_JC091_fov1', '20190602_JC091_fov1', '20190609_JC099_fov1']
     #dsets = dsets[dsets['datakey'].isin(incl)]
     if len(dsets)==0:
         fatal("NO FOVs found.")
