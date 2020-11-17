@@ -84,76 +84,11 @@ def initializer(terminating_):
     global terminating
     terminating = terminating_
 
-
-
-# -----------------------------------------------------------------------
-# by NCELLS
-# ----------------------------------------------------------------------
-def by_ncells_fit_svm_mp(ncells, celldf, NEURALDATA, sdf, 
-                           n_iterations=50, n_processes=1, 
-                           C_value=None, cv_nfolds=5, test_split=0.2, 
-                           test=None, single=False, n_train_configs=4, verbose=False,
-                           class_a=0, class_b=106):   
-    results = []
-    terminating = mp.Event()
-    
-    #### Select train/test configs for clf A vs B
-    train_configs = sdf[sdf['morphlevel'].isin([class_a, class_b])].index.tolist() 
-
-    def worker(n_iters, ncells, celldf, sdf, NEURALDATA, C_value, class_a, class_b, out_q):
-        r_ = []        
-        for ni in n_iters:
-            print('... %i' % ni)
-            curr_iter = decutils.do_fit(ni, sample_ncells=ncells,
-                                        global_rois=celldf, sdf=sdf,
-                                        MEANS=NEURALDATA, df_is_split=True, 
-                                        C_value=C_value, class_a=class_a, class_b=class_b)
-            #### Fit
-            r_.append(curr_iter)
-        curr_iterdf = pd.concat(r_, axis=0)
-        out_q.put(curr_iterdf)
-        
-    try:        
-        # Each process gets "chunksize' filenames and a queue to put his out-dict into:
-        iter_list = np.arange(0, n_iterations) #gdf.groups.keys()
-        out_q = mp.Queue()
-        chunksize = int(math.ceil(len(iter_list) / float(n_processes)))
-        procs = []
-        for i in range(n_processes):
-            p = mp.Process(target=worker,
-                           args=(iter_list[chunksize * i:chunksize * (i + 1)],
-                                 ncells, celldf, sdf, NEURALDATA, C_value,
-                                 class_a, class_b, out_q))
-            procs.append(p)
-            p.start()
-
-        # Collect all results into single results dict. We should know how many dicts to expect:
-        results = []
-        for i in range(n_processes):
-            results.append(out_q.get())
-
-        # Wait for all worker processes to finish
-        for p in procs:
-            # print "Finished:", p
-            p.join()
-    except KeyboardInterrupt:
-        terminating.set()
-        print("***Terminating!")
-    except Exception as e:
-        traceback.print_exc()
-    finally:
-        for p in procs:
-            p.join    
-
-    return results
-
-
 def decode_by_ncells(ncells, celldf, sdf, NEURALDATA, 
                     C_value=None, results_id='by_fov', 
                     n_iterations=50, n_processes=2, 
                     class_a=0, class_b=106,
                     dst_dir='/n/coxfs01/2p-data', create_new=False, verbose=False):
-
 
     if not os.path.exists(dst_dir):
         os.makedirs(dst_dir)
@@ -170,7 +105,7 @@ def decode_by_ncells(ncells, celldf, sdf, NEURALDATA,
 
     if create_new:    
         # Decoding -----------------------------------------------------
-        i_chunks = by_ncells_fit_svm_mp(ncells, celldf, NEURALDATA, sdf, 
+        i_chunks = decutils.by_ncells_fit_svm_mp(ncells, celldf, NEURALDATA, sdf, 
                         n_iterations=n_iterations, n_processes=n_processes, 
                         C_value=C_value, cv_nfolds=cv_nfolds, test_split=test_split, 
                         class_a=class_a, class_b=class_b)
@@ -639,14 +574,9 @@ def main(options):
                 and ('rfs' in g['experiment'].values or 'rfs10' in g['experiment'].values)) ])
     dsets[['visual_area', 'datakey']].drop_duplicates().groupby(['visual_area']).count()
 
-    # Set colors
-    visual_areas, area_colors = putils.set_threecolor_palette()
-    dpi = putils.set_plot_params()
-
     #### Check stimulus configs
     stim_datakeys = dsets['datakey'].unique()
     SDF = aggr.check_sdfs(stim_datakeys, traceid=traceid)
-
 
     #### Source data
     _, cells, MEANS = aggr.get_source_data(experiment, 
@@ -654,7 +584,6 @@ def main(options):
                         response_type=response_type, responsive_test=responsive_test, 
                         responsive_thr=responsive_thr, trial_epoch=trial_epoch, use_all=False) 
     cells = cells[cells['visual_area'].isin(visual_areas)]
-
 
     #### Load RFs
     rf_fit_desc = fitrf.get_fit_desc(response_type=response_type)
@@ -674,15 +603,7 @@ def main(options):
                                     iti_pre=iti_pre, iti_post=iti_post, stim_dur=stim_dur,
                                     in_rate=pupil_framerate, out_rate=pupil_framerate,
                                     snapshot=pupil_snapshot, create_new=redo_pupil)
-
-    #fovnum = int(fov.split('_')[0][3:])
-    #datakey = '%s_%s_fov%i' % (session, animalid, fovnum)
-    #assert datakey in cells['datakey'].unique(), "%s not segmented. Aborting." % datakey
-    #curr_visual_areas = cells[cells['datakey']==datakey]['visual_area'].unique()
-    #print("[%s] %i visul areas in current fov." % (datakey, len(visual_areas)))
-
-
-    #### Setup output stuff    
+    #### Setup output dirs  
     results_prefix = set_results_prefix(analysis_type=analysis_type)
     data_info='%s_%s_overlap-%.1f_iter-%i' % (response_type, responsive_test, overlap_thr, n_iterations)
     dst_dir = os.path.join(aggregate_dir, 'decoding', analysis_type, data_info)
@@ -691,14 +612,12 @@ def main(options):
         print("...making dir")
     print("DST: %s" % dst_dir)
 
-
     #### Calculate overlap with stimulus
-    print("... calculating overlaps (thr=%.2f)" % overlap_thr)
+    print("Calculating overlaps (thr=%.2f)" % overlap_thr)
     stim_overlaps = rfutils.calculate_overlaps(RFDATA, experiment=experiment)
     pass_overlap = stim_overlaps[stim_overlaps['perc_overlap']>=overlap_thr].copy()
 
     #### Ignore datasets with too few cells
-    print("remove")
     curr_datakeys = pass_overlap['datakey'].unique() #RFDATA['datakey'].unique()
     if remove_too_few:
         too_few = [datakey for (visual_area, datakey), g \
@@ -707,30 +626,37 @@ def main(options):
         incl_datakeys = [s for s in curr_datakeys if s not in too_few]
     pass_overlap = pass_overlap[pass_overlap['datakey'].isin(incl_datakeys)]
     print("Final cell counts after ROI-assign, RF-fit, and overlap-thr:")
-    print(pass_overlap[['visual_area', 'datakey', 'cell']].drop_duplicates()['visual_area'].value_counts())
+    print(pass_overlap[['visual_area','datakey','cell']].drop_duplicates()['visual_area'].value_counts())
 
     #### Filter cells
     globalcells, cell_counts = decutils.filter_rois(pass_overlap, 
-                                        overlap_thr=overlap_thr, return_counts=True)
+                                                    overlap_thr=overlap_thr, return_counts=True)
     print("@@@@@@@@ cell counts @@@@@@@@@@@")
     print(cell_counts)
     sdf = SDF[incl_datakeys[-1]].copy()
 
-    print('Classify Morph %i v %i\nN=%i iterations (%i proc), overlap=%.2f, C=%s' % (m0, m100, n_iterations, n_processes, overlap_thr, str(C_value)))
+    print('Classify %i v %i\nN=%i iters (%i proc), overlap=%.2f, C=%s' % (m0, m100, n_iterations, n_processes, overlap_thr, str(C_value)))
 
 
     # ---------------------------------------------------------------------
-    curr_visual_area = opts.visual_area
-    curr_datakey = opts.datakey
-    if curr_visual_area in [None, 'None']:
+    curr_visual_area = None if opts.visual_area in ['None', None] else opts.visual_area
+    curr_datakey = None if opts.datakey in ['None', None] else opts.datakey
+    
+    if (curr_visual_area is None) and (curr_datakey is not None):
+        # Get the visual area (first one) for datakey
         assert curr_datakey in globalcells['datakey'].unique(), "No dkey: %s" % curr_datakey
         curr_visual_area = globalcells[globalcells['datakey']==curr_datakey]['visual_area'].unique()[0]
+    # ---------------------------------------------------------------------
+
+
     if analysis_type=='single_cells':
+        # ============================================================ 
+        # SINGLE_CELLS - for each fov, for each cell, do decode
+        # ============================================================ 
         # datakey is not None and visual_area is not None
-        # Time to do analyses 
         gdf = globalcells[(globalcells['visual_area']==curr_visual_area) 
                         & (globalcells['datakey']==curr_datakey)]
-        
+        ncells_total = gdf.shape[0] 
         if gdf.shape[0]==0:
             print("... skipping %s (%s) - no cells." % (curr_datakey, curr_visual_area))
             return None
@@ -740,19 +666,25 @@ def main(options):
 
         for ri, rid in enumerate(gdf['dset_roi'].values):
             if ri % 10 == 0:
-                print("... rid %i (%i of %i cells, %s, %s)." % (rid, int(ri+1), gdf.shape[0], curr_datakey, curr_visual_area))
+                print("... %i of %i cells (%s|%s), rid=%i." % (int(ri+1), ncells_total, curr_datakey, curr_visual_area, rid))
             neuraldf = NEURALDATA[curr_visual_area][curr_datakey][[rid, 'config']].copy()
-            decode_from_cell(curr_datakey, rid, neuraldf, sdf, experiment=experiment,                                     C_value=C_value, return_shuffle=False, 
+            decode_from_cell(curr_datakey, rid, neuraldf, sdf, experiment=experiment,
+                            C_value=C_value, return_shuffle=False, 
                             n_iterations=n_iterations, n_processes=n_processes, 
                             results_id=results_id,
                             class_a=class_a, class_b=class_b,
                             create_new=create_new, verbose=verbose)          
-        print("... finished %s (%s). ID=%s" % (curr_datakey, curr_visual_area, results_id))
+        print("Finished %s (%s). ID=%s" % (curr_datakey, curr_visual_area, results_id))
 
     elif analysis_type=='by_ncells':
+        # ============================================================ 
+        # by NCELLS - pools across datasets
+        # ============================================================ 
         curr_visual_area = opts.visual_area
         curr_ncells = int(opts.ncells)
         if curr_visual_area is not None:
+            # Do decode w CURR_NCELLS, CURR_VISUAL_AREA
+            # ----------------------------------------------
             gdf = globalcells[globalcells['visual_area']==curr_visual_area]
             results_id = create_results_id(prefix=results_prefix, 
                             visual_area=curr_visual_area, C_value=C_value, 
@@ -767,7 +699,8 @@ def main(options):
             print("***** finished %s, ncells=%i *******" % (curr_visual_area, curr_ncells))
 
         else:               
-            #### Do eeeeeet
+            # Loop thru all visual areas, all NCELLS
+            # ----------------------------------------------
             #### Get NCELLS
             min_cells_total = min(cell_counts.values())
             reasonable_range = [2**i for i in np.arange(0, 10)]

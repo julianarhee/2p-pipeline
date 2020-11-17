@@ -66,69 +66,23 @@ from sklearn import svm
 # load_aggregate_rfs : now in rf_utils.py
 # get_rf_positions: in rf_utils.py
 
-#def load_aggregate_rfs(rf_dsets, traceid='traces001', 
-#                        fit_desc='fit-2dgaus_dff-no-cutoff', 
-#                        reliable_only=True, verbose=False):
-#    rf_dpaths, no_fits = rfutils.get_fit_dpaths(rf_dsets, traceid=traceid, fit_desc=fit_desc)
-#    rfdf = rfutils.aggregate_rf_data(rf_dpaths, reliable_only=reliable_only, 
-#                                        fit_desc=fit_desc, traceid=traceid, verbose=verbose)
-#    rfdf = rfdf.reset_index(drop=True)
-#    return rfdf
-#
-#def get_rf_positions(rf_dsets, df_fpath, traceid='traces001', 
-#                        fit_desc='fit-2dgaus_dff-no-cutoff', reliable_only=True, verbose=False):
-#    rfdf = load_aggregate_rfs(rf_dsets, traceid=traceid, fit_desc=fit_desc, 
-#                                reliable_only=reliable_only, verbose=verbose)
-#    get_positions = False
-#    if os.path.exists(df_fpath) and get_positions is False:
-#        print("Loading existing RF coord conversions...")
-#        try:
-#            with open(df_fpath, 'rb') as f:
-#                df= pkl.load(f)
-#            rfdf = df['df']
-#        except Exception as e:
-#            get_positions = True
-#
-#    if get_positions:
-#        print("Calculating RF coord conversions...")
-#        pos_params = ['fov_xpos', 'fov_xpos_pix', 'fov_ypos', 'fov_ypos_pix', 'ml_pos','ap_pos']
-#        for p in pos_params:
-#            rfdf[p] = ''
-#        p_list=[]
-#        for (animalid, session, fovnum), g in rfdf.groupby(['animalid', 'session', 'fovnum']):
-#            fcoords = load_roi_coords(animalid, session, 'FOV%i_zoom2p0x' % fovnum, 
-#                                      traceid=traceid, create_new=False)
-#
-#            for ei, e_df in g.groupby(['experiment']):
-#                cell_ids = e_df['cell'].unique()
-#                p_ = fcoords['roi_positions'].loc[cell_ids]
-#                for p in pos_params:
-#                    rfdf[p][e_df.index] = p_[p].values
-#        with open(df_fpath, 'wb') as f:
-#            pkl.dump(rfdf, f, protocol=pkl.HIGHEST_PROTOCOL)
-#    return rfdf
-
-
-
 def fit_svm_mp_shuffle(neuraldf, sdf, n_iterations=50, n_processes=1, 
                    C_value=None, cv_nfolds=5, test_split=0.2, 
                    test=None, single=False, n_train_configs=4, verbose=False,
                    class_a=0, class_b=106):   
-    results = []
-    terminating = mp.Event() 
     #### Select train/test configs for clf A vs B
     train_configs = sdf[sdf['morphlevel'].isin([class_a, class_b])].index.tolist() 
 
+    #### Define MP worker
+    results = []
+    terminating = mp.Event() 
     def worker(n_iters, neuraldf, sdf, C_value, verbose, class_a, class_b, out_q, shu_q):
         r_ = []; s_=[];
         for ni in n_iters:
-            #print('... %i' % ni)
             curr_iter, curr_shuf = do_fit_within_fov(ni, curr_data=neuraldf, sdf=sdf, 
                                         C_value=C_value, class_a=class_a, class_b=class_b,                                            verbose=verbose, return_shuffle=True)
-            #### Fit
             r_.append(curr_iter)
             s_.append(curr_shuf)
-
         curr_iterdf = pd.concat(r_, axis=0)
         curr_shufdf = pd.concat(s_, axis=0)
         out_q.put(curr_iterdf) 
@@ -172,18 +126,17 @@ def fit_svm_mp(neuraldf, sdf, n_iterations=50, n_processes=1,
                    C_value=None, cv_nfolds=5, test_split=0.2, 
                    test=None, single=False, n_train_configs=4, verbose=False,
                    class_a=0, class_b=106):   
-    results = []
-    terminating = mp.Event() 
     #### Select train/test configs for clf A vs B
     train_configs = sdf[sdf['morphlevel'].isin([class_a, class_b])].index.tolist() 
-
+    
+    #### Define MP worker
+    results = []
+    terminating = mp.Event() 
     def worker(n_iters, neuraldf, sdf, C_value, verbose, class_a, class_b, out_q):
         r_ = []        
         for ni in n_iters:
-            #print('... %i' % ni)
             curr_iter = do_fit_within_fov(ni, curr_data=neuraldf, sdf=sdf, 
-                                        C_value=C_value, class_a=class_a, class_b=class_b,                                            verbose=verbose)
-            #### Fit
+                                        C_value=C_value, class_a=class_a, class_b=class_b,                                                        verbose=verbose)
             r_.append(curr_iter)
         curr_iterdf = pd.concat(r_, axis=0)
         out_q.put(curr_iterdf) 
@@ -199,7 +152,7 @@ def fit_svm_mp(neuraldf, sdf, n_iterations=50, n_processes=1,
                                           neuraldf, sdf, C_value, verbose, class_a, class_b,
                                           out_q))
             procs.append(p)
-            p.start()
+            p.start() # start asynchronously
 
         # Collect all results into 1 results dict. We should know how many dicts to expect:
         results = []
@@ -207,8 +160,7 @@ def fit_svm_mp(neuraldf, sdf, n_iterations=50, n_processes=1,
             results.append(out_q.get())
         # Wait for all worker processes to finish
         for p in procs:
-            #print "Finished:", p
-            p.join()
+            p.join() # will block until finished
     except KeyboardInterrupt:
         terminating.set()
         print("***Terminating!")
@@ -218,6 +170,62 @@ def fit_svm_mp(neuraldf, sdf, n_iterations=50, n_processes=1,
         for p in procs:
             p.join    
     return results
+
+
+def by_ncells_fit_svm_mp(ncells, celldf, NEURALDATA, sdf, 
+                           n_iterations=50, n_processes=1, 
+                           C_value=None, cv_nfolds=5, test_split=0.2, 
+                           test=None, single=False, n_train_configs=4, verbose=False,
+                           class_a=0, class_b=106):   
+    #### Select train/test configs for clf A vs B
+    train_configs = sdf[sdf['morphlevel'].isin([class_a, class_b])].index.tolist() 
+
+    #### Define multiprocessing worker
+    results = []
+    terminating = mp.Event()    
+    def worker(n_iters, ncells, celldf, sdf, NEURALDATA, C_value, class_a, class_b, out_q):
+        r_ = []        
+        for ni in n_iters:
+            curr_iter = do_fit(ni, sample_ncells=ncells,
+                                        global_rois=celldf, sdf=sdf,
+                                        MEANS=NEURALDATA, df_is_split=True, 
+                                        C_value=C_value, class_a=class_a, class_b=class_b)
+            r_.append(curr_iter)
+        curr_iterdf = pd.concat(r_, axis=0)
+        out_q.put(curr_iterdf)
+        
+    try:        
+        # Each process gets "chunksize' filenames and a queue to put his out-dict into:
+        iter_list = np.arange(0, n_iterations) #gdf.groups.keys()
+        out_q = mp.Queue()
+        chunksize = int(math.ceil(len(iter_list) / float(n_processes)))
+        procs = []
+        for i in range(n_processes):
+            p = mp.Process(target=worker,
+                           args=(iter_list[chunksize * i:chunksize * (i + 1)],
+                                 ncells, celldf, sdf, NEURALDATA, C_value,
+                                 class_a, class_b, out_q))
+            procs.append(p)
+            p.start()
+
+        # Collect all results into single results dict. We should know how many dicts to expect:
+        results = []
+        for i in range(n_processes):
+            results.append(out_q.get(99999))
+        # Wait for all worker processes to finish
+        for p in procs:
+            p.join()
+    except KeyboardInterrupt:
+        terminating.set()
+        print("***Terminating!")
+    except Exception as e:
+        traceback.print_exc()
+    finally:
+        for p in procs:
+            p.join()
+
+    return results
+
 #
 # ======================================================================
 # Calculation functions 
@@ -535,23 +543,22 @@ def fit_svm_shuffle(zdata, targets, test_split=0.2, cv_nfolds=5, verbose=False, 
         C_value = cv_grid.best_params_['C'] #cv_results['accuracy']['C']
     else:
         assert C_value is not None, "Provide value for hyperparam C..."
-
     #trained_svc = cv_grid.best_estimator_
 
     #### Fit SVM
     scaler = StandardScaler().fit(train_data)
     train_data = scaler.transform(train_data)
 
-    trained_svc = svm.SVC(kernel='linear', C=C_value, random_state=10)
+    trained_svc = svm.SVC(kernel='linear', C=C_value) #, random_state=10)
     #print("... cv")
     scores = cross_validate(trained_svc, train_data, train_labels, cv=cv_nfolds,
                             scoring=('accuracy'),
                             #scoring=('precision_macro', 'recall_macro', 'accuracy'),
                             return_train_score=True)
     iterdict = dict((s, values.mean()) for s, values in scores.items())
-    #if verbose:
-    #    print('... train (C=%.2f): %.2f, test: %.2f' % (C_value, iterdict['train_score'], iterdict['test_score']))
-    trained_svc = svm.SVC(kernel='linear', C=C_value, random_state=10).fit(train_data, train_labels)
+    if verbose:
+        print('... train (C=%.2f): %.2f, test: %.2f' % (C_value, iterdict['train_score'], iterdict['test_score']))
+    trained_svc = svm.SVC(kernel='linear', C=C_value).fit(train_data, train_labels)
        
     #### DATA - Test with held-out data
     test_data = scaler.transform(test_data)
@@ -805,11 +812,6 @@ def do_fit_within_fov(iter_num, curr_data=None, sdf=None, return_shuffle=False, 
     #### Get trial data for selected cells and config types
     curr_roi_list = [int(c) for c in curr_data.columns if c != 'config']
     sample_data = curr_data[curr_data['config'].isin(train_configs)]
-#    if do_zscore:
-#        data = sample_data.drop('config', 1) #sample_data[curr_roi_list].copy()
-#        zdata = (data - np.nanmean(data)) / np.nanstd(data)
-#    else:
-#        zdata = sample_data.drop('config', 1)
     zdata = sample_data.drop('config', 1)
 
     #### Get labels
@@ -835,9 +837,8 @@ def do_fit_within_fov(iter_num, curr_data=None, sdf=None, return_shuffle=False, 
                                 test_split=test_split, cv_nfolds=cv_nfolds, randi=randi)
         curr_iter.update({'n_cells': zdata.shape[1], 'n_trials': zdata.shape[0]})
         iter_df = pd.DataFrame(curr_iter, index=[iter_num])
+
     return iter_df 
-
-
 
 
 def do_fit(iter_num, global_rois=None, MEANS=None, sdf=None, sample_ncells=None, 
@@ -847,6 +848,9 @@ def do_fit(iter_num, global_rois=None, MEANS=None, sdf=None, sample_ncells=None,
     Resample w/ replacement from pooled cells (across datasets). Assumes 'sdf' is same for all datasets.
     Do n_iterations, return mean/sem/std over iterations as dict of results.
     Classes (class_a, class_b) should be the actual labels of the target (i.e., value of morph level)
+
+    df_is_split:
+        if MEANS dict is actually MEANS[visual_area][datakey]
     '''   
     #### Get new sample set
     if df_is_split:
@@ -869,9 +873,6 @@ def do_fit(iter_num, global_rois=None, MEANS=None, sdf=None, sample_ncells=None,
     targets['group'] = [sdf['size'][cfg] for cfg in targets['config'].values]
 
     #### Fit
-    #curr_iter, _ = fit_svm_shuffle(zdata, targets, cv=cv, C_value=C_value,
-    #                                      test_split=test_split, cv_nfolds=cv_nfolds)
-
     randi = random.randint(1, 10000)
     curr_iter = fit_svm(zdata, targets, C_value=C_value, test_split=test_split, 
                             cv_nfolds=cv_nfolds, randi=randi)
@@ -880,7 +881,7 @@ def do_fit(iter_num, global_rois=None, MEANS=None, sdf=None, sample_ncells=None,
 
 
 def do_fit_train_test_single(iter_num, global_rois=None, MEANS=None, sdf=None, sample_ncells=None,
-           cv=True, C_value=None, test_size=0.2, cv_nfolds=5, class_a=0, class_b=106):
+                            cv=True, C_value=None, test_size=0.2, cv_nfolds=5, class_a=0, class_b=106):
     '''
     Train/test PER SIZE.
 
