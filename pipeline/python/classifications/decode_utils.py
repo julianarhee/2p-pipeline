@@ -273,28 +273,35 @@ def calculate_ci(scores, ci=95):
 # ======================================================================
 # Split/pool functions 
 # ======================================================================
-def get_pooled_cells(stim_datakeys, rfs_and_blobs, filter_fovs=True, remove_too_few=False, 
+def get_pooled_cells(stim_overlaps, stim_datakeys=None, remove_too_few=False, 
                       overlap_thr=0.8, min_ncells=20):
-    if filter_fovs:
-        if remove_too_few:
-            too_few = []
-            for (visual_area, datakey), g in rfs_and_blobs[rfs_and_blobs['perc_overlap']>=overlap_thr].groupby(['visual_area', 'datakey']):
-                if len(g['cell'].unique()) < min_ncells:
-                    print(datakey, len(g['cell'].unique()))
-                    too_few.append(datakey)
-            curr_dkeys = [s for s in stim_datakeys if s not in too_few] 
-        else:
-            curr_dkeys = stim_datakeys
-    else:
-        curr_dkeys = rfs_and_blobs['datakey'].unique()
+    '''
+    stim_overlaps (dataframe)
+        Dataframe of all cell IDs and overlap values for all dkeys and visual areas.
+    stim_datakeys (list)
+        List of experiment datakeys to include. Default includes all in provided dataframe.
 
-    pooled_cells, cell_counts = filter_rois(rfs_and_blobs[rfs_and_blobs['datakey'].isin(curr_dkeys)], 
+    Return dataframe of all included cells (repsonsive, pass overlap_thr, exclude dsets w/ too_few cells)
+    '''
+    if stim_datakeys is None:
+        stim_datakeys = stim_overlaps['datakey'].unique()
+
+    too_few = []
+    if remove_too_few:
+        for (visual_area, datakey), g in stim_overlaps.groupby(['visual_area', 'datakey']):
+            if len(g['cell'].unique()) < min_ncells:
+                print(datakey, len(g['cell'].unique()))
+                too_few.append(datakey)
+    curr_dkeys = [s for s in stim_datakeys if s not in too_few] 
+
+    # Filter out cells that dont pass overlap threshold
+    pooled_cells, cell_counts = filter_rois(stim_overlaps[stim_overlaps['datakey'].isin(curr_dkeys)], 
                                                             overlap_thr=overlap_thr, return_counts=True)
 
     return pooled_cells, cell_counts
 
 
-def filter_rois(rfs_and_blobs, overlap_thr=0.50, return_counts=False):
+def filter_rois(stim_overlaps, overlap_thr=0.50, return_counts=False):
     visual_areas=['V1', 'Lm', 'Li']
     
     nocells=[]; notrials=[];
@@ -302,8 +309,10 @@ def filter_rois(rfs_and_blobs, overlap_thr=0.50, return_counts=False):
     roi_counters = dict((v, 0) for v in visual_areas)
     
     roidf = []
+    pass_overlaps = stim_overlaps[stim_overlaps['perc_overlap']>=overlap_thr]
+
     datakeys = dict((v, []) for v in visual_areas)
-    for (visual_area, datakey), g in rfs_and_blobs[rfs_and_blobs['perc_overlap']>=overlap_thr].groupby(['visual_area', 'datakey']):
+    for (visual_area, datakey), g in pass_overlaps.groupby(['visual_area', 'datakey']):
 
         roi_counter = roi_counters[visual_area]
         datakeys[visual_area].append(datakey)
@@ -313,14 +322,13 @@ def filter_rois(rfs_and_blobs, overlap_thr=0.50, return_counts=False):
         # Reindex roi ids for global
         roi_ids = [i+roi_counter for i, r in enumerate(roi_list)]
         nrs = len(roi_list)
-
         global_rois[visual_area].extend(roi_ids)
-        
+       
+        # Append to full df
         roidf.append(pd.DataFrame({'roi': roi_ids,
                                    'dset_roi': roi_list,
                                    'visual_area': [visual_area for _ in np.arange(0, nrs)],
                                    'datakey': [datakey for _ in np.arange(0, nrs)]}))
-
         # Update global roi id counter
         roi_counters[visual_area] += len(roi_ids)
 
@@ -342,7 +350,6 @@ def get_trials_for_N_cells(curr_ncells, gdf, MEANS):
     - all rois for a given visual area
     - corresponding within-datakey roi IDs
     '''
-
     # Get current global RIDs
     ncells_t = gdf.shape[0]                      
     roi_ids = np.array(gdf['roi'].values.copy()) 
@@ -467,9 +474,6 @@ def get_trials_for_N_cells_split(curr_ncells, gdf, NEURALDATA):
 
     return df
 
-
-
-
 # ======================================================================
 # Fitting functions 
 # ======================================================================
@@ -490,8 +494,7 @@ def tune_C(sample_data, target_labels, scoring_metric='accuracy',
     # Set the parameters by cross-validation
     tuned_parameters = [{'C': [0.001, 0.01, 0.1, 1, 10, 100, 1000]}]
 
-    results ={}
-    
+    results ={} 
     if verbose:
         print("# Tuning hyper-parameters for %s" % scoring_metric)
     #print()
@@ -728,7 +731,6 @@ def fit_svm_no_C(train_data, test_data,train_labels, test_labels, C_value=None, 
         return iterdict
 
 
-
 def fit_svm(zdata, targets, test_split=0.2, cv_nfolds=5,  n_processes=1,
                 C_value=None, verbose=False, return_clf=False, return_predictions=False,
                 randi=10):
@@ -797,6 +799,9 @@ def fit_svm(zdata, targets, test_split=0.2, cv_nfolds=5,  n_processes=1,
         return iterdict
 
 
+# --------------------------------------------------------------------------------
+# Wrappers for fitting functions - specifies what type of analysis to do
+# --------------------------------------------------------------------------------
 def do_fit_within_fov(iter_num, curr_data=None, sdf=None, return_shuffle=False, verbose=False,
                         C_value=None, test_split=0.2, cv_nfolds=5, class_a=0, class_b=106):
 

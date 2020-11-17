@@ -617,6 +617,8 @@ def get_neuraldata_and_rfdata(cells, rfdf, MEANS, visual_areas=['V1','Lm','Li'],
     NEURALDATA = dict((visual_area, {}) for visual_area in visual_areas)
     rf_=[]
     for (visual_area, datakey), curr_c in cells.groupby(['visual_area', 'datakey']):
+        if visual_area not in NEURALDATA.keys():
+            continue
 
         # Which cells have receptive fields
         cells_with_rfs = rfdf[rfdf['datakey']==datakey]['cell'].unique()

@@ -583,7 +583,7 @@ def main(options):
                         equalize_now=True, zscore_now=True,
                         response_type=response_type, responsive_test=responsive_test, 
                         responsive_thr=responsive_thr, trial_epoch=trial_epoch, use_all=False) 
-    cells = cells[cells['visual_area'].isin(visual_areas)]
+    #cells = cells[cells['visual_area'].isin(visual_areas)]
 
     #### Load RFs
     rf_fit_desc = fitrf.get_fit_desc(response_type=response_type)
@@ -617,23 +617,13 @@ def main(options):
     stim_overlaps = rfutils.calculate_overlaps(RFDATA, experiment=experiment)
     pass_overlap = stim_overlaps[stim_overlaps['perc_overlap']>=overlap_thr].copy()
 
-    #### Ignore datasets with too few cells
-    curr_datakeys = pass_overlap['datakey'].unique() #RFDATA['datakey'].unique()
-    if remove_too_few:
-        too_few = [datakey for (visual_area, datakey), g \
-                    in pass_overlap.groupby(['visual_area', 'datakey']) 
-                    if len(g['cell'].unique()) <= min_ncells]
-        incl_datakeys = [s for s in curr_datakeys if s not in too_few]
-    pass_overlap = pass_overlap[pass_overlap['datakey'].isin(incl_datakeys)]
-    print("Final cell counts after ROI-assign, RF-fit, and overlap-thr:")
-    print(pass_overlap[['visual_area','datakey','cell']].drop_duplicates()['visual_area'].value_counts())
 
     #### Filter cells
-    globalcells, cell_counts = decutils.filter_rois(pass_overlap, 
-                                                    overlap_thr=overlap_thr, return_counts=True)
+    globalcells, cell_counts = decutils.get_pooled_cells(pass_overlap,remove_too_few=remove_too_few, 
+                                                overlap_thr=overlap_thr, min_ncells=min_ncells)
     print("@@@@@@@@ cell counts @@@@@@@@@@@")
     print(cell_counts)
-    sdf = SDF[incl_datakeys[-1]].copy()
+    sdf = SDF[SDF.keys()[-1]].copy()
 
     print('Classify %i v %i\nN=%i iters (%i proc), overlap=%.2f, C=%s' % (m0, m100, n_iterations, n_processes, overlap_thr, str(C_value)))
 
