@@ -593,6 +593,17 @@ def experiment_datakeys(sdata, experiment='blobs', has_gratings=False, stim_filt
                      
     return edata, expmeta
 
+
+def neuraldf_dict_to_dataframe(NEURALDATA):
+    ndfs = []
+    for visual_area, vdict in NEURALDATA.items():
+        for datakey, neuraldf in vdict.items():
+            metainfo = {'visual_area': visual_area, 'datakey': datakey}
+            ndf = putils.add_meta_to_df(neuraldf, metainfo)
+            ndfs.append(ndf)
+
+    return pd.concat(ndfs, axis=0)
+
 def get_neuraldata_and_rfdata(cells, rfdf, MEANS, visual_areas=['V1','Lm','Li'], verbose=False):
     '''
     cells (dataframe)
