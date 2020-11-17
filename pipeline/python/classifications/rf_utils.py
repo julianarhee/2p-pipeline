@@ -234,7 +234,7 @@ def calculate_overlaps(RFs, datakeys=None, experiment='blobs'):
         g.index = g['cell'].values
         rf_polys = rfs_to_polys(g[rf_fit_params])
 
-        S = util.Session(animalid, session, 'FOV%i_zoom2p0x' % fovnum)
+        S = util.Session(animalid, session, 'FOV%i_zoom2p0x' % fovnum, get_anatomical=False)
         stim_xpos, stim_ypos = S.get_stimulus_coordinates(experiments=[experiment])
         stim_sizes = S.get_stimulus_sizes(size_tested=[experiment])
 

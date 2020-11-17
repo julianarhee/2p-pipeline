@@ -667,7 +667,7 @@ def get_roi_stats(animalid, session, fov, exp_name=None, traceid='traces001',
 
 class Session():
     def __init__(self, animalid, session, fov, visual_area=None, state=None, 
-                    verbose=False, rootdir='/n/coxfs01/2p-data'):
+                    get_anatomical=True, verbose=False, rootdir='/n/coxfs01/2p-data'):
         self.animalid = animalid
         self.session = session
         self.fov = fov
@@ -685,9 +685,11 @@ class Session():
         
         if verbose:
             print("Creating session object [%s|%s|%s]" % (animalid, session, fov))
-
-        self.anatomical = get_anatomical(animalid, session, fov, rootdir=rootdir)
         
+        self.anatomical=None
+        if get_anatomical:
+            self.anatomical = get_anatomical(animalid, session, fov, rootdir=rootdir)
+
         self.rois = None
         self.traceid = None
         self.trace_type = None
