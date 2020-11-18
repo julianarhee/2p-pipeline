@@ -593,18 +593,42 @@ def experiment_datakeys(sdata, experiment='blobs', has_gratings=False, stim_filt
                      
     return edata, expmeta
 
-
-def neuraldf_dict_to_dataframe(NEURALDATA):
+def neuraldf_dict_to_dataframe(NEURALDATA, response_type='response'):
     ndfs = []
     for visual_area, vdict in NEURALDATA.items():
         for datakey, neuraldf in vdict.items():
             metainfo = {'visual_area': visual_area, 'datakey': datakey}
-            ndf = putils.add_meta_to_df(neuraldf, metainfo)
-            ndfs.append(ndf)
+            ndf = add_meta_to_df(neuraldf.copy(), metainfo)
+            ndf['trial'] = ndf.index.tolist()
+            melted = pd.melt(ndf, id_vars=['visual_area', 'datakey', 'config', 'trial'], 
+                             var_name='cell', value_name=response_type)
 
-    return pd.concat(ndfs, axis=0)
+            ndfs.append(melted)
+    NDATA = pd.concat(ndfs, axis=0)
+   
+    return NDATA
 
-def get_neuraldata_and_rfdata(cells, rfdf, MEANS, visual_areas=['V1','Lm','Li'], verbose=False):
+
+def neuraldf_dataframe_to_dict(NDATA):
+
+    NEURALDATA = dict((v, dict()) for v in visual_areas)
+
+    for (visual_area, datakey), neuraldf in NDATA.groupby(['visual_area', 'datakey']):
+
+        l_ = [g[['response']].T.rename(columns=g['cell']) for (cg, trial), g in neuraldf.groupby(['config', 'trial'])]
+        trialnums = [trial for (cg, trial), g in neuraldf.groupby(['config', 'trial'])]
+        configvals = [cg for (cg, trial), g in neuraldf.groupby(['config', 'trial'])]
+
+        rdf = pd.concat(l_, axis=0)
+        rdf.index=trialnums
+        rdf['config'] = configvals
+
+        NEURALDATA[visual_area][datakey] = rdf.sort_index()
+
+    return NEURALDATA
+
+
+def get_neuraldata_and_rfdata(cells, rfdf, MEANS, visual_areas=['V1','Lm','Li'], verbose=False, stack=False):
     '''
     cells (dataframe)
         Cells assigned to each datakey/visual area 
@@ -661,6 +685,9 @@ def get_neuraldata_and_rfdata(cells, rfdf, MEANS, visual_areas=['V1','Lm','Li'],
 
     RFDATA = pd.concat(rf_, axis=0)
 
+    if stack:
+        NEURALDATA = neuraldf_dict_to_dataf(NEURALDATA)
+
     return NEURALDATA, RFDATA
 
 
@@ -691,7 +718,138 @@ def get_counts_by_datakey(stim_overlaps):
                                      'n_cells': len(rf_rids)}, index=[i]))
         i+=1
     counts_by_dset = pd.concat(c_list, axis=0)
+    counts_by_dset['session'] = [d.split('_')[0] for d in counts_by_dset['datakey']]
+    counts_by_dset['animalid'] = [d.split('_')[1] for d in counts_by_dset['datakey']]
+    counts_by_dset['fovnum'] = [int(d.split('_')[2][3:]) for d in counts_by_dset['datakey']]
+
     return counts_by_dset
+
+
+# Resample data, specify distribution
+def match_neuraldata_distn(NEURALDATA, src='Li'):
+    '''
+    Resample data to match distribution of max response values of a given visual area
+    '''
+    #src='Li'
+    min_ncells = int(NEURALDATA[['visual_area', 'datakey', 'cell']]
+                     .drop_duplicates().groupby(['visual_area']).count().min()[0])
+    max_ndata, dist_mean, dist_sigma = get_params_for_source_distn(NEURALDATA, src=src)
+
+    selected_cells = match_source_distn(NEURALDATA, src=src, n_samples=min_ncells)
+    print(selected_cells[['visual_area', 'datakey', 'cell']].drop_duplicates().groupby(['visual_area']).count())
+
+
+    N2 = pd.concat([NEURALDATA[(NEURALDATA['visual_area']==visual_area) 
+                      & (NEURALDATA['datakey']==datakey) 
+                      & (NEURALDATA['cell'].isin(g['cell'].unique()))].copy() 
+                    for (visual_area, datakey), g in selected_cells.groupby(['visual_area', 'datakey'])], axis=0)
+
+    return N2, selected_cells
+
+
+def select_dataframe_subset(selected_cells, RFDATA):
+    R2 = pd.concat([RFDATA[(RFDATA['visual_area']==visual_area) 
+                      & (RFDATA['datakey']==datakey) 
+                      & (RFDATA['cell'].isin(g['cell'].unique()))].copy() 
+                    for (visual_area, datakey), g in selected_cells.groupby(['visual_area', 'datakey'])], axis=0)
+    return R2
+
+def match_distns_neuraldata_and_rfdata(NEURALDATA, RDATA, src='Li'):
+    N2, selected_cells = match_neuraldata_distn(NEURALDATA, src=src)
+    R2 = select_dataframe_subset(selected_ncells, RFDATA)
+    return N2, R2
+
+
+def group_cells_by_max_response(NDATA):
+    '''
+    NDATA (dataframe)
+        Stacked trial responses 
+    '''
+    # For each cell, get activity profile (averaged across trial reps)
+    mean_ndata = NDATA.groupby(['visual_area', 'datakey', 'cell', 'config']).mean().reset_index()
+
+    # For each cell, get MAX across configs
+    max_ndata = mean_ndata.groupby(['visual_area', 'datakey', 'cell']).max().reset_index()
+
+    return max_ndata
+
+def get_params_for_source_distn(NDATA, src='Li'):
+    '''
+    Get each cell's max response, return mean and sigma for creating distn.
+    '''
+    max_ndata = group_cells_by_max_response(NDATA)
+
+    # Get mean and std of distn
+    dist_mean = max_ndata.groupby(['visual_area']).mean().loc[src]['response']
+    dist_sigma = max_ndata.groupby(['visual_area']).std().loc[src]['response']
+
+    return max_ndata, dist_mean, dist_sigma
+
+def match_source_distn(NDATA, src='Li', n_samples=100):
+    '''
+    NDATA (dataframe)
+        Stacked data for trial metrics (neuraldfs)
+    src (str)
+        Source distribution to model.
+    curr_ncells (int)
+        Sample size to return
+    '''
+    # Get response to best config (max repsonse)
+    max_ndata, dist_mean, dist_sigma = get_params_for_source_distn(NDATA, src=src)
+
+    # General new neuraldf 
+    areas_to_resample = [v for v in max_ndata['visual_area'].unique() if v!=src]
+    selected_cells = generate_matched_distn(max_ndata, visual_areas=areas_to_resample, 
+                                            mean=dist_mean, sigma=dist_sigma, n_samples=n_samples)
+
+    return selected_cells
+
+def generate_matched_distn(max_ndata, visual_areas=None, mean=None, sigma=None, n_samples=None):
+    '''
+    Return cell list (as dataframe) for best matched responses.
+    '''
+    # General new neuraldf 
+    src_dist = np.random.normal(loc=mean, scale=sigma, size=n_samples)
+    selected_cells=[]
+    if visual_areas is None:
+        visual_areas = max_ndata['visual_area'].unique()
+    for visual_area, vdf in max_ndata.groupby(['visual_area']):
+        xd = vdf.sort_values(by='response').copy()
+        #if visual_area not in visual_areas:
+        #    selected_cells.append(xd)
+        #    continue
+        ix=[]
+        match_ixs = take_closest_index_no_repeats(src_dist, xd['response'].values)
+        #xd.iloc[match_ixs]
+        selected_cells.append(xd.iloc[match_ixs])
+    selected_cells = pd.concat(selected_cells, axis=0)
+    
+    return selected_cells
+    
+def take_closest_index_no_repeats(list1, list2):
+    match_ixs=[]
+    orig_list2 = copy.copy(list2)
+    for i in range(len(list1)):
+        if (len(list2)) >= 1: #When there are elements in list2
+
+            temp_result = abs(list1[i] - list2) #Matrix subtraction
+
+            min_val = np.amin(temp_result) #Getting the minimum value to get closest element
+            min_val_index = np.where(temp_result == min_val) #To find index of minimum value
+
+            closest_element = list2[min_val_index] #Actual value of closest element in list2
+
+            list2 = list2[list2 != closest_element] #Remove closest element after found
+
+            #print(i, list1[i], min_val_index[0][0], closest_element[0]) 
+            #List1 Index, Element to find, List2 Index, Closest Element
+            match_ixs.append(np.where(orig_list2==closest_element[0])[0][0]) #min_val_index[0][0])
+
+        else: #All elements are already found
+
+            print(i, list1[i], 'No further closest unique closest elements found in list2')
+
+    return match_ixs
 
 
 # ===============================================================
