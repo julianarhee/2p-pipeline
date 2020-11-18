@@ -633,7 +633,7 @@ def main(options):
     sdf = SDF[SDF.keys()[-1]].copy()
 
     print('Classify %i v %i (C=%s)' % (m0, m100, str(C_value)))
-    print('N=%i iters (%i proc), overlap=%.2f, C=%s' % (n_iterations, n_processes, overlap_thr))
+    print('N=%i iters (%i proc), overlap=%.2f' % (n_iterations, n_processes, overlap_thr))
 
 
     # ---------------------------------------------------------------------
