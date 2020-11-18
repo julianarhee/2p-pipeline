@@ -536,6 +536,7 @@ def main(options):
     match_distns = opts.match_distns
     if analysis_type=='single_cells':
         match_distns = False
+    match_str = 'matchdistns_' if match_distns else ''
 
     # Pupil -------------------------------------------
     pupil_feature='pupil_fraction'
@@ -613,7 +614,7 @@ def main(options):
                                     snapshot=pupil_snapshot, create_new=redo_pupil)
     #### Setup output dirs  
     results_prefix = set_results_prefix(analysis_type=analysis_type)
-    data_info='%s%s_%s_overlap-%.1f_iter-%i' % (distn_str, response_type, responsive_test, overlap_thr, n_iterations)
+    data_info='%s%s_%s_overlap-%.1f_iter-%i' % (match_str, response_type, responsive_test, overlap_thr, n_iterations)
     dst_dir = os.path.join(aggregate_dir, 'decoding', analysis_type, data_info)
     if not os.path.exists(dst_dir):
         os.makedirs(dst_dir)
