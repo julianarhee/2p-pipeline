@@ -39,7 +39,46 @@ def get_empirical_ci(stat, ci=0.95):
     #print('%.1f confidence interval %.2f and %.2f' % (alpha*100, lower, upper))
     return lower, upper
 
+import time
+import bisect
 
+def get_closest_match(a, b):
+    return list(map(lambda y:min(a, key=lambda x:abs(x-y)),b))
+
+def take_closest(myList, myNumber):
+    """
+    Assumes myList is sorted. Returns closest value to myNumber.
+
+    If two numbers are equally close, return the smallest number.
+    """
+    pos = bisect.bisect_left(myList, myNumber)
+    if pos == 0:
+        return myList[0]
+    if pos == len(myList):
+        return myList[-1]
+    before = myList[pos - 1]
+    after = myList[pos]
+    if after - myNumber < myNumber - before:
+        return after
+    else:
+        return before
+    
+def take_closest_index(myList, myNumber):
+    """
+    Assumes myList is sorted. Returns closest value to myNumber.
+
+    If two numbers are equally close, return the smallest number.
+    """
+    pos = bisect.bisect_left(myList, myNumber)
+    if pos == 0 or pos == len(myList):
+        return pos
+    
+    before = myList[pos - 1]
+    after = myList[pos]
+    if after - myNumber < myNumber - before:
+        return pos
+    else:
+        return pos-1
 # -----------------------------------------------------------------------------
 # Screen:
 # -----------------------------------------------------------------------------
