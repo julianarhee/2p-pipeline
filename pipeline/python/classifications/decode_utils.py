@@ -290,13 +290,14 @@ def get_pooled_cells(stim_overlaps, stim_datakeys=None, remove_too_few=False,
     if remove_too_few:
         for (visual_area, datakey), g in stim_overlaps.groupby(['visual_area', 'datakey']):
             if len(g['cell'].unique()) < min_ncells:
-                print(datakey, len(g['cell'].unique()))
+                #print(datakey, len(g['cell'].unique()))
                 too_few.append(datakey)
     curr_dkeys = [s for s in stim_datakeys if s not in too_few] 
 
     # Filter out cells that dont pass overlap threshold
     pooled_cells, cell_counts = filter_rois(stim_overlaps[stim_overlaps['datakey'].isin(curr_dkeys)], 
                                                             overlap_thr=overlap_thr, return_counts=True)
+
 
     return pooled_cells, cell_counts
 
@@ -336,10 +337,26 @@ def filter_rois(stim_overlaps, overlap_thr=0.50, return_counts=False):
     for k, v in global_rois.items():
         print(k, len(v))
     
+    roidf['animalid'] = [d.split('_')[1] for d in roidf['datakey']]
+    roidf['session'] = [d.split('_')[0] for d in roidf['datakey']]
+    roidf['fovnum'] = [int(d.split('_')[2][3:]) for d in roidf['datakey']]
+   
     if return_counts:
         return roidf, roi_counters
     else:
         return roidf
+
+
+def get_ntrials_per_config(neuraldf, n_trials=10):
+    t_list=[]
+    for cfg, trialmat in neuraldf.groupby(['config']):
+        trial_ixs = trialmat.index.tolist() # trial numbers
+        np.random.shuffle(trial_ixs) # shuffle the trials randomly
+        curr_trials = trialmat.loc[trial_ixs[0:n_trials]].copy()
+        t_list.append(curr_trials)
+    resampled_df = pd.concat(t_list, axis=0)
+
+    return resampled_df
 
 
 def get_trials_for_N_cells(curr_ncells, gdf, MEANS):
@@ -401,17 +418,6 @@ def get_trials_for_N_cells(curr_ncells, gdf, MEANS):
     return df
 
 
-def get_ntrials_per_config(neuraldf, n_trials=10):
-    t_list=[]
-    for cfg, trialmat in neuraldf.groupby(['config']):
-        trial_ixs = trialmat.index.tolist() # trial numbers
-        np.random.shuffle(trial_ixs) # shuffle the trials randomly
-        curr_trials = trialmat.loc[trial_ixs[0:n_trials]].copy()
-        t_list.append(curr_trials)
-    resampled_df = pd.concat(t_list, axis=0)
-
-    return resampled_df
-
 def get_trials_for_N_cells_split(curr_ncells, gdf, NEURALDATA):
     '''
     Randomly select N cells from global roi list (gdf), get cell's responses to all trials.
@@ -472,6 +478,55 @@ def get_trials_for_N_cells_split(curr_ncells, gdf, NEURALDATA):
     assert curr_configdf.shape[1]==1, "Bad configs"
     df = pd.concat([curr_neuraldf, curr_configdf], axis=1)
 
+    return df
+
+def get_trials_for_N_cells_df(curr_ncells, gdf, NEURALDATA): 
+    # Get current global RIDs
+    ncells_t = gdf.shape[0]                      
+    roi_ids = np.array(gdf['roi'].values.copy()) 
+
+    # Random sample w/ replacement
+    rand_ixs = np.array([random.randint(0, ncells_t-1) for _ in np.arange(0, curr_ncells)])
+    curr_roi_list = roi_ids[rand_ixs]
+    curr_roidf = gdf[gdf['roi'].isin(curr_roi_list)].copy()
+
+    # Make sure equal num trials per condition for all dsets
+    curr_dkeys = curr_roidf['datakey'].unique()
+    currd = NEURALDATA[NEURALDATA['datakey'].isin(curr_dkeys)].copy()
+    min_ntrials_by_config = currd[['datakey', 'config', 'trial']].drop_duplicates().groupby(['datakey'])['config'].value_counts().min()
+    #print(min_ntrials_by_config)
+
+    d_list=[]
+    for datakey, dkey_rois in curr_roidf.groupby(['datakey']):
+        # Get current trials, make equal to min_ntrials_by_config
+        tmpd = pd.concat([trialmat.sample(n=min_ntrials_by_config) 
+                         for (rid, cfg), trialmat in currd[currd['datakey']==datakey].groupby(['cell', 'config'])], axis=0)
+        tmpd['cell'] = tmpd['cell'].astype(float)
+
+        # For each RID sample belonging to current dataset, get RID order
+        sampled_cells = pd.concat([dkey_rois[dkey_rois['roi']==globalid][['roi', 'dset_roi']] 
+                                   for globalid in curr_roi_list])
+        sampled_dset_rois = sampled_cells['dset_roi'].values
+        sampled_global_rois = sampled_cells['roi'].values
+        cell_lut = dict((k, v) for k, v in zip(sampled_dset_rois, sampled_global_rois))
+
+        # Get response + config, replace dset roi  name with global roi name
+        slist = [tmpd[tmpd['cell']==rid][['config', 'response']].rename(columns={'response': cell_lut[rid]})
+                 .sort_values(by='config').reset_index(drop=True) for rid in sampled_dset_rois]
+        curr_roidata = pd.concat(slist, axis=1)
+        curr_roidata = curr_roidata.loc[:,~curr_roidata.T.duplicated(keep='first')]
+        d_list.append(curr_roidata)
+    curr_neuraldf = pd.concat(d_list, axis=1)[curr_roi_list]
+
+    cfg_df = pd.concat(d_list, axis=1)['config']
+
+    assert cfg_df.shape[0]==curr_neuraldf.shape[0], "Bad trials"
+    if len(cfg_df.shape) > 1:
+        cfg_df = cfg_df.loc[:,~cfg_df.T.duplicated(keep='first')]
+        assert cfg_df.shape[1]==1, "Bad configs"
+
+    df = pd.concat([curr_neuraldf, cfg_df], axis=1)
+    
     return df
 
 # ======================================================================
@@ -858,10 +913,13 @@ def do_fit(iter_num, global_rois=None, MEANS=None, sdf=None, sample_ncells=None,
         if MEANS dict is actually MEANS[visual_area][datakey]
     '''   
     #### Get new sample set
-    if df_is_split:
-        curr_data = get_trials_for_N_cells_split(sample_ncells, global_rois, MEANS)
+    if isinstance(MEANS, dict):
+        if df_is_split:
+            curr_data = get_trials_for_N_cells_split(sample_ncells, global_rois, MEANS)
+        else:
+            curr_data = get_trials_for_N_cells(sample_ncells, global_rois, MEANS)
     else:
-        curr_data = get_trials_for_N_cells(sample_ncells, global_rois, MEANS)
+        curr_data = get_trials_for_N_cells_df(sample_ncells, global_rois, MEANS)
 
     #### Select train/test configs for clf A vs B
     train_configs = sdf[sdf['morphlevel'].isin([class_a, class_b])].index.tolist() 

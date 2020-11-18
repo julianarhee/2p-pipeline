@@ -583,7 +583,6 @@ def main(options):
                         equalize_now=True, zscore_now=True,
                         response_type=response_type, responsive_test=responsive_test, 
                         responsive_thr=responsive_thr, trial_epoch=trial_epoch, use_all=False) 
-    #cells = cells[cells['visual_area'].isin(visual_areas)]
 
     #### Load RFs
     rf_fit_desc = fitrf.get_fit_desc(response_type=response_type)
@@ -594,7 +593,14 @@ def main(options):
                                     reliable_only=True, traceid=traceid)
 
     #### Final datasets
-    NEURALDATA, RFDATA = aggr.get_neuraldata_and_rfdata(cells, rfdf, MEANS)
+    #NEURALDATA, RFDATA = aggr.get_neuraldata_and_rfdata(cells, rfdf, MEANS)
+    match_distns = analysis_type=='by_ncells'
+    stack_neuraldf = match_distns==True
+    NEURALDATA, RFDATA = aggr.get_neuraldata_and_rfdata(cells, rfdf, MEANS, stack=stack_neuraldf)
+    if match_distns:
+        print("~~~~~~~~~~~~~~~~Matching max %s distNs~~~~~~~~~~~~~~~~~~~~~~~" % response_type)
+        NEURALDATA, RFDATA = aggr.match_distns_neuraldata_and_rfdata(NEURALDATA, RFDATA)
+    dist_str = 'matchdist_' if match_distns else ''
 
     #### Get pupil responses
     if 'pupil' in analysis_type:
@@ -605,7 +611,7 @@ def main(options):
                                     snapshot=pupil_snapshot, create_new=redo_pupil)
     #### Setup output dirs  
     results_prefix = set_results_prefix(analysis_type=analysis_type)
-    data_info='%s_%s_overlap-%.1f_iter-%i' % (response_type, responsive_test, overlap_thr, n_iterations)
+    data_info='%s%s_%s_overlap-%.1f_iter-%i' % (distn_str, response_type, responsive_test, overlap_thr, n_iterations)
     dst_dir = os.path.join(aggregate_dir, 'decoding', analysis_type, data_info)
     if not os.path.exists(dst_dir):
         os.makedirs(dst_dir)
@@ -615,12 +621,10 @@ def main(options):
     #### Calculate overlap with stimulus
     print("Calculating overlaps (thr=%.2f)" % overlap_thr)
     stim_overlaps = rfutils.calculate_overlaps(RFDATA, experiment=experiment)
-    pass_overlap = stim_overlaps[stim_overlaps['perc_overlap']>=overlap_thr].copy()
-
 
     #### Filter cells
-    globalcells, cell_counts = decutils.get_pooled_cells(pass_overlap,remove_too_few=remove_too_few, 
-                                                overlap_thr=overlap_thr, min_ncells=min_ncells)
+    globalcells, cell_counts = decutils.get_pooled_cells(stim_overlaps,remove_too_few=remove_too_few, 
+                                                        overlap_thr=overlap_thr, min_ncells=min_ncells)
     print("@@@@@@@@ cell counts @@@@@@@@@@@")
     print(cell_counts)
     sdf = SDF[SDF.keys()[-1]].copy()
@@ -657,6 +661,7 @@ def main(options):
         for ri, rid in enumerate(gdf['dset_roi'].values):
             if ri % 10 == 0:
                 print("... %i of %i cells (%s|%s), rid=%i." % (int(ri+1), ncells_total, curr_datakey, curr_visual_area, rid))
+
             neuraldf = NEURALDATA[curr_visual_area][curr_datakey][[rid, 'config']].copy()
             decode_from_cell(curr_datakey, rid, neuraldf, sdf, experiment=experiment,
                             C_value=C_value, return_shuffle=False, 
