@@ -686,7 +686,7 @@ def get_neuraldata_and_rfdata(cells, rfdf, MEANS, visual_areas=['V1','Lm','Li'],
     RFDATA = pd.concat(rf_, axis=0)
 
     if stack:
-        NEURALDATA = neuraldf_dict_to_dataf(NEURALDATA)
+        NEURALDATA = aggr.neuraldf_dict_to_dataframe(NEURALDATA)
 
     return NEURALDATA, RFDATA
 
