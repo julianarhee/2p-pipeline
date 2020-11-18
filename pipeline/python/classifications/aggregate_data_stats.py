@@ -6,6 +6,7 @@ import re
 import sys
 import optparse
 import itertools
+import copy
 
 import statsmodels as sm
 import scipy.stats as spstats
