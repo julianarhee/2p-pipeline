@@ -755,7 +755,7 @@ def select_dataframe_subset(selected_cells, RFDATA):
                     for (visual_area, datakey), g in selected_cells.groupby(['visual_area', 'datakey'])], axis=0)
     return R2
 
-def match_distns_neuraldata_and_rfdata(NEURALDATA, RDATA, src='Li'):
+def match_distns_neuraldata_and_rfdata(NEURALDATA, RFDATA, src='Li'):
     N2, selected_cells = match_neuraldata_distn(NEURALDATA, src=src)
     R2 = select_dataframe_subset(selected_cells, RFDATA)
     return N2, R2
