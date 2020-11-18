@@ -79,7 +79,7 @@ def compare_rf_size(df, metric='avg_size', cdf=False, ax=None, alpha=1, lw=2,
     return ax
 
 
-def plot_all_rfs(RFs, MEANS, screeninfo, cmap='cubehelix', dpi=150):
+def plot_all_rfs(RFs, MEANS=None, screeninfo=None, cmap='cubehelix', dpi=150):
     '''
     Plot ALL receptive field pos, mark CoM by FOV. Colormap = datakey.
     One subplot per visual area.
@@ -92,7 +92,7 @@ def plot_all_rfs(RFs, MEANS, screeninfo, cmap='cubehelix', dpi=150):
 
 
     visual_areas = ['V1', 'Lm', 'Li']
-    is_split_by_area = 'V1' in MEANS.keys()
+    is_split_by_area = 'V1' in MEANS.keys() if MEANS is not None else False
 
     fig, axn = pl.subplots(1,3, figsize=(10,8), dpi=dpi)
     for visual_area, v_df in RFs.groupby(['visual_area']):
@@ -100,11 +100,19 @@ def plot_all_rfs(RFs, MEANS, screeninfo, cmap='cubehelix', dpi=150):
         ax = axn[ai]
         dcolors = sns.color_palette(cmap, n_colors=len(v_df['datakey'].unique()))
         for di, (datakey, d_df) in enumerate(v_df.groupby(['datakey'])):
-           
-            if is_split_by_area:
-                exp_rids = [r for r in MEANS[visual_area][datakey] if isnumber(r)]
-            else: 
-                exp_rids = [r for r in MEANS[datakey] if isnumber(r)]     
+          
+            if isinstance(MEANS, dict):
+                if is_split_by_area:
+                    exp_rids = [r for r in MEANS[visual_area][datakey] if isnumber(r)]
+                else: 
+                    exp_rids = [r for r in MEANS[datakey] if isnumber(r)]     
+            elif isinstance(MEANS, pd.DataFrame):
+                # is dataframe
+                exp_rids = MEANS[(MEANS['visual_area']==visual_area)
+                                & (MEANS['datakey']==datakey)]['cell'].unique()
+            else:
+                exp_rids = d_df['cell'].unique()
+
             rf_rids = d_df['cell'].unique()
             common_to_rfs_and_blobs = np.intersect1d(rf_rids, exp_rids)
             curr_df = d_df[d_df['cell'].isin(common_to_rfs_and_blobs)].copy()
