@@ -757,7 +757,7 @@ def select_dataframe_subset(selected_cells, RFDATA):
 
 def match_distns_neuraldata_and_rfdata(NEURALDATA, RDATA, src='Li'):
     N2, selected_cells = match_neuraldata_distn(NEURALDATA, src=src)
-    R2 = select_dataframe_subset(selected_ncells, RFDATA)
+    R2 = select_dataframe_subset(selected_cells, RFDATA)
     return N2, R2
 
 
