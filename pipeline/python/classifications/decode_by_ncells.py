@@ -679,24 +679,45 @@ def main(options):
         # by NCELLS - pools across datasets
         # ============================================================ 
         curr_visual_area = opts.visual_area
-        curr_ncells = int(opts.ncells)
+        curr_ncells = None if opts.ncells in ['None', None] else int(opts.ncells) 
+
         if curr_visual_area is not None:
-            # Do decode w CURR_NCELLS, CURR_VISUAL_AREA
-            # ----------------------------------------------
             gdf = globalcells[globalcells['visual_area']==curr_visual_area]
             results_id = create_results_id(prefix=results_prefix, 
                             visual_area=curr_visual_area, C_value=C_value, 
                             response_type=response_type, responsive_test=responsive_test)
 
-            decode_by_ncells(curr_ncells, gdf, sdf, NEURALDATA, 
-                            C_value=C_value,
-                            n_iterations=n_iterations, n_processes=n_processes, 
-                            results_id=results_id,
-                            class_a=class_a, class_b=class_b,
-                            dst_dir=dst_dir, create_new=create_new, verbose=verbose)
-            print("***** finished %s, ncells=%i *******" % (curr_visual_area, curr_ncells))
+            if curr_ncells is not None:
+                # Do decode w CURR_NCELLS, CURR_VISUAL_AREA
+                # ----------------------------------------------
+                decode_by_ncells(curr_ncells, gdf, sdf, NEURALDATA, 
+                                C_value=C_value,
+                                n_iterations=n_iterations, n_processes=n_processes, 
+                                results_id=results_id,
+                                class_a=class_a, class_b=class_b,
+                                dst_dir=dst_dir, create_new=create_new, verbose=verbose)
+                print("***** finished %s, ncells=%i *******" % (curr_visual_area, curr_ncells))
+            else:
+                # Loop thru NCELLS
+                # ----------------------------------------------
+                min_cells_total = min(cell_counts.values())
+                reasonable_range = [2**i for i in np.arange(0, 10)]
+                incl_range = [i for i in reasonable_range if i<min_cells_total]
+                incl_range.append(min_cells_total)
+                NCELLS = incl_range
+                    
+                for curr_ncells in NCELLS:
+                    print("**** %s (n=%i cells)****" % (curr_visual_area, curr_ncells))
 
-        else:               
+                    decode_by_ncells(curr_ncells, gdf, sdf, NEURALDATA, 
+                                    C_value=C_value,
+                                    n_iterations=n_iterations, n_processes=n_processes, 
+                                    results_id=results_id,
+                                    class_a=class_a, class_b=class_b,
+                                    dst_dir=dst_dir, create_new=create_new, 
+                                    verbose=verbose)
+                print("********* finished %s, (ncells looped: %s) **********" % (curr_visual_area, str(NCELLS)))
+        else:
             # Loop thru all visual areas, all NCELLS
             # ----------------------------------------------
             #### Get NCELLS
