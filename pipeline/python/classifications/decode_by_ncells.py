@@ -475,6 +475,9 @@ def extract_options(options):
     parser.add_option('-k','--datakey', action='store', dest='datakey', 
             default=None, help="(set for single_cells) Must be None to run all serially")
 
+    parser.add_option('--match-distns', action='store_true', dest='match_distns', 
+            default=False, help="(set for by_ncells) Match distns of neuraldf to Li")
+
 
 
 
@@ -530,10 +533,9 @@ def main(options):
     stim_filterby = None # 'first'
     has_gratings = experiment!='blobs'
 
-    #remove_too_few = True
-    #min_ncells=10
-    #overlap_thr=0.5
-
+    match_distns = opts.match_distns
+    if analysis_type=='single_cells':
+        match_distns = False
 
     # Pupil -------------------------------------------
     pupil_feature='pupil_fraction'
@@ -594,7 +596,7 @@ def main(options):
 
     #### Final datasets
     #NEURALDATA, RFDATA = aggr.get_neuraldata_and_rfdata(cells, rfdf, MEANS)
-    match_distns = analysis_type=='by_ncells'
+    #match_distns = analysis_type=='by_ncells'
     stack_neuraldf = match_distns==True
     NEURALDATA, RFDATA = aggr.get_neuraldata_and_rfdata(cells, rfdf, MEANS, stack=stack_neuraldf)
     if match_distns:
@@ -629,7 +631,8 @@ def main(options):
     print(cell_counts)
     sdf = SDF[SDF.keys()[-1]].copy()
 
-    print('Classify %i v %i\nN=%i iters (%i proc), overlap=%.2f, C=%s' % (m0, m100, n_iterations, n_processes, overlap_thr, str(C_value)))
+    print('Classify %i v %i (C=%s)' % (m0, m100, str(C_value)))
+    print('N=%i iters (%i proc), overlap=%.2f, C=%s' % (n_iterations, n_processes, overlap_thr))
 
 
     # ---------------------------------------------------------------------
