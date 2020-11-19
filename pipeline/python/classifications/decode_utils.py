@@ -65,6 +65,59 @@ from sklearn import svm
 # ======================================================================
 # load_aggregate_rfs : now in rf_utils.py
 # get_rf_positions: in rf_utils.py
+def pool_bootstrap(neuraldf, sdf, n_iterations=50, n_processes=1, C_value=None,
+                   test=None, single=False, n_train_configs=4, verbose=False):   
+    '''
+    test (string, None)
+        None  : Classify A/B only 
+                single=True to train/test on each size
+        morph : Train on anchors, test on intermediate morphs
+                single=True to train/test on each size
+        size  : Train on specific size(s), test on un-trained sizes
+                single=True to train/test on each size
+    '''
+    C=C_value
+    vb = verbose 
+    results = []
+    terminating = mp.Event()
+
+    pool = mp.Pool(initializer=initializer, initargs=(terminating, ), processes=n_processes)  
+    try:
+        ntrials, sample_ncells = neuraldf.shape
+        print("... n: %i (%i procs)" % (int(sample_ncells-1), n_processes))
+#        if test=='morph':
+#            if single: # train on 1 size, test on other sizes
+#                func = partial(dutils.do_fit_train_single_test_morph, global_rois=global_rois, 
+#                               MEANS=MEANS, sdf=sdf, sample_ncells=sample_ncells)
+#            else: # combine data across sizes
+#                func = partial(dutils.do_fit_train_test_morph, global_rois=global_rois, 
+#                               MEANS=MEANS, sdf=sdf, sample_ncells=sample_ncells)             
+#        elif test=='size':
+#            if single:
+#                func = partial(dutils.do_fit_train_test_single, global_rois=global_rois, 
+#                               MEANS=MEANS, sdf=sdf, sample_ncells=sample_ncells)
+#            else:
+#                func = partial(dutils.cycle_train_sets, global_rois=global_rois, 
+#                               MEANS=MEANS, sdf=sdf, sample_ncells=sample_ncells, 
+#                                n_train_configs=n_train_configs)
+#        else:
+#        func = partial(dutils.do_fit_within_fov, curr_data=neuraldf, sdf=sdf, verbose=verbose,
+#                                                    C_value=C_value)
+#        results = pool.map_async(func, range(n_iterations)).get(99999999)
+        results = [pool.apply_async(dutils.do_fit_within_fov, args=(i, neuraldf, sdf, vb, C)) \
+                    for i in range(n_iterations)]
+        output= [p.get(99999999) for p in results]
+    except KeyboardInterrupt:
+        terminating.set()
+        print("**interupt")
+        pool.terminate()
+        print("***Terminating!")
+    finally:
+        pool.close()
+        pool.join()
+
+    return output #results
+
 
 def fit_svm_mp_shuffle(neuraldf, sdf, n_iterations=50, n_processes=1, 
                    C_value=None, cv_nfolds=5, test_split=0.2, 
@@ -273,79 +326,10 @@ def calculate_ci(scores, ci=95):
 # ======================================================================
 # Split/pool functions 
 # ======================================================================
-def get_pooled_cells(stim_overlaps, stim_datakeys=None, remove_too_few=False, 
-                      overlap_thr=0.8, min_ncells=20):
-    '''
-    stim_overlaps (dataframe)
-        Dataframe of all cell IDs and overlap values for all dkeys and visual areas.
-    stim_datakeys (list)
-        List of experiment datakeys to include. Default includes all in provided dataframe.
 
-    Return dataframe of all included cells (repsonsive, pass overlap_thr, exclude dsets w/ too_few cells)
-    '''
-    if stim_datakeys is None:
-        stim_datakeys = stim_overlaps['datakey'].unique()
-
-    too_few = []
-    if remove_too_few:
-        for (visual_area, datakey), g in stim_overlaps.groupby(['visual_area', 'datakey']):
-            if len(g['cell'].unique()) < min_ncells:
-                #print(datakey, len(g['cell'].unique()))
-                too_few.append(datakey)
-    curr_dkeys = [s for s in stim_datakeys if s not in too_few] 
-
-    # Filter out cells that dont pass overlap threshold
-    pooled_cells, cell_counts = filter_rois(stim_overlaps[stim_overlaps['datakey'].isin(curr_dkeys)], 
-                                                            overlap_thr=overlap_thr, return_counts=True)
-
-
-    return pooled_cells, cell_counts
-
-
-def filter_rois(stim_overlaps, overlap_thr=0.50, return_counts=False):
-    visual_areas=['V1', 'Lm', 'Li']
-    
-    nocells=[]; notrials=[];
-    global_rois = dict((v, []) for v in visual_areas)
-    roi_counters = dict((v, 0) for v in visual_areas)
-    
-    roidf = []
-    pass_overlaps = stim_overlaps[stim_overlaps['perc_overlap']>=overlap_thr]
-
-    datakeys = dict((v, []) for v in visual_areas)
-    for (visual_area, datakey), g in pass_overlaps.groupby(['visual_area', 'datakey']):
-
-        roi_counter = roi_counters[visual_area]
-        datakeys[visual_area].append(datakey)
-
-        roi_list = sorted(g['cell'].unique()) #[int(r) for r in ddf.columns if r != 'config']
-
-        # Reindex roi ids for global
-        roi_ids = [i+roi_counter for i, r in enumerate(roi_list)]
-        nrs = len(roi_list)
-        global_rois[visual_area].extend(roi_ids)
-       
-        # Append to full df
-        roidf.append(pd.DataFrame({'roi': roi_ids,
-                                   'dset_roi': roi_list,
-                                   'visual_area': [visual_area for _ in np.arange(0, nrs)],
-                                   'datakey': [datakey for _ in np.arange(0, nrs)]}))
-        # Update global roi id counter
-        roi_counters[visual_area] += len(roi_ids)
-
-    roidf = pd.concat(roidf, axis=0) #.groupby(['visual_area']).count()
-    for k, v in global_rois.items():
-        print(k, len(v))
-    
-    roidf['animalid'] = [d.split('_')[1] for d in roidf['datakey']]
-    roidf['session'] = [d.split('_')[0] for d in roidf['datakey']]
-    roidf['fovnum'] = [int(d.split('_')[2][3:]) for d in roidf['datakey']]
-   
-    if return_counts:
-        return roidf, roi_counters
-    else:
-        return roidf
-
+# global_rois() now in aggr
+# filter_rois() now in aggr
+# get_pooled_cells() now in aggr
 
 def get_ntrials_per_config(neuraldf, n_trials=10):
     t_list=[]
@@ -1588,7 +1572,6 @@ def default_train_test_subset(results, sdf, metric='heldout_test_score', area_co
     figname = '%s_generalize_size__avg-novel-v-trained' % (plot_str)
     pl.savefig(os.path.join(dst_dir, '%s.svg' % figname))
     print(dst_dir, figname)
-
 
     # Then, plot average differences
     means = results.groupby(['visual_area', 'train_transform', 'test_transform']).mean().reset_index()

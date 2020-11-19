@@ -423,22 +423,33 @@ def get_retino_metadata(experiment='retino', animalids=None,
 
 
 # Overlaps, cell assignments, etc.
-
 def get_neuraldf_for_cells_in_area(cells, MEANS, datakey=None, visual_area=None):
     '''
     For a given dataframe (index=trials, columns=cells), only return cells
     in specified visual area
     '''
-    assert datakey in MEANS.keys(), "%s--not found in RESPONSES" % datakey
-    assert datakey in cells['datakey'].values, "%s--not found in SEGMENTED" % datakey
+    neuraldf=None
+    try:
+        if isinstance(MEANS, dict):
+            if 'V1' in MEANS.keys(): # dict of dict
+                neuraldf_dict = MEANS[visual_area]
+            else:
+                neuraldf_dict = MEANS
+        elif isinstance(MEANS, pd.DataFrame):
+            MEANS = neuraldf_dataframe_to_dict(MEANS)
+            neuraldf_dict = MEANS[visual_area] 
 
-    #neuraldf = MEANS[datakey].copy() 
-    curr_rois = cells[(cells['datakey']==datakey) 
-                    & (cells['visual_area']==visual_area)]['cell'].values
-    curr_cols = list(curr_rois.copy())
-    neuraldf = MEANS[datakey][curr_cols].copy()
-    neuraldf['config'] = MEANS[datakey]['config'].copy()
-    
+        assert datakey in neuraldf_dict.keys(), "%s--not found in RESPONSES" % datakey
+        assert datakey in cells['datakey'].values, "%s--not found in SEGMENTED" % datakey
+
+        curr_rois = cells[(cells['datakey']==datakey) 
+                        & (cells['visual_area']==visual_area)]['cell'].values
+        curr_cols = list(curr_rois.copy())
+        neuraldf = neuraldf_dict[datakey][curr_cols].copy()
+        neuraldf['config'] = neuraldf_dict[datakey]['config'].copy()
+    except Exception as e:
+        return neuraldf
+ 
     return neuraldf
 
 
@@ -508,7 +519,11 @@ def zscore_neuraldf(neuraldf):
 def get_source_data(experiment, traceid='traces001', equalize_now=False,zscore_now=False,
                     responsive_test='nstds', responsive_thr=10., response_type='dff',
                     trial_epoch='stimulus', fov_type='zoom2p0x', state='awake', 
-                    verbose=False, use_all=True): 
+                    verbose=False, use_all=True, visual_area=None, datakey=None): 
+    '''
+    Returns metainfo, cell dataframe, and dict of neuraldfs for all 
+    responsive cells in assigned visual areas.
+    '''
     from pipeline.python.retinotopy import segment_retinotopy as seg
     #### Get neural responses
     MEANS = load_aggregate_data(experiment, 
@@ -528,6 +543,15 @@ def get_source_data(experiment, traceid='traces001', equalize_now=False,zscore_n
     edata = sdata[sdata['experiment']==experiment].copy()
     rois = seg.get_cells_by_area(edata)
     cells = get_active_cells_in_current_datasets(rois, MEANS, verbose=False)
+
+    if (visual_area is not None) or (datakey is not None):
+        cells = select_cells(cells, visual_area=visual_area, datakey=datakey)
+        dkeys = cells['datakey'].unique()
+        vareas = cells['visual_area'].unique()
+        meta = edata[(edata['datakey']==datakey) & (edata['visual_area']==visual_area)] 
+        meandfs = dict((k, MEANS[k]) for k in dkeys) #MEANS[datakey]
+        
+        return meta, cells, meandfs
 
     return edata, cells, MEANS
 
@@ -603,7 +627,6 @@ def neuraldf_dict_to_dataframe(NEURALDATA, response_type='response'):
             ndf['trial'] = ndf.index.tolist()
             melted = pd.melt(ndf, id_vars=['visual_area', 'datakey', 'config', 'trial'], 
                              var_name='cell', value_name=response_type)
-
             ndfs.append(melted)
     NDATA = pd.concat(ndfs, axis=0)
    
@@ -611,7 +634,10 @@ def neuraldf_dict_to_dataframe(NEURALDATA, response_type='response'):
 
 
 def neuraldf_dataframe_to_dict(NDATA):
-
+    '''
+    Takes full, stacked dataframe, converts to dict of dicts
+    '''
+    visual_areas = NDATA['visual_area'].unique()
     NEURALDATA = dict((v, dict()) for v in visual_areas)
 
     for (visual_area, datakey), neuraldf in NDATA.groupby(['visual_area', 'datakey']):
@@ -629,7 +655,133 @@ def neuraldf_dataframe_to_dict(NDATA):
     return NEURALDATA
 
 
-def get_neuraldata_and_rfdata(cells, rfdf, MEANS, visual_areas=['V1','Lm','Li'], verbose=False, stack=False):
+def get_neuraldata(cells, MEANS, stack=False, verbose=False):
+    '''
+    cells (dataframe)
+        Cells assigned to each datakey/visual area 
+        From: get_source_data()
+    MEANS (dict)
+        Aggregated neuraldfs (dict, keys=dkey, values=dfs).
+        From: get_source_data()
+
+    Returns:
+    
+    NEURALDATA (dict)
+        keys=visual areas
+        values = MEANS (i.e., dict of dfs) for each visual area
+        Only inclues cells that are assigned to the specified area.
+    '''
+    visual_areas = cells['visual_area'].unique()
+
+    NEURALDATA = dict((visual_area, {}) for visual_area in visual_areas)
+    rf_=[]
+    for (visual_area, datakey), curr_c in cells.groupby(['visual_area', 'datakey']):
+        if visual_area not in NEURALDATA.keys():
+            continue
+
+       # Get neuradf for these cells only
+        neuraldf = get_neuraldf_for_cells_in_area(cells, MEANS, 
+                                                  datakey=datakey, visual_area=visual_area)
+        if verbose:
+            # Which cells are in assigned area
+            n_resp = int(MEANS[datakey].shape[1]-1)
+            curr_assigned = curr_c['cell'].unique() 
+            print("[%s] %s: %i cells responsive (%i in fov)" % (visual_area, datakey, len(curr_assigned), n_resp))
+            if neuraldf is not None:
+                print("Neuraldf: %s" % str(neuraldf.shape)) 
+            else:
+                print("No keys: %s|%s" % (visual_area, datakey))
+
+        if neuraldf is not None:
+            NEURALDATA[visual_area].update({datakey: neuraldf})
+
+    if stack:
+        NEURALDATA = neuraldf_dict_to_dataframe(NEURALDATA)
+
+    return NEURALDATA
+
+
+def get_rfdata(cells, rfdf, verbose=False, visual_area=None, datakey=None):
+    '''
+    cells (dataframe)
+        Cells assigned to each datakey/visual area 
+        From: get_source_data()
+    rfdf (dataframe)
+        Loaded RF params and positions (from rf_utils.get_rf_positions())
+
+    Returns:
+    
+    RFDATA (dataframe)
+        Corresponding rfdf info for NEURALDATA cells.
+    '''
+    rf_=[]
+    for (visual_area, datakey), curr_c in cells.groupby(['visual_area', 'datakey']):
+        # Which cells have receptive fields
+        cells_with_rfs = rfdf[rfdf['datakey']==datakey]['cell'].unique()
+
+        # Which cells with RFs are in assigned area
+        curr_assigned = curr_c[curr_c['cell'].isin(cells_with_rfs)]
+        assigned_with_rfs = curr_assigned['cell'].unique()
+        if verbose:
+            print("[%s] %s: %i/%i cells with RFs" % (visual_area, datakey, len(cells_with_rfs), len(assigned_with_rfs)))
+
+        if len(assigned_with_rfs) > 0:
+            # Update RF dataframe
+            curr_rfdf = rfdf[(rfdf['datakey']==datakey) & (rfdf['cell'].isin(assigned_with_rfs))]
+
+            # Means by cell id (some dsets have rf-5 and rf10 measurements, average these)
+            meanrf = curr_rfdf.groupby(['cell']).mean().reset_index()
+            mean_thetas = curr_rfdf.groupby(['cell'])['theta'].apply(spstats.circmean, low=0, high=2*np.pi).values
+            meanrf['theta'] = mean_thetas
+            meanrf['visual_area'] = [visual_area for _ in  np.arange(0, len(assigned_with_rfs))] # reassign area
+            meanrf['experiment'] = ['average_rfs' for _ in np.arange(0, len(assigned_with_rfs))]
+            # Add the meta/non-numeric info
+            non_num = [c for c in curr_rfdf.columns if c not in meanrf.columns and c!='experiment']
+            metainfo = pd.concat([g[non_num].iloc[0] for c, g in curr_rfdf.groupby(['cell'])], axis=1).T.reset_index(drop=True)
+            final_rf = pd.concat([metainfo, meanrf], axis=1)
+            rf_.append(final_rf)
+
+    RFDATA = pd.concat(rf_, axis=0)
+
+    return RFDATA
+
+def get_neuraldata_and_rfdata_2(cells, rfdf, MEANS, verbose=False, stack=False):
+    NEURALDATA = get_neuraldata(cells, MEANS, stack=stack, verbose=verbose)
+    RFDATA = get_rfdata(cells, rfdf, verbose=verbose, visual_area=visual_area, datakey=datakey)
+    return NEURALDATA, RFDATA 
+
+def get_common_cells_from_dataframes(NEURALDATA, RFDATA):
+    ndf_list=[]
+    rdf_list=[]
+    for (visual_area, datakey), rfdf in RFDATA.groupby(['visual_area', 'datakey']):
+        rf_rois = rfdf['cell'].unique()
+        if isinstance(NEURALDATA, pd.DataFrame):
+            neuraldf = NEURALDATA[(NEURALDATA['visual_area']==visual_area)
+                                & (NEURALDATA['datakey']==datakey)]
+            blob_rois = neuraldf['cell'].unique()
+            common_rois = np.intersect1d(blob_rois, rf_rois)
+            new_neuraldf = neuraldf[neuraldf['cell'].isin(common_rois)]
+        else:
+            if 'V1' in NEURALDATA.keys():
+                neuraldf = NEURALDATA[visual_area][datakey]
+            else:
+                neuraldf = NEURALDATA[datakey] 
+            blob_rois = neuraldf['cell'].unique()
+            common_rois = np.intersect1d(blob_rois, rf_rois)
+            new_neuraldf = neuraldf[common_rois]
+            new_neuraldf['config'] = neuraldf['config']
+            
+        ndf_list.append(new_neuraldf)
+        new_rfdf = rfdf[rfdf['cell'].isin(common_rois)]
+        rdf_list.append(new_rfdf)
+    N = pd.concat(ndf_list, axis=0)
+    R = pd.concat(rdf_list, axis=0)
+
+    return N, R
+
+
+def get_neuraldata_and_rfdata(cells, rfdf, MEANS,
+                            visual_areas=['V1','Lm','Li'], verbose=False, stack=False):
     '''
     cells (dataframe)
         Cells assigned to each datakey/visual area 
@@ -668,8 +820,10 @@ def get_neuraldata_and_rfdata(cells, rfdf, MEANS, visual_areas=['V1','Lm','Li'],
         if len(assigned_with_rfs) > 0:
             # Get neuradf for these cells only
             neuraldf = get_neuraldf_for_cells_in_area(curr_assigned, MEANS, 
-                                                           datakey=datakey, visual_area=visual_area)
+                                                    datakey=datakey, visual_area=visual_area)
             NEURALDATA[visual_area].update({datakey: neuraldf})
+
+            # Update RF dataframe
             curr_rfdf = rfdf[(rfdf['datakey']==datakey) & (rfdf['cell'].isin(assigned_with_rfs))]
 
             # Means by cell id (some dsets have rf-5 and rf10 measurements, average these)
@@ -725,25 +879,30 @@ def get_counts_by_datakey(stim_overlaps):
 
     return counts_by_dset
 
-
+# =============================================================
 # Resample data, specify distribution
+# =============================================================
+
 def match_neuraldata_distn(NEURALDATA, src='Li'):
     '''
     Resample data to match distribution of max response values of a given visual area
+    This should only be used for POOLED analyses (by_ncells, for ex.)
     '''
-    #src='Li'
+    # Get parameters for src distn to mimic
     min_ncells = int(NEURALDATA[['visual_area', 'datakey', 'cell']]
                      .drop_duplicates().groupby(['visual_area']).count().min()[0])
     max_ndata, dist_mean, dist_sigma = get_params_for_source_distn(NEURALDATA, src=src)
 
+    # Select new cells that match these params
     selected_cells = match_source_distn(NEURALDATA, src=src, n_samples=min_ncells)
-    print(selected_cells[['visual_area', 'datakey', 'cell']].drop_duplicates().groupby(['visual_area']).count())
-
+    print(selected_cells[['visual_area', 'datakey', 'cell']]
+            .drop_duplicates().groupby(['visual_area']).count())
 
     N2 = pd.concat([NEURALDATA[(NEURALDATA['visual_area']==visual_area) 
                       & (NEURALDATA['datakey']==datakey) 
                       & (NEURALDATA['cell'].isin(g['cell'].unique()))].copy() 
-                    for (visual_area, datakey), g in selected_cells.groupby(['visual_area', 'datakey'])], axis=0)
+                    for (visual_area, datakey), g \
+                    in selected_cells.groupby(['visual_area', 'datakey'])], axis=0)
 
     return N2, selected_cells
 
@@ -752,7 +911,8 @@ def select_dataframe_subset(selected_cells, RFDATA):
     R2 = pd.concat([RFDATA[(RFDATA['visual_area']==visual_area) 
                       & (RFDATA['datakey']==datakey) 
                       & (RFDATA['cell'].isin(g['cell'].unique()))].copy() 
-                    for (visual_area, datakey), g in selected_cells.groupby(['visual_area', 'datakey'])], axis=0)
+                    for (visual_area, datakey), g \
+                    in selected_cells.groupby(['visual_area', 'datakey'])], axis=0)
     return R2
 
 def match_distns_neuraldata_and_rfdata(NEURALDATA, RFDATA, src='Li'):
@@ -760,6 +920,37 @@ def match_distns_neuraldata_and_rfdata(NEURALDATA, RFDATA, src='Li'):
     R2 = select_dataframe_subset(selected_cells, RFDATA)
     return N2, R2
 
+
+def match_source_distn(NDATA, src='Li', n_samples=100):
+    '''
+    NDATA (dataframe)
+        Stacked data for trial metrics (neuraldfs)
+    src (str)
+        Source distribution to model.
+    curr_ncells (int)
+        Sample size to return
+    '''
+    # Get response to best config (max repsonse)
+    max_ndata, dist_mean, dist_sigma = get_params_for_source_distn(NDATA, src=src)
+    # Ignore the src area (i.e., don't resample)
+    areas_to_resample = [v for v in max_ndata['visual_area'].unique() if v!=src]
+    # Select cells that match src distn
+    selected_cells = generate_matched_distn(max_ndata, visual_areas=areas_to_resample, 
+                                            mean=dist_mean, sigma=dist_sigma, n_samples=n_samples)
+
+    return selected_cells
+
+def get_params_for_source_distn(NDATA, src='Li'):
+    '''
+    Get each cell's max response, return mean and sigma for creating distn.
+    '''
+    max_ndata = group_cells_by_max_response(NDATA)
+
+    # Get mean and std of distn
+    dist_mean = max_ndata.groupby(['visual_area']).mean().loc[src]['response']
+    dist_sigma = max_ndata.groupby(['visual_area']).std().loc[src]['response']
+
+    return max_ndata, dist_mean, dist_sigma
 
 def group_cells_by_max_response(NDATA):
     '''
@@ -774,36 +965,19 @@ def group_cells_by_max_response(NDATA):
 
     return max_ndata
 
-def get_params_for_source_distn(NDATA, src='Li'):
-    '''
-    Get each cell's max response, return mean and sigma for creating distn.
-    '''
-    max_ndata = group_cells_by_max_response(NDATA)
-
-    # Get mean and std of distn
-    dist_mean = max_ndata.groupby(['visual_area']).mean().loc[src]['response']
-    dist_sigma = max_ndata.groupby(['visual_area']).std().loc[src]['response']
-
-    return max_ndata, dist_mean, dist_sigma
-
-def match_source_distn(NDATA, src='Li', n_samples=100):
+def get_cell_dataframe(NDATA):
     '''
     NDATA (dataframe)
-        Stacked data for trial metrics (neuraldfs)
-    src (str)
-        Source distribution to model.
-    curr_ncells (int)
-        Sample size to return
+        Stacked trial responses 
     '''
-    # Get response to best config (max repsonse)
-    max_ndata, dist_mean, dist_sigma = get_params_for_source_distn(NDATA, src=src)
+    # For each cell, get activity profile (averaged across trial reps)
+    mean_ndata = NDATA.groupby(['visual_area', 'datakey', 'cell', 'config']).mean().reset_index()
 
-    # General new neuraldf 
-    areas_to_resample = [v for v in max_ndata['visual_area'].unique() if v!=src]
-    selected_cells = generate_matched_distn(max_ndata, visual_areas=areas_to_resample, 
-                                            mean=dist_mean, sigma=dist_sigma, n_samples=n_samples)
+    # For each cell, get MAX across configs
+    max_ndata = mean_ndata.groupby(['visual_area', 'datakey', 'cell']).max().reset_index()
 
-    return selected_cells
+    return max_ndata
+
 
 def generate_matched_distn(max_ndata, visual_areas=None, mean=None, sigma=None, n_samples=None):
     '''
@@ -837,9 +1011,7 @@ def take_closest_index_no_repeats(list1, list2):
 
             min_val = np.amin(temp_result) #Getting the minimum value to get closest element
             min_val_index = np.where(temp_result == min_val) #To find index of minimum value
-
             closest_element = list2[min_val_index] #Actual value of closest element in list2
-
             list2 = list2[list2 != closest_element] #Remove closest element after found
 
             #print(i, list1[i], min_val_index[0][0], closest_element[0]) 
@@ -851,6 +1023,171 @@ def take_closest_index_no_repeats(list1, list2):
             print(i, list1[i], 'No further closest unique closest elements found in list2')
 
     return match_ixs
+
+# =============================================================
+# Select and subsample cells
+# =============================================================
+def select_cells(cells, visual_area=None, datakey=None):
+    if visual_area is not None:
+        if datakey is not None:
+            currcells = cells[(cells['visual_area']==visual_area)
+                            & (cells['datakey']==datakey)].copy()
+        else:
+            currcells = cells[(cells['visual_area']==visual_area)].copy()
+    else:
+        currcells = cells.copy()
+
+    return currcells
+
+
+def global_cells(cells, remove_too_few=True, min_ncells=5,  return_counts=False):
+    '''
+    cells - dataframe, each row is a cell, has datakey/visual_area fields
+
+    Returns:
+    
+    roidf (dataframe)
+        Globally-indexed rois ('dset_roi' = roi ID in dataset, 'roi': global index)
+    
+    roi_counters (dict)
+        Counts of cells by area (optional)
+
+    '''
+    visual_areas=['V1', 'Lm', 'Li']
+    
+    incl_keys = []
+    if remove_too_few:
+        for (v, k), g in cells.groupby(['visual_area', 'datakey']):
+            if len(g['cell'].unique()) < min_ncells:
+                continue
+            incl_keys.append(k) 
+    else:
+        incl_keys = cells['datakey'].unique()
+ 
+    nocells=[]; notrials=[];
+    global_rois = dict((v, []) for v in visual_areas)
+    roi_counters = dict((v, 0) for v in visual_areas)
+    count_of_sel = cells[['visual_area', 'datakey', 'cell']].drop_duplicates().groupby(['visual_area', 'datakey']).count().reset_index()
+    print(count_of_sel.groupby(['visual_area']).sum())
+
+    roidf = []
+    datakeys = dict((v, []) for v in visual_areas)
+    for (visual_area, datakey), g in cells[cells['datakey'].isin(incl_keys)].groupby(['visual_area', 'datakey']):
+
+        roi_counter = roi_counters[visual_area]
+        datakeys[visual_area].append(datakey)
+        roi_list = sorted(g['cell'].unique()) #[int(r) for r in ddf.columns if r != 'config']
+
+        # Reindex roi ids for global
+        roi_ids = [i+roi_counter for i, r in enumerate(roi_list)]
+        nrs = len(roi_list)
+        global_rois[visual_area].extend(roi_ids)
+       
+        # Append to full df
+        roidf.append(pd.DataFrame({'roi': roi_ids,
+                                   'dset_roi': roi_list,
+                                   'visual_area': [visual_area for _ in np.arange(0, nrs)],
+                                   'datakey': [datakey for _ in np.arange(0, nrs)]}))
+        # Update global roi id counter
+        roi_counters[visual_area] += len(roi_ids)
+
+    roidf = pd.concat(roidf, axis=0) #.groupby(['visual_area']).count()
+    for k, v in global_rois.items():
+        print(k, len(v))
+      
+    roidf['animalid'] = [d.split('_')[1] for d in roidf['datakey']]
+    roidf['session'] = [d.split('_')[0] for d in roidf['datakey']]
+    roidf['fovnum'] = [int(d.split('_')[2][3:]) for d in roidf['datakey']]
+   
+    if return_counts:
+        return roidf, roi_counters
+    else:
+        return roidf
+
+def get_pooled_cells(stim_overlaps, stim_datakeys=None, remove_too_few=False, 
+                      overlap_thr=0.8, min_ncells=20):
+    '''
+    stim_overlaps (dataframe)
+        Dataframe of all cell IDs and overlap values for all dkeys and visual areas.
+    stim_datakeys (list)
+        List of experiment datakeys to include. Default includes all in provided dataframe.
+
+    cells - dataframe, each row is a cell, has datakey/visual_area fields
+
+    Returns:
+    
+    roidf (dataframe)
+        Globally-indexed rois ('dset_roi' = roi ID in dataset, 'roi': global index)
+        All included cells (responsive, pass overlap_thr, exclude dsets w/ too_few cells)
+   
+    roi_counters (dict)
+        Counts of cells by area (optional)
+    '''
+    incl_keys = []
+    if remove_too_few:
+        for (v, k), g in stim_overlaps.groupby(['visual_area', 'datakey']):
+            if len(g['cell'].unique()) < min_ncells:
+                continue
+            incl_keys.append(k) 
+    else:
+        incl_keys = stim_overlaps['datakey'].unique()
+
+    # Filter out cells that dont pass overlap threshold
+    globalcells, cellcounts = filter_rois(stim_overlaps[stim_overlaps['datakey'].isin(incl_keys)], 
+                                                overlap_thr=overlap_thr, return_counts=True)
+
+    return globalcells, cellcounts
+
+
+
+def filter_rois(stim_overlaps, overlap_thr=0.50, return_counts=False):
+    '''
+    Only get cells that pass overlap_thr of some value.
+    '''
+    visual_areas=['V1', 'Lm', 'Li']
+    
+    nocells=[]; notrials=[];
+    global_rois = dict((v, []) for v in visual_areas)
+    roi_counters = dict((v, 0) for v in visual_areas)
+    
+    pass_overlaps = stim_overlaps[stim_overlaps['perc_overlap']>=overlap_thr]
+    count_of_sel = pass_overlaps[['visual_area', 'datakey', 'cell']].drop_duplicates().groupby(['visual_area', 'datakey']).count().reset_index()
+    print(count_of_sel.groupby(['visual_area']).sum())
+
+    roidf = []
+    datakeys = dict((v, []) for v in visual_areas)
+    for (visual_area, datakey), g in pass_overlaps.groupby(['visual_area', 'datakey']):
+
+        roi_counter = roi_counters[visual_area]
+        datakeys[visual_area].append(datakey)
+        roi_list = sorted(g['cell'].unique()) #[int(r) for r in ddf.columns if r != 'config']
+
+        # Reindex roi ids for global
+        roi_ids = [i+roi_counter for i, r in enumerate(roi_list)]
+        nrs = len(roi_list)
+        global_rois[visual_area].extend(roi_ids)
+       
+        # Append to full df
+        roidf.append(pd.DataFrame({'roi': roi_ids,
+                                   'dset_roi': roi_list,
+                                   'visual_area': [visual_area for _ in np.arange(0, nrs)],
+                                   'datakey': [datakey for _ in np.arange(0, nrs)]}))
+        # Update global roi id counter
+        roi_counters[visual_area] += len(roi_ids)
+
+    roidf = pd.concat(roidf, axis=0) #.groupby(['visual_area']).count()
+    for k, v in global_rois.items():
+        print(k, len(v))
+    
+    roidf['animalid'] = [d.split('_')[1] for d in roidf['datakey']]
+    roidf['session'] = [d.split('_')[0] for d in roidf['datakey']]
+    roidf['fovnum'] = [int(d.split('_')[2][3:]) for d in roidf['datakey']]
+   
+    if return_counts:
+        return roidf, roi_counters
+    else:
+        return roidf
+
 
 
 # ===============================================================
