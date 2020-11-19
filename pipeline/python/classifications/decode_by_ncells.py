@@ -84,6 +84,194 @@ def initializer(terminating_):
     global terminating
     terminating = terminating_
 
+
+def decode_from_fov(datakey, visual_area, cells, MEANS, min_ncells=5,
+                    C_value=None, experiment='blobs',
+                    n_iterations=50, n_processes=2, results_id='fov_results',
+                    class_a=0, class_b=0,
+                    rootdir='/n/coxfs01/2p-data', create_new=False, verbose=False):
+    '''
+    Fit FOV n_iterations times (multiproc). Save all iterations in dataframe.
+    '''
+    # tmp save
+    session, animalid, fov_ = datakey.split('_')
+    fovnum = int(fov_[3:])
+    fov = 'FOV%i_zoom2p0x' % fovnum
+    traceid_dir = glob.glob(os.path.join(rootdir, animalid, session, 
+                            fov, 'combined_%s_static' % experiment, 'traces', '%s*' % traceid))[0]
+    curr_dst_dir = os.path.join(traceid_dir, 'decoding')
+    if not os.path.exists(curr_dst_dir):
+        os.makedirs(curr_dst_dir)
+        print("... saving tmp results to:\n  %s" % curr_dst_dir)
+
+    results_outfile = os.path.join(curr_dst_dir, '%s.pkl' % results_id)
+    if create_new is False: 
+        try:
+            with open(results_outfile, 'rb') as f:
+                iter_results = pkl.load(f)
+        except Exception as e:
+            create_new=True 
+
+    if create_new:    
+        #### Get neural means
+        print("... Starting decoding analysis")
+        neuraldf = aggr.get_neuraldf_for_cells_in_area(cells, MEANS, 
+                                                       datakey=datakey, visual_area=visual_area)
+        if int(neuraldf.shape[1]-1)<min_ncells:
+            return None
+
+        # zscore full
+        neuraldf = aggr.zscore_neuraldf(neuraldf)
+        n_cells = int(neuraldf.shape[1]-1) 
+        print("... [%s] %s, n=%i cells" % (visual_area, datakey, n_cells))
+
+        # ------ STIMULUS INFO -----------------------------------------
+        session, animalid, fov_ = datakey.split('_')
+        fovnum = int(fov_[3:])
+        obj = util.Objects(animalid, session, 'FOV%i_zoom2p0x' %  fovnum, traceid=traceid)
+        sdf = obj.get_stimuli()
+
+        # Decodinng -----------------------------------------------------
+        iter_list = decutils.fit_svm_mp(neuraldf, sdf, C_value=C_value, 
+                                    n_iterations=n_iterations, 
+                                    n_processes=n_processes, verbose=verbose,
+                                    class_a=class_a, class_b=class_b) 
+
+        print("%i items in mp list" % len(iter_list))
+        # Save all iterations
+        iter_results = pd.concat(iter_list, axis=0) 
+        metainfo = {'visual_area': visual_area, 'datakey': datakey,'n_cells': n_cells}
+        iter_results = putils.add_meta_to_df(iter_results, metainfo)
+
+        with open(results_outfile, 'wb') as f:
+            pkl.dump(iter_results, f, protocol=pkl.HIGHEST_PROTOCOL)
+
+    # Pool mean
+    print("... finished all iters: %s" % str(iter_results.shape))
+    iterd = dict(iter_results.mean())
+    iterd.update( dict(('%s_std' % k, v) \
+            for k, v in zip(iter_results.std().index, iter_results.std().values)) )
+    iterd.update( dict(('%s_sem' % k, v) \
+            for k, v in zip(iter_results.sem().index, iter_results.sem().values)) )
+    iterd.update({'n_units': n_cells, 
+                  'visual_area': visual_area, 'datakey': datakey})
+    print("::FINAL::")
+    pp.pprint(iterd)
+    print("@@@@@@@@@ done. %s|%s (by_fov)  @@@@@@@@@@" % (visual_area, datakey))
+
+    return iterd
+
+
+def decode_split_pupil(datakey, visual_area, cells, MEANS, pupildata,
+                    results_id='splitpupil_results',
+                    n_cuts=3, feature_name='pupil_fraction',
+                    experiment='blobs', min_ncells=5, C_value=None, 
+                    n_iterations=50, n_processes=2, 
+                    class_a=0, class_b=106,
+                    rootdir='/n/coxfs01/2p-data', create_new=False, verbose=False):
+    '''
+    Decode within FOV, split trials into high/low arousal states. 
+    Repeat n_iterations (mulitproc)
+    '''
+    session, animalid, fov_ = datakey.split('_')
+    fovnum = int(fov_[3:])
+    fov = 'FOV%i_zoom2p0x' % fovnum
+    traceid_dir = glob.glob(os.path.join(rootdir, animalid, session, fov, 
+                            'combined_%s*' % experiment, 'traces', '%s*' % traceid))[0]
+    #### Set output dir for current fov
+    curr_dst_dir = os.path.join(traceid_dir, 'decoding')
+    if not os.path.exists(curr_dst_dir):
+        os.makedirs(curr_dst_dir)
+        print("... saving tmp results to:\n  %s" % curr_dst_dir)
+
+    #### Create or load results
+    results_outfile = os.path.join(curr_dst_dir, '%s.pkl' % results_id)
+    if create_new is False: 
+        try:
+            with open(results_outfile, 'rb') as f:
+                iter_results = pkl.load(f)
+        except Exception as e:
+            create_new=True 
+
+    if create_new:    
+        #### Get neural means
+        print("... Stating decoding analysis")
+        neuraldf = aggr.get_neuraldf_for_cells_in_area(cells, MEANS, 
+                                                       datakey=datakey, visual_area=visual_area)
+        if int(neuraldf.shape[1]-1)<min_ncells:
+            return None
+        n_cells = int(neuraldf.shape[1]-1) 
+        print("... [%s] %s, n=%i cells" % (visual_area, datakey, n_cells))
+
+        #### Get pupil means\
+        pupildf = pupildata[datakey].copy()
+        
+        #### Match trial numbers
+        neuraldf, pupildf = dlcutils.match_trials_df(neuraldf, pupildf, equalize_conditions=True)
+       
+        # zscore full
+        neuraldf = aggr.zscore_neuraldf(neuraldf)
+ 
+        # ------ Split trials by quantiles ---------------------------------
+        pupil_low, pupil_high = dlcutils.split_pupil_range(pupildf, 
+                                                    feature_name=feature_name, n_cuts=n_cuts)
+        assert pupil_low.shape==pupil_high.shape, "Unequal pupil trials: %s, %s" % (str(pupil_low.shape), str(pupil_high.shape))
+        print("SPLIT PUPIL: %s (low), %s (high)" % (str(pupil_low.shape), str(pupil_high.shape)))
+
+        # trial indices of low/high pupil 
+        low_trial_ixs = pupil_low['trial'].unique()
+        high_trial_ixs = pupil_high['trial'].unique()
+        all_trial_ixs = pupildf['trial'].unique()
+
+        # ------ STIMULUS INFO -----------------------------------------
+        obj = util.Objects(animalid, session, 'FOV%i_zoom2p0x' %  fovnum, traceid=traceid)
+        sdf = obj.get_stimuli()
+
+        # Decoding -----------------------------------------------------
+        arousal_conds = ['all', 'low', 'high']
+        arousal_trial_ixs = [all_trial_ixs, low_trial_ixs, high_trial_ixs]
+        iter_list=[]
+        for arousal_cond, curr_trial_ixs in zip(arousal_conds, arousal_trial_ixs):
+            # Get neuraldf for current trials
+            curr_data = neuraldf.loc[curr_trial_ixs].copy()
+            # Fit.
+            a_list = decutils.fit_svm_mp(curr_data, sdf, C_value=C_value, 
+                                    n_iterations=n_iterations, 
+                                    n_processes=n_processes, verbose=verbose,
+                                    class_a=class_a, class_b=class_b) 
+            print("%i items in mp list" % len(a_list))
+            # Aggregate 
+            arousal_df = pd.concat(a_list, axis=0)
+            metainfo = {'visual_area': visual_area, 'datakey': datakey,
+                        'arousal': arousal_cond, 'n_cells': n_cells}
+            arousal_df = putils.add_meta_to_df(arousal_df, metainfo)
+            iter_list.append(arousal_df)
+       
+        print("%i items in split-pupil list" % len(iter_list))
+        # DATA - get mean across items
+        iter_results = pd.concat(iter_list, axis=0)
+        with open(results_outfile, 'wb') as f:
+            pkl.dump(iter_results, f, protocol=pkl.HIGHEST_PROTOCOL)
+
+    # Pool mean
+    #print(iter_results)
+    print("... finished all iters: %s" % str(iter_results.shape))
+    iterd = dict(iter_results.groupby(['arousal']).mean())
+#    iterd.update( dict(('%s_std' % k, v) \
+#            for k, v in zip(iter_results.std().index, iter_results.std().values)) )
+#    iterd.update( dict(('%s_sem' % k, v) \
+#            for k, v in zip(iter_results.sem().index, iter_results.sem().values)) )
+#    iterd.update({'n_units': n_cells, 
+#                  'visual_area': visual_area, 'datakey': datakey})
+    print("::FINAL::")
+    pp.pprint(iterd)
+    print("@@@@@@@@@ done. %s|%s (split_pupil)  @@@@@@@@@@" % (visual_area, datakey))
+
+    return iterd
+
+
+
+
 def decode_by_ncells(ncells, celldf, sdf, NEURALDATA, 
                     C_value=None, results_id='by_fov', 
                     n_iterations=50, n_processes=2, 
@@ -218,7 +406,7 @@ def decode_from_cell(datakey, rid, neuraldf, sdf, return_shuffle=False,
 
 
 # --------------------------------------------------------------------
-# Loading, saving, ec.
+# Aggregating, Loading, saving, ec.
 # -------------------------------------------------------------------
 def set_results_prefix(analysis_type='by_fov'):
     prefix=None
@@ -231,7 +419,6 @@ def set_results_prefix(analysis_type='by_fov'):
 
     return prefix
  
-
 def create_results_id(prefix='fov_results', visual_area='varea', C_value=None, 
                         response_type='dff', responsive_test='resp'):
     C_str = 'tuneC' if C_value is None else 'C-%.2f' % C_value
@@ -343,9 +530,6 @@ def do_decode_within_fov(analysis_type='by_fov', experiment='blobs',
     # Get all data sets
     sdata = aggr.get_aggregate_info(traceid=traceid, fov_type=fov_type, state=state)
     edata = sdata[sdata['experiment']==experiment]
-    rois = seg.get_cells_by_area(edata)
-    cells = aggr.get_active_cells_in_current_datasets(rois, MEANS, verbose=False)
-    seg_dkeys = cells['datakey'].unique()
     dsets = sdata[(sdata['datakey'].isin(seg_dkeys)) & (sdata['experiment']==experiment)]
  
     pooled = aggregate_decode_within_fov(dsets, C_value=C_value, results_prefix=results_prefix,
@@ -449,7 +633,7 @@ def extract_options(options):
             default=100, help="N iterations (default: 100)")
 
     parser.add_option('-o', action='store', dest='overlap_thr', 
-            default=0.8, help="% overlap between RF and stimulus (default: 0.8)")
+            default=0.5, help="% overlap between RF and stimulus (default: 0.5)")
     parser.add_option('-v', action='store_true', dest='verbose', 
             default=False, help="verbose printage")
     parser.add_option('--new', action='store_true', dest='create_new', 
@@ -477,10 +661,6 @@ def extract_options(options):
 
     parser.add_option('--match-distns', action='store_true', dest='match_distns', 
             default=False, help="(set for by_ncells) Match distns of neuraldf to Li")
-
-
-
-
     (options, args) = parser.parse_args(options)
 
     return options
@@ -529,17 +709,20 @@ def main(options):
     filter_fovs = True
     remove_too_few = True
     min_ncells = 10 if remove_too_few else 0
-    overlap_thr = float(opts.overlap_thr)
+    overlap_thr = None if opts.overlap_thr in ['None', None] else float(opts.overlap_thr)
+    has_rfs = overlap_thr is not None
+    
     stim_filterby = None # 'first'
     has_gratings = experiment!='blobs'
 
     match_distns = opts.match_distns
-    if analysis_type=='single_cells':
+    if analysis_type in ['single_cells', 'by_fov']:
         match_distns = False
     match_str = 'matchdistns_' if match_distns else ''
 
     # Pupil -------------------------------------------
-    pupil_feature='pupil_fraction'
+    pupil_feature='pupil_area'
+    pupil_alignment='trial'
     pupil_epoch='pre'
     pupil_snapshot=391800
     redo_pupil=False
@@ -582,76 +765,93 @@ def main(options):
     SDF = aggr.check_sdfs(stim_datakeys, traceid=traceid)
 
     #### Source data
+    curr_visual_area = None if opts.visual_area in ['None', None] else opts.visual_area
+    curr_datakey = None if opts.datakey in ['None', None] else opts.datakey    
     _, cells, MEANS = aggr.get_source_data(experiment, 
                         equalize_now=True, zscore_now=True,
                         response_type=response_type, responsive_test=responsive_test, 
-                        responsive_thr=responsive_thr, trial_epoch=trial_epoch, use_all=False) 
+                        responsive_thr=responsive_thr, trial_epoch=trial_epoch, use_all=False,
+                        visual_area=curr_visual_area, datakey=curr_datakey)
+    stack_neuraldf = match_distns==True
 
     #### Load RFs
-    rf_fit_desc = fitrf.get_fit_desc(response_type=response_type)
-    reliable_str = 'reliable' if reliable_only else ''
-    rf_str = 'match%s_%s' % (experiment, reliable_str)
-    # Get position info for RFs 
-    rfdf = aggr.load_rfdf_and_pos(dsets, rf_filter_by=None, 
-                                    reliable_only=True, traceid=traceid)
+    if has_rfs: 
+        print("~~~~~~~~~~~~~~~~Loading RFs~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~")
+        rf_fit_desc = fitrf.get_fit_desc(response_type=response_type)
+        reliable_str = 'reliable' if reliable_only else ''
+        rf_str = 'match%s_%s' % (experiment, reliable_str)
+        # Get position info for RFs 
+        rfdf = aggr.load_rfdf_and_pos(dsets, rf_filter_by=None, 
+                                        reliable_only=True, traceid=traceid)
+        # RF dataframes
+        NEURALDATA, RFDATA = aggr.get_neuraldata_and_rfdata(cells, rfdf, MEANS, 
+                                                stack=stack_neuraldf)
+    else:
+        rf_str = 'noRFs'
+        print("~~~~~~~~~~~~~~~~No Receptive Fields~~~~~~~~~~~~~~~~~~~~~~~~~")
+        # EXP dataframes 
+        NEURALDATA = aggr.get_neuraldata(cells, MEANS, stack=stack_neuraldf)
 
-    #### Final datasets
-    #NEURALDATA, RFDATA = aggr.get_neuraldata_and_rfdata(cells, rfdf, MEANS)
-    #match_distns = analysis_type=='by_ncells'
-    stack_neuraldf = match_distns==True
-    NEURALDATA, RFDATA = aggr.get_neuraldata_and_rfdata(cells, rfdf, MEANS, stack=stack_neuraldf)
     if match_distns:
-        print("~~~~~~~~~~~~~~~~Matching max %s distNs~~~~~~~~~~~~~~~~~~~~~~~" % response_type)
-        NEURALDATA, RFDATA = aggr.match_distns_neuraldata_and_rfdata(NEURALDATA, RFDATA)
+        print("~~~~~~~~~~~~~~~~Matching max %s distNs~~~~~~~~~~~~~~~~~~~~~" % response_type)
+        NEURALDATA, matched_distn_cells = aggr.match_neuraldata_distn(NEURALDATA, src='Li')
+        if has_rfs:
+            RFDATA = aggr.select_dataframe_subset(matched_distn_cells, RFDATA)
     dist_str = 'matchdist_' if match_distns else ''
+
+    if has_rfs:
+        print("~~~~~~~~~~~~~~~~Calculating overlaps (thr=%.2f)~~~~~~~~~~~~~" % overlap_thr)
+        # Calculate overlap with stimulus
+        stim_overlaps = rfutils.calculate_overlaps(RFDATA, experiment=experiment)
+        # Filter cells
+        globalcells, cell_counts = aggr.get_pooled_cells(stim_overlaps,
+                                            remove_too_few=remove_too_few, 
+                                            overlap_thr=0 if overlap_thr is None else overlap_thr,
+                                            min_ncells=min_ncells)
+    else:
+        if match_distns:
+            globalcells, cell_counts = aggr.global_cells(matched_distn_cells,
+                                            remove_too_few=remove_too_few, 
+                                            min_ncells=min_ncells, return_counts=True)
+        else:
+            globalcells, cell_counts = aggr.global_cells(cells,
+                                            remove_too_few=remove_too_few, 
+                                            min_ncells=min_ncells, return_counts=True)
+    #### Get final cells dataframe          
+    cells = globalcells[['visual_area', 'datakey', 'dset_roi']].drop_duplicates().rename(columns={'dset_roi': 'cell'})
+
+    print("@@@@@@@@ cell counts @@@@@@@@@@@")
+    print(cell_counts)
 
     #### Get pupil responses
     if 'pupil' in analysis_type:
         pupildata = dlcutils.get_aggregate_pupildfs(experiment=experiment, 
+                                    alignment_type=pupil_alignment, 
                                     feature_name=pupil_feature, trial_epoch=pupil_epoch,
                                     iti_pre=iti_pre, iti_post=iti_post, stim_dur=stim_dur,
                                     in_rate=pupil_framerate, out_rate=pupil_framerate,
                                     snapshot=pupil_snapshot, create_new=redo_pupil)
     #### Setup output dirs  
     results_prefix = set_results_prefix(analysis_type=analysis_type)
-    data_info='%s%s_%s_overlap-%.1f_iter-%i' % (match_str, response_type, responsive_test, overlap_thr, n_iterations)
-    dst_dir = os.path.join(aggregate_dir, 'decoding', analysis_type, data_info)
-    if not os.path.exists(dst_dir):
-        os.makedirs(dst_dir)
-        print("...making dir")
-    print("DST: %s" % dst_dir)
-
-    #### Calculate overlap with stimulus
-    print("Calculating overlaps (thr=%.2f)" % overlap_thr)
-    stim_overlaps = rfutils.calculate_overlaps(RFDATA, experiment=experiment)
-
-    #### Filter cells
-    globalcells, cell_counts = decutils.get_pooled_cells(stim_overlaps,remove_too_few=remove_too_few, 
-                                                        overlap_thr=overlap_thr, min_ncells=min_ncells)
-    print("@@@@@@@@ cell counts @@@@@@@@@@@")
-    print(cell_counts)
+    overlap_str = 'noRFs' if overlap_thr is None else 'overlap%.1f' % overlap_thr
+    data_info='%s%s_%s_%s_iter-%i' % (match_str, response_type, responsive_test, overlap_str, n_iterations)
     sdf = SDF[SDF.keys()[-1]].copy()
 
     print('Classify %i v %i (C=%s)' % (m0, m100, str(C_value)))
-    print('N=%i iters (%i proc), overlap=%.2f' % (n_iterations, n_processes, overlap_thr))
+    print('N=%i iters (%i proc), %s' % (n_iterations, n_processes, overlap_str))
 
 
-    # ---------------------------------------------------------------------
-    curr_visual_area = None if opts.visual_area in ['None', None] else opts.visual_area
-    curr_datakey = None if opts.datakey in ['None', None] else opts.datakey
-    
+    # ---------------------------------------------------------------------   
     if (curr_visual_area is None) and (curr_datakey is not None):
         # Get the visual area (first one) for datakey
         assert curr_datakey in globalcells['datakey'].unique(), "No dkey: %s" % curr_datakey
         curr_visual_area = globalcells[globalcells['datakey']==curr_datakey]['visual_area'].unique()[0]
-    # ---------------------------------------------------------------------
 
-
-    if analysis_type=='single_cells':
-        # ============================================================ 
-        # SINGLE_CELLS - for each fov, for each cell, do decode
-        # ============================================================ 
-        # datakey is not None and visual_area is not None
+    # ============================================================ 
+    # PER FOV analysis - for each fov, do something. 
+    # ============================================================ 
+    # datakey is not None and visual_area is not None
+    if (curr_visual_area is not None) and (curr_datakey is not None):
         gdf = globalcells[(globalcells['visual_area']==curr_visual_area) 
                         & (globalcells['datakey']==curr_datakey)]
         ncells_total = gdf.shape[0] 
@@ -662,20 +862,58 @@ def main(options):
                                 visual_area=curr_visual_area, C_value=C_value, 
                                 response_type=response_type, responsive_test=responsive_test)
 
-        for ri, rid in enumerate(gdf['dset_roi'].values):
-            if ri % 10 == 0:
-                print("... %i of %i cells (%s|%s), rid=%i." % (int(ri+1), ncells_total, curr_datakey, curr_visual_area, rid))
-
-            neuraldf = NEURALDATA[curr_visual_area][curr_datakey][[rid, 'config']].copy()
-            decode_from_cell(curr_datakey, rid, neuraldf, sdf, experiment=experiment,
-                            C_value=C_value, return_shuffle=False, 
+        if analysis_type=='by_fov':
+            # -----------------------------------------------------------------------
+            # BY_FOV - for each fov, do_decode
+            # -----------------------------------------------------------------------
+            decode_from_fov(curr_datakey, curr_visual_area, cells, MEANS, 
+                            min_ncells=min_ncells, C_value=C_value,
                             n_iterations=n_iterations, n_processes=n_processes, 
                             results_id=results_id,
                             class_a=class_a, class_b=class_b,
-                            create_new=create_new, verbose=verbose)          
-        print("Finished %s (%s). ID=%s" % (curr_datakey, curr_visual_area, results_id))
+                            rootdir=rootdir, create_new=create_new, verbose=verbose)
+
+        elif analysis_type=='split_pupil': 
+            # -----------------------------------------------------------------------
+            # SPLIT_PUPIL - for each fov, split trials into arousal states, decode.
+            # -----------------------------------------------------------------------
+            if curr_datakey not in pupildata.keys():
+                print("ERR: PUPILDATA, %s key not found in dict." % curr_datakey)
+                return None
+
+            decode_split_pupil(curr_datakey, curr_visual_area, cells, MEANS, pupildata,
+                            n_cuts=3, feature_name=pupil_feature,
+                            min_ncells=min_ncells, C_value=C_value,
+                            n_iterations=n_iterations, n_processes=n_processes, 
+                            results_id=results_id,
+                            class_a=class_a, class_b=class_b,
+                            rootdir=rootdir, create_new=create_new, verbose=verbose)
+
+        elif analysis_type=='single_cells':
+            # -----------------------------------------------------------------------
+            # SINGLE_CELLS - for each fov, for each cell, do decode
+            # -----------------------------------------------------------------------
+            for ri, rid in enumerate(gdf['dset_roi'].values):
+                if ri % 10 == 0:
+                    print("... %i of %i cells (%s|%s), rid=%i." % (int(ri+1), ncells_total, curr_datakey, curr_visual_area, rid))
+
+                neuraldf = NEURALDATA[curr_visual_area][curr_datakey][[rid, 'config']].copy()
+                decode_from_cell(curr_datakey, rid, neuraldf, sdf, experiment=experiment,
+                                C_value=C_value, return_shuffle=False, 
+                                n_iterations=n_iterations, n_processes=n_processes, 
+                                results_id=results_id,
+                                class_a=class_a, class_b=class_b,
+                                create_new=create_new, verbose=verbose)          
+            print("Finished %s (%s). ID=%s" % (curr_datakey, curr_visual_area, results_id))
 
     elif analysis_type=='by_ncells':
+        # Create aggregate output dir
+        dst_dir = os.path.join(aggregate_dir, 'decoding', analysis_type, data_info)
+        if not os.path.exists(dst_dir):
+            os.makedirs(dst_dir)
+            print("...making dir")
+        print("DST: %s" % dst_dir)
+
         # ============================================================ 
         # by NCELLS - pools across datasets
         # ============================================================ 
@@ -689,6 +927,7 @@ def main(options):
                             response_type=response_type, responsive_test=responsive_test)
 
             if curr_ncells is not None:
+                # ----------------------------------------------
                 # Do decode w CURR_NCELLS, CURR_VISUAL_AREA
                 # ----------------------------------------------
                 decode_by_ncells(curr_ncells, gdf, sdf, NEURALDATA, 
@@ -699,6 +938,7 @@ def main(options):
                                 dst_dir=dst_dir, create_new=create_new, verbose=verbose)
                 print("***** finished %s, ncells=%i *******" % (curr_visual_area, curr_ncells))
             else:
+                # ----------------------------------------------
                 # Loop thru NCELLS
                 # ----------------------------------------------
                 min_cells_total = min(cell_counts.values())
@@ -719,6 +959,7 @@ def main(options):
                                     verbose=verbose)
                 print("********* finished %s, (ncells looped: %s) **********" % (curr_visual_area, str(NCELLS)))
         else:
+            # ----------------------------------------------
             # Loop thru all visual areas, all NCELLS
             # ----------------------------------------------
             #### Get NCELLS
@@ -747,24 +988,6 @@ def main(options):
                                         dst_dir=dst_dir, create_new=create_new, 
                                         verbose=verbose)
                     print("********* finished **********")
-
-        #            if analysis_type=='by_fov':
-        #                decode_from_fov(datakey, visual_area, cells, MEANS, 
-        #                                min_ncells=5, C_value=C_value,
-        #                                n_iterations=n_iterations, n_processes=n_processes, 
-        #                                results_id=results_id,
-        #                                class_a=class_a, class_b=class_b,
-        #                                rootdir=rootdir, create_new=create_new, verbose=verbose)
-        #
-        #            elif analysis_type=='split_pupil': 
-        #                decode_split_pupil(datakey, visual_area, cells, MEANS, pupildata,
-        #                                n_cuts=3, feature_name='pupil_fraction',
-        #                                min_ncells=5, C_value=C_value,
-        #                                n_iterations=n_iterations, n_processes=n_processes, 
-        #                                results_id=results_id,
-        #                                class_a=class_a, class_b=class_b,
-        #                                rootdir=rootdir, create_new=create_new, verbose=verbose)
-        #
             except Exception as e:
                 traceback.print_exc()
          
