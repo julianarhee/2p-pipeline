@@ -1067,8 +1067,8 @@ def global_cells(cells, remove_too_few=True, min_ncells=5,  return_counts=False)
     nocells=[]; notrials=[];
     global_rois = dict((v, []) for v in visual_areas)
     roi_counters = dict((v, 0) for v in visual_areas)
-    count_of_sel = cells[['visual_area', 'datakey', 'cell']].drop_duplicates().groupby(['visual_area', 'datakey']).count().reset_index()
-    print(count_of_sel.groupby(['visual_area']).sum())
+    #count_of_sel = cells[['visual_area', 'datakey', 'cell']].drop_duplicates().groupby(['visual_area', 'datakey']).count().reset_index()
+    #print(count_of_sel.groupby(['visual_area']).sum())
 
     roidf = []
     datakeys = dict((v, []) for v in visual_areas)
@@ -1092,8 +1092,8 @@ def global_cells(cells, remove_too_few=True, min_ncells=5,  return_counts=False)
         roi_counters[visual_area] += len(roi_ids)
 
     roidf = pd.concat(roidf, axis=0) #.groupby(['visual_area']).count()
-    for k, v in global_rois.items():
-        print(k, len(v))
+    #for k, v in global_rois.items():
+    #    print(k, len(v))
       
     roidf['animalid'] = [d.split('_')[1] for d in roidf['datakey']]
     roidf['session'] = [d.split('_')[0] for d in roidf['datakey']]
@@ -1151,8 +1151,12 @@ def filter_rois(stim_overlaps, overlap_thr=0.50, return_counts=False):
     roi_counters = dict((v, 0) for v in visual_areas)
     
     pass_overlaps = stim_overlaps[stim_overlaps['perc_overlap']>=overlap_thr]
-    count_of_sel = pass_overlaps[['visual_area', 'datakey', 'cell']].drop_duplicates().groupby(['visual_area', 'datakey']).count().reset_index()
-    print(count_of_sel.groupby(['visual_area']).sum())
+    n_orig = len(stim_overlaps['cell'].unique())
+    n_pass = len(pass_overlaps['cell'].unique())
+    print("%i of %i cells pass overlap (thr=%.2f)" % (n_pass, n_orig, overlap_thr))
+
+    #count_of_sel = pass_overlaps[['visual_area', 'datakey', 'cell']].drop_duplicates().groupby(['visual_area', 'datakey']).count().reset_index()
+    #print(count_of_sel.groupby(['visual_area']).sum())
 
     roidf = []
     datakeys = dict((v, []) for v in visual_areas)
@@ -1176,8 +1180,8 @@ def filter_rois(stim_overlaps, overlap_thr=0.50, return_counts=False):
         roi_counters[visual_area] += len(roi_ids)
 
     roidf = pd.concat(roidf, axis=0) #.groupby(['visual_area']).count()
-    for k, v in global_rois.items():
-        print(k, len(v))
+    #for k, v in global_rois.items():
+    #    print(k, len(v))
     
     roidf['animalid'] = [d.split('_')[1] for d in roidf['datakey']]
     roidf['session'] = [d.split('_')[0] for d in roidf['datakey']]
