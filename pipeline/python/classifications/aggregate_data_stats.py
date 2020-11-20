@@ -838,6 +838,9 @@ def get_neuraldata_and_rfdata(cells, rfdf, MEANS,
             final_rf = pd.concat([metainfo, meanrf], axis=1)
             rf_.append(final_rf)
 
+    if len(rf_)==0:
+        return None, None
+ 
     RFDATA = pd.concat(rf_, axis=0)
 
     if stack:
@@ -1179,6 +1182,12 @@ def filter_rois(stim_overlaps, overlap_thr=0.50, return_counts=False):
         # Update global roi id counter
         roi_counters[visual_area] += len(roi_ids)
 
+    if len(roidf)==0:
+        if return_counts:
+            return None, None
+        else:
+            return None
+
     roidf = pd.concat(roidf, axis=0) #.groupby(['visual_area']).count()
     #for k, v in global_rois.items():
     #    print(k, len(v))
@@ -1193,11 +1202,106 @@ def filter_rois(stim_overlaps, overlap_thr=0.50, return_counts=False):
         return roidf
 
 
+def get_blobs_and_rf_meta(experiment='blobs', has_gratings=False, stim_filterby=None,
+                            traceid='traces001', fov_type='zoom2p0x', state='awake'):
+    #### Get metadata for experiment type
+    sdata = get_aggregate_info(traceid=traceid, fov_type=fov_type, state=state)
+    edata, expmeta = experiment_datakeys(sdata, experiment=experiment,
+                                has_gratings=has_gratings, stim_filterby=stim_filterby)
+        
+    # Get blob metadata only - and only if have RFs
+    dsets = pd.concat([g for k, g in edata.groupby(['animalid', 'session', 'fov']) if 
+                (experiment in g['experiment'].values 
+                and ('rfs' in g['experiment'].values or 'rfs10' in g['experiment'].values)) ])
+    dsets[['visual_area', 'datakey']].drop_duplicates().groupby(['visual_area']).count()
+    
+    return dsets
+#
+
+
 
 # ===============================================================
 # Plotting
 # ===============================================================
 from matplotlib.lines import Line2D
+def plot_pairwise_by_axis(plotdf, curr_metric='abs_coef', c1='az', c2='el', 
+                          compare_var='cond', fontsize=10, fontcolor='k', fmt='%.2f', xytext=(0, 10),
+                          area_colors=None, legend=True):
+
+    fig, ax = pl.subplots(figsize=(5,4), dpi=dpi)
+    fig.patch.set_alpha(0)
+    ax.patch.set_alpha(0)
+    ax = pairwise_compare_single_metric(plotdf, curr_metric=curr_metric, ax=ax,
+                                                c1=c1, c2=c2, compare_var=compare_var)
+    plotdf.apply(annotateBars, ax=ax, axis=1, fontsize=fontsize, 
+                    fontcolor=fontcolor, fmt=fmt, xytext=xytext) 
+    # Set x labels
+    set_split_xlabels(ax, a_label=c1, b_label=c2)
+
+    if legend:
+        # Get counts of samples for legend
+        legend_elements = get_counts_for_legend(plotdf, area_colors=area_colors, 
+                                                markersize=10, marker='_')
+        ax.legend(handles=legend_elements, bbox_to_anchor=(1.5,1.1), fontsize=8)
+
+    return fig
+
+
+def pairwise_compare_single_metric(comdf, curr_metric='avg_size', 
+                                    c1='rfs', c2='rfs10', compare_var='experiment',
+                                    ax=None, marker='o', visual_areas=['V1', 'Lm', 'Li'],
+                                    area_colors=None):
+    assert 'datakey' in comdf.columns, "Need a sorter, 'datakey' not found."
+
+    if area_colors is None:
+        visual_areas = ['V1', 'Lm', 'Li']
+        colors = ['magenta', 'orange', 'dodgerblue'] 
+        #sns.color_palette(palette='colorblind') #, n_colors=3)
+        area_colors = {'V1': colors[0], 'Lm': colors[1], 'Li': colors[2]}
+    offset = 0.25 
+    if ax is None:
+        fig, ax = pl.subplots(figsize=(5,4), dpi=dpi)
+        fig.patch.set_alpha(0)
+        ax.patch.set_alpha(0)
+    
+    # Plot paired values
+    aix=0
+    for ai, visual_area in enumerate(visual_areas):
+
+        plotdf = comdf[comdf['visual_area']==visual_area]
+        a_vals = plotdf[plotdf[compare_var]==c1].sort_values(by='datakey')[curr_metric].values
+        b_vals = plotdf[plotdf[compare_var]==c2].sort_values(by='datakey')[curr_metric].values
+
+        by_exp = [(a, e) for a, e in zip(a_vals, b_vals)]
+        for pi, p in enumerate(by_exp):
+            ax.plot([aix-offset, aix+offset], p, marker=marker, color=area_colors[visual_area], 
+                    alpha=1, lw=0.5,  zorder=0, markerfacecolor=None, 
+                    markeredgecolor=area_colors[visual_area])
+        tstat, pval = spstats.ttest_rel(a_vals, b_vals)
+        print("%s: (t-stat:%.2f, p=%.2f)" % (visual_area, tstat, pval))
+        aix = aix+1
+
+    # Plot average
+    sns.barplot("visual_area", curr_metric, data=comdf, 
+                hue=compare_var, hue_order=[c1, c2], #zorder=0,
+                ax=ax, order=visual_areas,
+                errcolor="k", edgecolor=('k', 'k', 'k'), facecolor=(1,1,1,0), linewidth=2.5)
+    ax.legend_.remove()
+
+    set_split_xlabels(ax, a_label=c1, b_label=c2)
+    
+    return ax
+
+def set_split_xlabels(ax, offset=0.25, a_label='rfs', b_label='rfs10', rotation=0, ha='center'):
+    ax.set_xticks([0-offset, 0+offset, 1-offset, 1+offset, 2-offset, 2+offset])
+    ax.set_xticklabels([a_label, b_label, a_label, b_label, a_label, b_label], 
+                        rotation=rotation, ha=ha)
+    ax.set_xlabel('')
+    ax.tick_params(axis='x', size=0)
+    sns.despine(bottom=True, offset=4)
+    return ax
+
+
 
 def annotateBars(row, ax, fontsize=12, fmt='%.2f', fontcolor='k', xytext=(0, 10)): 
     for p in ax.patches:
