@@ -157,7 +157,7 @@ def decode_from_fov(datakey, visual_area, cells, MEANS, min_ncells=5,
                   'visual_area': visual_area, 'datakey': datakey})
     print("::FINAL::")
     pp.pprint(iterd)
-    print("@@@@@@@@@ done. %s|%s (by_fov)  @@@@@@@@@@" % (visual_area, datakey))
+    print("@@@@@@@@@ done. %s|%s (%s)  @@@@@@@@@@" % (visual_area, datakey, results_id))
 
     return iterd
 
@@ -265,7 +265,7 @@ def decode_split_pupil(datakey, visual_area, cells, MEANS, pupildata,
 #                  'visual_area': visual_area, 'datakey': datakey})
     print("::FINAL::")
     pp.pprint(iterd)
-    print("@@@@@@@@@ done. %s|%s (split_pupil)  @@@@@@@@@@" % (visual_area, datakey))
+    print("@@@@@@@@@ done. %s|%s (%s)  @@@@@@@@@@" % (visual_area, datakey, results_id))
 
     return iterd
 
@@ -400,7 +400,7 @@ def decode_from_cell(datakey, rid, neuraldf, sdf, return_shuffle=False,
     iterd.update({'cell': rid, 'datakey': datakey})
     #print("::FINAL::")
     #pp.pprint(iterd)
-    print("@@@@@@@@@ done. %s, rid=%i @@@@@@@@@@" % (datakey, rid))
+    print("@@@@@@@@@ done. %s, rid=%i (%s) @@@@@@@@@@" % (datakey, rid, results_ids))
 
     return iterd
 
@@ -420,9 +420,11 @@ def set_results_prefix(analysis_type='by_fov'):
     return prefix
  
 def create_results_id(prefix='fov_results', visual_area='varea', C_value=None, 
-                        response_type='dff', responsive_test='resp'):
+                        response_type='dff', responsive_test='resp', overlap_thr=None):
+
     C_str = 'tuneC' if C_value is None else 'C-%.2f' % C_value
-    results_id='%s_%s_%s__%s-%s' % (prefix, visual_area, C_str, response_type, responsive_test)
+    overlap_str = 'no-rfs' if overlap_thr is None else 'overlap-%.1f' % overlap_thr
+    results_id='%s_%s_%s__%s-%s_%s' % (prefix, visual_area, C_str, response_type, responsive_test, overlap_str)
     return results_id
 
 def load_decode_within_fov(animalid, session, fov, results_id='fov_results',
@@ -451,6 +453,7 @@ def load_decode_within_fov(animalid, session, fov, results_id='fov_results',
 def aggregate_decode_within_fov(dsets, results_prefix='fov_results', 
                  C_value=None, response_type='dff', 
                 responsive_test='nstds', responsive_thr=10.,
+                overlap_thr=None,
                 rootdir='/n/coxfs01/2p-data'):
 
     no_results=[]
@@ -461,7 +464,8 @@ def aggregate_decode_within_fov(dsets, results_prefix='fov_results',
     
         results_id=create_results_id(prefix=results_prefix, 
                                     visual_area=visual_area, C_value=C_value, 
-                                    response_type=response_type, responsive_test=responsive_test)
+                                    response_type=response_type, responsive_test=responsive_test,
+                                    overlap_thr=overlap_thr)
 
         # Load dataset results
         session, animalid, fov_ = datakey.split('_')
@@ -860,7 +864,8 @@ def main(options):
             return None
         results_id = create_results_id(prefix=results_prefix, 
                                 visual_area=curr_visual_area, C_value=C_value, 
-                                response_type=response_type, responsive_test=responsive_test)
+                                response_type=response_type, responsive_test=responsive_test,
+                                overlap_thr=overlap_thr)
 
         if analysis_type=='by_fov':
             # -----------------------------------------------------------------------
@@ -924,7 +929,8 @@ def main(options):
             gdf = globalcells[globalcells['visual_area']==curr_visual_area]
             results_id = create_results_id(prefix=results_prefix, 
                             visual_area=curr_visual_area, C_value=C_value, 
-                            response_type=response_type, responsive_test=responsive_test)
+                            response_type=response_type, responsive_test=responsive_test,
+                            overlap_thr=overlap_thr)
 
             if curr_ncells is not None:
                 # ----------------------------------------------
@@ -975,7 +981,7 @@ def main(options):
                                         visual_area=curr_visual_area, 
                                         C_value=C_value, 
                                         response_type=response_type, 
-                                        responsive_test=responsive_test)
+                                        responsive_test=responsive_test, overlap_thr=overlap_thr)
                         
                     for curr_ncells in NCELLS:
                         print("**** %s (n=%i cells)****" % (curr_visual_area, curr_ncells))
