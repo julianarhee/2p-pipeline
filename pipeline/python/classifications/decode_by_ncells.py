@@ -521,7 +521,7 @@ def do_decode_within_fov(analysis_type='by_fov', experiment='blobs',
         os.makedirs(dst_dir)
     C_str = 'tuneC' if C_value is None else 'C-%.2f' % C_value
 
-    results_prefix = set_results_prefix(analysis_type=analysis_type)
+    results_prefix = analysis_type #set_results_prefix(analysis_type=analysis_type)
     aggr_results_id='%s__%s_%s-%s' % (analysis_type, C_str, response_type, responsive_test)
 
 
@@ -836,7 +836,7 @@ def main(options):
                                     in_rate=pupil_framerate, out_rate=pupil_framerate,
                                     snapshot=pupil_snapshot, create_new=redo_pupil)
     #### Setup output dirs  
-    results_prefix = set_results_prefix(analysis_type=analysis_type)
+    results_prefix = analysis_type #set_results_prefix(analysis_type=analysis_type)
     overlap_str = 'noRFs' if overlap_thr is None else 'overlap%.1f' % overlap_thr
     data_info='%s%s_%s_%s_iter-%i' % (match_str, response_type, responsive_test, overlap_str, n_iterations)
     sdf = SDF[SDF.keys()[-1]].copy()
@@ -977,7 +977,7 @@ def main(options):
 
             try:
                 for curr_visual_area, gdf in globalcells.groupby(['visual_area']):    
-                    results_id = create_results_id(prefix=results_prefix, 
+                    results_id = create_results_id(prefix=results_prefix,
                                         visual_area=curr_visual_area, 
                                         C_value=C_value, 
                                         response_type=response_type, 
