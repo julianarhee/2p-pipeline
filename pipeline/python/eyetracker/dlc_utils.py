@@ -188,9 +188,10 @@ def get_aggregate_pupil_traces(experiment, feature_name='pupil_area',
             traceback.print_exc()
             create_new=True
 
+    feature_to_load = 'pupil_area' if feature_name=='pupil_fraction' else feature_name
     if create_new:
         pupiltraces = aggregate_pupil_traces(experiment, traceid=traceid,
-                            feature_name=feature_name,alignment_type=alignment_type, 
+                            feature_name=feature_to_load,alignment_type=alignment_type, 
                             snapshot=snapshot, 
                             rootdir=rootdir, aggregate_dir=aggregate_dir)
     return pupiltraces
@@ -254,7 +255,10 @@ def aggregate_pupil_dataframes(pupiltraces, fname,
     desired_nframes = int((stim_dur + iti_pre + iti_post)*out_rate)
     iti_pre_ms=iti_pre*1000
     new_stim_on = int(round(iti_pre*out_rate))
-    
+    nframes_on = int(round(stim_dur*out_rate))
+
+    feature_to_load = 'pupil_area' if feature_name=='pupil_fraction' else feature_name
+
     pupildata={}
     for dkey, ptraces in pupiltraces.items():
         #dkey = '_'.join(k.split('_')[0:-1])
@@ -262,13 +266,43 @@ def aggregate_pupil_dataframes(pupiltraces, fname,
                                     in_rate=in_rate, 
                                     out_rate=out_rate, 
                                     desired_nframes=desired_nframes, 
-                                    feature_name=feature_name, 
+                                    feature_name=feature_to_load, #feature_name, 
                                     iti_pre_ms=iti_pre_ms)
-        pupildf = get_pupil_df(pupil_r, trial_epoch=trial_epoch, new_stim_on=new_stim_on)
+        pupildf = get_pupil_df(pupil_r, trial_epoch=trial_epoch, 
+                                new_stim_on=new_stim_on, nframes_on=nframes_on)
+        if 'pupil_fraction' not in pupildf.columns:
+            pupil_max = pupildf['pupil_area'].max()
+            pupildf['pupil_fraction'] = pupildf['pupil_area']/pupil_max
         pupildata[dkey] = pupildf
 
     return pupildata
  
+def get_pupil_df(pupil_r, trial_epoch='pre', new_stim_on=20., nframes_on=20.):
+    '''
+    Turn resampled pupil traces into reponse vectors
+    
+    trial_epoch : (str)
+        'pre': Use PRE-stimulus period for response metric.
+        'stim': Use stimulus period
+        'all': Use full trial period
+    
+    new_stim_on: (int)
+        Frame index for stimulus start (only needed if trial_epoch is 'pre' or 'stim')
+        
+    pupil_r : resampled pupil traces (columns are trial, frame, pupil_area, frame_int, frame_ix)
+    '''
+    if trial_epoch=='pre':
+        pupildf = pd.concat([g[g['frame_ix'].isin(np.arange(0, new_stim_on))].mean(axis=0) \
+                            for t, g in pupil_r.groupby(['trial'])], axis=1).T
+    elif trial_epoch=='stim':
+        pupildf = pd.concat([g[g['frame_ix'].isin(np.arange(new_stim_on, new_stim_on+nframes_on))].mean(axis=0) \
+                            for t, g in pupil_r.groupby(['trial'])], axis=1).T
+    else:
+        pupildf = pd.concat([g.mean(axis=0) for t, g in pupil_r.groupby(['trial'])], axis=1).T
+    #print(pupildf.shape)
+
+    return pupildf
+
 
 def get_aggregate_pupildfs(experiment='blobs', feature_name='pupil_area', 
                            trial_epoch='pre', alignment_type='stimulus', 
@@ -303,7 +337,6 @@ def get_aggregate_pupildfs(experiment='blobs', feature_name='pupil_area',
                                     snapshot=snapshot, 
                                     aggregate_dir=aggregate_dir,
                                     create_new=create_new)
-        fname = create_dataframes_name(experiment, feature_name, trial_epoch, snapshot)
         pupildata = aggregate_pupil_dataframes(pupiltraces, fname, 
                                     feature_name=feature_name,
                                     trial_epoch=trial_epoch,
@@ -1102,32 +1135,6 @@ def bin_pupil_traces(pupiltraces, feature_name='pupil',in_rate=20.0, out_rate=22
 def zscore_array(v):
     return (v-v.mean())/v.std()
 
-
-def get_pupil_df(pupil_r, trial_epoch='pre', new_stim_on=20., nframes_on=20.):
-    '''
-    Turn resampled pupil traces into reponse vectors
-    
-    trial_epoch : (str)
-        'pre': Use PRE-stimulus period for response metric.
-        'stim': Use stimulus period
-        'all': Use full trial period
-    
-    new_stim_on: (int)
-        Frame index for stimulus start (only needed if trial_epoch is 'pre' or 'stim')
-        
-    pupil_r : resampled pupil traces (columns are trial, frame, pupil_area, frame_int, frame_ix)
-    '''
-    if trial_epoch=='pre':
-        pupildf = pd.concat([g[g['frame_ix'].isin(np.arange(0, new_stim_on))].mean(axis=0) \
-                            for t, g in pupil_r.groupby(['trial'])], axis=1).T
-    elif trial_epoch=='stim':
-        pupildf = pd.concat([g[g['frame_ix'].isin(np.arange(new_stim_on, new_stim_on+nframes_on))].mean(axis=0) \
-                            for t, g in pupil_r.groupby(['trial'])], axis=1).T
-    else:
-        pupildf = pd.concat([g.mean(axis=0) for t, g in pupil_r.groupby(['trial'])], axis=1).T
-    #print(pupildf.shape)
-
-    return pupildf
 
 def resample_pupil_traces(pupiltraces, in_rate=20., out_rate=20., iti_pre_ms=1000, desired_nframes=60, 
                          feature_name='pupil_area'):

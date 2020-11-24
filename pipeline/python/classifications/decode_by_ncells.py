@@ -210,12 +210,12 @@ def decode_split_pupil(datakey, visual_area, cells, MEANS, pupildata,
         neuraldf, pupildf = dlcutils.match_trials_df(neuraldf, pupildf, equalize_conditions=True)
        
         # zscore full
-        neuraldf = aggr.zscore_neuraldf(neuraldf)
+        #neuraldf = aggr.zscore_neuraldf(neuraldf)
  
         # ------ Split trials by quantiles ---------------------------------
         pupil_low, pupil_high = dlcutils.split_pupil_range(pupildf, 
                                                     feature_name=feature_name, n_cuts=n_cuts)
-        assert pupil_low.shape==pupil_high.shape, "Unequal pupil trials: %s, %s" % (str(pupil_low.shape), str(pupil_high.shape))
+        #assert pupil_low.shape==pupil_high.shape, "Unequal pupil trials: %s, %s" % (str(pupil_low.shape), str(pupil_high.shape))
         print("SPLIT PUPIL: %s (low), %s (high)" % (str(pupil_low.shape), str(pupil_high.shape)))
 
         # trial indices of low/high pupil 
@@ -252,6 +252,13 @@ def decode_split_pupil(datakey, visual_area, cells, MEANS, pupildata,
         iter_results = pd.concat(iter_list, axis=0)
         with open(results_outfile, 'wb') as f:
             pkl.dump(iter_results, f, protocol=pkl.HIGHEST_PROTOCOL)
+
+        data_inputfile = os.path.join(curr_dst_dir, 'inputdata_%s.pkl' % results_id)
+        inputdata = {'neuraldf': neuraldf, 'pupildf': pupildf, 'sdf': sdf,
+                    'low_ixs': low_trial_ixs, 'high_ixs': high_trial_ixs}
+        with open(data_inputfile, 'wb') as f:
+            pkl.dump(inputdata, f, protocol=pkl.HIGHEST_PROTOCOL)
+
 
     # Pool mean
     #print(iter_results)
@@ -420,16 +427,31 @@ def set_results_prefix(analysis_type='by_fov'):
     return prefix
  
 def create_results_id(prefix='fov_results', visual_area='varea', C_value=None, 
+                        trial_epoch='stimulus', 
                         response_type='dff', responsive_test='resp', overlap_thr=None):
 
     C_str = 'tuneC' if C_value is None else 'C-%.2f' % C_value
     overlap_str = 'no-rfs' if overlap_thr is None else 'overlap-%.1f' % overlap_thr
-    results_id='%s_%s_%s__%s-%s_%s' % (prefix, visual_area, C_str, response_type, responsive_test, overlap_str)
+    results_id='%s_%s_%s__%s-%s_%s__%s' % (prefix, visual_area, C_str, response_type, responsive_test, overlap_str, trial_epoch)
     return results_id
+
+def create_aggr_results_id(prefix='fov_results', C_value=None, 
+                        response_type='dff', trial_epoch='stimulus',
+                        responsive_test='resp', overlap_thr=None):
+
+    tmp_id = create_results_id(prefix=prefix, visual_area='NA',
+                               C_value=C_value, response_type=response_type, 
+                               trial_epoch=trial_epoch, 
+                               responsive_test=responsive_test, overlap_thr=overlap_thr)
+    param_str = tmp_id.split('_NA_')[-1]
+    aggr_results_id = '%s__%s' % (prefix, param_str) 
+    print("AGGREGATE: %s" % aggr_results_id)
+    return aggr_results_id
+
 
 def load_decode_within_fov(animalid, session, fov, results_id='fov_results',
                             traceid='traces001', 
-                            rootdir='/n/coxfs01/2p-data'):
+                            rootdir='/n/coxfs01/2p-data', verbose=False):
     iter_results=None
 
     traceid_dir = glob.glob(os.path.join(rootdir, animalid, session, fov, 'combined_blobs*', 
@@ -440,6 +462,9 @@ def load_decode_within_fov(animalid, session, fov, results_id='fov_results',
         print("... saving tmp results to:\n  %s" % curr_dst_dir)
 
     results_outfile = os.path.join(curr_dst_dir, '%s.pkl' % results_id)
+    if verbose:
+        print('%s|%s|%s -- %s' % (animalid, session, fov, results_id))
+
     try:
         with open(results_outfile, 'rb') as f:
             iter_results = pkl.load(f)
@@ -449,37 +474,30 @@ def load_decode_within_fov(animalid, session, fov, results_id='fov_results',
 
     return iter_results
 
-
 def aggregate_decode_within_fov(dsets, results_prefix='fov_results', 
-                 C_value=None, response_type='dff', 
-                responsive_test='nstds', responsive_thr=10.,
-                overlap_thr=None,
-                rootdir='/n/coxfs01/2p-data'):
-
+                 C_value=None, response_type='dff', trial_epoch='stimulus',
+                responsive_test='nstds', responsive_thr=10., overlap_thr=None,
+                rootdir='/n/coxfs01/2p-data', verbose=False):
     no_results=[]
     i=0
     popdf = []
     for (visual_area, datakey), g in dsets.groupby(['visual_area', 'datakey']): 
-        #print("[%s]: %s" % (visual_area, datakey))
-    
         results_id=create_results_id(prefix=results_prefix, 
                                     visual_area=visual_area, C_value=C_value, 
                                     response_type=response_type, responsive_test=responsive_test,
-                                    overlap_thr=overlap_thr)
-
+                                    overlap_thr=overlap_thr, trial_epoch=trial_epoch)
         # Load dataset results
         session, animalid, fov_ = datakey.split('_')
         fovnum = int(fov_[3:])
         fov = 'FOV%i_zoom2p0x' % fovnum
         iter_results = load_decode_within_fov(animalid, session, fov, results_id=results_id,
-                                                traceid=traceid, rootdir=rootdir)
+                                                traceid=traceid, rootdir=rootdir, verbose=verbose)
        
         if iter_results is None:
             no_results.append((visual_area, datakey))
             continue
  
         # Pool mean
-        #print("... all iters: %s" % str(iter_results.shape))
         if 'fov' in results_prefix:
             iterd = dict(iter_results.mean())
             iterd.update( dict(('%s_std' % k, v) \
@@ -492,13 +510,15 @@ def aggregate_decode_within_fov(dsets, results_prefix='fov_results',
      
         metainfo = {'visual_area': visual_area, 'datakey': datakey} 
         iter_df = putils.add_meta_to_df(iter_df, metainfo)
-    
         popdf.append(iter_df)
         i += 1
+
+    if len(popdf)==0:
+        return None
     pooled = pd.concat(popdf, axis=0)
 
     if len(no_results)>0:
-        print("No results for %i dsets:" % len(no_results))
+        #print("No results for %i dsets:" % len(no_results))
         for d in no_results:
             print(d)
 
@@ -509,10 +529,11 @@ def do_decode_within_fov(analysis_type='by_fov', experiment='blobs',
                         responsive_test='nstds', responsive_thr=10.,
                         response_type='dff', trial_epoch='stimulus', 
                         min_ncells=5, n_iterations=100, C_value=None,
+                        match_distns=False, overlap_thr=0.5, 
                         test_split=0.2, cv_nfolds=5, class_a=0, class_b=106, 
                         traceid='traces001', fov_type='zoom2p0x', state='awake',
                         aggregate_dir='/n/coxfs01/julianarhee/aggregate-visual-areas',
-                        rootdir='/n/coxfs01/2p-data'):
+                        rootdir='/n/coxfs01/2p-data', verbose=False):
 
     #### Output dir
     stats_dir = os.path.join(aggregate_dir, 'data-stats')
@@ -522,24 +543,21 @@ def do_decode_within_fov(analysis_type='by_fov', experiment='blobs',
     C_str = 'tuneC' if C_value is None else 'C-%.2f' % C_value
 
     results_prefix = analysis_type #set_results_prefix(analysis_type=analysis_type)
-    aggr_results_id='%s__%s_%s-%s' % (analysis_type, C_str, response_type, responsive_test)
+    #aggr_results_id='%s__%s_%s-%s_%s' % (analysis_type, C_str, response_type, responsive_test, C_str)
 
-
-    #dst_dir = os.path.join(aggregate_dir, 'decoding')
-    MEANS = aggr.load_aggregate_data(experiment, 
-                responsive_test=responsive_test, responsive_thr=responsive_thr, 
-                response_type=response_type, epoch=trial_epoch)
-    #MEANS = aggr.equal_counts_per_condition(MEANS)
-
+    aggr_results_id = create_aggr_results_id(prefix=results_prefix,
+                                 C_value=C_value, response_type=response_type, 
+                                 trial_epoch=trial_epoch,  
+                                 responsive_test=responsive_test, overlap_thr=overlap_thr)
     # Get all data sets
-    sdata = aggr.get_aggregate_info(traceid=traceid, fov_type=fov_type, state=state)
-    edata = sdata[sdata['experiment']==experiment]
-    dsets = sdata[(sdata['datakey'].isin(seg_dkeys)) & (sdata['experiment']==experiment)]
- 
-    pooled = aggregate_decode_within_fov(dsets, C_value=C_value, results_prefix=results_prefix,
+    edata = aggr.get_blobs_and_rf_meta(experiment=experiment, traceid=traceid, 
+                                        stim_filterby=None)
+
+    pooled = aggregate_decode_within_fov(edata, C_value=C_value, results_prefix=results_prefix,
                                 response_type=response_type, responsive_test=responsive_test, 
-                                responsive_thr=responsive_thr,
-                                rootdir=rootdir) 
+                                trial_epoch=trial_epoch,
+                                responsive_thr=responsive_thr, overlap_thr=overlap_thr,
+                                rootdir=rootdir, verbose=verbose) 
     # Save data
     print("SAVING.....")  #datestr = datetime.datetime.now().strftime("%Y%m%d")
 
@@ -553,22 +571,18 @@ def do_decode_within_fov(analysis_type='by_fov', experiment='blobs',
     # Save params
     params_outfile = os.path.join(dst_dir, '%s_params.json' % (aggr_results_id))
     params = {'test_split': test_split, 'cv_nfolds': cv_nfolds, 'C_value': C_value,
-              'n_iterations': n_iterations, #'overlap_thr': overlap_thr,
+              'n_iterations': n_iterations, 'overlap_thr': overlap_thr,
+                'match_distns': match_distns,
               'class_a': class_a, 'class_b': class_b, 
               'response_type': response_type, 'responsive_test': responsive_test,
               'responsive_thr': responsive_thr, 'trial_epoch': trial_epoch}
     with open(params_outfile, 'w') as f:
         json.dump(params, f,  indent=4, sort_keys=True)
     print("-- params: %s" % params_outfile)
-       
-    # Plot
-    #plot_str = '%s' % (train_str)
-    #dutils.default_classifier_by_ncells(pooled, plot_str=plot_str, dst_dir=dst_dir, 
-    #                    data_id=data_id, area_colors=area_colors, datestr=datestr)
+
     print("DONE!")
 
     return pooled
-
 
 
 #%%
@@ -686,7 +700,8 @@ def main(options):
     responsive_test = opts.responsive_test #'nstds' # 'nstds' #'ROC' #None
     if responsive_test=='None':
         responsive_test=None
-    responsive_thr = float(opts.responsive_thr) if responsive_test is not None else 0.05 #10
+    #responsive_thr = float(opts.responsive_thr) if responsive_test is not None else 0.05 #10
+    responsive_thr = float(5) if responsive_test is not None else 0.05 #10
 
     # Classifier info ---------------------------------
     experiment = opts.experiment #'blobs'
@@ -694,7 +709,6 @@ def main(options):
     class_b=int(opts.class_b) #106
     n_iterations=int(opts.n_iterations) #100 
     n_processes=int(opts.n_processes) #2
-    trial_epoch = 'stimulus'
 
     analysis_type=opts.analysis_type
 
@@ -715,7 +729,8 @@ def main(options):
     min_ncells = 10 if remove_too_few else 0
     overlap_thr = None if opts.overlap_thr in ['None', None] else float(opts.overlap_thr)
     has_rfs = overlap_thr is not None
-    
+    overlap_str = 'no-rfs' if overlap_thr is None else 'overlap-%.1f' % overlap_thr
+   
     stim_filterby = None # 'first'
     has_gratings = experiment!='blobs'
 
@@ -723,20 +738,23 @@ def main(options):
     if analysis_type in ['single_cells', 'by_fov']:
         match_distns = False
     match_str = 'matchdistns_' if match_distns else ''
+    print("INFO: %s|overlap=%s|match-distns? %s" % (analysis_type, overlap_str, str(match_distns)))
+
+    trial_epoch = 'plushalf' # 'stimulus'
 
     # Pupil -------------------------------------------
-    pupil_feature='pupil_area'
+    pupil_feature='pupil_fraction'
     pupil_alignment='trial'
     pupil_epoch='pre'
     pupil_snapshot=391800
     redo_pupil=False
     pupil_framerate=20.
     # -------------------------------------------------
-
     # Alignment 
     iti_pre=1.
     iti_post=1.
     stim_dur=1.
+    # -------------------------------------------------
 
     # RF stuff 
     rf_filter_by=None
@@ -775,15 +793,18 @@ def main(options):
                         equalize_now=True, zscore_now=True,
                         response_type=response_type, responsive_test=responsive_test, 
                         responsive_thr=responsive_thr, trial_epoch=trial_epoch, use_all=False,
-                        visual_area=curr_visual_area, datakey=curr_datakey)
+                        visual_area=None if match_distns else curr_visual_area, 
+                        datakey=None if match_distns else curr_datakey)
+    cells = cells[cells['visual_area'].isin(['V1', 'Lm', 'Li'])]
     stack_neuraldf = match_distns==True
 
     #### Load RFs
+    NEURALDATA=None; RFDATA=None;
     if has_rfs: 
         print("~~~~~~~~~~~~~~~~Loading RFs~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~")
         rf_fit_desc = fitrf.get_fit_desc(response_type=response_type)
         reliable_str = 'reliable' if reliable_only else ''
-        rf_str = 'match%s_%s' % (experiment, reliable_str)
+        #rf_str = 'match%s_%s' % (experiment, reliable_str)
         # Get position info for RFs 
         rfdf = aggr.load_rfdf_and_pos(dsets, rf_filter_by=None, 
                                         reliable_only=True, traceid=traceid)
@@ -791,7 +812,6 @@ def main(options):
         NEURALDATA, RFDATA = aggr.get_neuraldata_and_rfdata(cells, rfdf, MEANS, 
                                                 stack=stack_neuraldf)
     else:
-        rf_str = 'noRFs'
         print("~~~~~~~~~~~~~~~~No Receptive Fields~~~~~~~~~~~~~~~~~~~~~~~~~")
         # EXP dataframes 
         NEURALDATA = aggr.get_neuraldata(cells, MEANS, stack=stack_neuraldf)
@@ -802,6 +822,10 @@ def main(options):
         if has_rfs:
             RFDATA = aggr.select_dataframe_subset(matched_distn_cells, RFDATA)
     dist_str = 'matchdist_' if match_distns else ''
+
+    if NEURALDATA is None: # or RFDATA is None:
+        print("There is no data. Aborting.")
+        return None
 
     if has_rfs:
         print("~~~~~~~~~~~~~~~~Calculating overlaps (thr=%.2f)~~~~~~~~~~~~~" % overlap_thr)
@@ -821,6 +845,10 @@ def main(options):
             globalcells, cell_counts = aggr.global_cells(cells,
                                             remove_too_few=remove_too_few, 
                                             min_ncells=min_ncells, return_counts=True)
+    if globalcells is None:
+        print("NO CELLS. Exiting.")
+        return None
+
     #### Get final cells dataframe          
     cells = globalcells[['visual_area', 'datakey', 'dset_roi']].drop_duplicates().rename(columns={'dset_roi': 'cell'})
 
@@ -829,16 +857,18 @@ def main(options):
 
     #### Get pupil responses
     if 'pupil' in analysis_type:
+        print("~~~~~~~~~~~~~~~~Loading pupil dataframes (%s)~~~~~~~~~~~~~" % pupil_feature)
         pupildata = dlcutils.get_aggregate_pupildfs(experiment=experiment, 
                                     alignment_type=pupil_alignment, 
                                     feature_name=pupil_feature, trial_epoch=pupil_epoch,
                                     iti_pre=iti_pre, iti_post=iti_post, stim_dur=stim_dur,
                                     in_rate=pupil_framerate, out_rate=pupil_framerate,
                                     snapshot=pupil_snapshot, create_new=redo_pupil)
+
     #### Setup output dirs  
     results_prefix = analysis_type #set_results_prefix(analysis_type=analysis_type)
-    overlap_str = 'noRFs' if overlap_thr is None else 'overlap%.1f' % overlap_thr
-    data_info='%s%s_%s_%s_iter-%i' % (match_str, response_type, responsive_test, overlap_str, n_iterations)
+    overlap_str = 'no-rfs' if overlap_thr is None else 'overlap-%.1f' % overlap_thr
+    #data_info='%s%s_%s_%s_iter-%i' % (match_str, response_type, responsive_test, overlap_str, n_iterations)
     sdf = SDF[SDF.keys()[-1]].copy()
 
     print('Classify %i v %i (C=%s)' % (m0, m100, str(C_value)))
@@ -865,7 +895,7 @@ def main(options):
         results_id = create_results_id(prefix=results_prefix, 
                                 visual_area=curr_visual_area, C_value=C_value, 
                                 response_type=response_type, responsive_test=responsive_test,
-                                overlap_thr=overlap_thr)
+                                overlap_thr=overlap_thr, trial_epoch=trial_epoch)
 
         if analysis_type=='by_fov':
             # -----------------------------------------------------------------------
@@ -912,12 +942,18 @@ def main(options):
             print("Finished %s (%s). ID=%s" % (curr_datakey, curr_visual_area, results_id))
 
     elif analysis_type=='by_ncells':
+        data_info='%s%s-%s_%s_iter-%i' % (match_str, response_type, responsive_test, overlap_str, n_iterations)
+
         # Create aggregate output dir
         dst_dir = os.path.join(aggregate_dir, 'decoding', analysis_type, data_info)
         if not os.path.exists(dst_dir):
             os.makedirs(dst_dir)
             print("...making dir")
         print("DST: %s" % dst_dir)
+        # Save inputs
+        inputs_file = os.path.join(dst_dir, 'input_dataframes.pkl')
+        with open(inputs_file, 'wb') as f:
+            pkl.dump(globalcells, f, protocol=pkl.HIGHEST_PROTOCOL)
 
         # ============================================================ 
         # by NCELLS - pools across datasets
@@ -930,7 +966,7 @@ def main(options):
             results_id = create_results_id(prefix=results_prefix, 
                             visual_area=curr_visual_area, C_value=C_value, 
                             response_type=response_type, responsive_test=responsive_test,
-                            overlap_thr=overlap_thr)
+                            overlap_thr=overlap_thr, trial_epoch=trial_epoch)
 
             if curr_ncells is not None:
                 # ----------------------------------------------
@@ -981,7 +1017,9 @@ def main(options):
                                         visual_area=curr_visual_area, 
                                         C_value=C_value, 
                                         response_type=response_type, 
-                                        responsive_test=responsive_test, overlap_thr=overlap_thr)
+                                        responsive_test=responsive_test, 
+                                        overlap_thr=overlap_thr,
+                                        trial_epoch=trial_epoch)
                         
                     for curr_ncells in NCELLS:
                         print("**** %s (n=%i cells)****" % (curr_visual_area, curr_ncells))
