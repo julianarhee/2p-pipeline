@@ -988,21 +988,21 @@ def generate_matched_distn(max_ndata, visual_areas=None, mean=None, sigma=None, 
     '''
     # General new neuraldf 
     src_dist = np.random.normal(loc=mean, scale=sigma, size=n_samples)
-    selected_cells=[]
+    selected_cells = []
     if visual_areas is None:
         visual_areas = max_ndata['visual_area'].unique()
     for visual_area, vdf in max_ndata.groupby(['visual_area']):
         xd = vdf.sort_values(by='response').copy()
-        #if visual_area not in visual_areas:
-        #    selected_cells.append(xd)
-        #    continue
+        if visual_area not in visual_areas:
+            selected_cells.append(xd)
+            continue
         ix=[]
         match_ixs = take_closest_index_no_repeats(src_dist, xd['response'].values)
         #xd.iloc[match_ixs]
         selected_cells.append(xd.iloc[match_ixs])
-    selected_cells = pd.concat(selected_cells, axis=0)
-    
-    return selected_cells
+    selected_df = pd.concat(selected_cells, axis=0)
+ 
+    return selected_df
     
 def take_closest_index_no_repeats(list1, list2):
     match_ixs=[]
@@ -1093,6 +1093,12 @@ def global_cells(cells, remove_too_few=True, min_ncells=5,  return_counts=False)
                                    'datakey': [datakey for _ in np.arange(0, nrs)]}))
         # Update global roi id counter
         roi_counters[visual_area] += len(roi_ids)
+
+    if len(roidf)==0:
+        if return_counts:
+            return None, None
+        else:
+            return None
 
     roidf = pd.concat(roidf, axis=0) #.groupby(['visual_area']).count()
     #for k, v in global_rois.items():
@@ -1228,7 +1234,7 @@ def plot_pairwise_by_axis(plotdf, curr_metric='abs_coef', c1='az', c2='el',
                           compare_var='cond', fontsize=10, fontcolor='k', fmt='%.2f', xytext=(0, 10),
                           area_colors=None, legend=True):
 
-    fig, ax = pl.subplots(figsize=(5,4), dpi=dpi)
+    fig, ax = pl.subplots(figsize=(5,4), dpi=150)
     fig.patch.set_alpha(0)
     ax.patch.set_alpha(0)
     ax = pairwise_compare_single_metric(plotdf, curr_metric=curr_metric, ax=ax,
@@ -1260,7 +1266,7 @@ def pairwise_compare_single_metric(comdf, curr_metric='avg_size',
         area_colors = {'V1': colors[0], 'Lm': colors[1], 'Li': colors[2]}
     offset = 0.25 
     if ax is None:
-        fig, ax = pl.subplots(figsize=(5,4), dpi=dpi)
+        fig, ax = pl.subplots(figsize=(5,4), dpi=150)
         fig.patch.set_alpha(0)
         ax.patch.set_alpha(0)
     
@@ -1605,17 +1611,23 @@ def load_traces(animalid, session, fovnum, curr_exp, traceid='traces001',
     return traces, labels, sdf
 
 
-def traces_to_trials(traces, labels, epoch='stimulus', metric='mean'):
+def traces_to_trials(traces, labels, epoch='stimulus', metric='mean', n_on=None):
     '''
     Returns dataframe w/ columns = roi ids, rows = mean response to stim ON per trial
     Last column is config on given trial.
     '''
     s_on = int(labels['stim_on_frame'].mean())
-    n_on = int(labels['nframes_on'].mean())
+    if epoch=='stimulus':
+        n_on = int(labels['nframes_on'].mean()) 
+    elif epoch=='firsthalf':
+        n_on = int(labels['nframes_on'].mean()/2.)
+    elif epoch=='plushalf':
+        half_dur = labels['nframes_on'].mean()/2.
+        n_on = int(labels['nframes_on'].mean() + half_dur) 
 
     roi_list = traces.columns.tolist()
     trial_list = np.array([int(trial[5:]) for trial, g in labels.groupby(['trial'])])
-    if epoch=='stimulus':
+    if epoch in ['stimulus', 'firsthalf', 'plushalf']:
         mean_responses = pd.DataFrame(np.vstack([np.nanmean(traces.iloc[g.index[s_on:s_on+n_on]], axis=0)\
                                             for trial, g in labels.groupby(['trial'])]),
                                              columns=roi_list, index=trial_list)
@@ -1686,14 +1698,14 @@ def get_aggregate_data_filepath(experiment, traceid='traces001', response_type='
                                             responsive_thr=responsive_thr,
                                             epoch=epoch)
     
-    if responsive_test is None:
-        if use_all:
-            data_desc = 'aggr_%s_trialmeans_%s_ALL_%s_%s' % (experiment, traceid, response_type, epoch)
-        else:
-            data_desc = 'aggr_%s_trialmeans_%s_None-thr-%.2f_%s_%s' % (experiment, traceid, responsive_thr, response_type, epoch)
+    #if responsive_test is None:
+        #if use_all:
+        #    data_desc = 'aggr_%s_trialmeans_%s_ALL_%s_%s' % (experiment, traceid, response_type, epoch)
+        #else:
+    #data_desc = 'aggr_%s_trialmeans_%s_None-thr-%.2f_%s_%s' % (experiment, traceid, responsive_thr, response_type, epoch)
 
-    else:
-        data_desc = 'aggr_%s_%s' % (experiment, data_desc_base)
+    #else:
+    data_desc = 'aggr_%s_%s' % (experiment, data_desc_base)
     data_outfile = os.path.join(data_dir, '%s.pkl' % data_desc)
 
     return data_outfile #print(data_desc)
@@ -1703,7 +1715,7 @@ def create_dataframe_name(traceid='traces001', response_type='dff',
                              epoch='stimulus',
                              responsive_test='ROC', responsive_thr=0.05, n_stds=0.0): 
 
-    data_desc = 'trialmeans_%s_%s-thr-%.2f_%s_%s' % (traceid, responsive_test, responsive_thr, response_type, epoch)
+    data_desc = 'trialmeans_%s_%s-thr-%.2f_%s_%s' % (traceid, str(responsive_test), responsive_thr, response_type, epoch)
     return data_desc
 
 def get_neuraldf(animalid, session, fovnum, experiment, traceid='traces001', 
@@ -1711,11 +1723,21 @@ def get_neuraldf(animalid, session, fovnum, experiment, traceid='traces001',
                    responsive_test='ROC', responsive_thr=0.05, n_stds=2.5, 
                    create_new=False, redo_stats=False, n_processes=1,
                    rootdir='/n/coxfs01/2p-data'):
+    '''
+    epoch options
+        stimulus: use full stimulus period
+        baseline: average over baseline period
+        firsthalf: use first HALF of stimulus period
+        plushalf:  use stimulus period + extra half 
+    '''
     # output
     traceid_dir = glob.glob(os.path.join(rootdir, animalid, session, 
                             'FOV%i_*' % fovnum, 'combined_%s_static' % experiment,
                             'traces', '%s*' % traceid))[0]
-    statdir = os.path.join(traceid_dir, 'summary_stats', responsive_test)
+    if responsive_test is not None:
+        statdir = os.path.join(traceid_dir, 'summary_stats', str(responsive_test))
+    else:
+        statdir = os.path.join(traceid_dir, 'summary_stats')
     data_desc_base = create_dataframe_name(traceid=traceid, 
                                             response_type=response_type, 
                                             responsive_test=responsive_test,
@@ -1811,6 +1833,8 @@ def aggregate_and_save(experiment, traceid='traces001',
     print("There were %i datasets without stats:" % len(no_stats))
     for d in no_stats:
         print(d)
+    
+    print("Saved aggr to: %s" % data_outfile)
 
     return data_outfile
 
@@ -1823,15 +1847,24 @@ def extract_options(options):
    
     # Set specific session/run for current animal:
     parser.add_option('-E', '--experiment', action='store', dest='experiment', default='', 
-                      help="experiment name (e.g,. gratings, rfs, rfs10, or blobs)") #: FOV1_zoom2p0x)")
+                      help="experiment name (e.g,. gratings, rfs, rfs10, or blobs)") 
 
-    parser.add_option('-e', '--epoch', action='store', dest='epoch', default='stimulus', 
-                      help="trial epoch (default: stimulus)")
- 
+    choices_e = ('stimulus', 'firsthalf', 'plushalf', 'baseline')
+    default_e = 'stimulus'
+    parser.add_option('-e', '--epoch', action='store', dest='epoch', 
+            default=default_e, type='choice', choices=choices_e,
+            help="Trial epoch to average, choices: %s. (default: %s" % (choices_e, default_e))
+
+
     parser.add_option('-t', '--traceid', action='store', dest='traceid', default='traces001', 
                       help="traceid (default: traces001)")
-    parser.add_option('--test', action='store', dest='responsive_test', default='ROC', 
-                      help="responsive test (default: ROC, set to None if want all cells returned)")
+
+    choices_c = ('all', 'ROC', 'nstds', None, 'None')
+    default_c = 'nstds'
+    parser.add_option('-R', '--responsive_test', action='store', dest='responsive_test', 
+            default=default_c, type='choice', choices=choices_c,
+            help="Responsive test, choices: %s. (default: %s" % (choices_c, default_c))
+
     parser.add_option('--thr', action='store', dest='responsive_thr', default=0.05, 
                       help="responsive test thr (default: 0.05 for ROC)")
     parser.add_option('-d', '--response', action='store', dest='response_type', default='dff', 
@@ -1888,10 +1921,8 @@ def main(options):
     experiment = opts.experiment
     traceid = opts.traceid
     response_type = opts.response_type
-    responsive_test = opts.responsive_test
-    if responsive_test in ['None', 'none']:
-        responsive_test = None
-    responsive_thr = float(opts.responsive_thr) 
+    responsive_test = None if opts.responsive_test in ['None', 'none', None] else opts.responsive_test
+    responsive_thr = 0 if responsive_test is None else float(opts.responsive_thr) 
     n_stds = float(opts.nstds_above) if responsive_test=='nstds' else 0.
     create_new = opts.create_new
     epoch = opts.epoch
