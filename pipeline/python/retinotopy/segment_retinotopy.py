@@ -126,8 +126,7 @@ def plot_segmentation_steps(img_az, img_el, surface=None, O=None, S_thr=None, pa
                             label_color='w', lw=1):
     
     sign_map_thr = 0 if params is None else params['sign_map_thr']
-    dilate_k = 0 if params is None else params['dilate_k']
-     
+
     fig, axf = pl.subplots(2, 3, figsize=(8,8))
     axn = axf.flat
 
@@ -428,7 +427,7 @@ def plot_labeled_rois(labeled_image, roi_assignments, roi_masks, cmap='colorblin
 
 def plot_labeled_areas(filt_azim_r, filt_elev_r, surface_2p, label_keys,
                         labeled_image_2p, labeled_image_incl, region_props, 
-                        cmap_phase='nipy_spectral'):
+                        cmap_phase='nipy_spectral', pos_multiplier=(1,1)):
 
     fig, axn = pl.subplots(1,3, figsize=(9,3))
     ax=axn[0]
@@ -453,6 +452,7 @@ def plot_labeled_areas(filt_azim_r, filt_elev_r, surface_2p, label_keys,
     ax.imshow(labeled_image_incl_2p, cmap='jet', alpha=0.5)
     ax = overlay_all_contours(labeled_image_2p, ax=ax, lw=2, lc='k')
 
+    area_ids = [k[1] for k in label_keys]
     for region in region_props:
         if region.label in area_ids:
             region_name = str([k[0] for k in label_keys if k[1]==region.label][0])
@@ -906,7 +906,17 @@ if __name__ == '__main__':
                 break
             elif user_confirm=='R':
                 sfig.close()
-         
+    else:
+        # Create sign map 
+        O, S_thr = segment_areas(img_az, img_el, sign_map_thr=sign_map_thr)
+        S = abs(S_thr) if absolute_S_thr else S_thr.copy()
+        S[np.isnan(O)]=0
+        # Morphological steps
+        S, closing_s1, opening_s1, dilation = do_morphological_steps(S,
+                                                                     close_k=close_k, open_k=open_k, dilate_k=dilate_k)
+        sfig = plot_morphological_steps(S, closing_s1, opening_s1, dilation, 
+                                        close_k=close_k, open_k=open_k, dilate_k=dilate_k) 
+            
     # #### Update segmentation params
     seg_params = pparams.copy()
     seg_params.update({'morphological_kernels': (close_k, open_k, dilate_k),
@@ -984,7 +994,8 @@ if __name__ == '__main__':
 
     fig = plot_labeled_areas(filt_azim_r, filt_elev_r, surface_2p, label_keys,
                             labeled_image_2p, labeled_image_incl,
-                            region_props, surface_2p=surface_2p, cmap_phase=cmap_phase)
+                            region_props, surface_2p=surface_2p, cmap_phase=cmap_phase,
+                            pos_multiplier=pos_multiplier)
     pl.subplots_adjust(wspace=0.3, top=0.8)
     putils.label_figure(fig, '%s | %s' % (data_id, proc_info_str))
     pl.savefig(os.path.join(curr_dst_dir, 'labeled_areas.png'))
