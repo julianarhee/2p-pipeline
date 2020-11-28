@@ -263,10 +263,12 @@ def get_gratings_datasets(filter_by='first', excluded_sessions=[], as_dict=True)
     
 
     if filter_by is None:
-        v1_repeats = []
-        lm_repeats = []
-        li_repeats = []
-    
+        sdata = get_aggregate_info()
+        bd = sdata[sdata['experiment']=='gratings'].copy()
+        v1_include = bd[bd['visual_area']=='V1']['datakey'].unique()
+        lm_include = bd[bd['visual_area']=='Lm']['datakey'].unique()
+        li_include = bd[bd['visual_area']=='Li']['datakey'].unique()
+   
     else:
         # Only sessions > 20190511 should have regular gratings
         v1_include = ['20190511_JC083', 
