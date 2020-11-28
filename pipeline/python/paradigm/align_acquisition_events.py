@@ -235,6 +235,7 @@ def get_alignment_specs(paradigm_dir, si_info, iti_pre=1.0, iti_post=None, same_
         print "---------------------------------------------------------------"
         traceback.print_exc()
         print "---------------------------------------------------------------"
+        return None
 
     try:
         nframes_iti_pre = int(round(iti_pre * si_info['volumerate'])) #framerate
@@ -256,6 +257,7 @@ def get_alignment_specs(paradigm_dir, si_info, iti_pre=1.0, iti_post=None, same_
     except Exception as e:
         print "Problem calcuating nframes for trial epochs..."
         traceback.print_exc()
+        return None
 
     trial_epoch_info['stim_on_sec'] = stim_on_sec
     trial_epoch_info['iti_full'] = iti_full
@@ -1462,6 +1464,7 @@ def align_roi_traces(trace_type, TID, si_info, traceid_dir, run_dir, iti_pre=1.0
     # =============================================================================
     paradigm_dir = os.path.join(run_dir, 'paradigm')
     trial_info = get_alignment_specs(paradigm_dir, si_info, iti_pre=iti_pre, iti_post=iti_post)
+    assert trial_info is not None, "Bad trial alignment (iti_pre=%s, iti_post=%s)" % (str(iti_pre), str(iti_post))
 
     print "-------------------------------------------------------------------"
     print "Getting frame indices for trial epochs..."
