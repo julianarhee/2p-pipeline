@@ -1461,7 +1461,7 @@ class Gratings(Experiment):
                                           responsive_test=responsive_test, responsive_thr=responsive_thr, n_stds=n_stds,
                                           n_bootstrap_iters=n_bootstrap_iters, n_resamples=n_resamples, 
                                           rootdir=rootdir)
-        print("... getting OSI results: %s" % fit_desc)
+        #print("... getting OSI results: %s" % fit_desc)
         
         # tmp:
         if not os.path.exists(os.path.join(os.path.split(self.source)[0], 'np_subtracted.npz')):
