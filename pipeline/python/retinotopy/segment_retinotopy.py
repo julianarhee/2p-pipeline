@@ -37,7 +37,7 @@ from pipeline.python import utils as putils
 from pipeline.python.retinotopy import utils as ret_utils
 from pipeline.python.rois import utils as roi_utils
 from pipeline.python.coregistration import align_fov as coreg
-from pipeline.python.classifications import gradient_estimation as grd
+#from pipeline.python.classifications import gradient_estimation as grd
 from pipeline.python.classifications import aggregate_data_stats as aggr
 
 from scipy import misc,interpolate,stats,signal
@@ -59,6 +59,8 @@ def plot_gradients_in_area(labeled_image, img_az, img_el, grad_az, grad_el,
     '''
     Retinomaps overlaid w/ gradient field, plus average gradient dir.
     '''
+    from pipeline.python.classifications import gradient_estimation as grd
+
     fig, axn = pl.subplots(2,2, figsize=(6,6))
 
     # Maps ------------
@@ -208,6 +210,8 @@ def overlay_all_contours(labeled_image, ax=None, lc='w', lw=2):
 # segmentation
 # -------------------------------------------------------------------- 
 def segment_areas(img_az, img_el, sign_map_thr=0.5):
+    from pipeline.python.classifications import gradient_estimation as grd
+
     # Calculate gradients
     # ---------------------------------------------------------
     h_map = img_el.copy()
@@ -237,6 +241,8 @@ def segment_areas(img_az, img_el, sign_map_thr=0.5):
     return O, S_thr
 
 def segment_and_label(S_thr, min_region_area=500):
+    from pipeline.python.classifications import gradient_estimation as grd
+
     # Create segmented + labeled map
     # ---------------------------------------------------------
     filled_smap = grd.fill_nans(S_thr)
@@ -326,6 +332,8 @@ def get_cells_by_area(sdata, excluded_datasets=[]):
     return cells
 
 def calculate_gradients(curr_segmented_mask, img_az, img_el):
+    from pipeline.python.classifications import gradient_estimation as grd
+
     thr_img_az = img_az.copy()
     thr_img_az[curr_segmented_mask==0] = np.nan
     grad_az = grd.calculate_gradients(thr_img_az)
@@ -571,6 +579,7 @@ def get_processed_maps(animalid, session, fov, retinorun='retino_run1',
 
 def smooth_maps(start_az, start_el, smooth_fwhm=12, smooth_spline=2, target_sigma_um=25, 
                 start_with_transformed=True, use_phase_smooth=False, ds_factor=2):
+    from pipeline.python.classifications import gradient_estimation as grd
 
     pixel_size = putils.get_pixel_size()
     pixel_size_ds = (pixel_size[0]*ds_factor, pixel_size[1]*ds_factor)
@@ -618,6 +627,7 @@ def smooth_processed_maps(animalid, session, fov, retinorun='retino_run1',
                             reprocess=False, cmap_phase='nic_Edge', 
                             pix_mag_thr=0.002, delay_map_thr=1.0, 
                             rootdir='/n/coxfs01/2p-data'):
+    from pipeline.python.classifications import gradient_estimation as grd
 
     if cmap_phase=='nic_Edge':
         _, cmap_phase = ret_utils.get_retino_legends(cmap_name=cmap_phase, zero_center=True, 

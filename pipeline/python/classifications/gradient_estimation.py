@@ -35,6 +35,8 @@ from pipeline.python.utils import convert_range
 from pipeline.python.utils import natural_keys, label_figure, colorbar, turn_off_axis_ticks
 from pipeline.python import utils as putils
 from pipeline.python.retinotopy import utils as ret_utils
+from pipeline.python.retinotopy import segment_retinotopy as seg #et_utils
+
 from pipeline.python.rois import utils as roi_utils
 from pipeline.python.paradigm import utils as par_utils
 from pipeline.python.coregistration import align_fov as coreg
@@ -1400,6 +1402,8 @@ def extract_options(options):
             default='ridge', help="Desired radius for dilation (default: ridge)")
     parser.add_option('--pixels', action='store', dest='use_pixels', 
             default=False, help="Use pixel maps to calculate gradients (Note: make sure mag_thr is set properly)")
+    parser.add_option('--full-fov', action='store_true', dest='full_fov', 
+            default=False, help="set flag to use whole fov, rather than segmented")
    
     (options, args) = parser.parse_args(options)
 
@@ -1408,9 +1412,9 @@ def extract_options(options):
 
 
 
-def gradient_full_fov(options):
+def gradient_full_fov(opts): #options):
 
-    opts = extract_options(options)
+    #opts = extract_options(options)
     rootdir=opts.rootdir
     animalid=opts.animalid
     session=opts.session
@@ -1606,8 +1610,8 @@ def gradient_full_fov(options):
     return None
 
 
-def gradient_within_visual_area():
-    opts = extract_options(options)
+def gradient_within_visual_area(opts): #options):
+    #opts = extract_options(options)
     rootdir=opts.rootdir
     animalid=opts.animalid
     session=opts.session
@@ -1630,6 +1634,16 @@ def gradient_within_visual_area():
     pass_criterion=opts.pass_criterion    
     use_pixels = pass_criterion=='pixels' #opts.use_pixels
 
+
+    run_dir = os.path.join(rootdir, animalid, session, fov, retinorun)
+    curr_dst_dir = os.path.join(run_dir, 'retino_analysis', 'retino_structure')
+    if not os.path.exists(curr_dst_dir):
+        os.makedirs(curr_dst_dir)
+        print("Saving output to:\n %s" % curr_dst_dir)
+    
+    data_id = '_'.join([animalid, session, fov, retinorun])
+
+
     # Get colormap
     screen, cmap_phase = ret_utils.get_retino_legends(cmap_name=cmap_name, 
                                                   zero_center=zero_center,
@@ -1646,20 +1660,27 @@ def gradient_within_visual_area():
     screen_max = screen['azimuth_deg']/2.
     screen_min = -screen_max
 
-    img_az = convert_range(az_fill, oldmin=vmin, oldmax=vmax, 
-                            newmin=screen_min, newmax=screen_max) \
-                                    if plot_degrees else az_fill.copy()
-    img_el = convert_range(el_fill, oldmin=vmin, oldmax=vmax,
-                            newmin=screen_min, newmax=screen_max) \
-                                    if plot_degrees else el_fill.copy()
-    grad_az = calculate_gradients(img_az)
-    grad_el = calculate_gradients(img_el)
+    ## Load segmentation
+    seg_results, seg_params = seg.load_segmentation_results(animalid, session, fov, retinorun=retinorun)
+    
+    ## Get inputmaps
+    if 'morphological_kernels' not in seg_params.keys():
+        pixel_size = putils.get_pixel_size()
+        target_sigm_um = round(np.ceil(seg_params['smooth_fwhm'] * np.mean(pixel_size)))
+        use_phase_smooth = seg_params['smooth_type']=='phasenan'
+        az_fill, el_fill, pparams = seg.smooth_processed_maps(animalid, session, fov, retinorun=retinorun,
+                                                        target_sigma_um=target_sigm_um,
+                                                        start_with_transformed=seg_params['start_with_transformed'],
+                                                        smooth_spline=seg_params['smooth_spline'],
+                                                        use_phase_smooth=use_phase_smooth, cmap_phase=cmap_phase,
+                                                        reprocess=True)
+
+    img_az, img_el, pparams = seg.load_final_maps(animalid, session, fov, retinorun=retinorun, return_screen=True)
 
     # ---------------------------------------------------------------------
     # ## Calculate gradient for segmented areas
-    seg_results, seg_params = load_segmentation_results(animalid, session, fov, 
-                                                        retinorun=retinorun)
     segmented_areas = seg_results['areas']
+    print(segmented_areas.keys())
     region_props = seg_results['region_props']
 
 
@@ -1675,16 +1696,16 @@ def gradient_within_visual_area():
         if putils.isnumber(curr_visual_area):
             continue
         curr_segmented_mask = area_results['mask']
-        grad_az, grad_el = calculate_gradients(curr_segmented_mask, img_az, img_el)
+        grad_az, grad_el = seg.calculate_gradients(curr_segmented_mask, img_az, img_el)
         
         # Plot results ------------
+        labeled_image = seg_results['labeled_image'].copy()
+
         curr_labeled_image = np.zeros(labeled_image.shape)
         curr_labeled_image[labeled_image==area_results['id']] = 1
-        fig = plot_gradients_in_area(curr_labeled_image, img_az, img_el, grad_az, grad_el, 
+        fig = seg.plot_gradients_in_area(curr_labeled_image, img_az, img_el, grad_az, grad_el,
                                     cmap_phase=cmap_phase,
-                                    contour_lc=contour_lc, contour_lw=contour_lw, 
-                                    spacing=spacing, scale=scale, width=width, 
-                                    headwidth=headwidth)
+                                    contour_lc='w', contour_lw=2)
         pl.subplots_adjust(wspace=0.5, hspace=0.5, top=0.8)
         putils.label_figure(fig, data_id)
         fig.suptitle(curr_visual_area)
@@ -1693,8 +1714,7 @@ def gradient_within_visual_area():
         pl.savefig(os.path.join(curr_dst_dir, '%s.png' % figname))
         print(curr_dst_dir, figname)
 
-    # ---------------------------------------------------------------------
- 
+        # --------------------------------------------------------------------- 
         vmin, vmax = (screen_min, screen_max) if plot_degrees else (-np.pi, np.pi)
 
         #%% Plot gradients 
@@ -1705,12 +1725,12 @@ def gradient_within_visual_area():
 
         # Save gradients
         gradients = {'az': grad_az, 'el': grad_el}
-        grad_fpath = os.path.join(curr_dst_dir, 'gradients_%s.pkl' % (gradient_source))
+        grad_fpath = os.path.join(curr_dst_dir, 'gradients_%s.pkl' % curr_visual_area) #% (gradient_source))
         with open(grad_fpath, 'wb') as f:
             pkl.dump(gradients, f, protocol=pkl.HIGHEST_PROTOCOL)
 
         uvectors = {'az': grad_az['vhat'], 'el': grad_el['vhat']}
-        vec_fpath = os.path.join(curr_dst_dir, 'vectors_%s.pkl' % (gradient_source))
+        vec_fpath = os.path.join(curr_dst_dir, 'vectors_%s.pkl' % curr_visual_area) #% (gradient_source))
         with open(vec_fpath, 'wb') as f:
             pkl.dump(uvectors, f, protocol=pkl.HIGHEST_PROTOCOL)
 
@@ -1722,7 +1742,7 @@ def gradient_within_visual_area():
         fig = test_plot_projections(projections, ncyc=5, startcyc=800, imshape=(d1,d2))
         label_figure(fig, data_id)
         pl.subplots_adjust(left=0.1, wspace=0.5)
-        figname = 'test_projections__%s' % (figname_str) 
+        figname = 'test_projections__%s' % curr_visual_area #% (figname_str) 
         pl.savefig(os.path.join(curr_dst_dir, '%s.png' % figname))
 
         #%% ## Fit linear  
@@ -1765,12 +1785,12 @@ def gradient_within_visual_area():
                                  'pass_criterion': pass_criterion, 
                                  'regr_df': regr_df})
 
-        proj_fpath = os.path.join(curr_dst_dir, 'projection_results_%s.pkl' % gradient_source)
+        proj_fpath = os.path.join(curr_dst_dir, 'projection_results_%s.pkl' % curr_visual_area) #% gradient_source)
         with open(proj_fpath, 'wb') as f:
             pkl.dump(proj_fit_results, f, protocol=pkl.HIGHEST_PROTOCOL)
         print(proj_fpath)
         
-        df_fpath = os.path.join(curr_dst_dir, 'projections_%s.pkl' % (gradient_source))
+        df_fpath = os.path.join(curr_dst_dir, 'projections_%s.pkl' % curr_visual_area) #% (gradient_source))
         p_df = {'regr_df': regr_df}
         with open(df_fpath, 'wb') as f:
             pkl.dump(p_df, f, protocol=pkl.HIGHEST_PROTOCOL)
@@ -1782,16 +1802,25 @@ def gradient_within_visual_area():
 
         label_figure(fig, data_id)
         pl.subplots_adjust(left=0.1, wspace=0.5)
-        figname = 'Proj_versus_Retinopos__%s' % (figname_str)
+        figname = 'Proj_versus_Retinopos__%s' % curr_visual_area #% (figname_str)
         pl.savefig(os.path.join(curr_dst_dir, '%s.svg' % figname))
 
 
     return None
 
 
+def main(options):
+
+    opts = extract_options(options)
+
+    if opts.full_fov:
+        gradient_full_fov(opts)
+    else:        
+        gradient_within_visual_area(opts)
 
 
 if __name__ == '__main__':
+
     main(sys.argv[1:])
 
 

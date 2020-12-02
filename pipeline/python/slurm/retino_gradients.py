@@ -14,11 +14,13 @@ parser = argparse.ArgumentParser(
     description = '''Look for XID files in session directory.\nFor PID files, run tiff-processing and evaluate.\nFor RID files, wait for PIDs to finish (if applicable) and then extract ROIs and evaluate.\n''',
     epilog = '''AUTHOR:\n\tJuliana Rhee''')
 parser.add_argument('-A', '--fov', dest='fov_type', action='store', default='zoom2p0x', help='FOV type (e.g., zoom2p0x)')
-parser.add_argument('-E', '--exp', dest='experiment_type', action='store', default='rfs', help='Experiment type (e.g., rfs')
+parser.add_argument('-E', '--exp', dest='experiment_type', action='store', default='retino', help='Experiment type (e.g., rfs')
 parser.add_argument('-e', '--email', dest='email', action='store', default='rhee@g.harvard.edu', help='Email to send log files')
 parser.add_argument('-t', '--traceid', dest='traceid', action='store', default=None, help='Traceid to use as reference for selecting retino analysis')
 
 parser.add_argument('-p', '--pass-crit', dest='pass_criterion', action='store', default='npmean', help='Criterion to use for selecting ROIs for gradient calculation (default: npmean, use only if -E retino. Choices: all, either, any, npmean, pixels)')
+
+parser.add_argument('-V', '--area', dest='visual_area', action='store', default=None, help='Set to run analysis on 1 visual area only')
 
 
 
@@ -37,47 +39,55 @@ def fatal(error_str):
     sys.stdout.flush()
     sys.exit(1)
 
-
-# Create a (hopefully) unique prefix for the names of all jobs in this 
-# particular run of the pipeline. This makes sure that runs can be
-# identified unambiguously
-piper = uuid.uuid4()
-piper = str(piper)[0:8]
-if not os.path.exists('log'):
-    os.mkdir('log')
-
-old_logs = glob.glob(os.path.join('log', '*.err'))
-old_logs.extend(glob.glob(os.path.join('log', '*.out')))
-for r in old_logs:
-    os.remove(r)
-
-#####################################################################
-#                          find XID files                           #
-#####################################################################
-
-# Get PID(s) based on name
-# Note: the syntax a+=(b) adds b to the array a
 ROOTDIR = '/n/coxfs01/2p-data'
 FOV = args.fov_type
 EXP = args.experiment_type
 email = args.email
 traceid = args.traceid
 pass_criterion = args.pass_criterion
+visual_area = args.visual_area
 
+# Create a (hopefully) unique prefix for the names of all jobs in this 
+# particular run of the pipeline. This makes sure that runs can be
+# identified unambiguously
+piper = uuid.uuid4()
+piper = str(piper)[0:4]
+
+logdir = 'LOG__%s' % EXP
+if not os.path.exists(logdir):
+    os.mkdir(logdir)
+
+# Remove old logs
+old_logs = glob.glob(os.path.join(logdir, '*.err'))
+old_logs.extend(glob.glob(os.path.join(logdir, '*.out')))
+old_logs.extend(glob.glob(os.path.join(logdir, '*.txt')))
+
+for r in old_logs:
+    os.remove(r)
+
+#####################################################################
+#                          find XID files                           #
+#####################################################################
+# Note: the syntax a+=(b) adds b to the array a
 # Open log lfile
-sys.stdout = open('loginfo_%s.txt' % EXP, 'w')
+sys.stdout = open('%s/INFO_%s_%s.txt' % (logdir, piper, EXP), 'w')
 
 def get_retino_metadata(experiment='retino', animalids=None,
                         roi_type='manual2D_circle', traceid=None,
-                        rootdir='/n/coxfs01/2p-data', 
+                        rootdir='/n/coxfs01/2p-data', visual_area=None,
                         aggregate_dir='/n/coxfs01/julianarhee/aggregate-visual-areas'):
 
     sdata_fpath = os.path.join(aggregate_dir, 'dataset_info.pkl')
     with open(sdata_fpath, 'rb') as f:
         sdata = pkl.load(f)
-   
+  
+    if visual_area is not None:
+        edata = sdata[sdata['visual_area']==visual_area].copy()
+    else:
+        edata = sdata.copy()
+ 
     meta_list=[]
-    for (animalid, session, fov), g in sdata.groupby(['animalid', 'session', 'fov']):
+    for (animalid, session, fov), g in edata.groupby(['animalid', 'session', 'fov']):
         if animalids is not None:
             if animalid not in animalids:
                 continue
@@ -131,16 +141,13 @@ def load_metadata(rootdir='/n/coxfs01/2p-data', aggregate_dir='/n/coxfs01/julian
     return meta_list
 
 
-#meta_list = [('JC120', '20191111', 'FOV1_zoom2p0x', 'rfs10', 'traces001')] #,
-#             ('JC083', '20190510', 'FOV1_zoom2p0x', 'rfs', 'traces001'),
-#             ('JC083', '20190508', 'FOV1_zoom2p0x', 'rfs', 'traces001'),
-#             ('JC084', '20190525', 'FOV1_zoom2p0x', 'rfs', 'traces001')]
-#
 
-if EXP=='retino':
-    meta_list = get_retino_metadata(traceid=traceid)
-else:
-    meta_list = load_metadata(experiment=EXP)
+#if EXP=='retino':
+meta_list = get_retino_metadata(traceid=traceid, visual_area=visual_area)
+#meta_list = [k for k in meta_list if k[0]=='JC084']
+
+#else:
+#    meta_list = load_metadata(experiment=EXP)
 
 if len(meta_list)==0:
     fatal("NO FOVs found.")
@@ -161,11 +168,11 @@ jobids = [] # {}
 for (animalid, session, fov, experiment, traceid) in meta_list:
     mtag = '-'.join([session, animalid, fov, experiment])
     cmd = "sbatch --job-name={PROCID}.{EXP}.{MTAG} \
-		-o 'log/{PROCID}.{EXP}.{MTAG}.out' \
-		-e 'log/{PROCID}.{EXP}.{MTAG}.err' \
+		-o '{LOG}/{PROCID}.{EXP}.{MTAG}.out' \
+		-e '{LOG}/{PROCID}.{EXP}.{MTAG}.err' \
 		/n/coxfs01/2p-pipeline/repos/2p-pipeline/pipeline/python/slurm/retino_gradients.sbatch \
 		{ANIMALID} {SESSION} {FOV} {EXP} {TRACEID} {FILTER}".format(
-                        PROCID=piper, MTAG=mtag, ANIMALID=animalid,
+                        LOG=logdir, PROCID=piper, MTAG=mtag, ANIMALID=animalid,
                         SESSION=session, FOV=fov, EXP=experiment, TRACEID=traceid, FILTER=pass_criterion) #pid_file)
     #info("Submitting PROCESSPID job with CMD:\n%s" % cmd)
     status, joboutput = commands.getstatusoutput(cmd)
@@ -179,11 +186,11 @@ for (animalid, session, fov, experiment, traceid) in meta_list:
 for jobdep in jobids:
     print(jobdep)
     cmd = "sbatch --job-name={JOBDEP}.checkstatus \
-		-o 'log/checkstatus.{EXP}.{JOBDEP}.out' \
-		-e 'log/checkstatus.{EXP}.{JOBDEP}.err' \
+		-o '{LOG}/checkstatus.{EXP}.{JOBDEP}.out' \
+		-e '{LOG}/checkstatus.{EXP}.{JOBDEP}.err' \
                   --depend=afternotok:{JOBDEP} \
                   /n/coxfs01/2p-pipeline/repos/2p-pipeline/pipeline/python/slurm/checkstatus.sbatch \
-                  {JOBDEP} {EMAIL}".format(JOBDEP=jobdep, EMAIL=email, EXP=EXP)
+                  {JOBDEP} {EMAIL}".format(LOG=logdir, JOBDEP=jobdep, EMAIL=email, EXP=EXP)
     #info("Submitting MCEVAL job with CMD:\n%s" % cmd)
     status, joboutput = commands.getstatusoutput(cmd)
     jobnum = joboutput.split(' ')[-1]
