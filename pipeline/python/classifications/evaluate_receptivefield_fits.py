@@ -1137,8 +1137,10 @@ def load_eval_results(animalid, session, fov, experiment='rfs',
         assert os.path.exists(evaldir), "No evaluation exists\n(%s)\n. Aborting" % evaldir
     except IndexError as e:
         traceback.print_exc()
+        return None, None
     except AssertionError as e:
         traceback.print_exc()
+        return None, None
 
     # Load results
     rf_eval_fpath = os.path.join(evaldir, 'evaluation_results.pkl')

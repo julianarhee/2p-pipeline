@@ -96,13 +96,15 @@ def all_datasets_by_area(visual_areas=[]):
     ddict = dict((v, []) for v in visual_areas)
     for animalid, sinfo in fkeys.items():
         for visual_area, slist in sinfo.items():
+            if visual_area not in ddict.keys():
+                continue
             for sublist in slist:
                 if isinstance(sublist, tuple):
                     sessions_ = ['%s_%s_%s' % (s.split('_')[0], animalid, s.split('_')[-1]) \
-                                 if len(s.split('_'))>1 else '%s_%s' % (s, animalid) for s in sublist]
+                                 if len(s.split('_'))>1 else '%s_%s_fov1' % (s, animalid) for s in sublist]
                 else:
                     sessions_ = ['%s_%s_%s' % (sublist.split('_')[0], animalid, sublist.split('_')[-1]) \
-                             if len(sublist.split('_'))>1 else '%s_%s' % (sublist, animalid)]
+                             if len(sublist.split('_'))>1 else '%s_%s_fov1' % (sublist, animalid)]
 
                 ddict[visual_area].extend(sessions_)
 
@@ -388,7 +390,54 @@ def get_rf_datasets(filter_by='drop_repeats', excluded_sessions=[], as_dict=True
         return session_dict
     else: 
         return included_sessions
-   
+
+
+def get_dsets_with_max_rfs(rf_dsets, assigned_cells):
+    from pipeline.python.classifications import rf_utils as rfutils
+
+    all_rfdfs = rfutils.load_aggregate_rfs(rf_dsets)
+
+    # Load all RF data
+    all_rfs = get_rfdata(assigned_cells, all_rfdfs, verbose=False, average_repeats=True)
+
+    # Count how many cells fit total per site
+    countby = ['visual_area', 'datakey', 'cell']
+    counts_by_fov = all_rfdfs[countby].drop_duplicates().groupby(['visual_area', 'datakey']).count().reset_index()
+    counts_by_fov['animalid'] = [s.split('_')[1] for s in counts_by_fov['datakey']]
+    counts_by_fov['session'] = [s.split('_')[0] for s in counts_by_fov['datakey']]
+    counts_by_fov['fov'] = [s.split('_')[2] for s in counts_by_fov['datakey']]
+
+    # Cycle thru all dsets and drop repeats
+    fovkeys = get_sorted_fovs()
+    incl_dsets=[]
+    for (visual_area, animalid), g in counts_by_fov.groupby(['visual_area', 'animalid']):
+        try:
+            curr_dsets = fovkeys[animalid][visual_area]
+        except Exception as e:
+            print("[%s] Animalid does not exist: %s " % (visual_area, animalid))
+            continue
+        if g.shape[0]>1:
+            for dkeys in curr_dsets:
+                if isinstance(dkeys, tuple):
+                    #print(visual_area, len(dkeys))
+                    curr_datakeys = ['_'.join([dk.split('_')[0], animalid, dk.split('_')[-1]]) 
+                            if len(dk.split('_'))>1 else '_'.join([dk.split('_')[0], animalid, 'fov1']) for dk in dkeys]
+                    which_fovs = g[g['datakey'].isin(curr_datakeys)]
+                    # Find which has most cells
+                    max_loc = np.where(which_fovs['cell']==which_fovs['cell'].max())[0]
+                    incl_dsets.append(which_fovs.iloc[max_loc])
+                else:
+                    curr_datakey = '_'.join([dkeys.split('_')[0], animalid, dkeys.split('_')[-1]]) if len(dkeys.split('_'))>1 else '_'.join([dkeys.split('_')[0], animalid, 'fov1'])
+                    incl_dsets.append(g[g['datakey']==curr_datakey])
+
+        else:
+            #if curr_dsets=='%s_%s' % (session, fov) or curr_dsets==session:
+            incl_dsets.append(g)
+    incl = pd.concat(incl_dsets, axis=0).reset_index(drop=True)
+    return incl
+
+
+
 def get_retino_metadata(experiment='retino', animalids=None,
                         roi_type='manual2D_circle', traceid=None,
                         rootdir='/n/coxfs01/2p-data', 
@@ -515,7 +564,6 @@ def zscore_neuraldf(neuraldf):
     zdf = pd.DataFrame(zdata, index=neuraldf.index, columns=data.columns)
     zdf['config'] = neuraldf['config']
     return zdf
-
 
 
 def get_source_data(experiment, traceid='traces001', equalize_now=False,zscore_now=False,
@@ -703,7 +751,7 @@ def get_neuraldata(cells, MEANS, stack=False, verbose=False):
     return NEURALDATA
 
 
-def get_rfdata(cells, rfdf, verbose=False, visual_area=None, datakey=None):
+def get_rfdata(cells, rfdf, verbose=False, visual_area=None, datakey=None, average_repeats=True):
     '''
     cells (dataframe)
         Cells assigned to each datakey/visual area 
@@ -716,6 +764,8 @@ def get_rfdata(cells, rfdf, verbose=False, visual_area=None, datakey=None):
     RFDATA (dataframe)
         Corresponding rfdf info for NEURALDATA cells.
     '''
+    from pipeline.python.classifications import rf_utils as rfutils
+
     rf_=[]
     for (visual_area, datakey), curr_c in cells.groupby(['visual_area', 'datakey']):
         # Which cells have receptive fields
@@ -729,19 +779,40 @@ def get_rfdata(cells, rfdf, verbose=False, visual_area=None, datakey=None):
 
         if len(assigned_with_rfs) > 0:
             # Update RF dataframe
-            curr_rfdf = rfdf[(rfdf['datakey']==datakey) & (rfdf['cell'].isin(assigned_with_rfs))]
+            if average_repeats:
+                curr_rfdf = rfdf[(rfdf['datakey']==datakey) & (rfdf['cell'].isin(assigned_with_rfs))]
+                # Means by cell id (some dsets have rf-5 and rf10 measurements, average these)
+                meanrf = curr_rfdf.groupby(['cell']).mean().reset_index()
+                mean_thetas = curr_rfdf.groupby(['cell'])['theta'].apply(spstats.circmean, low=0, high=2*np.pi).values
+                meanrf['theta'] = mean_thetas
+                meanrf['visual_area'] = [visual_area for _ in  np.arange(0, len(assigned_with_rfs))] # reassign area
+                meanrf['experiment'] = ['average_rfs' for _ in np.arange(0, len(assigned_with_rfs))]
+                # Add the meta/non-numeric info
+                non_num = [c for c in curr_rfdf.columns if c not in meanrf.columns and c!='experiment']
+                metainfo = pd.concat([g[non_num].iloc[0] for c, g in curr_rfdf.groupby(['cell'])], axis=1).T.reset_index(drop=True)
+                final_rf = pd.concat([metainfo, meanrf], axis=1)
+                final_rf = rfutils.update_rf_metrics(final_rf, scale_sigma=True)
+                rf_.append(final_rf)
 
-            # Means by cell id (some dsets have rf-5 and rf10 measurements, average these)
-            meanrf = curr_rfdf.groupby(['cell']).mean().reset_index()
-            mean_thetas = curr_rfdf.groupby(['cell'])['theta'].apply(spstats.circmean, low=0, high=2*np.pi).values
-            meanrf['theta'] = mean_thetas
-            meanrf['visual_area'] = [visual_area for _ in  np.arange(0, len(assigned_with_rfs))] # reassign area
-            meanrf['experiment'] = ['average_rfs' for _ in np.arange(0, len(assigned_with_rfs))]
-            # Add the meta/non-numeric info
-            non_num = [c for c in curr_rfdf.columns if c not in meanrf.columns and c!='experiment']
-            metainfo = pd.concat([g[non_num].iloc[0] for c, g in curr_rfdf.groupby(['cell'])], axis=1).T.reset_index(drop=True)
-            final_rf = pd.concat([metainfo, meanrf], axis=1)
-            rf_.append(final_rf)
+            else: 
+                for rname, rdf_ in rfdf.groupby(['experiment']):
+                    curr_rfdf = rdf_[(rdf_['datakey']==datakey) & (rdf_['cell'].isin(assigned_with_rfs))]
+                    if len(curr_rfdf)==0:
+                        continue
+                    curr_ncells = curr_rfdf['cell'].unique()
+
+                    # Means by cell id (some dsets have rf-5 and rf10 measurements, average these)
+                    meanrf = curr_rfdf.groupby(['cell']).mean().reset_index()
+                    mean_thetas = curr_rfdf.groupby(['cell'])['theta'].apply(spstats.circmean, low=0, high=2*np.pi).values
+                    meanrf['theta'] = mean_thetas
+                    meanrf['visual_area'] = [visual_area for _ in  np.arange(0, len(curr_ncells))] # reassign area
+                    meanrf['experiment'] = [rname for _ in np.arange(0, len(curr_ncells))]
+                    # Add the meta/non-numeric info
+                    non_num = [c for c in curr_rfdf.columns if c not in meanrf.columns and c!='experiment']
+                    metainfo = pd.concat([g[non_num].iloc[0] for c, g in curr_rfdf.groupby(['cell'])], axis=1).T.reset_index(drop=True)
+                    final_rf = pd.concat([metainfo, meanrf], axis=1)
+                    final_rf = rfutils.update_rf_metrics(final_rf, scale_sigma=True)
+                    rf_.append(final_rf)
 
     RFDATA = pd.concat(rf_, axis=0)
 

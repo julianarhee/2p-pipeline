@@ -262,7 +262,7 @@ def calculate_overlaps(RFs, datakeys=None, experiment='blobs'):
     return stim_overlaps
 
 
-
+# DATA SELECTION
 
 
 def aggregate_rf_dataframes(filter_by, fit_desc=None, scale_sigma=True, fit_thr=0.5, 
