@@ -25,6 +25,8 @@ parser.add_argument('-d', '--type', dest='response_type', action='store', defaul
 
 parser.add_argument( '--all', dest='run_all', action='store_true', default=False, help='Run on all specified datasets, ignoring extraction_info')
 
+parser.add_argument('--epoch', dest='trial_epoch', action='store', default='stimulus', help='Trial epoch to get aggr stats for (default: stimulus, opts: stimulus, firsthalf, plushalf, baseline)')
+
 
 
 args = parser.parse_args()
@@ -52,6 +54,7 @@ traceid = args.traceid
 responsive_thr = float(args.responsive_thr)
 responsive_test = args.responsive_test
 response_type = args.response_type
+trial_epoch = args.trial_epoch
 
 visual_area = args.visual_area
 
@@ -59,7 +62,7 @@ visual_area = args.visual_area
 # particular run of the pipeline. This makes sure that runs can be
 # identified unambiguously
 piper = uuid.uuid4()
-piper = str(piper)[0:8]
+piper = str(piper)[0:4]
 logdir='LOG__responsive_%s_%s' % (EXP, visual_area)
 if not os.path.exists(logdir):
     os.mkdir(logdir)
@@ -127,10 +130,11 @@ for (animalid, session, fov, experiment, traceid) in meta_list:
             -o '{LOG}/{PROCID}.{EXP}.{MTAG}.out' \
             -e '{LOG}/{PROCID}.{EXP}.{MTAG}.err' \
             /n/coxfs01/2p-pipeline/repos/2p-pipeline/pipeline/python/slurm/responsive_test.sbatch \
-            {ANIMALID} {SESSION} {FOV} {EXP} {TRACEID} {RTYPE} {RTEST} {RTHR}".format(
+            {ANIMALID} {SESSION} {FOV} {EXP} {TRACEID} {RTYPE} {RTEST} {RTHR} {EPOCH}".format(
             LOG=logdir,
             PROCID=piper, MTAG=mtag, ANIMALID=animalid,
-            SESSION=session, FOV=fov, EXP=experiment, TRACEID=traceid, RTYPE=response_type, RTEST=responsive_test, RTHR=responsive_thr) 
+            SESSION=session, FOV=fov, EXP=experiment, TRACEID=traceid, RTYPE=response_type, 
+            RTEST=responsive_test, RTHR=responsive_thr, EPOCH=trial_epoch) 
     status, joboutput = commands.getstatusoutput(cmd)
     jobnum = joboutput.split(' ')[-1]
     jobids.append(jobnum)

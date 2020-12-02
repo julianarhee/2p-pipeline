@@ -35,6 +35,7 @@ TRACEID="$5"
 RTYPE="$6"
 RTEST="$7"
 RTHR="$8"
+EPOCH="$9"
 
 echo "ANIMALID: ${ANIMALID}"
 echo "SESSION: ${SESSION}"
@@ -42,6 +43,6 @@ echo "SESSION: ${SESSION}"
 # {ANIMALID} {SESSION} {FOV} {EXP} {TRACEID} {RTYPE} {RTEST} {RTHR}".format(
 
 # run processing on raw data
-python /n/coxfs01/2p-pipeline/repos/2p-pipeline/pipeline/python/classifications/aggregate_data_stats.py -i $ANIMALID -S $SESSION -A $FOV -E $EXP -t $TRACEID --new -n 1 --redo-fov --redo-stats -d $RTYPE --test=$RTEST --thr=$RTHR
+python /n/coxfs01/2p-pipeline/repos/2p-pipeline/pipeline/python/classifications/aggregate_data_stats.py -i $ANIMALID -S $SESSION -A $FOV -E $EXP -t $TRACEID --new -n 1 --redo-fov --redo-stats -d $RTYPE -R $RTEST --thr=$RTHR -e $EPOCH
 
 
