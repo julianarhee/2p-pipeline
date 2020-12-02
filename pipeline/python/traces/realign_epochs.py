@@ -5,7 +5,8 @@ Created on Fri Feb  21 12:17:55 2020
 
 @author: julianarhee
 """
-
+import matplotlib as mpl
+mpl.use('agg')
 import h5py
 import glob
 import os
