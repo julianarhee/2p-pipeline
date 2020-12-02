@@ -60,7 +60,7 @@ visual_area = args.visual_area
 # identified unambiguously
 piper = uuid.uuid4()
 piper = str(piper)[0:8]
-logdir='LOG__%s_%s' % (EXP, visual_area)
+logdir='LOG__responsive_%s_%s' % (EXP, visual_area)
 if not os.path.exists(logdir):
     os.mkdir(logdir)
 
