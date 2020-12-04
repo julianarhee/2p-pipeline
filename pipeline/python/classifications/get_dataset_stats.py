@@ -190,7 +190,7 @@ def aggregate_session_info(traceid='traces001', trace_type='corrected',
                         #sessiondatapaths[visual_area][animalid].update({s: experiment_list})
     
                         for e in experiment_list:
-                            if 'dyn' in e:
+                            if 'dyn' in e or if e=='blobs_pos':
                                 continue
                             sessiondata.append(pd.DataFrame({'visual_area': visual_area, 
                                                                'animalid': animalid, 
