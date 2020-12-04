@@ -297,7 +297,7 @@ def load_roi_assignments(animalid, session, fov, retinorun='retino_run1',
    
     return roi_assignments #, roi_masks_labeled
 
-def get_cells_by_area(sdata, excluded_datasets=[]):
+def get_cells_by_area(sdata, excluded_datasets=[], return_missing=False):
     excluded_datasets = ['20190602_JC080_fov1', '20190605_JC090_fov1',
                          '20191003_JC111_fov1', '20191104_JC117_fov1', 
                          '20191108_JC113_fov1', '20191004_JC110_fov3',
@@ -311,6 +311,7 @@ def get_cells_by_area(sdata, excluded_datasets=[]):
             roi_assignments = load_roi_assignments(animalid, session, fov)
         except AssertionError:
             missing_segmentation.append(g['datakey'].values[0])
+            continue
  
         for varea, rlist in roi_assignments.items():
             if putils.isnumber(varea):
@@ -328,8 +329,10 @@ def get_cells_by_area(sdata, excluded_datasets=[]):
     print("Segmentation, missing:")
     for r in missing_segmentation:
         print(r)
-
-    return cells
+    if return_missing:
+        return cells, missing_segmentation
+    else:
+        return cells
 
 def calculate_gradients(curr_segmented_mask, img_az, img_el):
     from pipeline.python.classifications import gradient_estimation as grd
@@ -577,43 +580,74 @@ def get_processed_maps(animalid, session, fov, retinorun='retino_run1',
 
 
 
-def smooth_maps(start_az, start_el, smooth_fwhm=12, smooth_spline=2, target_sigma_um=25, 
+def smooth_maps(start_az, start_el, smooth_fwhm=12, smooth_spline=2, fill_nans=True,
+                smooth_spline_x=None, smooth_spline_y=None, target_sigma_um=25, 
                 start_with_transformed=True, use_phase_smooth=False, ds_factor=2):
     from pipeline.python.classifications import gradient_estimation as grd
 
     pixel_size = putils.get_pixel_size()
     pixel_size_ds = (pixel_size[0]*ds_factor, pixel_size[1]*ds_factor)
 
+    smooth_spline_x = smooth_spline if smooth_spline_x is None else smooth_spline_x
+    smooth_spline_y = smooth_spline if smooth_spline_y is None else smooth_spline_y
+
     um_per_pix = np.mean(pixel_size) if start_with_transformed else np.mean(pixel_size_ds)
     smooth_fwhm = int(round(target_sigma_um/um_per_pix))  # int(25*pix_per_deg) #11
     sz=smooth_fwhm*2 #smooth_fwhm
-    print("Target: %i (fwhm=%i)" % (target_sigma_um, smooth_fwhm)) #, sz)
+    print("Target: %i (fwhm=%i, k=(%i, %i))" % (target_sigma_um, smooth_fwhm, smooth_spline_x, smooth_spline_y)) #, sz)
     smooth_type = 'phasenan'if use_phase_smooth else 'gaussian'
 
+    print("start", np.nanmin(start_az), np.nanmax(start_az))
     if use_phase_smooth:
         azim_smoothed = ret_utils.smooth_phase_nans(start_az, smooth_fwhm, sz)
         elev_smoothed = ret_utils.smooth_phase_nans(start_el, smooth_fwhm, sz)
     else:
         azim_smoothed = ret_utils.smooth_neuropil(start_az, smooth_fwhm=smooth_fwhm)
         elev_smoothed = ret_utils.smooth_neuropil(start_el, smooth_fwhm=smooth_fwhm)
+    print("smoothed", np.nanmin(azim_smoothed), np.nanmax(azim_smoothed))
 
-    if len(np.where(np.isnan(azim_smoothed))[0])>0:
-        azim_fillnan = grd.fill_and_smooth_nans_missing(azim_smoothed, 
-                                                        kx=smooth_spline, ky=smooth_spline)
+    if fill_nans:
+        azim_fillnan=None
+        elev_fillnan=None
+        try:
+            azim_fillnan = grd.fill_and_smooth_nans_missing(azim_smoothed, 
+                                                            kx=smooth_spline_x, ky=smooth_spline_x)
+        except Exception as e: # sometimes if too filled, fails w ValueError
+            print("[AZ] Bad NaN fill. Try a smaller target_smooth_um value")
+             #azim_fillnan = grd.fill_and_smooth_nans(azim_smoothed, 
+             #                                       kx=smooth_spline_x, ky=smooth_spline_x)
+        try:
+             elev_fillnan = grd.fill_and_smooth_nans_missing(elev_smoothed, 
+                                                            kx=smooth_spline_y, ky=smooth_spline_y)
+        except Exception as e:
+            print("[EL] Bad NaN fill. Try a smaller target_smooth_um value")
+            #elev_fillnan = elev_smoothed.copy()
+            #elev_fillnan = grd.fill_and_smooth_nans(elev_smoothed, 
+            #                                        kx=smooth_spline_y, ky=smooth_spline_y)
+      
+#        if len(np.where(np.isnan(azim_smoothed))[0])>2500:
+#            azim_fillnan = grd.fill_and_smooth_nans_missing(azim_smoothed, 
+#                                                            kx=smooth_spline_x, ky=smooth_spline_x)
+#        else:
+#            #azim_fillnan = azim_smoothed.copy()
+#            azim_fillnan = grd.fill_and_smooth_nans(azim_smoothed, 
+#                                                    kx=smooth_spline_x, ky=smooth_spline_x)
+#        if len(np.where(np.isnan(elev_smoothed))[0])>2500:
+#            elev_fillnan = grd.fill_and_smooth_nans_missing(elev_smoothed, 
+#                                                            kx=smooth_spline_y, ky=smooth_spline_y)
+#        else:
+#            #elev_fillnan = elev_smoothed.copy()
+#            elev_fillnan = grd.fill_and_smooth_nans(elev_smoothed, 
+#                                                    kx=smooth_spline_y, ky=smooth_spline_y)
+        print("fillnan", np.nanmin(azim_fillnan), np.nanmax(azim_fillnan))
     else:
-        #azim_fillnan = azim_smoothed.copy()
-        azim_fillnan = grd.fill_and_smooth_nans(azim_smoothed, 
-                                                kx=smooth_spline, ky=smooth_spline)
-    if len(np.where(np.isnan(elev_smoothed))[0])>2500:
-        elev_fillnan = grd.fill_and_smooth_nans_missing(elev_smoothed, 
-                                                        kx=smooth_spline, ky=smooth_spline)
-    else:
-        #elev_fillnan = elev_smoothed.copy()
-        elev_fillnan = grd.fill_and_smooth_nans(elev_smoothed, 
-                                                kx=smooth_spline, ky=smooth_spline)
+        
+        azim_fillnan = ret_utils.smooth_neuropil(azim_smoothed, smooth_fwhm=smooth_fwhm)
+        elev_fillnan = ret_utils.smooth_neuropil(elev_smoothed, smooth_fwhm=smooth_fwhm)
     # Transform FOV to match widefield
     az_fill = coreg.transform_2p_fov(azim_fillnan, pixel_size, normalize=False) if not start_with_transformed else azim_fillnan
     el_fill = coreg.transform_2p_fov(elev_fillnan, pixel_size, normalize=False) if not start_with_transformed else elev_fillnan
+    print("fillnan", np.nanmin(az_fill), np.nanmax(az_fill))
 
     azim_ = {'smoothed': azim_smoothed, 'nan_filled': azim_fillnan, 'final': az_fill}
     elev_ = {'smoothed': elev_smoothed, 'nan_filled': elev_fillnan, 'final': el_fill}
@@ -624,6 +658,7 @@ def smooth_maps(start_az, start_el, smooth_fwhm=12, smooth_spline=2, target_sigm
 def smooth_processed_maps(animalid, session, fov, retinorun='retino_run1', 
                             target_sigma_um=25., start_with_transformed=True,
                             smooth_spline=2, use_phase_smooth=False, 
+                            smooth_spline_x=None, smooth_spline_y=None,fill_nans=True,
                             reprocess=False, cmap_phase='nic_Edge', 
                             pix_mag_thr=0.002, delay_map_thr=1.0, 
                             rootdir='/n/coxfs01/2p-data'):
@@ -659,8 +694,15 @@ def smooth_processed_maps(animalid, session, fov, retinorun='retino_run1',
     um_per_pix = np.mean(pixel_size) if start_with_transformed else np.mean(pixel_size_ds)
     smooth_fwhm = int(round(target_sigma_um/um_per_pix))  # int(25*pix_per_deg) #11
 
-    sm_azim, sm_elev = smooth_maps(start_az, start_el, smooth_fwhm=smooth_fwhm, 
-                                    smooth_spline=smooth_spline,
+    if isinstance(smooth_spline, tuple):
+        smooth_spline_x, smooth_spline_y = smooth_spline
+    else:
+        smooth_spline_x = smooth_spline_x if smooth_spline_x is not None else smooth_spline
+        smooth_spline_y = smooth_spline_y if smooth_spline_y is not None else smooth_spline
+
+    sm_azim, sm_elev = smooth_maps(start_az, start_el, smooth_fwhm=smooth_fwhm, fill_nans=fill_nans,
+                                    smooth_spline_x=smooth_spline_x, smooth_spline_y=smooth_spline_y, 
+                                    target_sigma_um=target_sigma_um, 
                                     start_with_transformed=start_with_transformed, 
                                     use_phase_smooth=use_phase_smooth, ds_factor=ds_factor)
 
@@ -684,11 +726,11 @@ def smooth_processed_maps(animalid, session, fov, retinorun='retino_run1',
              start_az=start_az, start_el=start_el,
              azimuth=sm_azim['final'], elevation=sm_elev['final'])
     smoothparams = {'smooth_fwhm': smooth_fwhm, 
-                    'smooth_spline': smooth_spline,
+                    'smooth_spline': (smooth_spline_x, smooth_spline_y),
                     'target_sigma_um': target_sigma_um, 
                     'start_woth_transformed': start_with_transformed,
                     'use_phase_smooth': use_phase_smooth,
-                    'smooth_type': smooth_type}
+                    'smooth_type': smooth_type, 'fill_nans': fill_nans}
     pparams.update(smoothparams)
 
     return sm_azim['final'], sm_elev['final'], pparams

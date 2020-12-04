@@ -114,9 +114,16 @@ def fill_and_smooth_nans(img, kx=1, ky=1):
     znew=f(xnew, ynew) #).T
     
     znew[np.isnan(z)] = np.nan
+
+    # make sure limits are preserved
+    orig_min = np.nanmin(img)
+    orig_max = np.nanmax(img)
+    zfinal = znew.copy()
+    zfinal[znew<orig_min] = orig_min
+    zfinal[znew>orig_max] = orig_max
     
     #print(z.shape, znew.shape)
-    return znew #.T #a
+    return zfinal #:znew #.T #a
 
 def fill_and_smooth_nans_missing(img, kx=1, ky=1):
     '''
@@ -157,7 +164,14 @@ def fill_and_smooth_nans_missing(img, kx=1, ky=1):
 
     znew[np.isnan(z.T)] = np.nan
 
-    return znew.T #a
+    # make sure limits are preserved
+    orig_min = np.nanmin(img)
+    orig_max = np.nanmax(img)
+    zfinal = znew.copy()
+    zfinal[znew<orig_min] = orig_min
+    zfinal[znew>orig_max] = orig_max
+ 
+    return zfinal.T #znew.T #a
 
 def dilate_mask_centers(maskcenters, kernel_size=9):
     '''Calculate center of soma, then dilate to create masks for smoothed  neuropil
@@ -346,7 +360,13 @@ def plot_retinomap_processing_pixels(filt_az, azim_smoothed, azim_fillnan, az_fi
                                     filt_el, elev_smoothed, elev_fillnan, el_fill,
                                     cmap_phase='nipy_spectral', show_cbar=False,
                                     vmin=-np.pi, vmax=np.pi, full_cmap_range=True,
-                                    smooth_fwhm=7, delay_map_thr=1, smooth_spline=1):
+                                    smooth_fwhm=7, delay_map_thr=1, smooth_spline=(1,1)):
+
+    if isinstance(smooth_spline, tuple):
+        smooth_spline_x, smooth_spline_y = smooth_spline
+    else:
+        smooth_spline_x = smooth_spline
+        smooth_spline_y = smooth_spline
 
     fig, axn = pl.subplots(2,4, figsize=(12,6))
 
@@ -376,7 +396,7 @@ def plot_retinomap_processing_pixels(filt_az, azim_smoothed, azim_fillnan, az_fi
         im0 = ax.imshow(azim_fillnan, cmap=cmap_phase, vmin=vmin, vmax=vmax)
     else:
         im0 = ax.imshow(azim_fillnan, cmap=cmap_phase)
-    ax.set_title('filled NaNs (spline=%i)' % smooth_spline)
+    ax.set_title('filled NaNs (spline=(%i, %i))' % (smooth_spline_x, smooth_spline_y))
     if show_cbar:
         colorbar(im0)
  
