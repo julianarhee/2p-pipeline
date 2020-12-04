@@ -22,6 +22,8 @@ import numpy as np
 from pipeline.python.utils import natural_keys, get_frame_info, load_dataset
 from pipeline.python.paradigm import align_acquisition_events as alignacq
 from pipeline.python.traces import trial_alignment as talignment
+from pipeline.python.traces import remake_neuropil_masks as mk
+
 from pipeline.python.paradigm.plot_responses import make_clean_psths
 from pipeline.python.classifications import experiment_classes as cutils
 
@@ -61,9 +63,26 @@ def extract_options(options):
                           default=None, help='Transform to plot by HUE within each subplot')
     parser.add_option('-d', '--response', action='store', dest='response_type',
                           default='dff', help='Traces to plot (default: dff)')
-
     parser.add_option('-f', '--filetype', action='store', dest='filetype',
                           default='svg', help='File type for images [default: svg]')
+    parser.add_option('--resp-test', action='store', dest='responsive_test',
+                          default='nstds', help='Responsive test or plotting rois [default: nstds]')
+    parser.add_option('--resp-thr', action='store', dest='responsive_thr',
+                          default=10, help='Responsive test or plotting rois [default: 10]')
+
+
+    # Neuropil mask params
+    parser.add_option('-N', '--np-outer', action='store', dest='np_niterations', default=24, 
+                      help="Num cv dilate iterations for outer annulus (default: 24, ~50um for zoom2p0x)")
+    parser.add_option('-g', '--np-inner', action='store', dest='gap_niterations', default=4, 
+                      help="Num cv dilate iterations for inner annulus (default: 4, gap ~8um for zoom2p0x)")
+    parser.add_option('--np-factor', action='store', dest='np_correction_factor', default=0.7, 
+                      help="Neuropil correction factor (default: 0.7)")
+    parser.add_option('--plot-masks', action='store_true', dest='plot_masks', default=False, 
+                      help="set flag to plot soma and NP masks")
+    parser.add_option('--masks', action='store_true', dest='do_masks', default=False,
+                      help='set flag to remake neuropil masks')
+
 
     (options, args) = parser.parse_args(options)
 
@@ -143,7 +162,21 @@ def main(options):
     iti_post = float(opts.iti_post)
     rootdir = opts.rootdir
     plot_psth = opts.plot_psth    
-   
+
+    do_masks = opts.do_masks 
+    np_niterations = int(opts.np_niterations)
+    gap_niterations = int(opts.gap_niterations)
+    np_correction_factor = float(opts.np_correction_factor)
+    plot_masks = opts.plot_masks
+ 
+    if do_masks:
+        print("0. PRE-step: Remaking masks")
+        mk.make_masks(animalid, session, fov, traceid=traceid, np_niterations=np_niterations, gap_niterations=gap_niterations,
+                np_correction_factor=np_correction_factor, rootdir=rootdir, plot_masks=plot_masks)
+        print("done!")
+
+
+ 
     print("1. Parsing") 
     parse_trial_epochs(animalid, session, fov, experiment, traceid, 
                         iti_pre=iti_pre, iti_post=iti_post)
@@ -151,8 +184,6 @@ def main(options):
     print("2. Aligning - %s" % experiment)
 
     align_traces(animalid, session, fov, experiment, traceid, rootdir=rootdir)
-
-
     remake_dataframes(animalid, session, fov, experiment, traceid, rootdir=rootdir)
     
     if plot_psth:
@@ -162,9 +193,12 @@ def main(options):
         hue_str = opts.subplot_hue
         response_type = opts.response_type
         file_type = opts.filetype
+        responsive_test=opts.responsive_test
+        responsive_thr=opts.responsive_thr
 
         plot_opts = ['-i', animalid, '-S', session, '-A', fov, '-t', traceid, '-R', 'combined_%s_static' % experiment, 
-                     '--shade', '-r', row_str, '-c', col_str, '-H', hue_str, '-d', response_type, '-f', file_type]
+                     '--shade', '-r', row_str, '-c', col_str, '-H', hue_str, '-d', response_type, '-f', file_type,
+                    '--responsive', '--test', responsive_test, '--thr', responsive_thr]
         make_clean_psths(plot_opts) 
     
 if __name__ == '__main__':

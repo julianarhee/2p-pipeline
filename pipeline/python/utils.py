@@ -521,14 +521,21 @@ def check_counts_per_condition(raw_traces, labels):
 
 def reformat_morph_values(sdf):
     #print(sdf.head())
+    aspect_ratio=1.75
     control_ixs = sdf[sdf['morphlevel']==-1].index.tolist()
-    sizevals = np.array([round(s, 1) for s in sdf['size'].unique() if s not in ['None', None] and not np.isnan(s)])
-    sdf.loc[sdf.morphlevel==-1, 'size'] = pd.Series(sizevals, index=control_ixs)
-    sdf['size'] = [round(s, 1) for s in sdf['size'].values]
+    if len(control_ixs)==0: # Old dataset
+        if 17.5 in sdf['size'].values:
+            sizevals = np.array([round(s/aspect_ratio,0) for s in sdf['size'].values])
+            sdf['size'] = sizevals
+    else:  
+        sizevals = np.array([round(s, 1) for s in sdf['size'].unique() if s not in ['None', None] and not np.isnan(s)])
+        sdf.loc[sdf.morphlevel==-1, 'size'] = pd.Series(sizevals, index=control_ixs)
+        sdf['size'] = [round(s, 1) for s in sdf['size'].values]
     xpos = [x for x in sdf['xpos'].unique() if x is not None]
     ypos =  [x for x in sdf['ypos'].unique() if x is not None]
-    assert len(xpos)==1 and len(ypos)==1, "More than 1 pos? x: %s, y: %s" % (str(xpos), str(ypos))
-
+    #assert len(xpos)==1 and len(ypos)==1, "More than 1 pos? x: %s, y: %s" % (str(xpos), str(ypos))
+    if len(xpos)>1 or len(ypos)>1:
+        print("warning: More than 1 pos? x: %s, y: %s" % (str(xpos), str(ypos)))
     sdf.loc[sdf.morphlevel==-1, 'xpos'] = [xpos[0] for _ in np.arange(0, len(control_ixs))]
     sdf.loc[sdf.morphlevel==-1, 'ypos'] = [ypos[0] for _ in np.arange(0, len(control_ixs))]
     return sdf

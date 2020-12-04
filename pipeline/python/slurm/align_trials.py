@@ -25,6 +25,10 @@ parser.add_argument('-P', '--post', dest='iti_post', action='store', default=1.0
 
 parser.add_argument( '--all', dest='run_all', action='store_true', default=False, help='Run on all specified datasets, ignoring extraction_info')
 
+parser.add_argument('-i', '--animalids', nargs='*', dest='animalids', action='append', help='Use like: -k DKEY DKEY DKEY')
+
+parser.add_argument( '--masks', dest='do_masks', action='store_true', default=False, help='Re-extract neuropil masks')
+
 
 
 args = parser.parse_args()
@@ -53,6 +57,12 @@ iti_pre = float(args.iti_pre)
 iti_post = float(args.iti_post)
 visual_area = args.visual_area
 run_all = args.run_all
+
+do_masks = args.do_masks
+
+animalids = args.animalids
+if animalids is not None:
+    animalids=animalids[0]
 
 # Create a (hopefully) unique prefix for the names of all jobs in this 
 # particular run of the pipeline. This makes sure that runs can be
@@ -104,7 +114,7 @@ def get_trial_alignment(animalid, session, fovnum, curr_exp, traceid='traces001'
 
 
 def load_metadata(experiment, iti_pre=1.0, iti_post=1., 
-                  run_datakeys=[],
+                  run_datakeys=[], animalids=[],
                   visual_area=None,run_all=False,
                   rootdir='/n/coxfs01/2p-data', 
                   aggregate_dir='/n/coxfs01/julianarhee/aggregate-visual-areas',
@@ -124,23 +134,26 @@ def load_metadata(experiment, iti_pre=1.0, iti_post=1.,
             meta_list.append(tuple([animalid, session, fov, experiment, traceid]))
             continue
 
-        # Get alignment info
-        alignment_info = aggr.get_trial_alignment(animalid, session, 
-                                                fovnum, experiment, traceid=traceid)
-        if alignment_info is None:
-            print(session, animalid, fovnum)
+        if len(run_datakeys) > 0:
             meta_list.append(tuple([animalid, session, fov, experiment, traceid]))    
-        elif alignment_info==-1:
-            print("REALIGN: %s" % datakey)
-        elif datakey in run_datakeys:
-            meta_list.append(tuple([animalid, session, fov, experiment, traceid]))    
-           
-        else: 
-            curr_iti_pre = float(alignment_info['iti_pre'])
-            curr_iti_post = float(alignment_info['iti_post'])    
-            if (curr_iti_pre != iti_pre) or (curr_iti_post != iti_post):
+        elif len(animalids) > 0:
+            if animalid in animalids:
+                meta_list.append(tuple([animalid, session, fov, experiment, traceid]))    
+        else:
+            # Get alignment info
+            alignment_info = aggr.get_trial_alignment(animalid, session, 
+                                                    fovnum, experiment, traceid=traceid)
+            if alignment_info is None:
                 print(session, animalid, fovnum)
                 meta_list.append(tuple([animalid, session, fov, experiment, traceid]))    
+            elif alignment_info==-1:
+                print("REALIGN: %s" % datakey)  
+            else: 
+                curr_iti_pre = float(alignment_info['iti_pre'])
+                curr_iti_post = float(alignment_info['iti_post'])    
+                if (curr_iti_pre != iti_pre) or (curr_iti_post != iti_post):
+                    print(session, animalid, fovnum)
+                    meta_list.append(tuple([animalid, session, fov, experiment, traceid]))    
 
     return meta_list
 
@@ -150,8 +163,8 @@ def load_metadata(experiment, iti_pre=1.0, iti_post=1.,
 #             ('JC083', '20190508', 'FOV1_zoom2p0x', 'rfs', 'traces001'),
 #             ('JC084', '20190525', 'FOV1_zoom2p0x', 'rfs', 'traces001')]
 #
-
-meta_list = load_metadata(EXP, visual_area=visual_area, run_all=run_all)
+print("animalids:", animalids)
+meta_list = load_metadata(EXP, visual_area=visual_area, run_all=run_all, animalids=animalids)
 
 if len(meta_list)==0:
     fatal("NO FOVs found.")
@@ -171,14 +184,25 @@ info("Found %i [%s] datasets to process (pre/post=%i/%i)." % (len(meta_list), EX
 jobids = [] # {}
 for (animalid, session, fov, experiment, traceid) in meta_list:
     mtag = '-'.join([session, animalid, fov, experiment])
-    cmd = "sbatch --job-name={PROCID}.{EXP}.{MTAG} \
-            -o '{LOG}/{PROCID}.{EXP}.{MTAG}.out' \
-            -e '{LOG}/{PROCID}.{EXP}.{MTAG}.err' \
-            /n/coxfs01/2p-pipeline/repos/2p-pipeline/pipeline/python/slurm/align_trials.sbatch \
-            {ANIMALID} {SESSION} {FOV} {EXP} {TRACEID} {PRE} {POST}".format(
-            LOG=logdir,
-            PROCID=piper, MTAG=mtag, ANIMALID=animalid,
-            SESSION=session, FOV=fov, EXP=experiment, TRACEID=traceid, PRE=iti_pre, POST=iti_post) 
+    if do_masks:
+        cmd = "sbatch --job-name={PROCID}.{EXP}.{MTAG} \
+                -o '{LOG}/{PROCID}.{EXP}.{MTAG}.out' \
+                -e '{LOG}/{PROCID}.{EXP}.{MTAG}.err' \
+                /n/coxfs01/2p-pipeline/repos/2p-pipeline/pipeline/python/slurm/align_trials_masks.sbatch \
+                {ANIMALID} {SESSION} {FOV} {EXP} {TRACEID} {PRE} {POST}".format(
+                LOG=logdir,
+                PROCID=piper, MTAG=mtag, ANIMALID=animalid,
+                SESSION=session, FOV=fov, EXP=experiment, TRACEID=traceid, PRE=iti_pre, POST=iti_post) 
+    else:
+        cmd = "sbatch --job-name={PROCID}.{EXP}.{MTAG} \
+                -o '{LOG}/{PROCID}.{EXP}.{MTAG}.out' \
+                -e '{LOG}/{PROCID}.{EXP}.{MTAG}.err' \
+                /n/coxfs01/2p-pipeline/repos/2p-pipeline/pipeline/python/slurm/align_trials.sbatch \
+                {ANIMALID} {SESSION} {FOV} {EXP} {TRACEID} {PRE} {POST}".format(
+                LOG=logdir,
+                PROCID=piper, MTAG=mtag, ANIMALID=animalid,
+                SESSION=session, FOV=fov, EXP=experiment, TRACEID=traceid, PRE=iti_pre, POST=iti_post) 
+
     status, joboutput = commands.getstatusoutput(cmd)
     jobnum = joboutput.split(' ')[-1]
     jobids.append(jobnum)

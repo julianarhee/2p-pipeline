@@ -133,12 +133,16 @@ def create_masks_for_all_runs(animalid, session, fov, traceid='traces001', np_ni
     all_rundirs = [r for r in sorted(glob.glob(os.path.join(session_dir, fov, '*_run*')), key=natural_keys)\
                    if 'retino' not in r and 'compare' not in r] 
 
-    run_dir = all_rundirs[0]
+    #run_dir = all_rundirs[0]
     for ri, run_dir in enumerate(all_rundirs): 
-        maskdict_path = create_masks_for_run(run_dir, traceid=traceid, np_niterations=np_niterations,
+        try:
+            maskdict_path = create_masks_for_run(run_dir, traceid=traceid, np_niterations=np_niterations,
                          gap_niterations=gap_niterations, rootdir=rootdir, plot_masks=plot_masks)
 
         #filetraces_dir = apply_masks_for_run(run_dir, maskdict_path, traceid=traceid, np_correction_factor=np_correction_factor)
+        except Exception as e:
+            print("***ERROR creaitng masks: %s" % run_dir)
+            continue
 
         print("... finished %i of %i" % (int(ri+1), len(all_rundirs)))
 
@@ -272,18 +276,8 @@ def extract_options(options):
     return options
 
 
-def main(options):
-   
-    opts = extract_options(options)
-    animalid = opts.animalid
-    session = opts.session
-    fov = opts.fov
-    traceid = opts.traceid
-    np_niterations = int(opts.np_niterations)
-    gap_niterations = int(opts.gap_niterations)
-    np_correction_factor = float(opts.np_correction_factor)
-    plot_masks = opts.plot_masks
-    rootdir = opts.rootdir
+def make_masks(animalid, session, fov, traceid='traces001', np_niterations=24, gap_niterations=4,
+                np_correction_factor=0.7, rootdir='/n/coxfs01/2p-data', plot_masks=True):
 
     print("1. Creating neuropil masks")
     create_masks_for_all_runs(animalid, session, fov, traceid=traceid, 
@@ -297,14 +291,15 @@ def main(options):
     print("---- applied NP masks to tifs ----")
 
     traceid_dir = os.path.split(filetraces_dir)[0]
-    #with open(os.path.join(traceid_dir, 'extraction_params.json'), 'r') as f:
-    with open(os.path.join(traceid_dir, 'event_alignment.json'), 'r') as f:
+    with open(os.path.join(traceid_dir, 'extraction_params.json'), 'r') as f:
+    #with open(os.path.join(traceid_dir, 'event_alignment.json'), 'r') as f:
         eparams = json.load(f)
     eparams.update({'np_niterations': np_niterations,
                     'gap_niterations': gap_niterations,
                     'np_correction_factor': np_correction_factor})
     with open(os.path.join(traceid_dir, 'extraction_params.json'), 'w') as f: 
         json.dump(eparams, f, indent=4, sort_keys=True)
+
     print("--- updated extraction info ---")
 
 
@@ -320,7 +315,25 @@ def main(options):
     print("i.e., %.2f-%.2f micron annulus" % (inner_um, outer_um))
     print("Neuropil correction factor was %.2f" % np_correction_factor)
     print("---------------------------------------------")
+    
+    return None
 
+def main(options):
+   
+    opts = extract_options(options)
+    animalid = opts.animalid
+    session = opts.session
+    fov = opts.fov
+    traceid = opts.traceid
+    np_niterations = int(opts.np_niterations)
+    gap_niterations = int(opts.gap_niterations)
+    np_correction_factor = float(opts.np_correction_factor)
+    plot_masks = opts.plot_masks
+    rootdir = opts.rootdir
+
+    make_masks(animalid, session, fov, traceid=traceid, np_niterations=np_niterations, gap_niterations=gap_niterations,
+                np_correction_factor=np_correction_factor, rootdir=rootdir, plot_masks=plot_masks)
+    print("done!")
 
 if __name__ == '__main__':
     main(sys.argv[1:])
