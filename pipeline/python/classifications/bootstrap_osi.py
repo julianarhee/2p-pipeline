@@ -44,7 +44,7 @@ import itertools
 from pipeline.python.classifications import osi_dsi as osi
 from pipeline.python.classifications import test_responsivity as resp
 #from pipeline.python.classifications import experiment_classes as util
-from pipeline.python.utils import natural_keys, label_figure, load_dataset
+from pipeline.python.utils import natural_keys, label_figure, load_dataset, convert_range
 from pipeline.python.traces.trial_alignment import aggregate_experiment_runs 
 
 #from pipeline.python.retinotopy import fit_2d_rfs as rf
@@ -423,12 +423,20 @@ def fit_ori_tuning(responsedf, n_intervals_interp=3):
     init_bounds = ([0, 0, -np.inf, sigma/2., -r_pref], [3*r_pref, 3*r_pref, np.inf, np.inf, r_pref])
     
     rfit, fitv = fit_osi_params(oris_interp, resps_interp, init_params, bounds=init_bounds)
-    
+   
+    # Normalize range, 0 to 1
+    rvec = fitv.copy()
+    response_vector = convert_range(rvec, oldmin=rvec.min(), oldmax=rvec.max(), 
+                    newmin=0, newmax=1)
+ 
     response_pref=None; response_null=None; theta_pref=None; 
 
     if rfit['success']:
-         asi_t = get_ASI(fitv[0:], oris_interp[0:])
-         dsi_t = get_DSI(fitv[0:], oris_interp[0:])
+         #asi_t = get_ASI(fitv[0:], oris_interp[0:])
+         #dsi_t = get_DSI(fitv[0:], oris_interp[0:])
+         asi_t = get_ASI(response_vector, oris_interp)
+         dsi_t = get_DSI(response_vector, oris_interp)
+
          #circvar_asi_t, circvar_dsi_t = get_circular_variance(rfit['fit_y'][0:], oris_interp[0:])
          response_pref, response_null, theta_pref, sigma, response_offset = rfit['popt']
          #r2 = rfit['r2']
@@ -1105,7 +1113,7 @@ def plot_tuning_bootresults(roi, bootr, df_traces, labels, sdf, trace_type='dff'
     ax1.set_xticklabels(curr_oris)
     pl.subplots_adjust(hspace=0.5, right=0.95, bottom=0.2) 
 
-    stimkey = 'sf-%i-sz-%.2f-speed-%if' % (sf, sz, sp)
+    stimkey = 'sf-%.1f-sz-%i-speed-%i' % (sf, sz, sp)
     fig.suptitle('roi %i (sf %.1f, sz %i, speed %i)' % (roi, sf, sz, sp), fontsize=12)
 
     return fig, stimkey
@@ -1271,6 +1279,10 @@ def get_tuning(animalid, session, fov, run_name, return_iters=False,
             if not os.path.exists(os.path.join(osidir, 'roi-fits')):
                 os.makedirs(os.path.join(osidir, 'roi-fits'))
             print("Saving roi tuning fits to: %s" % os.path.join(osidir, 'roi-fits'))
+            # Delete old imgs
+            for f in os.listdir(os.path.join(osidir, 'roi-fits')):
+                os.remove(os.path.join(osidir, 'roi-fits', f))
+
             for roi in passrois:
                 #stimparams = [cfg for cfg, res in bootresults[roi].items() if res is not None]
                 for stimpara, bootr in bootresults[roi].items():
@@ -1299,7 +1311,8 @@ def evaluate_tuning(animalid, session, fov, run_name, traceid='traces001', fit_d
     # Evaluate metric fits
     if not os.path.exists(os.path.join(osidir, 'evaluation', 'gof-rois')):
         os.makedirs(os.path.join(osidir, 'evaluation', 'gof-rois'))
-
+    for f in os.listdir(os.path.join(osidir, 'evaluation', 'gof-rois')):
+        os.remove(os.path.join(osidir, 'evaluation', 'gof-rois', f))
     
     rmetrics, rmetrics_by_cfg = get_good_fits(bootresults, fitparams, gof_thr=gof_thr)
     if rmetrics is None:
@@ -1321,12 +1334,12 @@ def evaluate_tuning(animalid, session, fov, run_name, traceid='traces001', fit_d
         g = sns.pairplot(rmetrics[metrics_to_plot], height=2, aspect=1)
         label_figure(g.fig, data_identifier)
         pl.subplots_adjust(top=0.9, right=0.9)
-        pl.savefig(os.path.join(osidir, 'evaluation', 'metrics_avg-iters_gof-thr-%.2f_%i-rois.png' % (gof_thr, len(goodrois))))
+        pl.savefig(os.path.join(osidir, 'evaluation', 'metrics_avg-iters_gof-thr-%.2f.png' % (gof_thr)))
         pl.close()
         
         fig = roi_polar_plot_by_config(bootresults, fitparams, gof_thr=gof_thr)
         label_figure(fig, data_identifier)
-        pl.savefig(os.path.join(osidir, 'evaluation', 'polar-plots_gof-thr-%.2f_%irois.png' % (gof_thr, len(goodrois))))
+        pl.savefig(os.path.join(osidir, 'evaluation', 'polar-plots_gof-thr-%.2f.png' % (gof_thr)))
         pl.close()
         print("*** done! ***")
    
@@ -1472,11 +1485,11 @@ def get_good_fits(bootresults, fitparams, gof_thr=0.66):
         new_ixs = [int(i) for i in rmetrics['cell'].values]
         rmetrics.index = new_ixs
         rmetrics_by_cfg = pd.concat(metrics_by_config, axis=0)
-   
-    if gof_thr is not None: 
-        print("... %i (of %i) fitable cells pass GoF thr %.2f" % (len(goodrois), len(passrois), gof_thr))
-    else:
-        print("... %i (of %i) fitable cells (no GoF thr)" % (rmetrics.shape[0], len(passrois)))
+       
+        if gof_thr is not None: 
+            print("... %i (of %i) fitable cells pass GoF thr %.2f" % (len(goodrois), len(passrois), gof_thr))
+        else:
+            print("... %i (of %i) fitable cells (no GoF thr)" % (rmetrics.shape[0], len(passrois)))
 
     return rmetrics, rmetrics_by_cfg
 
@@ -2102,13 +2115,24 @@ def compare_selectivity_all_fits(fitdf, fit_metric='gof', fit_thr=0.66):
 
 
 def sort_by_selectivity(fitdf, fit_metric='gof', fit_thr=0.66, topn=10):
-    strong_fits = [r for r, v in fitdf.groupby(['cell']) if v.mean()[fit_metric] >= fit_thr]
-    print("%i out of %i cells with strong fits (%.2f)" % (len(strong_fits), len(fitdf['cell'].unique()), fit_thr))
+    # Get average over iters, then max over stim conditions, for each cell
+    max_over_conds_per_cell = fitdf.groupby(['cell','stimulus']).mean().groupby(['cell']).max().reset_index()
+    strong_fits = max_over_conds_per_cell[max_over_conds_per_cell[fit_metric]>=fit_thr]['cell'].unique()
+ 
+    print("%i out of %i fitable cells pass (%s=%.2f)" % (len(strong_fits), len(fitdf['cell'].unique()), fit_metric, fit_thr))
+    #if len(strong_fits)==0:
+    #    return pl.figure(), strong_fits
+ 
+    #strong_fits = [r for r, v in fitdf.groupby(['cell']) if v.mean()[fit_metric] >= fit_thr]
+    #print("%i out of %i cells with strong fits (%.2f)" % (len(strong_fits), len(fitdf['cell'].unique()), fit_thr))
     if len(strong_fits)==0:
         return None, [], []
     
-    df = fitdf[fitdf['cell'].isin(strong_fits)]
-        
+    #df = fitdf[fitdf['cell'].isin(strong_fits)]
+    df = pd.concat([g for (ri, stim), g in fitdf.groupby(['cell', 'stimulus']) \
+                         if g.mean()[fit_metric]>=fit_thr])
+    df['cell'] = df['cell'].astype(str)
+    
     #df.loc[:, 'cell'] = np.array([int(c) for c in df['cell'].values])
     
     top_asi = df.groupby(['cell']).mean().sort_values(['asi'], ascending=False)
@@ -2243,7 +2267,7 @@ def plot_top_asi_and_dsi(fitdf, fitparams, fit_metric='gof', fit_thr=0.66, topn=
     fig = compare_topn_selective(df, color_by=color_by, palette=palette)
     label_figure(fig, data_identifier)
     
-    figname = 'sort-by-%s_top%i_tuning-fit-thr%.2f_bootstrap-%iiters_%iof%i' % (color_by, topn, fit_thr, n_bootstrap_iters, nrois_pass, nrois_fit)
+    figname = 'sort-by-%s_top%i_tuning-fit-thr%.2f_bootstrap-%iiters' % (color_by, topn, fit_thr, n_bootstrap_iters)
 
     pl.savefig(os.path.join(roi_fitdir, '%s.svg' % figname))
     pl.close()
@@ -2254,7 +2278,7 @@ def plot_top_asi_and_dsi(fitdf, fitparams, fit_metric='gof', fit_thr=0.66, topn=
 
     fig = compare_topn_selective(df, color_by=color_by, palette=palette)
     label_figure(fig, data_identifier)
-    figname = 'sort-by-%s_top%i_tuning-fit-thr%.2f_bootstrap-%iiters_%iof%i' % (color_by, topn, fit_thr, n_bootstrap_iters, nrois_pass, nrois_fit)
+    figname = 'sort-by-%s_top%i_tuning-fit-thr%.2f_bootstrap-%iiters' % (color_by, topn, fit_thr, n_bootstrap_iters)
 
     pl.savefig(os.path.join(roi_fitdir, '%s.svg' % figname))
     pl.close()
