@@ -167,7 +167,7 @@ def get_roi_id(animalid, session, fov, traceid, run_name='', rootdir='/n/coxfs01
         
     return roi_id, traceid
 
-def get_anatomical(animalid, session, fov, channel_num=2, verbose=False, 
+def load_anatomical(animalid, session, fov, channel_num=2, verbose=False, 
                     rootdir='/n/coxfs01/2p-data'):
     anatomical = None
     fov_dir = os.path.join(rootdir, animalid, session, fov)
@@ -688,7 +688,7 @@ class Session():
         
         self.anatomical=None
         if get_anatomical:
-            self.anatomical = get_anatomical(animalid, session, fov, rootdir=rootdir)
+            self.anatomical = load_anatomical(animalid, session, fov, rootdir=rootdir)
 
         self.rois = None
         self.traceid = None
@@ -862,10 +862,11 @@ class Session():
         experiment_list = list(set([os.path.split(f)[-1].split('_run')[0] \
                                     for f in run_list]))
         
-        if int(self.session) < 20190511 and 'gratings' in experiment_list:
+        if 'gratings' in experiment_list and (20190405 <= int(self.session) < 20190511):
             # Old experiment, where "gratings" were actually RFs
             experiment_list = [e for e in experiment_list if e != 'gratings']
             experiment_list.append('rfs') # These are always 5 degree res        
+        
         
         return experiment_list
     
