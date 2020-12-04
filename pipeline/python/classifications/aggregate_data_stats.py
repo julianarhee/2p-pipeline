@@ -392,6 +392,9 @@ def get_rf_datasets(filter_by='drop_repeats', excluded_sessions=[], as_dict=True
         return included_sessions
 
 
+#def get_assigned_cells_with_rfs(rf_dsets):
+
+
 def get_dsets_with_max_rfs(rf_dsets, assigned_cells):
     from pipeline.python.classifications import rf_utils as rfutils
 
@@ -402,10 +405,11 @@ def get_dsets_with_max_rfs(rf_dsets, assigned_cells):
 
     # Count how many cells fit total per site
     countby = ['visual_area', 'datakey', 'cell']
-    counts_by_fov = all_rfdfs[countby].drop_duplicates().groupby(['visual_area', 'datakey']).count().reset_index()
+    counts_by_fov = all_rfs[countby].drop_duplicates().groupby(['visual_area', 'datakey']).count().reset_index()
     counts_by_fov['animalid'] = [s.split('_')[1] for s in counts_by_fov['datakey']]
     counts_by_fov['session'] = [s.split('_')[0] for s in counts_by_fov['datakey']]
-    counts_by_fov['fov'] = [s.split('_')[2] for s in counts_by_fov['datakey']]
+    counts_by_fov['fovnum'] = [int(s.split('_')[2][3:]) for s in counts_by_fov['datakey']]
+    counts_by_fov['fov'] = ['FOV%i_zoom2p0x' % f for f in counts_by_fov['fovnum']]
 
     # Cycle thru all dsets and drop repeats
     fovkeys = get_sorted_fovs()
@@ -569,10 +573,15 @@ def zscore_neuraldf(neuraldf):
 def get_source_data(experiment, traceid='traces001', equalize_now=False,zscore_now=False,
                     responsive_test='nstds', responsive_thr=10., response_type='dff',
                     trial_epoch='stimulus', fov_type='zoom2p0x', state='awake', 
-                    verbose=False, use_all=True, visual_area=None, datakey=None): 
+                    verbose=False, use_all=True, visual_area=None, datakey=None,
+                    return_missing=False): 
     '''
     Returns metainfo, cell dataframe, and dict of neuraldfs for all 
     responsive cells in assigned visual areas.
+    
+    Loads dict of neuraldfs.
+    Gets all assigned cells for each datakey.
+    Returns all responsive cells assigned to visual area.
     '''
     from pipeline.python.retinotopy import segment_retinotopy as seg
     #### Get neural responses
@@ -591,7 +600,9 @@ def get_source_data(experiment, traceid='traces001', equalize_now=False,zscore_n
     # Get data set metainfo and cells
     sdata = get_aggregate_info(traceid=traceid, fov_type=fov_type, state=state)
     edata = sdata[sdata['experiment']==experiment].copy()
-    rois = seg.get_cells_by_area(edata)
+
+    rois, missing_seg = seg.get_cells_by_area(edata, return_missing=True)
+
     cells = get_active_cells_in_current_datasets(rois, MEANS, verbose=False)
 
     if (visual_area is not None) or (datakey is not None):
@@ -603,7 +614,10 @@ def get_source_data(experiment, traceid='traces001', equalize_now=False,zscore_n
         
         return meta, cells, meandfs
 
-    return edata, cells, MEANS
+    if return_missing:
+        return edata, cells, MEANS, missing_seg
+    else:
+        return edata, cells, MEANS
 
 def zscore_data(MEANS):
     for k, v in MEANS.items():
@@ -780,7 +794,7 @@ def get_rfdata(cells, rfdf, verbose=False, visual_area=None, datakey=None, avera
         if len(assigned_with_rfs) > 0:
             # Update RF dataframe
             if average_repeats:
-                curr_rfdf = rfdf[(rfdf['datakey']==datakey) & (rfdf['cell'].isin(assigned_with_rfs))]
+                curr_rfdf = rfdf[(rfdf['datakey']==datakey) & (rfdf['cell'].isin(assigned_with_rfs))].copy()
                 # Means by cell id (some dsets have rf-5 and rf10 measurements, average these)
                 meanrf = curr_rfdf.groupby(['cell']).mean().reset_index()
                 mean_thetas = curr_rfdf.groupby(['cell'])['theta'].apply(spstats.circmean, low=0, high=2*np.pi).values
@@ -1476,6 +1490,9 @@ def annotate_stats_areas(statresults, ax, lw=1, color='k',
             y1 = y_loc+(ci*offset)
             y2 = y1
             ax.plot([x1,x1, x2, x2], [y1, y2, y2, y1], linewidth=lw, color=color)
+            ctrx = x1 + (x2-x1)/2.
+            star_str = '**' if cpair[2]<0.01 else '*'
+            ax.text(ctrx, y1+(offset/4.), star_str)
 
     return ax
 
@@ -1863,6 +1880,9 @@ def aggregate_and_save(experiment, traceid='traces001',
     redo_stats: for each loaded FOV, re-calculate stats 
     redo_fov: create new neuraldf (otherwise just loads existing)
     '''
+    if experiment=='gratings':
+        always_exclude.append('20190517_JC083')
+
     #### Load mean trial info for responsive cells
     data_dir = os.path.join(aggregate_dir, 'data-stats')
     sdata = get_aggregate_info(traceid=traceid)
@@ -1886,6 +1906,8 @@ def aggregate_and_save(experiment, traceid='traces001',
             datakey = '%s_%s_fov%i' % (session, animalid, fovnum)
             if '%s_%s' % (session, animalid) in always_exclude:
                 continue 
+            else:
+                print(datakey)
             mean_responses = get_neuraldf(animalid, session, fovnum, experiment, 
                                 traceid=traceid, 
                                 response_type=response_type, epoch=epoch,
@@ -2011,7 +2033,7 @@ def main(options):
                                        responsive_test=responsive_test, 
                                        n_stds=n_stds,
                                        responsive_thr=responsive_thr, 
-                                       create_new=create_new,
+                                       create_new=any([create_new, redo_stats, redo_fov]),
                                        n_processes=n_processes,
                                        redo_stats=redo_stats, redo_fov=redo_fov)
    
@@ -2023,6 +2045,7 @@ def main(options):
             fovnum = int(fov)
         else:
             fovnum = int(fov.split('_')[0][3:]) 
+        assert animalid is not None, "NO animalid specified, aborting"
 
         neuraldf = get_neuraldf(animalid, session, fovnum, experiment, traceid=traceid, 
                                        response_type=response_type, epoch=epoch,
