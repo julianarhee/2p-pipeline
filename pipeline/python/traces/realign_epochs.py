@@ -83,6 +83,9 @@ def extract_options(options):
     parser.add_option('--masks', action='store_true', dest='do_masks', default=False,
                       help='set flag to remake neuropil masks')
 
+    parser.add_option('--apply-only', action='store_true', dest='apply_masks_only', default=False, 
+                      help="set flag to just APPLY soma and NP masks")
+
 
     (options, args) = parser.parse_args(options)
 
@@ -168,11 +171,13 @@ def main(options):
     gap_niterations = int(opts.gap_niterations)
     np_correction_factor = float(opts.np_correction_factor)
     plot_masks = opts.plot_masks
+    apply_masks_only = opts.apply_masks_only
  
     if do_masks:
         print("0. PRE-step: Remaking masks")
         mk.make_masks(animalid, session, fov, traceid=traceid, np_niterations=np_niterations, gap_niterations=gap_niterations,
-                np_correction_factor=np_correction_factor, rootdir=rootdir, plot_masks=plot_masks)
+                np_correction_factor=np_correction_factor, rootdir=rootdir, plot_masks=plot_masks, 
+                apply_masks_only=apply_masks_only)
         print("done!")
 
 

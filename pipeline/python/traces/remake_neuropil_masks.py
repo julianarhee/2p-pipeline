@@ -125,13 +125,20 @@ def remake_neuropil_annulus(maskdict_path, np_niterations=24, gap_niterations=4,
     return maskdict_path
 
 
-def create_masks_for_all_runs(animalid, session, fov, traceid='traces001', np_niterations=24, gap_niterations=4, rootdir='/n/coxfs01/2p-data', plot_masks=True):
+def create_masks_for_all_runs(animalid, session, fov, experiment=None, traceid='traces001', 
+                            np_niterations=24, gap_niterations=4, rootdir='/n/coxfs01/2p-data', plot_masks=True):
 
     print("Creating masks for all runs.")
     # Get runs to extract
     session_dir = os.path.join(rootdir, animalid, session)
-    all_rundirs = [r for r in sorted(glob.glob(os.path.join(session_dir, fov, '*_run*')), key=natural_keys)\
+    if experiment is not None:
+        all_rundirs = [r for r in sorted(glob.glob(os.path.join(session_dir, fov, '%s_run*' % experiment)), key=natural_keys)\
                    if 'retino' not in r and 'compare' not in r] 
+
+
+    else:
+        all_rundirs = [r for r in sorted(glob.glob(os.path.join(session_dir, fov, '*_run*')), key=natural_keys)\
+                       if 'retino' not in r and 'compare' not in r] 
 
     #run_dir = all_rundirs[0]
     for ri, run_dir in enumerate(all_rundirs): 
@@ -141,7 +148,7 @@ def create_masks_for_all_runs(animalid, session, fov, traceid='traces001', np_ni
 
         #filetraces_dir = apply_masks_for_run(run_dir, maskdict_path, traceid=traceid, np_correction_factor=np_correction_factor)
         except Exception as e:
-            print("***ERROR creaitng masks: %s" % run_dir)
+            print("***ERROR creating masks: %s" % run_dir)
             continue
 
         print("... finished %i of %i" % (int(ri+1), len(all_rundirs)))
@@ -151,27 +158,36 @@ def create_masks_for_all_runs(animalid, session, fov, traceid='traces001', np_ni
     return 
 
 
-def apply_masks_for_all_runs(animalid, session, fov, traceid='traces001', np_correction_factor=0.7, rootdir='/n/coxfs01/2p-data'):
+def apply_masks_for_all_runs(animalid, session, fov, experiment=None, 
+                            traceid='traces001', np_correction_factor=0.7, rootdir='/n/coxfs01/2p-data'):
 
     print("Applying masks to tifs for all runs.")
     # Get runs to extract
     session_dir = os.path.join(rootdir, animalid, session)
-    all_rundirs = [r for r in sorted(glob.glob(os.path.join(session_dir, fov, '*_run*')), key=natural_keys)\
+    if experiment is not None:
+        all_rundirs =  [r for r in sorted(glob.glob(os.path.join(session_dir, fov, '%s_run*' % experiment)), key=natural_keys)\
+                   if 'retino' not in r and 'compare' not in r] 
+    else:
+        all_rundirs = [r for r in sorted(glob.glob(os.path.join(session_dir, fov, '*_run*')), key=natural_keys)\
                    if 'retino' not in r and 'compare' not in r] 
 
     for ri, run_dir in enumerate(all_rundirs): 
-        # Get trace extraction info
-        if 'retino' in run_dir:
-            TID = gtraces.load_AID(run_dir, traceid)
-        else:
-            TID = gtraces.load_TID(run_dir, traceid, auto=True)
-        
-        # Set mask path
-        maskdict_path = os.path.join(TID['DST'], 'MASKS.hdf5')
-        filetraces_dir = os.path.join(TID['DST'], 'files')
+        try:
+            # Get trace extraction info
+            if 'retino' in run_dir:
+                TID = gtraces.load_AID(run_dir, traceid)
+            else:
+                TID = gtraces.load_TID(run_dir, traceid, auto=True)
+            
+            # Set mask path
+            maskdict_path = os.path.join(TID['DST'], 'MASKS.hdf5')
+            filetraces_dir = os.path.join(TID['DST'], 'files')
 
-        filetraces_dir = apply_masks_for_run(filetraces_dir, maskdict_path, np_correction_factor=np_correction_factor, rootdir=rootdir)
-
+            filetraces_dir = apply_masks_for_run(filetraces_dir, maskdict_path, np_correction_factor=np_correction_factor, rootdir=rootdir)
+        except Exception as e:
+            print("***ERROR creaitng masks: %s" % run_dir)
+            continue
+ 
         print("... finished %i of %i" % (int(ri+1), len(all_rundirs)))
 
     print("~~~~~~~~~~~~~~ FINISHED APPLYING MASKS ~~~~~~~~~~~~~~~.")
@@ -235,7 +251,7 @@ def extract_options(options):
     # Set specific session/run for current animal:
     parser.add_option('-A', '--fov', action='store', dest='fov', default='FOV1_zoom2p0x', 
                       help="fov name (default: FOV1_zoom2p0x)")
-    parser.add_option('-E', '--experiment', action='store', dest='experiment', default='', 
+    parser.add_option('-E', '--experiment', action='store', dest='experiment', default=None, 
                       help="experiment name (e.g,. gratings, rfs, rfs10, or blobs)") #: FOV1_zoom2p0x)")
     
     parser.add_option('-t', '--traceid', action='store', dest='traceid', default='traces001', 
@@ -257,6 +273,9 @@ def extract_options(options):
 
     parser.add_option('--plot', action='store_true', dest='plot_masks', default=False, 
                       help="set flat to plot soma and NP masks")
+    parser.add_option('--apply-only', action='store_true', dest='apply_masks_only', default=False, 
+                      help="set flag to just APPLY soma and NP masks")
+
 
 #    parser.add_option('-r', '--rows', action='store', dest='rows',
 #                          default=None, help='Transform to plot along ROWS (only relevant if >2 trans_types)')
@@ -276,17 +295,20 @@ def extract_options(options):
     return options
 
 
-def make_masks(animalid, session, fov, traceid='traces001', np_niterations=24, gap_niterations=4,
-                np_correction_factor=0.7, rootdir='/n/coxfs01/2p-data', plot_masks=True):
+def make_masks(animalid, session, fov, experiment=None, traceid='traces001', np_niterations=24, gap_niterations=4,
+                np_correction_factor=0.7, rootdir='/n/coxfs01/2p-data', plot_masks=True, apply_masks_only=False):
 
-    print("1. Creating neuropil masks")
-    create_masks_for_all_runs(animalid, session, fov, traceid=traceid, 
-                           np_niterations=np_niterations, gap_niterations=gap_niterations, 
-                            rootdir=rootdir, plot_masks=plot_masks)
-    print("---- completed NP mask extraction ----")
+    if not apply_masks_only:
+        print("1. Creating neuropil masks")
+        create_masks_for_all_runs(animalid, session, fov, experiment=experiment, traceid=traceid, 
+                               np_niterations=np_niterations, gap_niterations=gap_niterations, 
+                                rootdir=rootdir, plot_masks=plot_masks)
+        print("---- completed NP mask extraction ----")
+    else:
+        print("---- skipping NP mask extraction ----")
 
     print("2. Applying neuropil masks")
-    filetraces_dir = apply_masks_for_all_runs(animalid, session, fov, traceid=traceid, 
+    filetraces_dir = apply_masks_for_all_runs(animalid, session, fov, traceid=traceid, experiment=experiment, 
                             rootdir=rootdir, np_correction_factor=np_correction_factor)
     print("---- applied NP masks to tifs ----")
 
@@ -330,9 +352,13 @@ def main(options):
     np_correction_factor = float(opts.np_correction_factor)
     plot_masks = opts.plot_masks
     rootdir = opts.rootdir
+    apply_masks_only = opts.apply_masks_only
+    experiment=opts.experiment
 
-    make_masks(animalid, session, fov, traceid=traceid, np_niterations=np_niterations, gap_niterations=gap_niterations,
-                np_correction_factor=np_correction_factor, rootdir=rootdir, plot_masks=plot_masks)
+    make_masks(animalid, session, fov, experiment=experiment, traceid=traceid, 
+                    np_niterations=np_niterations, gap_niterations=gap_niterations,
+                np_correction_factor=np_correction_factor, rootdir=rootdir, plot_masks=plot_masks,
+                apply_masks_only=apply_masks_only)
     print("done!")
 
 if __name__ == '__main__':
