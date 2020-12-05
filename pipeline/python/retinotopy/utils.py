@@ -120,6 +120,80 @@ def absolute_maps_from_conds(magratio, phase, trials_by_cond, mag_thr=0.01,
 # -----------------------------------------------------------------------------
 # Data processing funcs 
 # -----------------------------------------------------------------------------
+def load_fft_results(animalid, session, fov, retinorun='retino_run1', 
+                    traceid='traces001', rootdir='/n/coxfs01/2p-data', create_new=False):
+    
+    run_dir = os.path.join(rootdir, animalid, session, fov, retinorun)
+    RETID = load_retinoanalysis(run_dir, traceid)
+    analysis_dir = RETID['DST']
+    retinoid = RETID['analysis_id']
+    #print("Loaded: %s, %s (%s))" % (retinorun, retinoid, run_dir))
+    
+    fft_dpath=os.path.join(analysis_dir, 'fft_results.pkl')
+    if create_new is False:
+        try:
+            with open(fft_dpath, 'rb') as f:
+                fft_results = pkl.load(f)
+        except Exception as e:
+            create_new=True
+            
+    if create_new:
+        
+        # Load MW info and SI info
+        mwinfo = load_mw(run_dir)
+        scaninfo = get_protocol_info(animalid, session, fov, run=retinorun) # load_si(run_dir)
+        tiff_paths = tiff_fpaths = sorted(glob.glob(os.path.join(RETID['SRC'], '*.tif')), key=natural_keys)
+        print("Found %i tifs" % len(tiff_paths))
+        
+        # Some preprocessing params
+        temporal_ds = float(RETID['PARAMS']['average_frames'])
+        print("Temporal ds: %.2f" % (temporal_ds))
+
+        #### Load raw and process traces -- returns average trace for condition
+        # retino_dpath = os.path.join(analysis_dir, 'traces', 'extracted_traces.h5')
+        np_traces = load_traces(animalid, session, fov, run=retinorun,
+                                          analysisid=retinoid, trace_type='neuropil')
+        soma_traces = load_traces(animalid, session, fov, run=retinorun,
+                                          analysisid=retinoid, trace_type='raw')
+
+        # Do fft
+        n_frames = scaninfo['stimulus']['n_frames']
+        frame_rate = scaninfo['stimulus']['frame_rate']
+        stim_freq_idx = scaninfo['stimulus']['stim_freq_idx']
+
+        #### label frequency bins
+        freqs = np.fft.fftfreq(n_frames, float(1./frame_rate))
+        sorted_freq_idxs = np.argsort(freqs)
+
+        fft_soma = dict((cond, do_fft_analysis(tdf, sorted_freq_idxs, stim_freq_idx)) \
+                        for cond, tdf in soma_traces.items())
+        fft_np = dict((cond, do_fft_analysis(tdf, sorted_freq_idxs, stim_freq_idx)) \
+                      for cond, tdf in np_traces.items())
+
+        fft_results = {'fft_soma': fft_soma, 'fft_neuropil': fft_np, 
+                       'scaninfo': scaninfo, 'RETID': RETID}
+
+        #### Save output
+        with open(fft_dpath, 'wb') as f:
+            pkl.dump(fft_results, f, protocol=pkl.HIGHEST_PROTOCOL)
+            
+    return fft_results
+
+
+def extract_from_fft_results(fft_soma):
+    '''
+    Return magratios_soma, phases_soma
+    '''
+    # Create dataframe of magratios -- each column is a condition
+    magratios_soma = pd.DataFrame(dict((cond, k[0]) for cond, k in fft_soma.items()))
+    phases_soma = pd.DataFrame(dict((cond, k[1]) for cond, k in fft_soma.items()))
+    return magratios_soma, phases_soma
+
+def load_mw(run_dir):
+    print("... loading paradigm info")
+    paradigm_fpath = glob.glob(os.path.join(run_dir, 'paradigm', 'files', 'parsed_trials*.json'))[0]
+    with open(paradigm_fpath, 'r') as r: mwinfo = json.load(r)
+    return mwinfo
 
 # preprocessing ---------------
 def load_traces(animalid, session, fov, run='retino_run1', analysisid='analysis002',
