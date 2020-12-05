@@ -120,11 +120,60 @@ def absolute_maps_from_conds(magratio, phase, trials_by_cond, mag_thr=0.01,
 # -----------------------------------------------------------------------------
 # Data processing funcs 
 # -----------------------------------------------------------------------------
+def get_responsive_cells(animalid, session, fov, traceid='traces001', retinorun=None, 
+                         pass_criterion='max', mag_thr=0.01, create_new=False, 
+                        rootdir='/n/coxfs01/2p-data'):
+    '''
+    Get list of cells that are responsive to retino moving bar stimulus.
+    pass_criterion: 
+        'max': include cells that pass at least 1 condition (mag_thr), otherwise, mean must pass.
+        'mean': include cells if mean of conds pass mag_thr 
+        'all': include cells only if ALL conds pass mag_thr
+    '''
+    if retinorun is None:
+        retinoruns = [os.path.split(r)[-1] for r in \
+                      glob.glob(os.path.join(rootdir, animalid, session, fov, 'retino*'))]
+    else:
+        retinoruns = [retinorun]
+        
+    responsive_cells=[]
+    for retinorun in retinoruns:
+        fft_results = load_fft_results(animalid, session, fov, retinorun=retinorun, 
+                        traceid=traceid, rootdir=rootdir, create_new=create_new)
+
+        if fft_results is None:
+            continue
+
+        # Create dataframe of magratios -- each column is a condition
+        magratios_soma, phases_soma = extract_from_fft_results(fft_results['fft_soma'])
+        #magratios_np, phases_np = extract_from_fft_results(fft_results['fft_neuropil'])
+
+        nrois_total = magratios_soma.shape[0]
+        if pass_criterion=='all':
+            pass_cells = magratios_soma[magratios_soma>=mag_thr].dropna().index.tolist()
+        else:
+            if pass_criterion=='mean':
+                cell_metrics = pd.DataFrame(magratios_soma.mean(axis=1), columns=['magratio'])
+            else:
+                cell_metrics = pd.DataFrame(magratios_soma.max(axis=1), columns=['magratio'])
+            pass_cells = cell_metrics[cell_metrics['magratio']>=mag_thr].index.tolist()
+    
+        responsive_cells.extend(pass_cells)
+
+    return list(set(responsive_cells)), nrois_total
+
+
 def load_fft_results(animalid, session, fov, retinorun='retino_run1', 
                     traceid='traces001', rootdir='/n/coxfs01/2p-data', create_new=False):
     
     run_dir = os.path.join(rootdir, animalid, session, fov, retinorun)
-    RETID = load_retinoanalysis(run_dir, traceid)
+    try:
+        RETID = load_retinoanalysis(run_dir, traceid)
+        assert RETID is not None
+    except Exception as e:
+        print("NO retino for traceid %s\n(check dir: %s)" % (traceid, run_dir))
+        return None
+
     analysis_dir = RETID['DST']
     retinoid = RETID['analysis_id']
     #print("Loaded: %s, %s (%s))" % (retinorun, retinoid, run_dir))
@@ -476,24 +525,29 @@ def load_retinoanalysis(run_dir, traceid, verbose=False):
     run = os.path.split(run_dir)[-1]
     trace_dir = os.path.join(run_dir, 'retino_analysis')
     tracedict_path = os.path.join(trace_dir, 'analysisids_%s.json' % run)
-    with open(tracedict_path, 'r') as f:
-        tracedict = json.load(f)
+    try:
+        with open(tracedict_path, 'r') as f:
+            tracedict = json.load(f)
 
-    if 'traces' in traceid:
-        fovdir = os.path.split(run_dir)[0]
-        tmp_tdictpath = glob.glob(os.path.join(fovdir, '*run*', 'traces', 'traceids*.json'))[0]
-        with open(tmp_tdictpath, 'r') as f:
-            tmptids = json.load(f)
-        roi_id = tmptids[traceid]['PARAMS']['roi_id']
-        analysis_id = [t for t, v in tracedict.items() if v['PARAMS']['roi_type']=='manual2D_circle' and v['PARAMS']['roi_id'] == roi_id][0]
+        if 'traces' in traceid:
+            fovdir = os.path.split(run_dir)[0]
+            tmp_tdictpath = glob.glob(os.path.join(fovdir, '*run*', 'traces', 'traceids*.json'))[0]
+            with open(tmp_tdictpath, 'r') as f:
+                tmptids = json.load(f)
+            roi_id = tmptids[traceid]['PARAMS']['roi_id']
+            analysis_id = [t for t, v in tracedict.items() if v['PARAMS']['roi_type']=='manual2D_circle' and v['PARAMS']['roi_id'] == roi_id][0]
+            if verbose:
+                print("Corresponding ANALYSIS ID (for %s with %s) is: %s" % (traceid, roi_id, analysis_id))
+        else:
+            analysis_id = traceid 
+        TID = tracedict[analysis_id]
         if verbose:
-            print("Corresponding ANALYSIS ID (for %s with %s) is: %s" % (traceid, roi_id, analysis_id))
+            pp.pprint(TID)
+    except Exception as e:
+        print("No data: %s" % tracedict_path)
+        return None
 
-    else:
-        analysis_id = traceid 
-    TID = tracedict[analysis_id]
-    if verbose:
-        pp.pprint(TID)
+
     return TID
 
 def load_soma_and_np_masks(RETID):

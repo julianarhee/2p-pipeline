@@ -477,6 +477,54 @@ def get_retino_metadata(experiment='retino', animalids=None,
     return meta_list
 
 
+def aggregate_responsive_retino(assigned_rois, traceid='traes001', mag_thr=0.01, 
+                                pass_criterion='max', verbose=False, create_new=False,
+                                dst_dir='/n/coxfs01/julianarhee/aggregate-visual-areas/data-stats'):
+
+    from pipeline.python.retinotopy import utils as ret_utils
+    
+    aggr_fpath = os.path.join(dst_dir, 'aggr_retino_magratio_%s-thr-%.2f.pkl' % (pass_criterion, mag_thr))
+
+    if not create_new:
+        try:
+            with open(aggr_fpath, 'rb') as f:
+                retino_cells = pkl.load(f)
+
+        except Exception as e:
+            print("---> Error loading aggr retino cells. Re-running.")
+            create_new=True
+
+    if create_new:
+        tmp_=[]
+        for (visual_area, datakey), g in assigned_rois.groupby(['visual_area', 'datakey']):
+
+            # Load retino fft results
+            session, animalid, fovn = datakey.split('_')
+            fov = 'FOV%i_zoom2p0x' % int(fovn[3:])
+
+            responsive_cells, _ = ret_utils.get_responsive_cells(animalid, session, fov, traceid=traceid, retinorun=None, 
+                                     pass_criterion=pass_criterion, mag_thr=mag_thr, create_new=False)
+
+            keep_cells = np.intersect1d(g['cell'].values, responsive_cells)
+            nrois_t = len(g['cell'].unique())
+
+            rois_ = g[g['cell'].isin(keep_cells)]
+            tmp_.append(rois_)
+            if verbose:
+                print("[%s,%s] %i of %i cells repsonsive" % (visual_area, datakey, len(keep_cells), nrois_t))
+
+        retino_cells = pd.concat(tmp_, axis=0).reset_index(drop=True)
+        
+        # Save
+        with open(aggr_fpath, 'wb') as f:
+            pkl.dump(retino_cells, f, protocol=pkl.HIGHEST_PROTOCOL)
+        print("---> Saved: %s" % aggr_fpath)
+ 
+    return retino_cells
+
+
+
+
 # Overlaps, cell assignments, etc.
 def get_neuraldf_for_cells_in_area(cells, MEANS, datakey=None, visual_area=None):
     '''
@@ -1403,6 +1451,7 @@ def annotateBars(row, ax, fontsize=12, fmt='%.2f', fontcolor='k', xytext=(0, 10)
                     rotation=0, xytext=xytext, #(0, 10),
              textcoords='offset points')
         
+    return None
 
 def plot_mannwhitney(mdf, metric='I_rs', multi_comp_test='holm', 
                         ax=None, y_loc=None, offset=0.1):
@@ -1765,8 +1814,9 @@ def get_aggregate_info(traceid='traces001', fov_type='zoom2p0x', state='awake', 
 
         with open(sdata_fpath, 'wb') as f:
             pkl.dump(sdata, f, protocol=pkl.HIGHEST_PROTOCOL)
-            
-    sdata['datakey'] = ['%s_%s_fov%i' % (session, animalid, fovnum) 
+    
+    if 'datakey' not in sdata.columns:        
+        sdata['datakey'] = ['%s_%s_fov%i' % (session, animalid, fovnum) 
                               for session, animalid, fovnum in zip(sdata['session'].values, 
                                                                    sdata['animalid'].values,
                                                                    sdata['fovnum'].values)]

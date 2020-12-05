@@ -297,7 +297,9 @@ def load_roi_assignments(animalid, session, fov, retinorun='retino_run1',
    
     return roi_assignments #, roi_masks_labeled
 
-def get_cells_by_area(sdata, excluded_datasets=[], return_missing=False, verbose=False):
+def get_cells_by_area(sdata, excluded_datasets=[], return_missing=False, verbose=False,
+                    rootdir='/n/coxfs01/2p-data'):
+
     excluded_datasets = ['20190602_JC080_fov1', '20190605_JC090_fov1',
                          '20191003_JC111_fov1', '20191104_JC117_fov1', 
                          '20191108_JC113_fov1', '20191004_JC110_fov3',
@@ -307,17 +309,25 @@ def get_cells_by_area(sdata, excluded_datasets=[], return_missing=False, verbose
     for (animalid, session, fov, datakey), g in sdata.groupby(['animalid', 'session', 'fov', 'datakey']):
         if datakey in excluded_datasets:
             continue
-        try:
-            roi_assignments = load_roi_assignments(animalid, session, fov)
-        except AssertionError:
-            missing_segmentation.append(g['datakey'].values[0])
-            continue
+        retinoruns = [os.path.split(r)[-1] for r in glob.glob(os.path.join(rootdir, animalid, session, fov, 'retino*'))]
+        roi_assignments=dict()
+        for retinorun in retinoruns:
+            try:
+                rois_ = load_roi_assignments(animalid, session, fov, retinorun=retinorun)
+                for varea, rlist in rois_.items():
+                    if varea not in roi_assignments.keys():
+                        roi_assignments[varea] = []
+                    roi_assignments[varea].extend(rlist)
+            except Exception as e:
+                print("... skipping %s (%s)" % (datakey, retinorun))
+                missing_segmentation.append((datakey, retinorun))
+                continue
  
         for varea, rlist in roi_assignments.items():
             if putils.isnumber(varea):
                 continue
              
-            tmpd = pd.DataFrame({'cell': rlist})
+            tmpd = pd.DataFrame({'cell': list(set(rlist))})
             metainfo = {'visual_area': varea, 'animalid': animalid, 'session': session,
                         'fov': fov, 'fovnum': g['fovnum'].values[0], 'datakey': g['datakey'].values[0]}
             tmpd = putils.add_meta_to_df(tmpd, metainfo)
