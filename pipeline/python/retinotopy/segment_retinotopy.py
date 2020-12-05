@@ -297,7 +297,7 @@ def load_roi_assignments(animalid, session, fov, retinorun='retino_run1',
    
     return roi_assignments #, roi_masks_labeled
 
-def get_cells_by_area(sdata, excluded_datasets=[], return_missing=False):
+def get_cells_by_area(sdata, excluded_datasets=[], return_missing=False, verbose=False):
     excluded_datasets = ['20190602_JC080_fov1', '20190605_JC090_fov1',
                          '20191003_JC111_fov1', '20191104_JC117_fov1', 
                          '20191108_JC113_fov1', '20191004_JC110_fov3',
@@ -325,10 +325,13 @@ def get_cells_by_area(sdata, excluded_datasets=[], return_missing=False):
 
     cells = pd.concat(d_, axis=0).reset_index(drop=True)
     
-    #print("Missing %i datasets for segmentation:" % len(missing_segmentation))
-    print("Segmentation, missing:")
-    for r in missing_segmentation:
-        print(r)
+    #print("Missing %i datasets for segmentation:" % len(missing_segmentation)) 
+    if verbose: 
+        print("Segmentation, missing:")
+        for r in missing_segmentation:
+            print(r)
+    else:
+        print("Segmentation: missing %i dsets" % len(missing_segmentation))
     if return_missing:
         return cells, missing_segmentation
     else:
