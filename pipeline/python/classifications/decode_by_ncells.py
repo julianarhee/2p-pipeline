@@ -630,8 +630,16 @@ def extract_options(options):
                       help="name of traces ID [default: traces001]")
     parser.add_option('-d', '--response-type', action='store', dest='response_type', 
                         default='dff', help="response type [default: dff]")
-       
+
+
+      
     # data filtering 
+    choices_e = ('stimulus', 'firsthalf', 'plushalf', 'baseline')
+    default_e = 'stimulus'
+    parser.add_option('--epoch', action='store', dest='trial_epoch', 
+            default=default_e, type='choice', choices=choices_e,
+            help="Trial epoch for input data, choices: %s. (default: %s" % (choices_e, default_e))
+
     choices_c = ('all', 'roc', 'nstds', None, 'None')
     default_c = 'nstds'
     parser.add_option('-R', '--responsive_test', action='store', dest='responsive_test', 
@@ -640,7 +648,7 @@ def extract_options(options):
     parser.add_option('-r', '--responsive-thr', action='store', dest='responsive_thr', 
                         default=10, help="response type [default: 10, nstds]")
  
-    # plotting
+    # classifier
     parser.add_option('-a', action='store', dest='class_a', 
             default=0, help="m0 (default: 0 morph)")
     parser.add_option('-b', action='store', dest='class_b', 
@@ -657,8 +665,6 @@ def extract_options(options):
     parser.add_option('--new', action='store_true', dest='create_new', 
             default=False, help="re-do decode")
 
-    parser.add_option('--cv', action='store_true', dest='do_cv', 
-            default=False, help="tune for C")
     parser.add_option('-C','--cvalue', action='store', dest='C_value', 
             default=1.0, help="tune for C (default: 1)")
 
@@ -700,8 +706,8 @@ def main(options):
     responsive_test = opts.responsive_test #'nstds' # 'nstds' #'ROC' #None
     if responsive_test=='None':
         responsive_test=None
-    #responsive_thr = float(opts.responsive_thr) if responsive_test is not None else 0.05 #10
-    responsive_thr = float(5) if responsive_test is not None else 0.05 #10
+    responsive_thr = float(opts.responsive_thr) if responsive_test is not None else 0.05 #10
+    #responsive_thr = float(5) if responsive_test is not None else 0.05 #10
 
     # Classifier info ---------------------------------
     experiment = opts.experiment #'blobs'
@@ -715,12 +721,9 @@ def main(options):
     # CV ----------------------------------------------
     test_split=0.2
     cv_nfolds=5
-    C_value=opts.C_value
-    do_cv = opts.do_cv
-    C_value = opts.C_value
  
+    C_value = None if opts.C_value in ['None', None] else float(opts.C_value)
     do_cv = C_value in ['None', None]
-    C_value = None if do_cv else float(opts.C_value)
     print("Do CV -%s- (C=%s)" % (str(do_cv), str(C_value)))
 
     # Dataset filtering --------------------------------
@@ -740,7 +743,7 @@ def main(options):
     match_str = 'matchdistns_' if match_distns else ''
     print("INFO: %s|overlap=%s|match-distns? %s" % (analysis_type, overlap_str, str(match_distns)))
 
-    trial_epoch = 'plushalf' # 'stimulus'
+    trial_epoch = opts.trial_epoch #'plushalf' # 'stimulus'
 
     # Pupil -------------------------------------------
     pupil_feature='pupil_fraction'

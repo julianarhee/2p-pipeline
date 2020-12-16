@@ -33,6 +33,9 @@ parser.add_argument('-v', '--area', dest='visual_area', action='store', default=
 parser.add_argument('-k', '--datakeys', nargs='*', dest='included_datakeys', action='append', help='Use like: -k DKEY DKEY DKEY')
 parser.add_argument('--match', dest='match_distns', action='store_true', default=False, help='Set if match distns (only if --analysis=by_ncells)')
 
+parser.add_argument('--epoch', dest='trial_epoch', action='store', default='stimulus', help='Trial epoch for data input (options: stimulus, firsthalf, plushalf, baseline. default=stimulus')
+
+
 
 args = parser.parse_args()
 
@@ -64,6 +67,9 @@ def load_metadata(experiment, responsive_test='nstds', responsive_thr=10.,
     return sdata_exp
 
 
+# -----------------------------------------------------------------
+# ARGS
+# -----------------------------------------------------------------
 ROOTDIR = '/n/coxfs01/2p-data'
 EXPERIMENT = args.experiment_type
 email = args.email
@@ -77,6 +83,7 @@ analysis_type = args.analysis_type
 c_value = None if args.c_value in ['None', None] else float(args.c_value)
 match_distns = args.match_distns
 
+trial_epoch = args.trial_epoch
 
 # Create a (hopefully) unique prefix for the names of all jobs in this 
 # particular run of the pipeline. This makes sure that runs can be
@@ -85,9 +92,9 @@ piper = uuid.uuid4()
 piper = str(piper)[0:4]
 match_str = 'matchdistns_' if match_distns else ''
 if overlap_thr is None:
-    logdir = 'LOG__%s%s_%s_%s_no-rfs' % (match_str, analysis_type, str(visual_area), EXPERIMENT) 
+    logdir = 'LOG__%s%s_%s_%s__%s_no-rfs' % (match_str, analysis_type, str(visual_area), EXPERIMENT, trial_epoch) 
 else:
-    logdir = 'LOG__%s%s_%s_%s_overlap-%i' % (match_str, analysis_type, str(visual_area), EXPERIMENT, int(overlap_thr*10)) 
+    logdir = 'LOG__%s%s_%s_%s__%s_overlap-%i' % (match_str, analysis_type, str(visual_area), EXPERIMENT,  trial_epoch, int(overlap_thr*10)) 
 if not os.path.exists(logdir):
     os.mkdir(logdir)
 
@@ -147,22 +154,22 @@ if analysis_type=='by_ncells':
                 -o '{LOGDIR}/{PROCID}.{ANALYSIS}.{MTAG}.out' \
                 -e '{LOGDIR}/{PROCID}.{ANALYSIS}.{MTAG}.err' \
     /n/coxfs01/2p-pipeline/repos/2p-pipeline/pipeline/python/slurm/decode_by_ncells_match.sbatch \
-        {EXP} {TRACEID} {RTEST} {OVERLAP} {ANALYSIS} {CVAL} {VAREA} {NCELLS} {DKEY}".format(
+        {EXP} {TRACEID} {RTEST} {OVERLAP} {ANALYSIS} {CVAL} {VAREA} {NCELLS} {DKEY} {EPOCH}".format(
                     PROCID=piper, MTAG=mtag, LOGDIR=logdir,
                     EXP=EXPERIMENT, TRACEID=traceid, ANALYSIS=analysis_type,
                     RTEST=responsive_test, OVERLAP=overlap_thr, 
-                    CVAL=c_value, VAREA=visual_area, NCELLS=ncells, DKEY=datakey) 
+                    CVAL=c_value, VAREA=visual_area, NCELLS=ncells, DKEY=datakey, EPOCH=trial_epoch) 
  
             else:
                 cmd = "sbatch --job-name={PROCID}.{ANALYSIS}.{MTAG} \
                 -o '{LOGDIR}/{PROCID}.{ANALYSIS}.{MTAG}.out' \
                 -e '{LOGDIR}/{PROCID}.{ANALYSIS}.{MTAG}.err' \
         /n/coxfs01/2p-pipeline/repos/2p-pipeline/pipeline/python/slurm/decode_by_ncells.sbatch \
-        {EXP} {TRACEID} {RTEST} {OVERLAP} {ANALYSIS} {CVAL} {VAREA} {NCELLS} {DKEY}".format(
+        {EXP} {TRACEID} {RTEST} {OVERLAP} {ANALYSIS} {CVAL} {VAREA} {NCELLS} {DKEY} {EPOCH}".format(
                     PROCID=piper, MTAG=mtag, LOGDIR=logdir,
                     EXP=EXPERIMENT, TRACEID=traceid, ANALYSIS=analysis_type,
                     RTEST=responsive_test, OVERLAP=overlap_thr, 
-                    CVAL=c_value, VAREA=visual_area, NCELLS=ncells, DKEY=datakey) 
+                    CVAL=c_value, VAREA=visual_area, NCELLS=ncells, DKEY=datakey, EPOCH=trial_epoch) 
                 #
             status, joboutput = commands.getstatusoutput(cmd)
             jobnum = joboutput.split(' ')[-1]
