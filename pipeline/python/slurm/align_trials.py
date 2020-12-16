@@ -60,10 +60,6 @@ run_all = args.run_all
 
 do_masks = args.do_masks
 
-animalids = args.animalids
-if animalids is not None:
-    animalids=animalids[0]
-
 # Create a (hopefully) unique prefix for the names of all jobs in this 
 # particular run of the pipeline. This makes sure that runs can be
 # identified unambiguously
@@ -72,6 +68,10 @@ piper = str(piper)[0:8]
 logdir='LOG__align_%s_%s' % (EXP, visual_area)
 if not os.path.exists(logdir):
     os.mkdir(logdir)
+
+animalids = args.animalids
+if animalids is not None:
+    animalids=animalids[0]
 
 old_logs = glob.glob(os.path.join(logdir, '*.err'))
 old_logs.extend(glob.glob(os.path.join(logdir, '*.out')))
