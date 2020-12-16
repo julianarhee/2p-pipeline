@@ -120,6 +120,45 @@ def absolute_maps_from_conds(magratio, phase, trials_by_cond, mag_thr=0.01,
 # -----------------------------------------------------------------------------
 # Data processing funcs 
 # -----------------------------------------------------------------------------
+def get_average_mag_across_pixels(animalid, session, fov, rootdir='/n/coxfs01/2p-data'):
+    magratios=[]
+    retinoruns = [os.path.split(r)[-1] for r \
+                  in glob.glob(os.path.join(rootdir, animalid, session, fov, 'retino_run*'))]
+    
+    for retinorun in retinoruns:
+        retinoid, RETID = load_retino_analysis_info(animalid, session, fov, retinorun, use_pixels=True)
+        magratio, phase, trials_by_cond = fft_results_by_trial(RETID)
+        mean_mag = magratio.mean(axis=0).mean()
+
+        magratios.append((retinorun, mean_mag))
+
+    return magratios
+
+def select_strongest_retinorun(projection_df):
+    d_=[]
+    #m_=[]
+    for (varea, dkey), g in projection_df.groupby(['visual_area', 'datakey']):
+        if len(g['retinorun'].unique())>1:
+            session, animalid, fovn = dkey.split('_')
+            fov = 'FOV%i_zoom2p0x' % int(fovn[3:])
+            magratios = get_average_mag_across_pixels(animalid, session, fov)
+    #         means0 = pd.DataFrame({'retinorun': [m[0] for m in magratios],
+    #                                'magratio': [m[1] for m in magratios]})
+    #         means2 = g.groupby(['retinorun']).mean().reset_index()[['retinorun', 'R2']]
+    #         means = means0.merge(means2)
+    #         means = putils.add_meta_to_df(means, {'visual_area': visual_area,'datakey': datakey})
+    #         m_.append(means)
+            if magratios[0][1] > magratios[1][1]:
+                d_.append(g[g['retinorun']==magratios[0][0]])
+            else:
+                d_.append(g[g['retinorun']==magratios[1][0]])
+        else:
+            d_.append(g)
+    df = pd.concat(d_, axis=0).reset_index(drop=True)
+    
+    return df
+
+
 def get_responsive_cells(animalid, session, fov, traceid='traces001', retinorun=None, 
                          pass_criterion='max', mag_thr=0.01, create_new=False, 
                         rootdir='/n/coxfs01/2p-data'):
@@ -137,6 +176,7 @@ def get_responsive_cells(animalid, session, fov, traceid='traces001', retinorun=
         retinoruns = [retinorun]
         
     responsive_cells=[]
+    nrois_total=None
     for retinorun in retinoruns:
         fft_results = load_fft_results(animalid, session, fov, retinorun=retinorun, 
                         traceid=traceid, rootdir=rootdir, create_new=create_new)
@@ -754,8 +794,8 @@ def trials_to_dataframes(processed_fpaths, conditions_fpath):
                 print("No analysis found for file: %s" % tifnum)
                 excluded_tifs.append(tifnum)
         trials_by_cond[cond] = [t for t in tif_list if t not in excluded_tifs]
-    print("Trials by cond:")
-    print(trials_by_cond) 
+    #print("Trials by cond:")
+    #print(trials_by_cond) 
     trial_list = [int(t) for t in conds.keys() if int(t) not in excluded_tifs]
     #print("Trials:", trial_list)
 
@@ -782,7 +822,7 @@ def load_retino_analysis_info(animalid, session, fov, run, retinoid=None, use_pi
     
     run_dir = glob.glob(os.path.join(rootdir, animalid, session, '%s*' % fov, run))[0]
     fov = os.path.split(os.path.split(run_dir)[0])[-1]
-    print("FOV: %s, run: %s" % (fov, run))
+    #print("FOV: %s, run: %s" % (fov, run))
     retinoids_fpath = glob.glob(os.path.join(run_dir, 'retino_analysis', 'analysisids_*.json'))[0]
     with open(retinoids_fpath, 'r') as f:
         rids = json.load(f)
@@ -792,7 +832,7 @@ def load_retino_analysis_info(animalid, session, fov, run, retinoid=None, use_pi
         roi_analyses = [r for r, rinfo in rids.items() if rinfo['PARAMS']['roi_type'] != 'pixels']
     if retinoid not in roi_analyses:
         retinoid = sorted(roi_analyses, key=natural_keys)[-1] # use most recent roi analysis
-        print("Fixed retino id to most recent: %s" % retinoid)
+        #print("Fixed retino id to most recent: %s" % retinoid)
         
     return retinoid, rids[retinoid]
 

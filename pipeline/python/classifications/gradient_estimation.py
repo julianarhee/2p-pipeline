@@ -1369,6 +1369,24 @@ def pixel_gradients(animalid, session, fov, retinorun='retino_run1',
 
 
 
+# ====================================================================
+# Data loading
+# ====================================================================
+def projection_results_fpaths(animalid, session, fov, retinorun='retino_run1', results_type='projections',
+                           rootdir='/n/coxfs01/2p-data'):
+    
+    '''
+    results_type: can be projections, gradients, etc.
+    '''
+    fpaths = [f for f in glob.glob(os.path.join(rootdir, animalid, session, fov, retinorun,
+                                'retino_analysis', 'retino_structure', '%s_*.pkl' % results_type)) \
+              if '_pixels_thr' not in f]
+    
+    return fpaths
+
+
+
+
 def extract_options(options):
     
     parser = optparse.OptionParser()
@@ -1420,7 +1438,7 @@ def extract_options(options):
             default=10.0, help="Desired radius for dilation (default: 10.0 um)")
     parser.add_option('-M', '--model', action='store', dest='regr_model', 
             default='ridge', help="Desired radius for dilation (default: ridge)")
-    parser.add_option('--pixels', action='store', dest='use_pixels', 
+    parser.add_option('--pixels', action='store_true', dest='use_pixels', 
             default=False, help="Use pixel maps to calculate gradients (Note: make sure mag_thr is set properly)")
     parser.add_option('--full-fov', action='store_true', dest='full_fov', 
             default=False, help="set flag to use whole fov, rather than segmented")
@@ -1660,7 +1678,13 @@ def gradient_within_visual_area(opts): #options):
     if not os.path.exists(curr_dst_dir):
         os.makedirs(curr_dst_dir)
         print("Saving output to:\n %s" % curr_dst_dir)
-    
+
+    # REMOVE old   
+    for f in os.listdir(curr_dst_dir):
+        try:
+            os.remove(os.path.join(curr_dst_dir, f))
+        except OSError:
+            continue 
     data_id = '_'.join([animalid, session, fov, retinorun])
 
 
@@ -1685,6 +1709,7 @@ def gradient_within_visual_area(opts): #options):
     
     ## Get inputmaps
     if 'morphological_kernels' not in seg_params.keys():
+        print("RERUNNING SEGMENTATION")
         pixel_size = putils.get_pixel_size()
         target_sigm_um = round(np.ceil(seg_params['smooth_fwhm'] * np.mean(pixel_size)))
         use_phase_smooth = seg_params['smooth_type']=='phasenan'

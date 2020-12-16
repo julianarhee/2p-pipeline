@@ -299,9 +299,13 @@ def load_roi_assignments(animalid, session, fov, retinorun='retino_run1',
 
 def get_cells_by_area(sdata, excluded_datasets=[], return_missing=False, verbose=False,
                     rootdir='/n/coxfs01/2p-data'):
+    '''
+    Use retionrun to ID area boundaries. If more than 1 retino, combine.
+    '''
 
     excluded_datasets = ['20190602_JC080_fov1', '20190605_JC090_fov1',
-                         '20191003_JC111_fov1', '20191104_JC117_fov1', 
+                         '20191003_JC111_fov1', 
+                         '20191104_JC117_fov1', '20191104_JC117_fov2', '20191105_JC117_fov1',
                          '20191108_JC113_fov1', '20191004_JC110_fov3',
                          '20191008_JC091_fov'] 
     missing_segmentation=[]
@@ -319,7 +323,8 @@ def get_cells_by_area(sdata, excluded_datasets=[], return_missing=False, verbose
                         roi_assignments[varea] = []
                     roi_assignments[varea].extend(rlist)
             except Exception as e:
-                print("... skipping %s (%s)" % (datakey, retinorun))
+                if verbose:
+                    print("... skipping %s (%s)" % (datakey, retinorun))
                 missing_segmentation.append((datakey, retinorun))
                 continue
  
