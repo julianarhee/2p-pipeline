@@ -1345,7 +1345,7 @@ class Experiment(object):
                                 responsive_thr=0.05, n_stds=2.5, 
                                 create_new=False, n_processes=1):
         print("... (%s|%s) getting responsive cells (test: %s, thr: %.2f')" % (self.animalid, self.session, responsive_test, responsive_thr))
-        assert ('blobs' in self.name) or ('gratings' in self.name and int(self.session) >= 20190511), "Incorrect call for event data analysis (expecting gratings or blobs)."
+        assert ('blobs' in self.name) or ('gratings' in self.name and ((int(self.session) >= 20190511) or (int(self.session)<=20190405))), "Incorrect call for event data analysis (expecting gratings or blobs)."
         try:
             roi_list, nrois_total = get_responsive_cells(self.animalid, 
                                             self.session, 
