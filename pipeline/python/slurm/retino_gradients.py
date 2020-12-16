@@ -16,9 +16,9 @@ parser = argparse.ArgumentParser(
 parser.add_argument('-A', '--fov', dest='fov_type', action='store', default='zoom2p0x', help='FOV type (e.g., zoom2p0x)')
 parser.add_argument('-E', '--exp', dest='experiment_type', action='store', default='retino', help='Experiment type (e.g., rfs')
 parser.add_argument('-e', '--email', dest='email', action='store', default='rhee@g.harvard.edu', help='Email to send log files')
-parser.add_argument('-t', '--traceid', dest='traceid', action='store', default=None, help='Traceid to use as reference for selecting retino analysis')
+parser.add_argument('-t', '--traceid', dest='traceid', action='store', default='traces001', help='Traceid to use as reference for selecting retino analysis')
 
-parser.add_argument('-p', '--pass-crit', dest='pass_criterion', action='store', default='npmean', help='Criterion to use for selecting ROIs for gradient calculation (default: npmean, use only if -E retino. Choices: all, either, any, npmean, pixels)')
+parser.add_argument('-p', '--pass-crit', dest='pass_criterion', action='store', default='pixels', help='Criterion to use for selecting ROIs for gradient calculation (default: npmean, use only if -E retino. Choices: all, either, any, npmean, pixels)')
 
 parser.add_argument('-V', '--area', dest='visual_area', action='store', default=None, help='Set to run analysis on 1 visual area only')
 
@@ -53,7 +53,7 @@ visual_area = args.visual_area
 piper = uuid.uuid4()
 piper = str(piper)[0:4]
 
-logdir = 'LOG__%s' % EXP
+logdir = 'LOG__%s_%s' % (EXP, visual_area)
 if not os.path.exists(logdir):
     os.mkdir(logdir)
 
