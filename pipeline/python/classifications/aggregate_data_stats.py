@@ -322,11 +322,28 @@ def get_gratings_datasets(filter_by='first', excluded_sessions=[], as_dict=True)
     
     return included_sessions
 
+def get_rf_datasets(filter_by='max_responsive', as_dict=True, excluded_sessions=[]): 
+    from pipeline.python.retinotopy import segment_retinotopy as seg
 
-def get_rf_datasets(filter_by='drop_repeats', excluded_sessions=[], as_dict=True, return_excluded=False):
+    if filter_by in ['max_responsive', 'most_cells']: 
+        sdata = get_aggregate_info(traceid=traceid, fov_type=fov_type, state=state)
+        rf_dsets = sdata[(sdata['experiment'].isin(['rfs', 'rfs10'])) & ~(sdata['datakey'].isin(excluded_sessions))]
+        assigned_cells = seg.get_cells_by_area(rf_dsets)
+        rf_dsets_max = get_dsets_with_max_rfs(rf_dsets, assigned_cells)
+        
+        if as_dict:
+            rf_dict = dict((v, g['datakey'].unique()) for v, g in rf_dsets_max.groupby(['visual_area']))
+            return rf_dict
+        else:
+            return rf_dsets_max['datakey'].unique()
+    else:
+        rf_dsets = get_rf_datasets_drop(filter_by=filter_by, excluded_sessions=excluded_sessions, as_dict=as_dict)
+        return rf_dsets
+
+
+def get_rf_datasets_drop(filter_by='drop_repeats', excluded_sessions=[], as_dict=True, return_excluded=False):
     #TODO:  fix this to return INCLUDED dsets -- this is for RFs
-    '''From classifications/retino_structure.py -- 
-    
+    '''From classifications/retino_structure.py --  
     '''
     
     ddict = all_datasets_by_area()
@@ -372,7 +389,6 @@ def get_rf_datasets(filter_by='drop_repeats', excluded_sessions=[], as_dict=True
     for excl in also_exclude:
         excluded_sessions.extend(excl)
     excluded_sessions = list(set(excluded_sessions))
-
 
     print("[filter_by=%s] Excluding %i total repeats" % (str(filter_by), len(excluded_sessions)))
 
@@ -523,6 +539,84 @@ def aggregate_responsive_retino(assigned_rois, traceid='traes001', mag_thr=0.01,
     return retino_cells
 
 
+#
+def get_responsive_all_experiments(sdata, response_type='dff', traceid='traces001', 
+                                  responsive_test='nstds', responsive_thr=10.0, 
+                                  trial_epoch='stimulus', verbose=False, visual_areas=None,
+                                  retino_mag_thr=0.01, retino_pass_criterion='max', return_missing=True):
+    '''
+    For all segmented visual areass and cells, return the ones that are "responsive" for each experiment type.
+    '''
+    from pipeline.python.retinotopy import segment_retinotopy as seg
+    c_=[]
+    missing_seg=[]
+    for experiment in ['gratings', 'blobs', 'rfs', 'retino']:
+        if experiment == 'rfs':
+            edata = sdata[sdata['experiment'].isin(['rfs', 'rfs10'])]
+            # rfdf = aggr.load_rfdf_and_pos(edata, response_type=response_type, 
+            #                               rf_filter_by=None, reliable_only=True)
+            assigned_rois, missing_ = seg.get_cells_by_area(edata, return_missing=True)
+            tmpcells = get_dsets_with_max_rfs(edata, assigned_rois)
+        elif experiment=='retino':
+            edata = sdata[sdata['experiment'].isin(['retino'])]
+            assigned_rois, missing_ = seg.get_cells_by_area(edata, return_missing=True)
+            tmpcells = aggregate_responsive_retino(assigned_rois, traceid=traceid,
+                                                   mag_thr=retino_mag_thr, 
+                                                   pass_criterion=retino_pass_criterion, verbose=verbose,
+                                                    create_new=False)
+        else:
+            exp_meta, tmpcells, EXP, missing_ = get_source_data(experiment, 
+                                                response_type=response_type,
+                                                responsive_test=responsive_test, 
+                                                responsive_thr=responsive_thr, 
+                                                trial_epoch=trial_epoch,
+                                                return_missing=True)
+
+        if visual_areas is None:
+            visual_areas = tmpcells['visual_area'].unique()
+
+        cells_ = tmpcells[tmpcells['visual_area'].isin(visual_areas)]
+        #cells.groupby(['visual_area']).count()
+        cells_['experiment'] = experiment
+        print(cells_.shape)
+        c_.append(cells_)
+        missing_seg.extend(missing_)
+
+    aggr_cells = pd.concat(c_, axis=0).reset_index(drop=True)
+
+    missing_seg = list(set(missing_seg))
+    assert len([k for k in aggr_cells['datakey'].unique() if k in missing_seg])==0, \
+    "There are included dsets w/ missing seg. Fix this."
+    
+    if return_missing:
+        return aggr_cells, missing_seg
+    else:
+        return aggr_cels
+
+def get_ncells_by_experiment(aggr_cells, total_nrois, experiment=None):
+    
+    if experiment is None:
+        # Get all cells
+        visual_cells = aggr_cells[['visual_area', 'datakey', 'cell']].drop_duplicates()
+    else:
+        if isinstance(experiment, str):
+            curr_cells = aggr_cells[aggr_cells['experiment']==experiment].copy()
+        else:
+            curr_cells = aggr_cells[aggr_cells['experiment'].isin(experiment)].copy()
+        visual_cells = curr_cells[['visual_area', 'datakey', 'cell']].drop_duplicates()
+    # get counts
+    total_visual = visual_cells.groupby(['visual_area', 'datakey']).count().reset_index()\
+                    .rename(columns={'cell': 'visual'})
+    counts = total_visual.merge(total_nrois)
+    counts['fraction'] = counts['visual']/counts['total']
+    
+    #total_visual.groupby(['visual_area']).sum()
+    return counts
+
+
+# --------------------------------------------------------------------------
+# Data shaping/formating
+# --------------------------------------------------------------------------
 
 
 # Overlaps, cell assignments, etc.
@@ -633,10 +727,12 @@ def get_source_data(experiment, traceid='traces001', equalize_now=False,zscore_n
     '''
     from pipeline.python.retinotopy import segment_retinotopy as seg
     #### Get neural responses
+ 
     MEANS = load_aggregate_data(experiment, 
                 responsive_test=responsive_test, responsive_thr=responsive_thr, 
                 response_type=response_type, epoch=trial_epoch, use_all=use_all)
 
+    
     if equalize_now:
         # Get equal counts
         print("---equalizing now---")
@@ -1541,7 +1637,7 @@ def annotate_stats_areas(statresults, ax, lw=1, color='k',
             ax.plot([x1,x1, x2, x2], [y1, y2, y2, y1], linewidth=lw, color=color)
             ctrx = x1 + (x2-x1)/2.
             star_str = '**' if cpair[2]<0.01 else '*'
-            ax.text(ctrx, y1+(offset/4.), star_str)
+            ax.text(ctrx, y1+(offset/8.), star_str)
 
     return ax
 
@@ -1555,10 +1651,15 @@ def get_counts_for_legend(df, area_colors=None, markersize=10, marker='_', lw=1,
 
     dkey_name = 'retinokey' if 'datakey' not in df.columns else 'datakey'
 
+    if 'animalid' not in df.columns:
+        df['animalid'] = [s.split('_')[1] for s in df[dkey_name]]
+        df['session'] = [s.split('_')[0] for s in df[dkey_name]]
+
     # Get counts
-    if 'cell' in df.columns:
-        counts = df.groupby(['visual_area', 'animalid', dkey_name])['cell'].count().reset_index()
-        counts.rename(columns={'cell': 'n_cells'}, inplace=True)
+    if 'cell' in df.columns or 'roi' in df.columns:
+        roistr = 'cell' if 'cell' in df.columns else 'roi'
+        counts = df.groupby(['visual_area', 'animalid', dkey_name])[roistr].count().reset_index()
+        counts.rename(columns={roistr: 'n_cells'}, inplace=True)
     else:
         counts = df.groupby(['visual_area', 'animalid', dkey_name]).count().reset_index()
 
@@ -1572,7 +1673,7 @@ def get_counts_for_legend(df, area_colors=None, markersize=10, marker='_', lw=1,
             n_rats.update({v: 0})
         if v not in n_fovs.keys():
             n_fovs.update({v: 0})
-    if 'cell' in df.columns.tolist():
+    if 'n_cells' in counts.columns:
         n_cells = dict((v, g['n_cells'].sum()) \
                         for v, g in counts.groupby(['visual_area']))
         legend_elements = [Line2D([0], [0], marker=marker, markersize=markersize, \
@@ -1794,10 +1895,10 @@ def traces_to_trials(traces, labels, epoch='stimulus', metric='mean', n_on=None)
 
 
 def get_aggregate_info(traceid='traces001', fov_type='zoom2p0x', state='awake', create_new=False,
-                       visual_areas=['V1', 'Lm', 'Li'],
-                         aggregate_dir='/n/coxfs01/julianarhee/aggregate-visual-areas',
-                         rootdir='/n/coxfs01/2p-data'):
-                       
+                    visual_areas=['V1', 'Lm', 'Li'],
+                    aggregate_dir='/n/coxfs01/julianarhee/aggregate-visual-areas',
+                    rootdir='/n/coxfs01/2p-data', exclude=[]):
+                      
     from pipeline.python.classifications import get_dataset_stats as gd
 
     sdata_fpath = os.path.join(aggregate_dir, 'dataset_info.pkl')
@@ -1821,6 +1922,7 @@ def get_aggregate_info(traceid='traces001', fov_type='zoom2p0x', state='awake', 
                                                                    sdata['animalid'].values,
                                                                    sdata['fovnum'].values)]
 
+    sdata = sdata[~sdata['datakey'].isin(exclude)]
     return sdata
 
 def get_aggregate_data_filepath(experiment, traceid='traces001', response_type='dff', 
@@ -1989,7 +2091,15 @@ def extract_options(options):
     # PATH opts:
     parser.add_option('-D', '--root', action='store', dest='rootdir', default='/n/coxfs01/2p-data', 
                       help='root project dir containing all animalids [default: /n/coxfs01/2pdata]')
-   
+    parser.add_option('-G', '--aggr', action='store', dest='aggregate_dir', default='/n/coxfs01/julianarhee/aggregate-visual-areas', 
+                      help='aggregate analysis dir [default: aggregate-visual-areas]')
+    parser.add_option('--zoom', action='store', dest='fov_type', default='zoom2p0x', 
+                      help="fov type (zoom2p0x)") 
+    parser.add_option('--state', action='store', dest='state', default='awake', 
+                      help="animal state (awake)") 
+
+
+  
     # Set specific session/run for current animal:
     parser.add_option('-E', '--experiment', action='store', dest='experiment', default='', 
                       help="experiment name (e.g,. gratings, rfs, rfs10, or blobs)") 
@@ -2033,14 +2143,14 @@ def extract_options(options):
                       default=False,
                       help="Flag to recalculate neuraldf from traces")
 
-    parser.add_option('-i', '--animalid', action='store', dest='animalid', default='IDD',
+    parser.add_option('-i', '--animalid', action='store', dest='animalid', default=None,
                       help="animalid (e.g., JC110)")
-    parser.add_option('-S', '--session', action='store', dest='session', default='YYYYMMDD',
+    parser.add_option('-S', '--session', action='store', dest='session', default=None,
                       help="session (format: YYYYMMDD)")
-    parser.add_option('-A', '--fovnum', action='store', dest='fovnum', default=1,
-                      help="fovnum (default: 1)")
+    parser.add_option('-A', '--fovnum', action='store', dest='fovnum', default=None,
+                      help="fovnum (default: all fovs)")
 
-    parser.add_option('--aggr',  action='store_true', dest='aggregate', default=False,
+    parser.add_option('--all',  action='store_true', dest='aggregate', default=False,
                       help="Set flag to cycle thru ALL dsets")
 
 
@@ -2076,6 +2186,9 @@ def main(options):
     redo_fov = opts.redo_fov
 
     run_aggregate = opts.aggregate
+    aggregate_dir = opts.aggregate_dir
+    fov_type=opts.fov_type
+    state=opts.state
 
     if run_aggregate: 
         data_outfile = aggregate_and_save(experiment, traceid=traceid, 
@@ -2091,21 +2204,48 @@ def main(options):
         animalid = opts.animalid
         session = opts.session
         fov = opts.fovnum
-        if isnumber(fov):
-            fovnum = int(fov)
-        else:
-            fovnum = int(fov.split('_')[0][3:]) 
+        if fov is not None:
+            fovnum = int(fov) if isnumber(fov) else int(fov.split('_')[0][3:]) 
+
         assert animalid is not None, "NO animalid specified, aborting"
 
-        neuraldf = get_neuraldf(animalid, session, fovnum, experiment, traceid=traceid, 
-                                       response_type=response_type, epoch=epoch,
-                                       responsive_test=responsive_test, 
-                                       n_stds=n_stds,
-                                       responsive_thr=responsive_thr, 
-                                       create_new=redo_fov,
-                                       n_processes=n_processes,
-                                       redo_stats=redo_stats)
+        if session is None or fov is None:
+            sdata = get_aggregate_info(traceid=traceid, fov_type=fov_type, state=state,
+                             aggregate_dir=aggregate_dir)
+            #dsets = sdata[(sdata['animalid']==animalid) & (sdata['experiment']==experiment)].copy()
+            if session is not None:
+                dsets = sdata[(sdata['animalid']==animalid) & (sdata['experiment']==experiment) 
+                            & (sdata['session']==session)].copy()
+            else:
+                dsets = sdata[(sdata['animalid']==animalid) & (sdata['experiment']==experiment)].copy()
  
+            for (animalid, session, fovnum, datakey), g in dsets.groupby(['animalid', 'session', 'fovnum', 'datakey']):
+                print("------------------------------------------------------------")
+                print("getting stats: %s" % datakey)
+                print("------------------------------------------------------------")
+                try:
+                    neuraldf = get_neuraldf(animalid, session, fovnum, experiment, traceid=traceid, 
+                                               response_type=response_type, epoch=epoch,
+                                               responsive_test=responsive_test, 
+                                               n_stds=n_stds,
+                                               responsive_thr=responsive_thr, 
+                                               create_new=redo_fov,
+                                               n_processes=n_processes,
+                                               redo_stats=redo_stats)
+                except Exception as e:
+                    print("Error getting data: %s. Skipping." % datakey)
+                    continue
+        else:
+            neuraldf = get_neuraldf(animalid, session, fovnum, experiment, traceid=traceid, 
+                                               response_type=response_type, epoch=epoch,
+                                               responsive_test=responsive_test, 
+                                               n_stds=n_stds,
+                                               responsive_thr=responsive_thr, 
+                                               create_new=redo_fov,
+                                               n_processes=n_processes,
+                                                redo_stats=redo_stats)
+                
+         
     print("saved data.")
    
 
