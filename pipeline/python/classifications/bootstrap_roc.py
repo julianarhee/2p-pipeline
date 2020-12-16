@@ -231,39 +231,12 @@ def plot_roc_bootstrap_results(roc_results):
 def do_roc_bootstrap_mp(gdf, dst_dir='/tmp', n_iters=1000, n_processes=1, plot_rois=False,
                         data_identifier='DATAID'):
     
-    # Create output dirs:
-    #traces_basedir = exp.source.split('/data_arrays/')[0]
-    #output_dir = os.path.join(traces_basedir, 'summary_stats')
-    
-    #roc_dir = os.path.join(output_dir, 'ROC')
-    #if not os.path.exists(roc_dir):
-    #    os.makedirs(roc_dir)
-
     # create output dir for roi figures:
     roi_figdir = os.path.join(dst_dir, 'rois')
     if not os.path.exists(roi_figdir):
         os.makedirs(roi_figdir)
-        
-#    pval_dict = {}
-#    for roi in range(len(gdf.groups)):
-#    
-#        roi_df = gdf.get_group(roi)
-#
-#        roc_results = calculate_roc_bootstrap(roi_df, n_iters=n_iters)
-#        # PLOT:
-#        if plot_rois:
-#            
-#            fig = plot_roc_bootstrap_results(roi, roc_results)
-#            fig.suptitle('cell %i' % (int(roi+1)))
-#            label_figure(fig, data_identifier)
-#            pl.savefig(os.path.join(roi_figdir, 'roi%05d.png' % (int(roi+1))))
-#            pl.close()
-#        pval_dict.update({roi: {'max_auc': np.max(roc_results['auc']),
-#                                'pval': roc_results['pval']}})
-        
-
-    def worker(roi_list, gdf, n_iters, plot_rois, roi_figdir, out_q):
-        
+               
+    def worker(roi_list, gdf, n_iters, plot_rois, roi_figdir, out_q): 
         curr_results = {}
         for roi in roi_list:
             roi_df = gdf.get_group(roi)
@@ -277,10 +250,8 @@ def do_roc_bootstrap_mp(gdf, dst_dir='/tmp', n_iters=1000, n_processes=1, plot_r
                 pl.close()
             curr_results[roi] = {'max_auc': np.max(roc_results['auc']),
                                 'pval': roc_results['pval']}
-            print(roi, roi_df.shape)
-               
-        out_q.put(curr_results)
-        
+            print(roi, roi_df.shape) 
+        out_q.put(curr_results) 
         
     # Each process gets "chunksize' filenames and a queue to put his out-dict into:
     roi_list = gdf.groups.keys()
@@ -294,6 +265,7 @@ def do_roc_bootstrap_mp(gdf, dst_dir='/tmp', n_iters=1000, n_processes=1, plot_r
         procs.append(p)
         p.start()
 
+    #try:
     # Collect all results into single results dict. We should know how many dicts to expect:
     results = {}
     for i in range(n_processes):
@@ -303,26 +275,21 @@ def do_roc_bootstrap_mp(gdf, dst_dir='/tmp', n_iters=1000, n_processes=1, plot_r
     for p in procs:
         print "Finished:", p
         p.join()
-        
+
+#    except KeyboardInterupt:
+#        print("Keybaord Int")
+#        for p in procs:
+#            p.terminate()
+#            p.join() 
+#
+#    finally:
+#        print "Quitting normally"
+#        for p in procs:
+#            pool.close()
+#            pool.join()
+#         
     return results, dst_dir
-        
 
-def main(options):
-
-    opts = extract_options(options)
-    n_iters = int(opts.n_iterations)
-    n_processes = int(opts.n_processes)
-    plot_rois = opts.plot_rois
-    create_new = opts.create_new
-    try:
-        bootstrap_roc_func(opts.animalid, opts.session, opts.fov, opts.traceid, opts.experiment, 
-                            trace_type=opts.trace_type, create_new=create_new,
-                            rootdir=opts.rootdir, n_processes=n_processes, 
-                            plot_rois=plot_rois, n_iters=n_iters)
-    except Exception as e:
-        print(e)
-    print("******DONE BOOTSTRAP ROC ANALYSIS.")
- 
 
 def bootstrap_roc_func(animalid, session, fov, traceid, experiment, trace_type='corrected', rootdir='/n/coxfs01/2p-data',
                         n_processes=1, plot_rois=True, n_iters=1000, create_new=False):
@@ -398,8 +365,28 @@ def bootstrap_roc_func(animalid, session, fov, traceid, experiment, trace_type='
     
     print("-- %i out if %i cells are responsive." % (len(thr_rois), len(results.keys())))
     
-    
+    return None
+ 
     #return results
+
+       
+
+def main(options):
+
+    opts = extract_options(options)
+    n_iters = int(opts.n_iterations)
+    n_processes = int(opts.n_processes)
+    plot_rois = opts.plot_rois
+    create_new = opts.create_new
+    try:
+        bootstrap_roc_func(opts.animalid, opts.session, opts.fov, opts.traceid, opts.experiment, 
+                            trace_type=opts.trace_type, create_new=create_new,
+                            rootdir=opts.rootdir, n_processes=n_processes, 
+                            plot_rois=plot_rois, n_iters=n_iters)
+    except Exception as e:
+        print(e)
+    print("******DONE BOOTSTRAP ROC ANALYSIS.")
+ 
 
 
 def extract_options(options):
