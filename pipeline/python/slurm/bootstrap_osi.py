@@ -25,6 +25,7 @@ parser.add_argument('-R', '--resp-test', dest='responsive_test', action='store',
 
 parser.add_argument('-v', '--area', dest='visual_area', action='store', default=None, help='Visual area to process (default, all)')
 parser.add_argument('-k', '--datakeys', nargs='*', dest='included_datakeys', action='append', help='Use like: -k DKEY DKEY DKEY')
+parser.add_argument('-i', '--animalids', nargs='*', dest='animalids', action='append', help='Use like: -k DKEY DKEY DKEY')
 
 
 args = parser.parse_args()
@@ -111,7 +112,10 @@ def load_metadata(experiment, responsive_test='nstds', responsive_thr=10.,
 # -----------------------------------------------------------------
 jobids=[]
 dsets = load_metadata(experiment, visual_area=visual_area)
+
 included_datakeys = args.included_datakeys
+animalids = args.animalids
+
 if included_datakeys is not None:
     included_datakeys=included_datakeys[0]
     print("dkeys:", included_datakeys)
@@ -119,6 +123,13 @@ if included_datakeys is not None:
     if len(included_datakeys) > 0:
         print(included_datakeys)
         dsets = dsets[dsets['datakey'].isin(included_datakeys)]
+
+elif animalids is not None:
+    animalids=animalids[0]
+    if len(animalids) > 0:
+        print("animalids:", animalids)
+        dsets = dsets[dsets['animalid'].isin(animalids)]
+
 if len(dsets)==0:
     fatal("no fovs found.")
 info("found %i [%s] datasets to process." % (len(dsets), experiment))

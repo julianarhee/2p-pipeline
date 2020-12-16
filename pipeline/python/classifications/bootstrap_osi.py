@@ -108,7 +108,7 @@ def get_gratings_run(animalid, session, fov, traceid='traces001', rootdir='/n/co
     
     fovdir = os.path.join(rootdir, animalid, session, fov) 
     found_dirs = glob.glob(os.path.join(fovdir, 'combined_gratings*', 'traces', '%s*' % traceid, 'data_arrays', 'np_subtracted.npz'))
-    if int(session) < 20190511:
+    if 20190405 < int(session) < 20190511:
         return None
     
     try:
