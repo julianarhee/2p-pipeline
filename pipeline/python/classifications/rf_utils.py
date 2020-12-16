@@ -1205,3 +1205,87 @@ def draw_rf_on_screen(rdf, hue_param='aniso_index', shape_str='ellipse', ax=None
     cbar.ax.set_xticklabels([xlabel_min, xlabel_max])  # horizontal colorbar
 
     return ax
+
+
+
+# ===================================================
+
+def get_scatter_df(rfdf, projdf, screen=None, min_ncells=5, verbose=False):
+    not_enough_cells_fit = []
+    bad_fits = []
+    d_list = []
+    for (visual_area, datakey, rfname), rfs_ in rfdf.groupby(['visual_area','datakey', 'experiment']): #['V1', 'Lm', 'Li']:
+        if verbose:
+            print("[%s] %s (%s)" % (visual_area, datakey, rfname))
+
+        if rfs_.shape[0] < min_ncells:
+            print("--- too few cells (min%i), %s" % (min_ncells, datakey))
+            not_enough_cells_fit.append(datakey)
+            continue
+        if datakey not in projdf['datakey'].unique():
+            print("--- bad gradient, %s" % datakey)
+            continue
+
+        # Get retino gradient
+        ret_ = projdf[(projdf['visual_area']==visual_area) & (projdf['datakey']==datakey)].copy()
+
+        for cond, ret_cond in ret_.groupby(['cond']):
+            xname = 'ml' if cond=='az' else 'ap'
+            yname = 'x0' if cond=='az' else 'y0'
+            max_degrees = screen['azimuth_deg']*2. if cond=='az' else screen['altitude_deg']*2.
+            max_fovdist = 1177*2. if cond=='ap' else 972.*2.
+
+            # Get RF fit info
+            proj_locs = np.array(rfs_['%s_proj' % xname].values)
+            rf_locs = np.array(rfs_[yname].values)
+            rf_cell_ids = rfs_['cell'].values
+
+            # Get dist to line:
+            slope = float(ret_cond['coefficient'])
+            intercept = float(ret_cond['intercept'])
+            r2 = float(ret_cond['R2'])
+            predicted_rf_locs = slope*proj_locs + intercept
+
+            # Calculate DEG and DIST scattered
+            deg_sc = abs(rf_locs - predicted_rf_locs).astype(float)
+            deg_ixs = [i for i, v in enumerate(deg_sc) if v < max_degrees] # filter out illegal vals
+            dist_sc = abs(proj_locs - (rf_locs - intercept)/slope).astype(float)
+            dist_ixs = [i for i, v in enumerate(dist_sc) if v < max_fovdist] # filter out illegal vals
+            keep_ixs = np.intersect1d(deg_ixs, dist_ixs)
+            n_pts = len(keep_ixs)
+            if (n_pts)==0:
+                bad_fits.append((datakey, cond))
+                continue
+            if verbose:
+                print("... (%s) deg: %i of %i in bounds" % (cond, len(deg_ixs), len(deg_sc)))
+                print("... (%s) dist: %i of %i in bounds" % (cond, len(dist_ixs), len(dist_sc)))
+            assert len(rf_cell_ids)==len(deg_sc)
+
+            if any(np.isnan(dist_sc)):
+                print(visual_area, datakey, r2)
+            if any(np.isnan(deg_sc)):
+                print(visual_area, datakey, r2)
+            tmpd=pd.DataFrame({'cell': rf_cell_ids[keep_ixs],
+                               'deg_scatter': deg_sc[keep_ixs],
+                               'dist_scatter': dist_sc[keep_ixs],
+                               'measured_rf': rf_locs[keep_ixs],
+                               'predicted_rf': predicted_rf_locs[keep_ixs],
+                               'measured_loc': proj_locs[keep_ixs],
+                               'predicted_loc': (rf_locs[keep_ixs] - intercept)/slope,
+                               'retino_R2': [r2 for _ in np.arange(0, n_pts)],
+                               'axis': [cond for _ in np.arange(0, n_pts)],
+                               'visual_area': [visual_area for _ in np.arange(0, n_pts)],
+                               'datakey': [datakey for _ in np.arange(0, n_pts)],
+                               'rfname': [rfname for _ in np.arange(0, n_pts)]
+                         })
+
+            d_ = pd.merge(tmpd, rfs_[rfs_['cell'].isin(rf_cell_ids[keep_ixs])].reset_index(drop=True))
+            d_list.append(d_)
+    scatdf = pd.concat(d_list, axis=0)
+    
+    print("Not enough cells passed (min=%i cells):" % min_ncells, not_enough_cells_fit)
+    print("Bad fits for predicted pos/rf:", bad_fits)
+
+    return scatdf
+
+
