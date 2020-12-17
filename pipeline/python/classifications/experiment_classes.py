@@ -1452,7 +1452,8 @@ class Gratings(Experiment):
                    responsive_thr=10, n_stds=2.5,
                    n_bootstrap_iters=1000, n_resamples=20, n_intervals_interp=3, 
                    min_cfgs_above=2, nframes_post=0, 
-                   rootdir='/n/coxfs01/2p-data', create_new=False, n_processes=1, make_plots=False):
+                   rootdir='/n/coxfs01/2p-data', create_new=False, n_processes=1, make_plots=False,
+                   verbose=False):
         '''
         This method is effecively the same as osi.get_tuning(), but without 
         having to do redundant data loading.
@@ -1473,7 +1474,7 @@ class Gratings(Experiment):
             bootresults, fitparams = osi.load_tuning_results(self.animalid, self.session, self.fov,
                                                                 self.name, traceid=self.traceid, 
                                                                 fit_desc=fit_desc,
-                                                                rootdir=rootdir)
+                                                                rootdir=rootdir, verbose=verbose)
             do_fits = bootresults is None
         else:
             do_fits=True
