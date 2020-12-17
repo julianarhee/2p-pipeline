@@ -2065,7 +2065,7 @@ def aggregate_and_save(experiment, traceid='traces001',
                                 response_type=response_type, epoch=epoch,
                                 responsive_test=responsive_test, 
                                 responsive_thr=responsive_thr, n_stds=n_stds,
-                                create_new=redo_fov, redo_stats=redo_stats)          
+                                create_new=redo_fov, redo_stats=any([redo_fov, redo_stats]))          
             if mean_responses is None:
                 print("NO stats, rerun: %s" % datakey)
                 no_stats.append(datakey)
