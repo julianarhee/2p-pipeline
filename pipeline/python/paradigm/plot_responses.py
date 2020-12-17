@@ -183,8 +183,8 @@ def plot_psth_grid(meandfs, plot_params, trace_type='trace_type', palette='color
         p.fig.set_figheight(3)
         p.fig.set_figwidth(10)
     else:
-        p.fig.set_figheight(8)
-        p.fig.set_figwidth(15)
+        p.fig.set_figheight(12)
+        p.fig.set_figwidth(18)
 
 
     if plot_params['hue'] is None:
@@ -339,7 +339,7 @@ def make_clean_psths(options):
     stim_on = labels_c['stim_on_frame'].unique()[0]
     nframes_on = labels_c['nframes_on'].unique()[0]
     mean_tsecs = labels_c.groupby(['trial'])['tsec'].apply(np.array).mean(axis=0)
-    print(xdata_c.head())
+    #print(xdata_c.head())
 
     #%% Set what gets plotted where and houes
     # Get varying transforms:
