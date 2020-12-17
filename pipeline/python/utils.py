@@ -24,6 +24,13 @@ from scipy import ndimage
 from scipy.interpolate import griddata
 
 
+def split_datakey(df):
+    df['animalid'] = [s.split('_')[1] for s in df['datakey']]
+    df['fov'] = ['FOV%i_zoom2p0x' % int(s.split('_')[2][3:]) for s in df['datakey']]
+    df['session'] = [s.split('_')[0] for s in df['datakey']]
+    return df
+
+
 def cart2sph(x,y,z):
     azimuth = np.arctan2(y,x)
     elevation = np.arctan2(z,np.sqrt(x**2 + y**2))
