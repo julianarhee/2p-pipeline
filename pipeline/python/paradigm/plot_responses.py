@@ -487,7 +487,7 @@ def make_clean_psths(options):
     for ri, ridx in enumerate(roi_list):
         #%%
         if ri % 20 == 0:
-            print "Plotting %i of %i rois." % (ri, len(roi_list))
+            print "Plotting %i of %i rois." % (int(ri+1), len(roi_list))
         roi_id = 'roi%05d' % int(ridx+1)
 
         sns.set_style('ticks')
