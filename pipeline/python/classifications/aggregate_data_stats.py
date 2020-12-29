@@ -17,7 +17,7 @@ import seaborn as sns
 import cPickle as pkl
 
 from pipeline.python.classifications import experiment_classes as util
-from pipeline.python.utils import label_figure, natural_keys, reformat_morph_values, add_meta_to_df, isnumber
+from pipeline.python.utils import label_figure, natural_keys, reformat_morph_values, add_meta_to_df, isnumber, split_datakey
 
 # ===============================================================
 # Dataset selection
@@ -82,8 +82,22 @@ def get_sorted_fovs(filter_by='drop_repeats', excluded_sessions=[]):
 
                 'JC120': {'V1': [('20191106_fov3')],
                           'Lm': [('20191106_fov4')],
-                          'Li': [('20191106_fov1', '20191111')]}
+                          'Li': [('20191106_fov1', '20191111')]},
+                #}
+
+                'JC061': {'Lm': [('20190306_fov2'), ('20190306_fov3')]},
+
+                'JC067': {'Li': [('20190319'), ('20190320')]},
+
+                'JC070': {'Li': [('20190314_fov1', '20190315'), # 20190315 better, more reps
+                                  ('20190315_fov2'),
+                                  ('20190316_fov1'), 
+                                  ('20190321_fov1', '20190321_fov2')],
+                          'Lm': [('20190314_fov2', '20190315_fov3')]},
+                'JC073': {'Lm': [('20190322', '20190327')],
+                          'Li': [('20190322', '20190327')]} #920190322 better
                 }
+    
 
     return fov_keys
 
@@ -149,6 +163,7 @@ def get_metadata(traceid='traces001', filter_by='most_cells', stimulus=None, sti
             return dsets[dsets['experiment'].isin([stimulus])]
     else:        
         return dsets
+
 
 def get_blob_datasets(filter_by='first', has_gratings=False,
                         excluded_sessions=[], as_dict=True):
@@ -255,7 +270,34 @@ def get_blob_datasets(filter_by='first', has_gratings=False,
     return included_sessions
 
 
-def get_gratings_datasets(filter_by='first', excluded_sessions=[], as_dict=True):
+def make_metadict_from_df(df):
+    ddict=None
+    ddict = dict((k, list(v['datakey'].unique())) for k, v in dfs[['visual_area', 'datakey']]\
+                    .drop_duplicates().groupby(['visual_area']))
+
+    return ddict
+
+def get_gratings_datasets(filter_by='most_fits', excluded_sessions=[], as_dict=True):
+
+    included_sessions=[]
+
+    #excluded_sessions.extend(always_exclude)
+   
+    if filter_by is 'most_fits':
+        # Get meta info 
+        sdata = get_aggregate_info()
+        edata = sdata[sdata['experiment']=='gratings'].copy()
+        assigned_cells = seg.get_cells_by_area(edata)
+        included_sessions = get_dsets_with_most_gratings(edata, assigned_cells)
+        if as_dict:
+            included_sessions = make_metadict_from_df(best_dfs)
+    else:
+        included_sessions = get_gratings_datasets_drop(filter_by=filter_by, 
+                                    excluded_sessions=excluded_sessions, as_dict=as_dict)
+
+    return included_sessions 
+
+def get_gratings_datasets_drop(filter_by='first', excluded_sessions=[], as_dict=True):
 
     included_sessions = []
     
@@ -263,7 +305,6 @@ def get_gratings_datasets(filter_by='first', excluded_sessions=[], as_dict=True)
     always_exclude = ['20190426_JC078']
     excluded_sessions.extend(always_exclude)
     
-
     if filter_by is None:
         sdata = get_aggregate_info()
         bd = sdata[sdata['experiment']=='gratings'].copy()
@@ -409,53 +450,89 @@ def get_rf_datasets_drop(filter_by='drop_repeats', excluded_sessions=[], as_dict
 
 
 #def get_assigned_cells_with_rfs(rf_dsets):
-
-
-def get_dsets_with_max_rfs(rf_dsets, assigned_cells):
-    from pipeline.python.classifications import rf_utils as rfutils
-
-    all_rfdfs = rfutils.load_aggregate_rfs(rf_dsets)
-
-    # Load all RF data
-    all_rfs = get_rfdata(assigned_cells, all_rfdfs, verbose=False, average_repeats=True)
-
-    # Count how many cells fit total per site
-    countby = ['visual_area', 'datakey', 'cell']
-    counts_by_fov = all_rfs[countby].drop_duplicates().groupby(['visual_area', 'datakey']).count().reset_index()
-    counts_by_fov['animalid'] = [s.split('_')[1] for s in counts_by_fov['datakey']]
-    counts_by_fov['session'] = [s.split('_')[0] for s in counts_by_fov['datakey']]
-    counts_by_fov['fovnum'] = [int(s.split('_')[2][3:]) for s in counts_by_fov['datakey']]
-    counts_by_fov['fov'] = ['FOV%i_zoom2p0x' % f for f in counts_by_fov['fovnum']]
-
+def select_best_fovs(counts_by_fov):
     # Cycle thru all dsets and drop repeats
     fovkeys = get_sorted_fovs()
     incl_dsets=[]
     for (visual_area, animalid), g in counts_by_fov.groupby(['visual_area', 'animalid']):
+        curr_dsets=[]
         try:
-            curr_dsets = fovkeys[animalid][visual_area]
+            # Check for FOVs that had wrongly assigned visual areas compared to assigned
+            if visual_area not in fovkeys[animalid].keys():
+                v_area=[]
+                for v, vdict in fovkeys[animalid].items():
+                    for dk in g['datakey'].unique():
+                        a_match = [k for k in vdict for df in g['datakey'].unique() if \
+                                    '%s_%s' % (dk.split('_')[0], dk.split('_')[[2]]) in k \
+                                     or dk.split('_')[0] in k]
+                        if len(a_match)>0:
+                            v_area.append(v)
+                if len(v_area)>0:
+                    curr_dsets = fovkeys[animalid][v_area[0]]
+            else:
+                curr_dsets = fovkeys[animalid][visual_area]
         except Exception as e:
             print("[%s] Animalid does not exist: %s " % (visual_area, animalid))
             continue
+
+        # Check for sessions/dsets NOT included in current visual area dict
+        # This is correctional: if a given FOV is NOT in fovkeys dict, it was a non-repeat FOV
+        # for that visual area.
+        dkeys_flat = list(itertools.chain(*curr_dsets))
+        reformat_dkeys_check = ['%s_%s' % (s.split('_')[0], s.split('_')[2]) \
+                                    for s in g['datakey'].unique()]
+        missing_segmented_fovs = [s for s in reformat_dkeys_check \
+                                if (s not in dkeys_flat) and (s.split('_')[0] not in dkeys_flat) ]
+        for s in missing_segmented_fovs:
+            curr_dsets.append(s)
+
+        # Select "best" dset if there is a repeat
         if g.shape[0]>1:
             for dkeys in curr_dsets:
                 if isinstance(dkeys, tuple):
-                    #print(visual_area, len(dkeys))
-                    curr_datakeys = ['_'.join([dk.split('_')[0], animalid, dk.split('_')[-1]]) 
-                            if len(dk.split('_'))>1 else '_'.join([dk.split('_')[0], animalid, 'fov1']) for dk in dkeys]
+                    # Reformat listed session strings in fovkeys dict.
+                    curr_datakeys = ['_'.join([dk.split('_')[0], animalid, dk.split('_')[-1]])
+                            if len(dk.split('_'))>1 \
+                            else '_'.join([dk.split('_')[0], animalid, 'fov1']) for dk in dkeys]
+                    # Get df data for current "repeat" FOVs
                     which_fovs = g[g['datakey'].isin(curr_datakeys)]
                     # Find which has most cells
                     max_loc = np.where(which_fovs['cell']==which_fovs['cell'].max())[0]
                     incl_dsets.append(which_fovs.iloc[max_loc])
                 else:
-                    curr_datakey = '_'.join([dkeys.split('_')[0], animalid, dkeys.split('_')[-1]]) if len(dkeys.split('_'))>1 else '_'.join([dkeys.split('_')[0], animalid, 'fov1'])
+                    # THere are no repeats, so just format, then append df data
+                    curr_datakey = '_'.join([dkeys.split('_')[0], animalid, dkeys.split('_')[-1]]) \
+                                    if len(dkeys.split('_'))>1 \
+                                    else '_'.join([dkeys.split('_')[0], animalid, 'fov1'])
                     incl_dsets.append(g[g['datakey']==curr_datakey])
-
         else:
             #if curr_dsets=='%s_%s' % (session, fov) or curr_dsets==session:
             incl_dsets.append(g)
     incl = pd.concat(incl_dsets, axis=0).reset_index(drop=True)
+    
     return incl
 
+def get_dsets_with_most_fits(allthedata, assigned_cells):
+    # Count how many cells fit total per site
+    countby = ['visual_area', 'datakey', 'cell']
+    counts_by_fov = allthedata[countby].drop_duplicates()\
+                        .groupby(['visual_area', 'datakey']).count().reset_index()
+    counts_by_fov = split_datakey(counts_by_fov)
+    
+    best_dfs = select_best_fovs(counts_by_fov)
+   
+    return best_dfs 
+    
+def get_dsets_with_max_rfs(rf_dsets, assigned_cells):
+
+    # Load all RF data
+    from pipeline.python.classifications import rf_utils as rfutils
+    all_rfdfs = rfutils.load_aggregate_rfs(rf_dsets)
+    all_rfs = get_rfdata(assigned_cells, all_rfdfs, verbose=False, average_repeats=True)
+   
+    best_dfs = get_dsets_with_most_fits(all_rfs, assigned_cells)
+    
+    return best_dfs
 
 
 def get_retino_metadata(experiment='retino', animalids=None,
@@ -789,19 +866,63 @@ def equal_counts_df(neuraldf):
 
     return neuraldf.loc[kept_trials]
 
-def check_sdfs(stim_datakeys, traceid='traces001'):
 
+def get_master_sdf(images_only=False):
+
+    obj = util.Objects('JC084', '20190522', 'FOV1_zoom2p0x', traceid='traces001')
+    sdf_master = obj.get_stimuli()
+    if images_only:
+        sdf_master=sdf_master[sdf_master['morphlevel']!=-1].copy()
+
+    return sdf_master
+
+
+def check_sdfs(stim_datakeys, traceid='traces001', images_only=False, return_incorrect=False):
+
+    sdf_master = get_master_sdf(images_only=images_only)
+    n_configs = sdf_master.shape[0]
+    
     #### Check that all datasets have same stim configs
     SDF={}
+    renamed_configs={}
     for datakey in stim_datakeys:
         session, animalid, fov_ = datakey.split('_')
         fovnum = int(fov_[3:])
         obj = util.Objects(animalid, session, 'FOV%i_zoom2p0x' %  fovnum, traceid=traceid)
         sdf = obj.get_stimuli()
-        SDF[datakey] = sdf
-    nonpos_params = [p for p in sdf.columns if p not in ['xpos', 'ypos', 'position']] 
-    assert all([all(sdf[nonpos_params]==d[nonpos_params]) for k, d in SDF.items()]), "Incorrect stimuli..."
-    return SDF
+        if not len(sdf['morphlevel'].unique())==10:
+            if sdf.shape[0]==45:
+                # missing morphlevels, likely lum controls
+                c_list = sdf.index.tolist()
+                sdf.index = ['config%03d' % (int(ci[6:])+5) for ci in c_list]
+                updated_keys = dict((k, v) for k, v in zip(c_list, sdf.index.tolist()))
+            else:
+                #if len(sdf['size'].unique())==5 and min(sdf['size'].unique())==10.:
+                key_names = ['morphlevel', 'object', 'size']
+                updated_keys={}
+                for old_ix in sdf.index:
+                    new_ix = sdf_master[(sdf_master[key_names] == sdf.loc[old_ix,  key_names]).all(1)].index[0]
+                    updated_keys.update({old_ix: new_ix})
+                sdf = sdf.rename(index=updated_keys)
+
+            # Save renamed key 
+            renamed_configs[datakey] = updated_keys
+ 
+        if images_only:
+            SDF[datakey] = sdf[sdf['morphlevel']!=-1].copy()
+        else:
+            SDF[datakey] = sdf
+            
+    nonpos_params = [p for p in sdf_master.columns if p not in ['xpos', 'ypos', 'position', 'color']]
+    different_configs = renamed_configs.keys()
+
+    assert all([all(sdf_master[nonpos_params]==d[nonpos_params]) for k, d in SDF.items() \
+              if k not in different_configs]), "Incorrect stimuli..."
+
+    if return_incorrect:
+        return SDF, renamed_configs
+    else:
+        return SDF
 
 
 def experiment_datakeys(sdata, experiment='blobs', has_gratings=False, stim_filterby='first'):
@@ -1287,7 +1408,7 @@ def global_cells(cells, remove_too_few=True, min_ncells=5,  return_counts=False)
         Counts of cells by area (optional)
 
     '''
-    visual_areas=['V1', 'Lm', 'Li']
+    visual_areas=cells['visual_area'].unique() #['V1', 'Lm', 'Li']
     
     incl_keys = []
     if remove_too_few:
@@ -2032,8 +2153,8 @@ def aggregate_and_save(experiment, traceid='traces001',
     redo_stats: for each loaded FOV, re-calculate stats 
     redo_fov: create new neuraldf (otherwise just loads existing)
     '''
-    if experiment=='gratings':
-        always_exclude.append('20190517_JC083')
+    #if experiment=='gratings':
+    #    always_exclude.append('20190517_JC083')
 
     #### Load mean trial info for responsive cells
     data_dir = os.path.join(aggregate_dir, 'data-stats')
