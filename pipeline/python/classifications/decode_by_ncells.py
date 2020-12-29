@@ -333,7 +333,7 @@ def decode_by_ncells(ncells, celldf, sdf, NEURALDATA,
 def decode_from_cell(datakey, rid, neuraldf, sdf, return_shuffle=False, 
                     C_value=None, experiment='blobs',
                     n_iterations=50, n_processes=2, results_id='single_cell',
-                    class_a=0, class_b=0, 
+                    class_a=0, class_b=0, visual_area=None,
                     rootdir='/n/coxfs01/2p-data', create_new=False, verbose=False):
     # tmp save
     session, animalid, fov_ = datakey.split('_')
@@ -341,8 +341,10 @@ def decode_from_cell(datakey, rid, neuraldf, sdf, return_shuffle=False,
     fov = 'FOV%i_zoom2p0x' % fovnum
     traceid_dir = glob.glob(os.path.join(rootdir, animalid, session, 
                             fov, 'combined_%s*' % experiment, 'traces', '%s*' % traceid))[0]
-    analysis_flag, subdir = results_id.split('__')
-    curr_dst_dir = os.path.join(traceid_dir, 'decoding', 'single_cells', subdir)
+    analysis_flag, subdir, tepoch = results_id.split('__')
+    curr_dst_dir = os.path.join(traceid_dir, 'decoding', 'single_cells', '%s_%s' % (subdir, tepoch))
+    print("RESULTS id: %s" % results_id)
+    print("DST: %s" % curr_dst_dir)
     if not os.path.exists(curr_dst_dir):
         os.makedirs(curr_dst_dir)
     C_str = analysis_flag.split('_')[-1]
@@ -430,8 +432,8 @@ def create_results_id(prefix='fov_results', visual_area='varea', C_value=None,
                         trial_epoch='stimulus', 
                         response_type='dff', responsive_test='resp', overlap_thr=None):
 
-    C_str = 'tuneC' if C_value is None else 'C-%.2f' % C_value
-    overlap_str = 'no-rfs' if overlap_thr is None else 'overlap-%.1f' % overlap_thr
+    C_str = 'tuneC' if C_value is None else 'C%.2f' % C_value
+    overlap_str = 'no-rfs' if overlap_thr is None else 'overlap%.1f' % overlap_thr
     results_id='%s_%s_%s__%s-%s_%s__%s' % (prefix, visual_area, C_str, response_type, responsive_test, overlap_str, trial_epoch)
     return results_id
 
@@ -540,7 +542,6 @@ def do_decode_within_fov(analysis_type='by_fov', experiment='blobs',
     dst_dir = os.path.join(aggregate_dir, 'decoding', 'by_fov')
     if not os.path.exists(dst_dir):
         os.makedirs(dst_dir)
-    C_str = 'tuneC' if C_value is None else 'C-%.2f' % C_value
 
     results_prefix = analysis_type #set_results_prefix(analysis_type=analysis_type)
     #aggr_results_id='%s__%s_%s-%s_%s' % (analysis_type, C_str, response_type, responsive_test, C_str)
@@ -787,7 +788,8 @@ def main(options):
 
     #### Check stimulus configs
     stim_datakeys = dsets['datakey'].unique()
-    SDF = aggr.check_sdfs(stim_datakeys, traceid=traceid)
+    SDF, renamed_configs = aggr.check_sdfs(stim_datakeys, traceid=traceid, \
+                                images_only=images_only, return_incorrect=True)
 
     #### Source data
     curr_visual_area = None if opts.visual_area in ['None', None] else opts.visual_area
@@ -800,6 +802,15 @@ def main(options):
                         datakey=None if match_distns else curr_datakey)
     cells = cells[cells['visual_area'].isin(['V1', 'Lm', 'Li'])]
     stack_neuraldf = match_distns==True
+
+    #### Make sure config names match
+    sdf_master = aggr.get_master_sdf(images_only=True)
+    n_configs = sdf_master.shape[0]
+    for k, renamed_c in renamed_configs.items():
+        print("... updating %s" % k)
+        updated_cfgs = [renamed_c[cfg] for cfg in MEANS[k]['config']]
+        MEANS[k]['config'] = updated_cfgs
+
 
     #### Load RFs
     NEURALDATA=None; RFDATA=None;
@@ -939,7 +950,7 @@ def main(options):
                 decode_from_cell(curr_datakey, rid, neuraldf, sdf, experiment=experiment,
                                 C_value=C_value, return_shuffle=False, 
                                 n_iterations=n_iterations, n_processes=n_processes, 
-                                results_id=results_id,
+                                results_id=results_id, visual_area=curr_visual_area,
                                 class_a=class_a, class_b=class_b,
                                 create_new=create_new, verbose=verbose)          
             print("Finished %s (%s). ID=%s" % (curr_datakey, curr_visual_area, results_id))
