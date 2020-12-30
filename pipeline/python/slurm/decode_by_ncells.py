@@ -213,11 +213,12 @@ else:
     # -----------------------------------------------------------------
     ncells=None
     dsets = load_metadata(experiment, visual_area=visual_area)
-    included_datakeys = args.included_datakeys[0]
+    included_datakeys=[]
+    if args.included_datakeys is not None:
+        included_datakeys = args.included_datakeys[0]
     print("dkeys:", included_datakeys)
     #['20190614_jc091_fov1', '20190602_jc091_fov1', '20190609_jc099_fov1']
     if len(included_datakeys) > 0:
-        print(included_datakeys)
         dsets = dsets[dsets['datakey'].isin(included_datakeys)]
     if len(dsets)==0:
         fatal("no fovs found.")
