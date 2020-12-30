@@ -165,7 +165,40 @@ def get_metadata(traceid='traces001', filter_by='most_cells', stimulus=None, sti
         return dsets
 
 
-def get_blob_datasets(filter_by='first', has_gratings=False,
+def get_blob_datasets(filter_by='most_fits', excluded_sessions=[], as_dict=True, has_gratings=False):
+    from pipeline.python.retinotopy import segment_retinotopy as seg
+
+    included_sessions=[]
+    #excluded_sessions.extend(always_exclude)
+    
+    # Get meta info 
+    sdata = get_aggregate_info() 
+    if has_gratings:
+        edata = sdata[('blobs' in sdata['experiment'].values)
+                    & ('gratings' in sdata['experiment'].values)].copy()
+    else:
+        edata = sdata[sdata['experiment']=='blobs'].copy()
+
+    if filter_by == 'most_fits':
+        assigned_cells = seg.get_cells_by_area(edata)
+        best_dfs = get_dsets_with_most_blobs(edata, assigned_cells)
+        if as_dict:
+            included_sessions = make_metadict_from_df(best_dfs)
+        else:
+            included_sessions = best_dfs
+    elif filter_by is None:
+        if as_dict:
+            included_sessions = make_metadict_from_df(edata)
+        else:
+            included_sessions = edata
+    else:
+        included_sessions = get_blob_datasets_drop(filter_by=filter_by, has_gratings=has_gratings,
+                                    excluded_sessions=excluded_sessions, as_dict=as_dict)
+
+    return included_sessions 
+
+
+def get_blob_datasets_drop(filter_by='first', has_gratings=False,
                         excluded_sessions=[], as_dict=True):
 
     included_sessions = []
@@ -272,12 +305,13 @@ def get_blob_datasets(filter_by='first', has_gratings=False,
 
 def make_metadict_from_df(df):
     ddict=None
-    ddict = dict((k, list(v['datakey'].unique())) for k, v in dfs[['visual_area', 'datakey']]\
+    ddict = dict((k, list(v['datakey'].unique())) for k, v in df[['visual_area', 'datakey']]\
                     .drop_duplicates().groupby(['visual_area']))
 
     return ddict
 
 def get_gratings_datasets(filter_by='most_fits', excluded_sessions=[], as_dict=True):
+    from pipeline.python.retinotopy import segment_retinotopy as seg
 
     included_sessions=[]
 
@@ -288,9 +322,11 @@ def get_gratings_datasets(filter_by='most_fits', excluded_sessions=[], as_dict=T
         sdata = get_aggregate_info()
         edata = sdata[sdata['experiment']=='gratings'].copy()
         assigned_cells = seg.get_cells_by_area(edata)
-        included_sessions = get_dsets_with_most_gratings(edata, assigned_cells)
+        best_dfs = get_dsets_with_most_gratings(edata, assigned_cells)
         if as_dict:
             included_sessions = make_metadict_from_df(best_dfs)
+        else:
+            included_sessions = best_dfs
     else:
         included_sessions = get_gratings_datasets_drop(filter_by=filter_by, 
                                     excluded_sessions=excluded_sessions, as_dict=as_dict)
@@ -512,7 +548,7 @@ def select_best_fovs(counts_by_fov):
     
     return incl
 
-def get_dsets_with_most_fits(allthedata, assigned_cells):
+def get_dsets_with_most_cells(allthedata): #assigned_cells):
     # Count how many cells fit total per site
     countby = ['visual_area', 'datakey', 'cell']
     counts_by_fov = allthedata[countby].drop_duplicates()\
@@ -530,7 +566,7 @@ def get_dsets_with_max_rfs(rf_dsets, assigned_cells):
     all_rfdfs = rfutils.load_aggregate_rfs(rf_dsets)
     all_rfs = get_rfdata(assigned_cells, all_rfdfs, verbose=False, average_repeats=True)
    
-    best_dfs = get_dsets_with_most_fits(all_rfs, assigned_cells)
+    best_dfs = get_dsets_with_most_cells(all_rfs) #, assigned_cells)
     
     return best_dfs
 
@@ -695,7 +731,6 @@ def get_ncells_by_experiment(aggr_cells, total_nrois, experiment=None):
 # Data shaping/formating
 # --------------------------------------------------------------------------
 
-
 # Overlaps, cell assignments, etc.
 def get_neuraldf_for_cells_in_area(cells, MEANS, datakey=None, visual_area=None):
     '''
@@ -781,13 +816,6 @@ def equal_counts_per_condition(MEANS):
 
     return MEANS
 
-def zscore_neuraldf(neuraldf):
-    data = neuraldf.drop('config', 1) #sample_data[curr_roi_list].copy()
-    zdata = (data - np.nanmean(data)) / np.nanstd(data)
-    zdf = pd.DataFrame(zdata, index=neuraldf.index, columns=data.columns)
-    zdf['config'] = neuraldf['config']
-    return zdf
-
 
 def get_source_data(experiment, traceid='traces001', equalize_now=False,zscore_now=False,
                     responsive_test='nstds', responsive_thr=10., response_type='dff',
@@ -840,6 +868,14 @@ def get_source_data(experiment, traceid='traces001', equalize_now=False,zscore_n
     else:
         return edata, cells, MEANS
 
+def zscore_neuraldf(neuraldf):
+    data = neuraldf.drop('config', 1) #sample_data[curr_roi_list].copy()
+    zdata = (data - np.nanmean(data)) / np.nanstd(data)
+    zdf = pd.DataFrame(zdata, index=neuraldf.index, columns=data.columns)
+    zdf['config'] = neuraldf['config']
+    return zdf
+
+
 def zscore_data(MEANS):
     for k, v in MEANS.items():
         zdf = zscore_neuraldf(v)
@@ -862,9 +898,11 @@ def equal_counts_df(neuraldf):
         kept_trials.extend(curr_trials[0:min_ntrials])
     kept_trials=np.array(kept_trials)
 
-    assert len(neuraldf.loc[kept_trials]['config'].value_counts().unique())==1, "Bad resampling... Still >1 n_trials"
+    assert len(neuraldf.loc[kept_trials]['config'].value_counts().unique())==1, \
+            "Bad resampling... Still >1 n_trials"
 
     return neuraldf.loc[kept_trials]
+
 
 
 def get_master_sdf(images_only=False):
@@ -937,15 +975,16 @@ def experiment_datakeys(sdata, experiment='blobs', has_gratings=False, stim_filt
 
 
     dictkeys = [d for d in list(itertools.chain(*exp_dkeys.values()))]
+    edata = sdata[sdata['experiment']==experiment]
     stim_datakeys = ['%s_%s_fov%i' % (s.split('_')[0], s.split('_')[1], 
-                       sdata[(sdata['animalid']==s.split('_')[1]) 
-                        & (sdata['session']==s.split('_')[0])]['fovnum'].unique()[0]) for s in dictkeys]
-    expmeta = dict((k, [dv for dv in stim_datakeys for vv in v \
-                    if vv in dv]) for k, v in exp_dkeys.items())
+                       edata[(edata['animalid']==s.split('_')[1]) 
+                        & (edata['session']==s.split('_')[0])]['fovnum'].unique()[0]) for s in dictkeys]
+    #expmeta = dict((k, [dv for dv in stim_datakeys for vv in v \
+    #                if vv in dv]) for k, v in exp_dkeys.items())
                      
-    edata = sdata[sdata['datakey'].isin(stim_datakeys)]
+    emeta = edata[edata['datakey'].isin(stim_datakeys)]
                      
-    return edata, expmeta
+    return emeta, exp_dkeys #expmeta
 
 def neuraldf_dict_to_dataframe(NEURALDATA, response_type='response'):
     ndfs = []
@@ -1029,6 +1068,8 @@ def get_neuraldata(cells, MEANS, stack=False, verbose=False):
 
     return NEURALDATA
 
+
+# -------- RFs -----------------------------------------------------------
 
 def get_rfdata(cells, rfdf, verbose=False, visual_area=None, datakey=None, average_repeats=True):
     '''
@@ -1233,6 +1274,120 @@ def get_counts_by_datakey(stim_overlaps):
     counts_by_dset['fovnum'] = [int(d.split('_')[2][3:]) for d in counts_by_dset['datakey']]
 
     return counts_by_dset
+
+
+
+#
+# -------- Blobs -----------------------------------------------------------
+def aggr_cells_blobs(assigned_cells, traceid='traces001', response_type='dff',
+                   responsive_test='nstds', responsive_thr=10.0):
+    d_list=[]
+    for (visual_area, animalid, session, fovnum, fov, datakey), g in \
+        assigned_cells.groupby(['visual_area', 'animalid', 'session', 'fovnum', 'fov', 'datakey']):
+
+        roi_list, nrois_total = util.get_responsive_cells(animalid, session, fov, traceid=traceid, 
+                                                         run='blobs',
+                                                         response_type=response_type,
+                                                         responsive_test=responsive_test, 
+                                                         responsive_thr=responsive_thr)
+        df_ = pd.DataFrame({'cell': roi_list})
+        metadict = {'visual_area': visual_area, 'datakey': datakey}
+        df_ = add_meta_to_df(df_, metadict)
+        d_list.append(df_)
+
+    allthedata = pd.concat(d_list, axis=0).reset_index(drop=True)
+    
+    return allthedata
+
+def get_dsets_with_most_blobs(edata, assigned_cells, traceid='traces001', response_type='dff',
+                                responsive_test='nstds', responsive_thr=10.0):
+    
+    #edata = sdata[sdata['experiment']=='gratings'].copy()
+    exp_cells = pd.concat([g for (visual_area, datakey), g \
+                                in assigned_cells.groupby(['visual_area', 'datakey']) \
+                                if datakey in edata['datakey'].values])
+
+    # Load all gratings data
+    allthedata = aggr_cells_blobs(exp_cells, traceid=traceid, response_type=response_type, 
+                       responsive_test=responsive_test, responsive_thr=responsive_thr)
+
+    best_dfs = get_dsets_with_most_cells(allthedata) #, exp_cells) 
+    
+    return best_dfs
+
+
+
+
+# -------- gratings -----------------------------------------------------------
+def aggr_gratings_fits(assigned_cells, traceid='traces001', response_type='dff', 
+                       responsive_test='nstds', responsive_thr=10.,
+                       n_bootstrap_iters=1000, n_resamples=20, 
+                       return_missing=True, rootdir='/n/coxfs01/2p-data'):
+    '''
+    assigned_cells:  dataframe w/ assigned cells of dsets that have gratings
+    '''
+    from pipeline.python.classifications import bootstrap_osi as osi
+
+    no_fits = []
+    g_ = []
+    i = 0
+    for (visual_area, datakey, animalid, session, fov), g in assigned_cells.groupby(['visual_area', 'datakey', 'animalid', 'session', 'fov']):
+        try:
+            # Get all osi results for current dataset
+            exp = util.Gratings(animalid, session, fov, traceid=traceid, rootdir=rootdir)
+            bootresults_tmp, fitparams = exp.get_tuning(response_type=response_type,
+                                                   responsive_test=responsive_test,
+                                                   responsive_thr=responsive_thr,
+                                                   n_bootstrap_iters=n_bootstrap_iters,
+                                                   n_resamples=n_resamples, verbose=False)
+            # Get OSI results
+            currcells = g['cell'].unique()
+            bootresults = dict((k, v) for k, v in bootresults_tmp.items() if k in currcells)
+        except Exception as e:
+            print(e)
+            print('ERROR: %s' % datakey)
+            continue
+            
+        # Get fits
+        rmetrics, rmetrics_by_cfg = osi.get_good_fits(bootresults, fitparams, gof_thr=None, verbose=False)
+        if rmetrics is None:
+            no_fits.append('%s_%s' % (visual_area, datakey))
+            continue
+
+        meandf = rmetrics.copy()
+        metainfo = {'visual_area': visual_area, 'animalid': animalid, 
+                    'session': session, 'fov': fov, 'datakey': datakey}
+        meandf = putils.add_meta_to_df(meandf, metainfo)
+        g_.append(meandf)
+        i += 1
+    gdata = pd.concat(g_, axis=0)
+
+    if verbose:
+        print("Datasets with NO fits found:")
+        for s in no_fits:
+            print(s)
+
+    if return_missing:
+        return gdata, no_fits
+
+def get_dsets_with_most_gratings(edata, assigned_cells, traceid='traces001', response_type='dff',
+                                responsive_test='nstds', responsive_thr=10.0, 
+                                n_bootstrap_iters=1000, n_resamples=20):
+    
+    #edata = sdata[sdata['experiment']=='gratings'].copy()
+    exp_cells = pd.concat([g for (visual_area, datakey), g \
+                                in assigned_cells.groupby(['visual_area', 'datakey']) \
+                                if datakey in edata['datakey'].values])
+
+    # Load all gratings data
+    gdata, missing_ = aggr_gratings_fits(exp_cells, traceid=traceid, response_type=response_type, 
+                       responsive_test=responsive_test, responsive_thr=responsive_thr,
+                       n_bootstrap_iters=n_bootstrap_iters, n_resamples=n_resamples)
+
+    best_dfs = get_dsets_with_most_cells(gdata) #, exp_cells) 
+    
+    return best_dfs
+
 
 # =============================================================
 # Resample data, specify distribution
