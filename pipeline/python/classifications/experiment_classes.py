@@ -469,7 +469,7 @@ def get_receptive_field_fits(animalid, session, fov, response_type='dff',
 def get_responsive_cells(animalid, session, fov, run=None, traceid='traces001',
                          response_type='dff',create_new=False, n_processes=1,
                          responsive_test='ROC', responsive_thr=0.05, n_stds=2.5,
-                         rootdir='/n/coxfs01/2p-data'):
+                         rootdir='/n/coxfs01/2p-data', verbose=False):
         
     roi_list=None; nrois_total=None;
     rname = run if 'combined' in run else 'combined_%s_' % run
@@ -520,7 +520,8 @@ def get_responsive_cells(animalid, session, fov, run=None, traceid='traces001',
         #stats_fpath = glob.glob(os.path.join(stats_dir, '*results*.pkl'))
         #assert len(stats_fpath) == 1, "Stats results paths: %s" % str(stats_fpath)
         with open(stats_fpath[0], 'rb') as f:
-            print("... loading stats")
+            if verbose:
+                print("... loading stats")
             rstats = pkl.load(f)
         # print("...loaded")        
         if responsive_test == 'ROC':
@@ -536,7 +537,8 @@ def get_responsive_cells(animalid, session, fov, run=None, traceid='traces001',
         print(e)
         traceback.print_exc()
 
-    print("... %i of %i cells responsive" % (len(roi_list), nrois_total))
+    if verbose:
+        print("... %i of %i cells responsive" % (len(roi_list), nrois_total))
  
     return roi_list, nrois_total
    
