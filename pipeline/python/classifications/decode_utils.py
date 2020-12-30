@@ -119,80 +119,83 @@ def pool_bootstrap(neuraldf, sdf, n_iterations=50, n_processes=1, C_value=None,
     return output #results
 
 
-def fit_svm_mp_shuffle(neuraldf, sdf, n_iterations=50, n_processes=1, 
-                   C_value=None, cv_nfolds=5, test_split=0.2, 
-                   test=None, single=False, n_train_configs=4, verbose=False,
-                   class_a=0, class_b=106):   
-    #### Select train/test configs for clf A vs B
-    train_configs = sdf[sdf['morphlevel'].isin([class_a, class_b])].index.tolist() 
-
-    #### Define MP worker
-    results = []
-    terminating = mp.Event() 
-    def worker(n_iters, neuraldf, sdf, C_value, verbose, class_a, class_b, out_q, shu_q):
-        r_ = []; s_=[];
-        for ni in n_iters:
-            curr_iter, curr_shuf = do_fit_within_fov(ni, curr_data=neuraldf, sdf=sdf, 
-                                        C_value=C_value, class_a=class_a, class_b=class_b,                                            verbose=verbose, return_shuffle=True)
-            r_.append(curr_iter)
-            s_.append(curr_shuf)
-        curr_iterdf = pd.concat(r_, axis=0)
-        curr_shufdf = pd.concat(s_, axis=0)
-        out_q.put(curr_iterdf) 
-        shu_q.put(curr_shufdf)
-    try:        
-        # Each process gets "chunksize' filenames and a queue to put his out-dict into:
-        iter_list = np.arange(0, n_iterations) #gdf.groups.keys()
-        out_q = mp.Queue()
-        shu_q = mp.Queue()
-        chunksize = int(math.ceil(len(iter_list) / float(n_processes)))
-        procs = []
-        for i in range(n_processes):
-            p = mp.Process(target=worker,
-                           args=(iter_list[chunksize * i:chunksize * (i + 1)],
-                                          neuraldf, sdf, C_value, verbose, class_a, class_b,
-                                          out_q, shu_q))
-            procs.append(p)
-            p.start()
-
-        # Collect all results into 1 results dict. We should know how many dicts to expect:
-        results = []
-        results_shuffled = []
-        for i in range(n_processes):
-            results.append(out_q.get())
-            results_shuffled.append(shu_q.get())
-        # Wait for all worker processes to finish
-        for p in procs:
-            #print "Finished:", p
-            p.join()
-    except KeyboardInterrupt:
-        terminating.set()
-        print("***Terminating!")
-    except Exception as e:
-        traceback.print_exc()
-    finally:
-        for p in procs:
-            p.join    
-    return results, results_shuffled
-
+#def fit_svm_mp_shuffle(neuraldf, sdf, n_iterations=50, n_processes=1, 
+#                   C_value=None, cv_nfolds=5, test_split=0.2, 
+#                   test=None, single=False, n_train_configs=4, verbose=False,
+#                   class_a=0, class_b=106):   
+#    #### Select train/test configs for clf A vs B
+#    train_configs = sdf[sdf['morphlevel'].isin([class_a, class_b])].index.tolist() 
+#
+#    #### Define MP worker
+#    results = []
+#    terminating = mp.Event() 
+#    def worker(n_iters, neuraldf, sdf, C_value, verbose, class_a, class_b, out_q, shu_q):
+#        r_ = []; s_=[];
+#        for ni in n_iters:
+#            curr_iter, curr_shuf = do_fit_within_fov(ni, curr_data=neuraldf, sdf=sdf, 
+#                                        C_value=C_value, class_a=class_a, class_b=class_b,                                            verbose=verbose, return_shuffle=True)
+#            r_.append(curr_iter)
+#            s_.append(curr_shuf)
+#        curr_iterdf = pd.concat(r_, axis=0)
+#        curr_shufdf = pd.concat(s_, axis=0)
+#        out_q.put(curr_iterdf) 
+#        shu_q.put(curr_shufdf)
+#
+#    try:        
+#        # Each process gets "chunksize' filenames and a queue to put his out-dict into:
+#        iter_list = np.arange(0, n_iterations) #gdf.groups.keys()
+#        out_q = mp.Queue()
+#        shu_q = mp.Queue()
+#        chunksize = int(math.ceil(len(iter_list) / float(n_processes)))
+#        procs = []
+#        for i in range(n_processes):
+#            p = mp.Process(target=worker,
+#                           args=(iter_list[chunksize * i:chunksize * (i + 1)],
+#                                          neuraldf, sdf, C_value, verbose, class_a, class_b,
+#                                          out_q, shu_q))
+#            procs.append(p)
+#            p.start()
+#
+#        # Collect all results into 1 results dict. We should know how many dicts to expect:
+#        results = []
+#        results_shuffled = []
+#        for i in range(n_processes):
+#            results.append(out_q.get())
+#            results_shuffled.append(shu_q.get())
+#        # Wait for all worker processes to finish
+#        for p in procs:
+#            #print "Finished:", p
+#            p.join()
+#    except KeyboardInterrupt:
+#        terminating.set()
+#        print("***Terminating!")
+#    except Exception as e:
+#        traceback.print_exc()
+#    finally:
+#        for p in procs:
+#            p.join    
+#    return results, results_shuffled
+#
 def fit_svm_mp(neuraldf, sdf, n_iterations=50, n_processes=1, 
                    C_value=None, cv_nfolds=5, test_split=0.2, 
                    test=None, single=False, n_train_configs=4, verbose=False,
-                   class_a=0, class_b=106):   
+                   class_a=0, class_b=106, do_shuffle=True):   
     #### Select train/test configs for clf A vs B
     train_configs = sdf[sdf['morphlevel'].isin([class_a, class_b])].index.tolist() 
     
     #### Define MP worker
     results = []
     terminating = mp.Event() 
-    def worker(n_iters, neuraldf, sdf, C_value, verbose, class_a, class_b, out_q):
+    def worker(n_iters, neuraldf, sdf, C_value, verbose, class_a, class_b, do_shuffle, out_q):
         r_ = []        
         for ni in n_iters:
             curr_iter = do_fit_within_fov(ni, curr_data=neuraldf, sdf=sdf, 
-                                        C_value=C_value, class_a=class_a, class_b=class_b,                                                        verbose=verbose)
+                                        C_value=C_value, class_a=class_a, class_b=class_b, 
+                                        verbose=verbose, do_shuffle=do_shuffle)
             r_.append(curr_iter)
         curr_iterdf = pd.concat(r_, axis=0)
         out_q.put(curr_iterdf) 
+
     try:        
         # Each process gets "chunksize' filenames and a queue to put his out-dict into:
         iter_list = np.arange(0, n_iterations) #gdf.groups.keys()
@@ -203,7 +206,7 @@ def fit_svm_mp(neuraldf, sdf, n_iterations=50, n_processes=1,
             p = mp.Process(target=worker,
                            args=(iter_list[chunksize * i:chunksize * (i + 1)],
                                           neuraldf, sdf, C_value, verbose, class_a, class_b,
-                                          out_q))
+                                          do_shuffle, out_q))
             procs.append(p)
             p.start() # start asynchronously
 
@@ -221,7 +224,7 @@ def fit_svm_mp(neuraldf, sdf, n_iterations=50, n_processes=1,
         traceback.print_exc()
     finally:
         for p in procs:
-            p.join    
+            p.join()
     return results
 
 
@@ -569,6 +572,9 @@ def fit_svm_shuffle(zdata, targets, test_split=0.2, cv_nfolds=5, verbose=False, 
 
     cv = C_value is None
 
+    if verbose:
+        print("Labels=%s" % (str(targets['label'].unique())))
+
     #### For each transformation, split trials into 80% and 20%
     train_data, test_data, train_labels, test_labels = train_test_split(zdata, 
                                                         targets['label'].values, 
@@ -649,7 +655,7 @@ def fit_svm_shuffle(zdata, targets, test_split=0.2, cv_nfolds=5, verbose=False, 
 
     iterdict_chance.update({'heldout_test_score': test_score_chance, 
                             'heldout_MI': mi, 'heldout_aMI': ami, 
-                            'heldout_log2MI': log2_mi})
+                            'heldout_log2MI': log2_mi, 'C': C_value})
 
     return iterdict, iterdict_chance
 
@@ -841,7 +847,7 @@ def fit_svm(zdata, targets, test_split=0.2, cv_nfolds=5,  n_processes=1,
 # --------------------------------------------------------------------------------
 # Wrappers for fitting functions - specifies what type of analysis to do
 # --------------------------------------------------------------------------------
-def do_fit_within_fov(iter_num, curr_data=None, sdf=None, return_shuffle=False, verbose=False,
+def do_fit_within_fov(iter_num, curr_data=None, sdf=None, do_shuffle=False, verbose=False,
                         C_value=None, test_split=0.2, cv_nfolds=5, class_a=0, class_b=106):
 
     #[gdf, MEANS, sdf, sample_ncells, cv] * n_times)
@@ -863,25 +869,27 @@ def do_fit_within_fov(iter_num, curr_data=None, sdf=None, return_shuffle=False, 
     targets['label'] = [sdf['morphlevel'][cfg] for cfg in targets['config'].values]
     targets['group'] = [sdf['size'][cfg] for cfg in targets['config'].values]
 
+    if verbose:
+        print("Labels: %s\nGroups: %s" % (str(targets['label'].unique()), str(targets['group'].unique())))
+
     #### Fit
     cv = C_value is None
     randi = random.randint(1, 10000)
-    if return_shuffle:
+    if do_shuffle:
         curr_iter, curr_shuff = fit_svm_shuffle(zdata, targets, C_value=C_value, 
                                 verbose=verbose,
                                 test_split=test_split, cv_nfolds=cv_nfolds, randi=randi)
-        curr_iter.update({'n_cells': zdata.shape[1], 'n_trials': zdata.shape[0]})
-        curr_shuff.update({'n_cells': zdata.shape[1], 'n_trials': zdata.shape[0]})
-        iter_df = pd.DataFrame(curr_iter, index=[iter_num])
+        tmp_iter_df = pd.DataFrame(curr_iter, index=[iter_num])
         shuff_df = pd.DataFrame(curr_shuff, index=[iter_num])
-
-        return iter_df, shuff_df
+        tmp_iter_df['condition'] = 'data'
+        shuff_df['condition'] = 'shuffled'
+        iter_df = pd.concat([tmp_iter_df, shuff_df], axis=0)
     else:
         curr_iter = fit_svm(zdata, targets, C_value=C_value, verbose=verbose,
                                 test_split=test_split, cv_nfolds=cv_nfolds, randi=randi)
-        curr_iter.update({'n_cells': zdata.shape[1], 'n_trials': zdata.shape[0]})
         iter_df = pd.DataFrame(curr_iter, index=[iter_num])
-
+    iter_df['n_cells'] = zdata.shape[1]
+    iter_df['n_trials'] = zdata.shape[0]
     return iter_df 
 
 
@@ -932,9 +940,11 @@ def do_fit_train_test_single(iter_num, global_rois=None, MEANS=None, sdf=None, s
     '''
     Train/test PER SIZE.
 
-    Resample w/ replacement from pooled cells (across datasets). Assumes 'sdf' is same for all datasets.
+    Resample w/ replacement from pooled cells (across datasets). 
+    Assumes 'sdf' is same for all datasets.
+
     Return fit results for 1 iteration.
-    Classes (class_a, class_b) should be the actual labels of the target (i.e., value of morph level)
+    Classes (class_a, class_b) should be labels of the target (i.e., value of morph level)
     '''
     # Get new sample set
     curr_data = get_trials_for_N_cells(sample_ncells, global_rois, MEANS)
