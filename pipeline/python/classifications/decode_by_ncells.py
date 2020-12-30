@@ -88,7 +88,7 @@ def initializer(terminating_):
 def decode_from_fov(datakey, visual_area, cells, MEANS, min_ncells=5,
                     C_value=None, experiment='blobs',
                     n_iterations=50, n_processes=2, results_id='fov_results',
-                    class_a=0, class_b=0,
+                    class_a=0, class_b=0, do_shuffle=True,
                     rootdir='/n/coxfs01/2p-data', create_new=False, verbose=False):
     '''
     Fit FOV n_iterations times (multiproc). Save all iterations in dataframe.
@@ -135,7 +135,7 @@ def decode_from_fov(datakey, visual_area, cells, MEANS, min_ncells=5,
         iter_list = decutils.fit_svm_mp(neuraldf, sdf, C_value=C_value, 
                                     n_iterations=n_iterations, 
                                     n_processes=n_processes, verbose=verbose,
-                                    class_a=class_a, class_b=class_b) 
+                                    class_a=class_a, class_b=class_b, do_shuffle=do_shuffle) 
 
         print("%i items in mp list" % len(iter_list))
         # Save all iterations
@@ -167,7 +167,7 @@ def decode_split_pupil(datakey, visual_area, cells, MEANS, pupildata,
                     n_cuts=3, feature_name='pupil_fraction',
                     experiment='blobs', min_ncells=5, C_value=None, 
                     n_iterations=50, n_processes=2, 
-                    class_a=0, class_b=106,
+                    class_a=0, class_b=106, do_shuffle=True,
                     rootdir='/n/coxfs01/2p-data', create_new=False, verbose=False):
     '''
     Decode within FOV, split trials into high/low arousal states. 
@@ -238,7 +238,7 @@ def decode_split_pupil(datakey, visual_area, cells, MEANS, pupildata,
             a_list = decutils.fit_svm_mp(curr_data, sdf, C_value=C_value, 
                                     n_iterations=n_iterations, 
                                     n_processes=n_processes, verbose=verbose,
-                                    class_a=class_a, class_b=class_b) 
+                                    class_a=class_a, class_b=class_b, do_shuffle=do_shuffle) 
             print("%i items in mp list" % len(a_list))
             # Aggregate 
             arousal_df = pd.concat(a_list, axis=0)
@@ -330,7 +330,7 @@ def decode_by_ncells(ncells, celldf, sdf, NEURALDATA,
     print("@@@@@@@@@ done. %s, n=%i @@@@@@@@@@" % (results_id, ncells))
     return iterd
 
-def decode_from_cell(datakey, rid, neuraldf, sdf, return_shuffle=False, 
+def decode_from_cell(datakey, rid, neuraldf, sdf, do_shuffle=True,
                     C_value=None, experiment='blobs',
                     n_iterations=50, n_processes=2, results_id='single_cell',
                     class_a=0, class_b=0, visual_area=None,
@@ -342,9 +342,10 @@ def decode_from_cell(datakey, rid, neuraldf, sdf, return_shuffle=False,
     traceid_dir = glob.glob(os.path.join(rootdir, animalid, session, 
                             fov, 'combined_%s*' % experiment, 'traces', '%s*' % traceid))[0]
     analysis_flag, subdir, tepoch = results_id.split('__')
-    curr_dst_dir = os.path.join(traceid_dir, 'decoding', 'single_cells', '%s_%s' % (subdir, tepoch))
-    print("RESULTS id: %s" % results_id)
-    print("DST: %s" % curr_dst_dir)
+    response_filter, rf_filter = subdir.split('_')
+    curr_dst_dir = os.path.join(traceid_dir, 'decoding', 'single_cells', '%s_%s' % (response_filter, tepoch))
+    print("DST: %s" % curr_dst_dir.split(traceid_dir)[-1])
+
     if not os.path.exists(curr_dst_dir):
         os.makedirs(curr_dst_dir)
     C_str = analysis_flag.split('_')[-1]
@@ -364,38 +365,21 @@ def decode_from_cell(datakey, rid, neuraldf, sdf, return_shuffle=False,
     
     metainfo = {'cell': rid, 'datakey': datakey}
     if create_new:    
-        print("... Starting decoding analysis (rid=%i, %s)" % (rid, analysis_flag))
+        print("... <SINGLE_CELL> Starting decoding analysis (rid=%i, %s)" % (rid, analysis_flag))
         # zscore full
         #neuraldf = aggr.zscore_neuraldf(neuraldf)
 
         # Decodinng -----------------------------------------------------
-        if return_shuffle:
-            iter_list, shuf_list = decutils.fit_svm_mp_shuffle(neuraldf, sdf, 
-                                        C_value=C_value, 
-                                        n_iterations=n_iterations, 
-                                        n_processes=n_processes, verbose=verbose,
-                                        class_a=class_a, class_b=class_b)
-            print("%i items in mp list" % len(iter_list))
-            # DATA - get mean across items
-            iter_results = pd.concat(iter_list, axis=0) 
-            shuf_results = pd.concat(shuf_list, axis=0)
-            iter_results = putils.add_meta_to_df(iter_results, metainfo)
-            shuf_results = putils.add_meta_to_df(shuf_results, metainfo)            
-            all_results = {'results': iter_results, 'shuffled': shuf_results}
-            with open(results_outfile, 'wb') as f:
-                pkl.dump(all_results, f, protocol=pkl.HIGHEST_PROTOCOL)
-            
-        else: 
-            iter_list = decutils.fit_svm_mp(neuraldf, sdf, C_value=C_value, 
-                                        n_iterations=n_iterations, 
-                                        n_processes=n_processes, verbose=verbose,
-                                        class_a=class_a, class_b=class_b)
-            print("%i items in mp list" % len(iter_list))
-            # DATA - get mean across items
-            iter_results = pd.concat(iter_list, axis=0) 
-            iter_results = putils.add_meta_to_df(iter_results, metainfo)
-            with open(results_outfile, 'wb') as f:
-                pkl.dump(iter_results, f, protocol=pkl.HIGHEST_PROTOCOL)
+        iter_list = decutils.fit_svm_mp(neuraldf, sdf, C_value=C_value, 
+                                    n_iterations=n_iterations, 
+                                    n_processes=n_processes, verbose=verbose,
+                                    class_a=class_a, class_b=class_b, do_shuffle=do_shuffle)
+        print("%i items in mp list" % len(iter_list)) #.shape[0])
+        # DATA - get mean across items
+        iter_results = pd.concat(iter_list, axis=0) 
+        iter_results = putils.add_meta_to_df(iter_results, metainfo)
+        with open(results_outfile, 'wb') as f:
+            pkl.dump(iter_results, f, protocol=pkl.HIGHEST_PROTOCOL)
 
     # Pool mean
     print("... saved: %s" % os.path.split(results_outfile)[-1])
@@ -409,7 +393,7 @@ def decode_from_cell(datakey, rid, neuraldf, sdf, return_shuffle=False,
     iterd.update({'cell': rid, 'datakey': datakey})
     #print("::FINAL::")
     #pp.pprint(iterd)
-    print("@@@@@@@@@ done. %s, rid=%i (%s) @@@@@@@@@@" % (datakey, rid, results_ids))
+    print("@@@@@@@@@ done. %s, rid=%i (%s) @@@@@@@@@@" % (datakey, rid, results_id))
 
     return iterd
 
@@ -686,6 +670,11 @@ def extract_options(options):
 
     parser.add_option('--match-distns', action='store_true', dest='match_distns', 
             default=False, help="(set for by_ncells) Match distns of neuraldf to Li")
+
+    parser.add_option('--shuffle', action='store_true', dest='do_shuffle', 
+            default=False, help="included shuffled results")
+
+
     (options, args) = parser.parse_args(options)
 
     return options
@@ -718,6 +707,7 @@ def main(options):
     n_processes=int(opts.n_processes) #2
 
     analysis_type=opts.analysis_type
+    do_shuffle=opts.do_shuffle
 
     # CV ----------------------------------------------
     test_split=0.2
@@ -763,7 +753,7 @@ def main(options):
     # RF stuff 
     rf_filter_by=None
     reliable_only = True
-    rf_fit_thr = 0.05
+    rf_fit_thr = 0.5
 
     # Create data ID for labeling figures with data-types
     #### Responsive params
@@ -781,36 +771,41 @@ def main(options):
                                 has_gratings=has_gratings, stim_filterby=stim_filterby)
         
     # Get blob metadata only - and only if have RFs
-    dsets = pd.concat([g for k, g in edata.groupby(['animalid', 'session', 'fov']) if 
-                (experiment in g['experiment'].values 
-                and ('rfs' in g['experiment'].values or 'rfs10' in g['experiment'].values)) ])
+    if has_rfs:
+        dsets = pd.concat([g for k, g in edata.groupby(['animalid', 'session', 'fov']) \
+                    if (experiment in g['experiment'].values \
+                    and ('rfs' in g['experiment'].values or 'rfs10' in g['experiment'].values)) ])
+    else:
+        dsets = pd.concat([g for k, g in edata.groupby(['animalid', 'session', 'fov']) \
+                    if (experiment in g['experiment'].values)])
     dsets[['visual_area', 'datakey']].drop_duplicates().groupby(['visual_area']).count()
 
     #### Check stimulus configs
     stim_datakeys = dsets['datakey'].unique()
+    images_only=True
     SDF, renamed_configs = aggr.check_sdfs(stim_datakeys, traceid=traceid, \
                                 images_only=images_only, return_incorrect=True)
 
     #### Source data
     curr_visual_area = None if opts.visual_area in ['None', None] else opts.visual_area
     curr_datakey = None if opts.datakey in ['None', None] else opts.datakey    
-    _, cells, MEANS = aggr.get_source_data(experiment, 
+    _, assigned_cells, MEANS = aggr.get_source_data(experiment, 
                         equalize_now=True, zscore_now=True,
                         response_type=response_type, responsive_test=responsive_test, 
-                        responsive_thr=responsive_thr, trial_epoch=trial_epoch, use_all=False,
-                        visual_area=None if match_distns else curr_visual_area, 
+                        responsive_thr=responsive_thr, trial_epoch=trial_epoch, #use_all=False,
+                        visual_area=None if match_distns else curr_visual_area,
                         datakey=None if match_distns else curr_datakey)
-    cells = cells[cells['visual_area'].isin(['V1', 'Lm', 'Li'])]
+    assigned_cells = assigned_cells[assigned_cells['visual_area'].isin(['V1', 'Lm', 'Li'])] #, 'Ll'])]
     stack_neuraldf = match_distns==True
 
     #### Make sure config names match
     sdf_master = aggr.get_master_sdf(images_only=True)
     n_configs = sdf_master.shape[0]
     for k, renamed_c in renamed_configs.items():
-        print("... updating %s" % k)
-        updated_cfgs = [renamed_c[cfg] for cfg in MEANS[k]['config']]
-        MEANS[k]['config'] = updated_cfgs
-
+        if k in MEANS.keys():
+            print("... updating %s" % k)
+            updated_cfgs = [renamed_c[cfg] for cfg in MEANS[k]['config']]
+            MEANS[k]['config'] = updated_cfgs
 
     #### Load RFs
     NEURALDATA=None; RFDATA=None;
@@ -823,18 +818,18 @@ def main(options):
         rfdf = aggr.load_rfdf_and_pos(dsets, rf_filter_by=None, 
                                         reliable_only=True, traceid=traceid)
         # RF dataframes
-        NEURALDATA, RFDATA = aggr.get_neuraldata_and_rfdata(cells, rfdf, MEANS, 
+        NEURALDATA, RFDATA = aggr.get_neuraldata_and_rfdata(assigned_cells, rfdf, MEANS, 
                                                 stack=stack_neuraldf)
     else:
         print("~~~~~~~~~~~~~~~~No Receptive Fields~~~~~~~~~~~~~~~~~~~~~~~~~")
         # EXP dataframes 
-        NEURALDATA = aggr.get_neuraldata(cells, MEANS, stack=stack_neuraldf)
+        NEURALDATA = aggr.get_neuraldata(assigned_cells, MEANS, stack=stack_neuraldf)
 
     if match_distns:
         print("~~~~~~~~~~~~~~~~Matching max %s distNs~~~~~~~~~~~~~~~~~~~~~" % response_type)
-        NEURALDATA, matched_distn_cells = aggr.match_neuraldata_distn(NEURALDATA, src='Li')
+        NEURALDATA, assigned_cells = aggr.match_neuraldata_distn(NEURALDATA, src='Li')
         if has_rfs:
-            RFDATA = aggr.select_dataframe_subset(matched_distn_cells, RFDATA)
+            RFDATA = aggr.select_dataframe_subset(assigned_cells, RFDATA)
     dist_str = 'matchdist_' if match_distns else ''
 
     if NEURALDATA is None: # or RFDATA is None:
@@ -851,12 +846,7 @@ def main(options):
                                             overlap_thr=0 if overlap_thr is None else overlap_thr,
                                             min_ncells=min_ncells)
     else:
-        if match_distns:
-            globalcells, cell_counts = aggr.global_cells(matched_distn_cells,
-                                            remove_too_few=remove_too_few, 
-                                            min_ncells=min_ncells, return_counts=True)
-        else:
-            globalcells, cell_counts = aggr.global_cells(cells,
+        globalcells, cell_counts = aggr.global_cells(assigned_cells,
                                             remove_too_few=remove_too_few, 
                                             min_ncells=min_ncells, return_counts=True)
     if globalcells is None:
@@ -864,7 +854,8 @@ def main(options):
         return None
 
     #### Get final cells dataframe          
-    cells = globalcells[['visual_area', 'datakey', 'dset_roi']].drop_duplicates().rename(columns={'dset_roi': 'cell'})
+    cells = globalcells[['visual_area', 'datakey', 'dset_roi']]\
+                    .drop_duplicates().rename(columns={'dset_roi': 'cell'})
 
     print("@@@@@@@@ cell counts @@@@@@@@@@@")
     print(cell_counts)
@@ -882,8 +873,8 @@ def main(options):
     #### Setup output dirs  
     results_prefix = analysis_type #set_results_prefix(analysis_type=analysis_type)
     overlap_str = 'no-rfs' if overlap_thr is None else 'overlap-%.1f' % overlap_thr
-    #data_info='%s%s_%s_%s_iter-%i' % (match_str, response_type, responsive_test, overlap_str, n_iterations)
-    sdf = SDF[SDF.keys()[-1]].copy()
+    #data_info='%s%s_%s_%s_iter-%i' \
+    #    % (match_str, response_type, responsive_test, overlap_str, n_iterations)
 
     print('Classify %i v %i (C=%s)' % (m0, m100, str(C_value)))
     print('N=%i iters (%i proc), %s' % (n_iterations, n_processes, overlap_str))
@@ -894,6 +885,12 @@ def main(options):
         # Get the visual area (first one) for datakey
         assert curr_datakey in globalcells['datakey'].unique(), "No dkey: %s" % curr_datakey
         curr_visual_area = globalcells[globalcells['datakey']==curr_datakey]['visual_area'].unique()[0]
+
+    if curr_datakey is not None:
+        sdf = SDF[curr_datakey].copy()
+    else:
+        sdf = sdf_master.copy() #SDF[SDF.keys()[-1]].copy()
+
 
     # ============================================================ 
     # PER FOV analysis - for each fov, do something. 
@@ -919,7 +916,7 @@ def main(options):
                             min_ncells=min_ncells, C_value=C_value,
                             n_iterations=n_iterations, n_processes=n_processes, 
                             results_id=results_id,
-                            class_a=class_a, class_b=class_b,
+                            class_a=class_a, class_b=class_b, do_shuffle=do_shuffle,
                             rootdir=rootdir, create_new=create_new, verbose=verbose)
 
         elif analysis_type=='split_pupil': 
@@ -935,7 +932,7 @@ def main(options):
                             min_ncells=min_ncells, C_value=C_value,
                             n_iterations=n_iterations, n_processes=n_processes, 
                             results_id=results_id,
-                            class_a=class_a, class_b=class_b,
+                            class_a=class_a, class_b=class_b, do_shuffle=do_shuffle,
                             rootdir=rootdir, create_new=create_new, verbose=verbose)
 
         elif analysis_type=='single_cells':
@@ -944,15 +941,17 @@ def main(options):
             # -----------------------------------------------------------------------
             for ri, rid in enumerate(gdf['dset_roi'].values):
                 if ri % 10 == 0:
-                    print("... %i of %i cells (%s|%s), rid=%i." % (int(ri+1), ncells_total, curr_datakey, curr_visual_area, rid))
-
+                    print("... %i of %i cells (%s|%s), rid=%i." \
+                            % (int(ri+1), ncells_total, curr_datakey, curr_visual_area, rid))
                 neuraldf = NEURALDATA[curr_visual_area][curr_datakey][[rid, 'config']].copy()
+
                 decode_from_cell(curr_datakey, rid, neuraldf, sdf, experiment=experiment,
-                                C_value=C_value, return_shuffle=False, 
+                                C_value=C_value, 
                                 n_iterations=n_iterations, n_processes=n_processes, 
                                 results_id=results_id, visual_area=curr_visual_area,
                                 class_a=class_a, class_b=class_b,
-                                create_new=create_new, verbose=verbose)          
+                                create_new=create_new, verbose=verbose, 
+                                do_shuffle=do_shuffle)          
             print("Finished %s (%s). ID=%s" % (curr_datakey, curr_visual_area, results_id))
 
     elif analysis_type=='by_ncells':
