@@ -176,7 +176,11 @@ if analysis_type=='by_ncells':
             jobnum = joboutput.split(' ')[-1]
             jobids.append(jobnum)
             info("[%s]: %s" % (jobnum, mtag))
+
 elif analysis_type in ['by_fov', 'split_pupil']:
+    # -----------------------------------------------------------------
+    # BY FOV 
+    # -----------------------------------------------------------------
     ncells=None
     dsets = load_metadata(experiment, visual_area=visual_area)
     included_datakeys = args.included_datakeys
@@ -195,11 +199,11 @@ elif analysis_type in ['by_fov', 'split_pupil']:
                 -o '{logdir}/{procid}.{mtag}.{analysis}.out' \
                 -e '{logdir}/{procid}.{mtag}.{analysis}.err' \
         /n/coxfs01/2p-pipeline/repos/2p-pipeline/pipeline/python/slurm/decode_by_ncells.sbatch \
-        {exp} {traceid} {rtest} {overlap} {analysis} {cval} {varea} {ncells} {dkey}".format(
+        {exp} {traceid} {rtest} {overlap} {analysis} {cval} {varea} {ncells} {dkey} {epoch}".format(
             procid=piper, mtag=mtag, logdir=logdir,
             exp=experiment, traceid=traceid, analysis=analysis_type,
             rtest=responsive_test, overlap=overlap_thr, 
-            cval=c_value, varea=visual_area, ncells=ncells, dkey=datakey) 
+            cval=c_value, varea=visual_area, ncells=ncells, dkey=datakey, epoch=trial_epoch) 
         #
         status, joboutput = commands.getstatusoutput(cmd)
         jobnum = joboutput.split(' ')[-1]
@@ -230,11 +234,11 @@ else:
                 -o '{logdir}/{procid}.{mtag}.{analysis}.out' \
                 -e '{logdir}/{procid}.{mtag}.{analysis}.err' \
         /n/coxfs01/2p-pipeline/repos/2p-pipeline/pipeline/python/slurm/decode_single_cells.sbatch \
-        {exp} {traceid} {rtest} {overlap} {analysis} {cval} {varea} {ncells} {dkey}".format(
+        {exp} {traceid} {rtest} {overlap} {analysis} {cval} {varea} {ncells} {dkey} {epoch}".format(
             procid=piper, mtag=mtag, logdir=logdir,
             exp=experiment, traceid=traceid, analysis=analysis_type,
             rtest=responsive_test, overlap=overlap_thr, 
-            cval=c_value, varea=visual_area, ncells=ncells, dkey=datakey) 
+            cval=c_value, varea=visual_area, ncells=ncells, dkey=datakey, epoch=trial_epoch) 
         #
         status, joboutput = commands.getstatusoutput(cmd)
         jobnum = joboutput.split(' ')[-1]
