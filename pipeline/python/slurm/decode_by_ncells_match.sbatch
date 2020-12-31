@@ -30,16 +30,16 @@ CVAL="$6"
 VAREA="$7"
 SAMPLESIZE="$8"
 DKEY="$9"
-EPOCH="$10"
+EPOCH="${10}"
 
 echo "ANALYSIS: ${ANALYSIS}"
 echo "overlap: ${OVERLAP}"
 echo "varea: ${VAREA}"
 echo "ncells: ${SAMPLE_SIZE}"
 echo "dkey: ${DKEY}"
-
+echo "EPOCH: ${EPOCH}"
 #
-python /n/coxfs01/2p-pipeline/repos/2p-pipeline/pipeline/python/classifications/decode_by_ncells.py -E $EXP -t $TRACEID -R $RTEST -n 8 -N 100 --new -o $OVERLAP -C ${CVAL} -V $VAREA -S $SAMPLESIZE -X $ANALYSIS -k $DKEY --match-distns --epoch $EPOCH
+python /n/coxfs01/2p-pipeline/repos/2p-pipeline/pipeline/python/classifications/decode_by_ncells.py -E $EXP -t $TRACEID -R $RTEST -n 8 -N 100 --new -o $OVERLAP -C ${CVAL} -V $VAREA -S $SAMPLESIZE -X $ANALYSIS -k $DKEY --match-distns --epoch $EPOCH --shuffle
 
 #{EXP} {TRACEID} {RTEST} {OVERLAP} {ANALYSIS} {CVAL} {VAREA} {NCELLS} {DKEY}".format(
 
