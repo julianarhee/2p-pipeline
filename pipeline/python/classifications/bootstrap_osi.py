@@ -671,7 +671,7 @@ def do_bootstrap2(gdf, sdf, roi_list=None, allconfigs=True,
                  statdf=None, response_type='dff',
                 n_bootstrap_iters=1000, n_resamples=20,
                 n_intervals_interp=3, n_processes=1,
-                min_cfgs_above=2, min_nframes_above=10):
+                min_cfgs_above=1, min_nframes_above=10):
 
     if roi_list is None:
         roi_list = np.arange(0, len(gdf.groups))
@@ -693,10 +693,10 @@ def do_bootstrap2(gdf, sdf, roi_list=None, allconfigs=True,
 
 # ########################################################################################3
 
-def pool_bootstrap(rdf_list, sdf, allconfigs=False,
+def pool_bootstrap(rdf_list, sdf, allconfigs=True,
                    statdf=None, response_type='dff',
                     n_bootstrap_iters=1000, n_resamples=20, 
-                    n_intervals_interp=3, min_cfgs_above=2, min_nframes_above=10,
+                    n_intervals_interp=3, min_cfgs_above=1, min_nframes_above=10,
                     n_processes=1):
 
     bootresults = {}
@@ -758,7 +758,7 @@ def pool_bootstrap(rdf_list, sdf, allconfigs=False,
 
 def boot_roi_responses_allconfigs(roi_df, sdf, statdf=None, response_type='dff',
                             n_bootstrap_iters=1000, n_resamples=20, 
-                            n_intervals_interp=3, min_cfgs_above=2, min_nframes_above=10,
+                            n_intervals_interp=3, min_cfgs_above=1, min_nframes_above=10,
                             n_processes=1):
     '''
     Inputs
@@ -896,7 +896,7 @@ def boot_roi_responses_allconfigs(roi_df, sdf, statdf=None, response_type='dff',
     
 def boot_roi_responses_bestconfig(roi_df, sdf, statdf=None, response_type='dff',
                             n_bootstrap_iters=1000, n_resamples=20, 
-                            n_intervals_interp=3, min_cfgs_above=2, min_nframes_above=10):
+                            n_intervals_interp=3, min_cfgs_above=1, min_nframes_above=10):
     '''
     Find stimulus config (any) that has max response, fit tuning to that config.
     '''
@@ -1013,7 +1013,7 @@ def do_bootstrap(gdf, sdf, roi_list=None, allconfigs=True,
                  statdf=None, response_type='dff',
                 n_bootstrap_iters=1000, n_resamples=20,
                 n_intervals_interp=3, n_processes=1,
-                min_cfgs_above=2, min_nframes_above=10):
+                min_cfgs_above=1, min_nframes_above=10):
 
     if roi_list is None:
         roi_list = np.arange(0, len(gdf.groups))
@@ -1176,7 +1176,7 @@ def get_tuning(animalid, session, fov, run_name, return_iters=False,
                n_bootstrap_iters=1000, n_resamples=20, n_intervals_interp=3,
                make_plots=True, responsive_test='nstds', responsive_thr=10, n_stds=2.5,
                create_new=False, rootdir='/n/coxfs01/2p-data', n_processes=1,
-               min_cfgs_above=2, min_nframes_above=10, verbose=True):
+               min_cfgs_above=1, min_nframes_above=10, verbose=True):
     '''
     bootresults (dict)
         keys: roi ids
@@ -2559,7 +2559,7 @@ def extract_options(options):
                       help="[n_stds only] n stds above/below baseline to count frames, if test=nstds (default: 2.5)") 
     parser.add_option('-m', '--min-frames', action='store', dest='min_nframes_above', default=10, 
                       help="[n_stds only] Min N frames above baseline std (responsive_thr), if responsive_test=nstds (default: 10)")   
-    parser.add_option('-c', '--min-configs', action='store', dest='min_cfgs_above', default=2, 
+    parser.add_option('-c', '--min-configs', action='store', dest='min_cfgs_above', default=1, 
                       help="[n_stds only] Min N configs in which min-n-frames threshold is met, if responsive_test=nstds (default: 2)")   
 
     # Tuning params:
