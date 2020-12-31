@@ -526,7 +526,7 @@ def check_counts_per_condition(raw_traces, labels):
         return raw_traces, labels
    
 
-def reformat_morph_values(sdf):
+def reformat_morph_values(sdf, verbose=False):
     #print(sdf.head())
     aspect_ratio=1.75
     control_ixs = sdf[sdf['morphlevel']==-1].index.tolist()
@@ -541,7 +541,7 @@ def reformat_morph_values(sdf):
     xpos = [x for x in sdf['xpos'].unique() if x is not None]
     ypos =  [x for x in sdf['ypos'].unique() if x is not None]
     #assert len(xpos)==1 and len(ypos)==1, "More than 1 pos? x: %s, y: %s" % (str(xpos), str(ypos))
-    if len(xpos)>1 or len(ypos)>1:
+    if verbose and (len(xpos)>1 or len(ypos)>1):
         print("warning: More than 1 pos? x: %s, y: %s" % (str(xpos), str(ypos)))
     sdf.loc[sdf.morphlevel==-1, 'xpos'] = [xpos[0] for _ in np.arange(0, len(control_ixs))]
     sdf.loc[sdf.morphlevel==-1, 'ypos'] = [ypos[0] for _ in np.arange(0, len(control_ixs))]
