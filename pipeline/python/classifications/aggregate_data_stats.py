@@ -683,7 +683,7 @@ def get_responsive_all_experiments(sdata, response_type='dff', traceid='traces00
                                                 responsive_test=responsive_test, 
                                                 responsive_thr=responsive_thr, 
                                                 trial_epoch=trial_epoch,
-                                                return_missing=True)
+                                                return_missing=True, check_configs=True)
 
         if visual_areas is None:
             visual_areas = tmpcells['visual_area'].unique()
@@ -781,24 +781,54 @@ def get_active_cells_in_current_datasets(rois, MEANS, verbose=False):
     
     return cells
 
-def load_aggregate_data(experiment, traceid='traces001', response_type='dff', 
-                        epoch='stimulus', use_all=True,
+def load_aggregate_data(experiment, traceid='traces001', response_type='dff', epoch='stimulus', 
                        responsive_test='ROC', responsive_thr=0.05, n_stds=0.0,
-                       aggregate_dir='/n/coxfs01/julianarhee/aggregate-visual-areas'):
-    
+                        check_configs=True, equalize_now=False, zscore_now=False,
+                        return_configs=False,
+                        aggregate_dir='/n/coxfs01/julianarhee/aggregate-visual-areas'):
+    '''
+    Return dict of neural dataframes (keys are datakeys).
+
+    check_configs (bool) : Get each dataset's stim configs (sdf), and rename matching configs to match master.
+    Note, check_configs *only* tested with experiment=blobs.
+
+    equalize_now (bool) : Random sample trials per config so that same # trials/config.
+    zscore_now (bool) : Zscore neurons' responses.
+    ''' 
     data_outfile = get_aggregate_data_filepath(experiment, traceid=traceid, 
                         response_type=response_type, epoch=epoch,
                         responsive_test=responsive_test, 
                         responsive_thr=responsive_thr, n_stds=n_stds,
-                       aggregate_dir=aggregate_dir,
-                        use_all=use_all)
+                        aggregate_dir=aggregate_dir)
     # print("...loading: %s" % data_outfile)
 
     with open(data_outfile, 'rb') as f:
-        DATA = pkl.load(f)
+        MEANS = pkl.load(f)
     print("...loading: %s" % data_outfile)
 
-    return DATA
+    #### Fix config labels 
+    if check_configs or return_configs:
+        SDF, renamed_configs = check_sdfs(MEANS.keys(), traceid=traceid, 
+                                          images_only=False, return_incorrect=True)
+        if check_configs:
+            sdf_master = get_master_sdf(images_only=False)
+            for k, renamed_c in renamed_configs.items():
+                #print("... updating %s" % k)
+                updated_cfgs = [renamed_c[cfg] for cfg in MEANS[k]['config']]
+                MEANS[k]['config'] = updated_cfgs
+
+    if equalize_now:
+        # Get equal counts
+        print("---equalizing now---")
+        MEANS = equal_counts_per_condition(MEANS)
+
+    if zscore_now:
+        MEANS = zscore_data(MEANS)
+
+    if return_configs: 
+        return MEANS, SDF
+    else:
+        return MEANS
 
 def equal_counts_per_condition(MEANS):
     '''
@@ -817,11 +847,11 @@ def equal_counts_per_condition(MEANS):
     return MEANS
 
 
-def get_source_data(experiment, traceid='traces001', equalize_now=False,zscore_now=False,
+def get_source_data(experiment, traceid='traces001',
                     responsive_test='nstds', responsive_thr=10., response_type='dff',
                     trial_epoch='stimulus', fov_type='zoom2p0x', state='awake', 
-                    verbose=False, use_all=True, visual_area=None, datakey=None,
-                    return_missing=False): 
+                    verbose=False, visual_area=None, datakey=None, return_configs=False,
+                    return_missing=False, check_configs=True, equalize_now=False,zscore_now=False): 
     '''
     Returns metainfo, cell dataframe, and dict of neuraldfs for all 
     responsive cells in assigned visual areas.
@@ -831,42 +861,46 @@ def get_source_data(experiment, traceid='traces001', equalize_now=False,zscore_n
     Returns all responsive cells assigned to visual area.
     '''
     from pipeline.python.retinotopy import segment_retinotopy as seg
-    #### Get neural responses
- 
-    MEANS = load_aggregate_data(experiment, 
+
+    #### Get neural responses 
+    means0 = load_aggregate_data(experiment, 
                 responsive_test=responsive_test, responsive_thr=responsive_thr, 
-                response_type=response_type, epoch=trial_epoch, use_all=use_all)
-
-    
-    if equalize_now:
-        # Get equal counts
-        print("---equalizing now---")
-        MEANS = equal_counts_per_condition(MEANS)
-
-    if zscore_now:
-        MEANS = zscore_data(MEANS)
-
-    # Get data set metainfo and cells
+                response_type=response_type, epoch=trial_epoch,
+                check_configs=check_configs, equalize_now=equalize_now, zscore_now=zscore_now,
+                return_configs=return_configs)
+    if return_configs:
+        MEANS, SDF = means0
+    else:
+        MEANS = means0
+ 
+   # Get dataset metainfo
     sdata = get_aggregate_info(traceid=traceid, fov_type=fov_type, state=state)
     edata = sdata[sdata['experiment']==experiment].copy()
 
+    # Get cell assignemnts (based on retinotopy/segment_retinotopy.py)
     rois, missing_seg = seg.get_cells_by_area(edata, return_missing=True)
-
     cells = get_active_cells_in_current_datasets(rois, MEANS, verbose=False)
 
+
     if (visual_area is not None) or (datakey is not None):
+        means0 = MEANS.copy()
+        meta0 = edata.copy()
         cells = select_cells(cells, visual_area=visual_area, datakey=datakey)
         dkeys = cells['datakey'].unique()
         vareas = cells['visual_area'].unique()
-        meta = edata[(edata['datakey']==datakey) & (edata['visual_area']==visual_area)] 
-        meandfs = dict((k, MEANS[k]) for k in dkeys) #MEANS[datakey]
-        
-        return meta, cells, meandfs
-
+        edata = meta0[(meta0['datakey']==datakey) & (meta0['visual_area']==visual_area)] 
+        MEANS = dict((k, means0[k]) for k in dkeys) #MEANS[datakey]
+       
     if return_missing:
-        return edata, cells, MEANS, missing_seg
+        if return_configs:
+            return edata, cells, MEANS, SDF, missing_seg
+        else:
+            return edata, cells, MEANS, missing_seg
     else:
-        return edata, cells, MEANS
+        if return_configs:
+            return edata, cells, MEANS, SDF
+        else:
+            return edata, cells, MEANS
 
 def zscore_neuraldf(neuraldf):
     data = neuraldf.drop('config', 1) #sample_data[curr_roi_list].copy()
@@ -915,7 +949,13 @@ def get_master_sdf(images_only=False):
     return sdf_master
 
 
-def check_sdfs(stim_datakeys, traceid='traces001', images_only=False, return_incorrect=False):
+def check_sdfs(stim_datakeys, experiment='blobs', traceid='traces001', images_only=False, 
+                rename=True, return_incorrect=False):
+
+    '''
+    Checks config names and reutrn master dict of all stimconfig dataframes
+    Notes: only tested with blobs, and renaming only works with blobs.
+    '''
 
     sdf_master = get_master_sdf(images_only=images_only)
     n_configs = sdf_master.shape[0]
@@ -926,35 +966,60 @@ def check_sdfs(stim_datakeys, traceid='traces001', images_only=False, return_inc
     for datakey in stim_datakeys:
         session, animalid, fov_ = datakey.split('_')
         fovnum = int(fov_[3:])
-        obj = util.Objects(animalid, session, 'FOV%i_zoom2p0x' %  fovnum, traceid=traceid)
+        if experiment=='blobs':
+            obj = util.Objects(animalid, session, 'FOV%i_zoom2p0x' %  fovnum, traceid=traceid)
+        elif experiment=='gratings':
+            obj = util.Gratings(animalid, session, 'FOV%i_zoom2p0x '% fovnum, traceid=traceid)
+        else:
+            print("Unvailable experiemnt type for master SDFs: %s" % experiment)
+            return None
+
         sdf = obj.get_stimuli()
-        if not len(sdf['morphlevel'].unique())==10:
-            if sdf.shape[0]==45:
-                # missing morphlevels, likely lum controls
-                c_list = sdf.index.tolist()
-                sdf.index = ['config%03d' % (int(ci[6:])+5) for ci in c_list]
-                updated_keys = dict((k, v) for k, v in zip(c_list, sdf.index.tolist()))
-            else:
-                #if len(sdf['size'].unique())==5 and min(sdf['size'].unique())==10.:
-                key_names = ['morphlevel', 'object', 'size']
-                updated_keys={}
-                for old_ix in sdf.index:
-                    new_ix = sdf_master[(sdf_master[key_names] == sdf.loc[old_ix,  key_names]).all(1)].index[0]
-                    updated_keys.update({old_ix: new_ix})
+        if images_only:
+            sdf = sdf[sdf['morphlevel']!=-1]
+
+        if len(sdf['xpos'].unique())>1 or len(sdf['ypos'].unique())>1:
+            print("*Warning* <%s> More than 1 pos? x: %s, y: %s" \
+                    % (datakey, str(sdf['xpos'].unique()), str(sdf['ypos'].unique())))
+ 
+        if experiment=='blobs' and (sdf.shape[0]!=sdf_master.shape[0]):
+            print("%s: diff keys" % datakey)
+#            if sdf.shape[0]==45:
+#                # missing morphlevels, likely lum controls
+#                c_list = sdf.index.tolist()
+#                sdf.index = ['config%03d' % (int(ci[6:])+5) for ci in c_list]
+#                updated_keys = dict((k, v) for k, v in zip(c_list, sdf.index.tolist()))
+            #else:
+            # Compare key config values and find "matches"
+            key_names = ['morphlevel', 'size']
+            updated_keys={}
+            for old_ix in sdf.index:
+                #try:
+                new_ix = sdf_master[(sdf_master[key_names] == sdf.loc[old_ix,  key_names]).all(1)].index[0]
+                #except Exception as e:
+                    #print("Not found: %s" % str(sdf.loc[old_ix]))
+                #    continue
+                updated_keys.update({old_ix: new_ix})
+       
+            if rename: 
                 sdf = sdf.rename(index=updated_keys)
 
             # Save renamed key 
             renamed_configs[datakey] = updated_keys
  
-        if images_only:
+        if experiment=='blobs' and images_only:
             SDF[datakey] = sdf[sdf['morphlevel']!=-1].copy()
         else:
             SDF[datakey] = sdf
-            
-    nonpos_params = [p for p in sdf_master.columns if p not in ['xpos', 'ypos', 'position', 'color']]
+    
+    ignore_params = ['xpos', 'ypos', 'position', 'color']
+    if experiment != 'blobs':
+        ignore_params.extend(['size'])
+    
+    compare_params = [p for p in sdf_master.columns if p not in ignore_params] 
     different_configs = renamed_configs.keys()
 
-    assert all([all(sdf_master[nonpos_params]==d[nonpos_params]) for k, d in SDF.items() \
+    assert all([all(sdf_master[compare_params]==d[compare_params]) for k, d in SDF.items() \
               if k not in different_configs]), "Incorrect stimuli..."
 
     if return_incorrect:
@@ -2202,7 +2267,7 @@ def get_aggregate_info(traceid='traces001', fov_type='zoom2p0x', state='awake', 
     return sdata
 
 def get_aggregate_data_filepath(experiment, traceid='traces001', response_type='dff', 
-                        epoch='stimulus', use_all=True,
+                        epoch='stimulus', 
                        responsive_test='ROC', responsive_thr=0.05, n_stds=0.0,
                        aggregate_dir='/n/coxfs01/julianarhee/aggregate-visual-areas'):
     
