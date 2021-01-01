@@ -343,29 +343,31 @@ def decode_from_cell(datakey, rid, neuraldf, sdf, do_shuffle=True,
     analysis_flag, rparams, tepoch, C_str = results_id.split('__')
     response_filter, rf_filter = rparams.split('_')
     curr_dst_dir = os.path.join(traceid_dir, 'decoding', 'single_cells', '%s_%s' % (response_filter, tepoch))
-    print("DST: %s" % curr_dst_dir.split(traceid_dir)[-1])
+    #print("DST: %s" % curr_dst_dir.split(traceid_dir)[-1])
+
+    print("SINGLE_CELLS | (rid=%i, %s)" % (rid, analysis_flag))
+    varea = analysis_flag.split('_')[-1]
+    results_outfile = os.path.join(curr_dst_dir,'%s_%s__%03d.pkl' % (varea, C_str, int(rid+1)))
 
     if not os.path.exists(curr_dst_dir):
         os.makedirs(curr_dst_dir)
-    #C_str = analysis_flag.split('_')[-1]
-    bd_files = glob.glob(os.path.join(curr_dst_dir, '*%s*_%03d.pkl' % (C_str, int(rid+1))))
-    print("... deleting %i old files" % len(bd_files))
-    for f in bd_files:
-        os.remove(f)
+    if create_new and os.path.exists(results_outfile):
+        fname = os.path.split(results_outfile)[-1]
+        print("... deleting old files: %s" % fname)
+        os.remove(results_outfile)
 
     #print("***** Saving tmp results to:\n  %s" % curr_dst_dir)
-    varea = analysis_flag.split('_')[-1]
-    results_outfile = os.path.join(curr_dst_dir,'%s_%s__%03d.pkl' % (varea, C_str, int(rid+1)))
     if create_new is False: 
         try:
             with open(results_outfile, 'rb') as f:
                 iter_results = pkl.load(f)
         except Exception as e:
+            print("Error opening file, creating new")
             create_new=True 
     
     metainfo = {'cell': rid, 'datakey': datakey}
     if create_new:    
-        print("... SINGLE_CELLS | Starting decoding analysis (rid=%i, %s)" % (rid, analysis_flag))
+        print("... starting analysis ")
         # zscore full
         #neuraldf = aggr.zscore_neuraldf(neuraldf)
 
@@ -374,28 +376,16 @@ def decode_from_cell(datakey, rid, neuraldf, sdf, do_shuffle=True,
                                     n_iterations=n_iterations, 
                                     n_processes=n_processes, verbose=verbose,
                                     class_a=class_a, class_b=class_b, do_shuffle=do_shuffle)
-        print("%i items in mp list" % len(iter_list)) #.shape[0])
-        # DATA - get mean across items
         iter_results = pd.concat(iter_list, axis=0) 
         iter_results = putils.add_meta_to_df(iter_results, metainfo)
         with open(results_outfile, 'wb') as f:
             pkl.dump(iter_results, f, protocol=pkl.HIGHEST_PROTOCOL)
 
-    # Pool mean
-    print("... saved: %s" % os.path.split(results_outfile)[-1])
+        print("... saved: %s" % os.path.split(results_outfile)[-1])
 
-    print("... finished all iters: %s" % str(iter_results.shape))
-    iterd = dict(iter_results.mean())
-    iterd.update( dict(('%s_std' % k, v) \
-            for k, v in zip(iter_results.std().index, iter_results.std().values)) )
-    iterd.update( dict(('%s_sem' % k, v) \
-            for k, v in zip(iter_results.sem().index, iter_results.sem().values)) )
-    iterd.update({'cell': rid, 'datakey': datakey})
-    #print("::FINAL::")
-    #pp.pprint(iterd)
-    print("@@@@@@@@@ done. %s, rid=%i @@@@@@@@@@" % (datakey, rid))
+    print("Done!")
 
-    return iterd
+    return iter_results
 
 
 # --------------------------------------------------------------------
@@ -833,7 +823,7 @@ def main(options):
                         visual_area=None if match_distns else curr_visual_area,
                         datakey=None if match_distns else curr_datakey,
                         check_configs=True, return_configs=True, return_missing=False)
-    assigned_cells = assigned_cells[assigned_cells['visual_area'].isin(['V1', 'Lm', 'Li'])] #, 'Ll'])]
+    assigned_cells = assigned_cells[assigned_cells['visual_area'].isin(['V1', 'Lm', 'Li', 'Ll'])] #, 'Ll'])]
     stack_neuraldf = match_distns==True
 
     #### Load RFs
@@ -917,7 +907,7 @@ def main(options):
     if curr_datakey is not None:
         sdf = SDF[curr_datakey].copy()
     else:
-        sdf_master = aggr.get_master_sdf(images_only=images_only)
+        sdf_master = aggr.get_master_sdf(images_only=False)
         sdf = sdf_master.copy() #SDF[SDF.keys()[-1]].copy()
 
 
@@ -973,7 +963,7 @@ def main(options):
             # -----------------------------------------------------------------------
             for ri, rid in enumerate(gdf['dset_roi'].values):
                 if ri % 10 == 0:
-                    print("... %i of %i cells (%s|%s), rid=%i." \
+                    print("%i of %i cells (%s|%s), rid=%i." \
                             % (int(ri+1), ncells_total, curr_datakey, curr_visual_area, rid))
                 neuraldf = NEURALDATA[curr_visual_area][curr_datakey][[rid, 'config']].copy()
 
