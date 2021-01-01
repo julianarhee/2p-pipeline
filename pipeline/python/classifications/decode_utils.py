@@ -522,8 +522,6 @@ def get_trials_for_N_cells_df(curr_ncells, gdf, NEURALDATA):
 def tune_C(sample_data, target_labels, scoring_metric='accuracy', 
                         cv_nfolds=5, test_split=0.2, verbose=False, n_processes=1):
     
-    #train_data, test_data, train_labels, test_labels = train_test_split(sample_data, target_labels,
-    #                                                                    test_size=test_split)
     train_data = sample_data.copy()
     train_labels = target_labels
  
@@ -579,7 +577,7 @@ def fit_svm_shuffle(zdata, targets, test_split=0.2, cv_nfolds=5, verbose=False, 
     train_data, test_data, train_labels, test_labels = train_test_split(zdata, 
                                                         targets['label'].values, 
                                                         test_size=test_split, 
-                                                        stratify=targets['group'],
+                                                        stratify=targets['label'], #targets['group'],
                                                         shuffle=True, random_state=randi)
     #print("first few:", test_labels[0:10])
     #### Cross validate (tune C w/ train data)
@@ -597,16 +595,16 @@ def fit_svm_shuffle(zdata, targets, test_split=0.2, cv_nfolds=5, verbose=False, 
     scaler = StandardScaler().fit(train_data)
     train_data = scaler.transform(train_data)
 
-    trained_svc = svm.SVC(kernel='linear', C=C_value) #, random_state=10)
+    svc = svm.SVC(kernel='linear', C=C_value, random_state=randi) #, random_state=10)
     #print("... cv")
-    scores = cross_validate(trained_svc, train_data, train_labels, cv=cv_nfolds,
+    scores = cross_validate(svc, train_data, train_labels, cv=cv_nfolds,
                             scoring=('accuracy'),
                             #scoring=('precision_macro', 'recall_macro', 'accuracy'),
                             return_train_score=True)
     iterdict = dict((s, values.mean()) for s, values in scores.items())
     if verbose:
         print('... train (C=%.2f): %.2f, test: %.2f' % (C_value, iterdict['train_score'], iterdict['test_score']))
-    trained_svc = svm.SVC(kernel='linear', C=C_value).fit(train_data, train_labels)
+    trained_svc = svc.fit(train_data, train_labels)
        
     #### DATA - Test with held-out data
     test_data = scaler.transform(test_data)
@@ -626,7 +624,7 @@ def fit_svm_shuffle(zdata, targets, test_split=0.2, cv_nfolds=5, verbose=False, 
     log2_mi = computeMI(test_labels, predicted_labels)
     iterdict.update({'heldout_test_score': test_score, 
                      'heldout_MI': mi, 'heldout_aMI': ami, 'heldout_log2MI': log2_mi,
-                     'C': C_value})
+                     'C': C_value, 'randi': randi})
 
     # ------------------------------------------------------------------
     # Shuffle LABELS to calculate chance level
@@ -636,7 +634,7 @@ def fit_svm_shuffle(zdata, targets, test_split=0.2, cv_nfolds=5, verbose=False, 
     np.random.shuffle(test_labels_chance)
 
     #### CHANCE - Fit classifier
-    chance_svc = svm.SVC(kernel='linear', C=C_value, random_state=10)
+    chance_svc = svm.SVC(kernel='linear', C=C_value, random_state=randi)
     scores_chance = cross_validate(chance_svc, train_data, train_labels_chance, cv=cv_nfolds,
                             scoring=('accuracy'),
                             #scoring=('precision_macro', 'recall_macro', 'accuracy'),
@@ -655,7 +653,7 @@ def fit_svm_shuffle(zdata, targets, test_split=0.2, cv_nfolds=5, verbose=False, 
 
     iterdict_chance.update({'heldout_test_score': test_score_chance, 
                             'heldout_MI': mi, 'heldout_aMI': ami, 
-                            'heldout_log2MI': log2_mi, 'C': C_value})
+                            'heldout_log2MI': log2_mi, 'C': C_value, 'randi': randi})
 
     return iterdict, iterdict_chance
 
@@ -786,7 +784,7 @@ def fit_svm(zdata, targets, test_split=0.2, cv_nfolds=5,  n_processes=1,
     train_data, test_data, train_labels, test_labels = train_test_split(
                                                         zdata, targets['label'].values, 
                                                         test_size=test_split, 
-                                                        stratify=targets['group'], 
+                                                        stratify=targets['label'], #targets['group'], 
                                                         shuffle=True, random_state=randi)
     #print("first few:", test_labels[0:10])
     #### Cross validate (tune C w/ train data)
