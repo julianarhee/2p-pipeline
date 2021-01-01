@@ -983,7 +983,7 @@ def check_sdfs(stim_datakeys, experiment='blobs', traceid='traces001', images_on
                     % (datakey, str(sdf['xpos'].unique()), str(sdf['ypos'].unique())))
  
         if experiment=='blobs' and (sdf.shape[0]!=sdf_master.shape[0]):
-            print("%s: diff keys" % datakey)
+            #print("%s: diff keys" % datakey)
 #            if sdf.shape[0]==45:
 #                # missing morphlevels, likely lum controls
 #                c_list = sdf.index.tolist()
@@ -1110,6 +1110,7 @@ def get_neuraldata(cells, MEANS, stack=False, verbose=False):
     rf_=[]
     for (visual_area, datakey), curr_c in cells.groupby(['visual_area', 'datakey']):
         if visual_area not in NEURALDATA.keys():
+            print("... skipping: %s" % visual_area)
             continue
 
        # Get neuradf for these cells only
@@ -1629,7 +1630,8 @@ def global_cells(cells, remove_too_few=True, min_ncells=5,  return_counts=False)
 
     '''
     visual_areas=cells['visual_area'].unique() #['V1', 'Lm', 'Li']
-    
+    print("Assigned visual areas: %s" % str(visual_areas))
+ 
     incl_keys = []
     if remove_too_few:
         for (v, k), g in cells.groupby(['visual_area', 'datakey']):
@@ -1686,7 +1688,7 @@ def global_cells(cells, remove_too_few=True, min_ncells=5,  return_counts=False)
         return roidf
 
 def get_pooled_cells(stim_overlaps, stim_datakeys=None, remove_too_few=False, 
-                      overlap_thr=0.8, min_ncells=20):
+                      overlap_thr=0.8, min_ncells=20, visual_areas=None):
     '''
     stim_overlaps (dataframe)
         Dataframe of all cell IDs and overlap values for all dkeys and visual areas.
@@ -1713,20 +1715,25 @@ def get_pooled_cells(stim_overlaps, stim_datakeys=None, remove_too_few=False,
     else:
         incl_keys = stim_overlaps['datakey'].unique()
 
+    if visual_areas is None:
+        visual_areas = stim_overlaps['visual_area'].unique()
+
     # Filter out cells that dont pass overlap threshold
     globalcells, cellcounts = filter_rois(stim_overlaps[stim_overlaps['datakey'].isin(incl_keys)], 
-                                                overlap_thr=overlap_thr, return_counts=True)
+                                        overlap_thr=overlap_thr, return_counts=True, visual_areas=visual_areas)
 
     return globalcells, cellcounts
 
 
 
-def filter_rois(stim_overlaps, overlap_thr=0.50, return_counts=False):
+def filter_rois(stim_overlaps, overlap_thr=0.50, return_counts=False, visual_areas=None):
     '''
     Only get cells that pass overlap_thr of some value.
     '''
-    visual_areas=['V1', 'Lm', 'Li']
-    
+    # visual_areas=['V1', 'Lm', 'Li']
+    if visual_areas is None:
+        visual_areas = stim_overlaps['visual_area'].unique()
+ 
     nocells=[]; notrials=[];
     global_rois = dict((v, []) for v in visual_areas)
     roi_counters = dict((v, 0) for v in visual_areas)
@@ -2235,7 +2242,7 @@ def traces_to_trials(traces, labels, epoch='stimulus', metric='mean', n_on=None)
     return mean_responses
 
 
-def get_aggregate_info(traceid='traces001', fov_type='zoom2p0x', state='awake', create_new=False,
+def get_aggregate_info_unassigned(traceid='traces001', fov_type='zoom2p0x', state='awake', create_new=False,
                     visual_areas=['V1', 'Lm', 'Li'],
                     aggregate_dir='/n/coxfs01/julianarhee/aggregate-visual-areas',
                     rootdir='/n/coxfs01/2p-data', exclude=[]):
@@ -2265,6 +2272,32 @@ def get_aggregate_info(traceid='traces001', fov_type='zoom2p0x', state='awake', 
 
     sdata = sdata[~sdata['datakey'].isin(exclude)]
     return sdata
+
+
+def get_aggregate_info(traceid='traces001', fov_type='zoom2p0x', state='awake',
+                        visual_areas=['V1', 'Lm', 'Li', 'Ll']):
+    from pipeline.python.retinotopy import segment_retinotopy as seg
+    sdata = get_aggregate_info_unassigned(traceid=traceid, fov_type=fov_type, state=state,
+                    visual_areas=visual_areas)
+    cells, missing_seg = seg.get_cells_by_area(sdata, return_missing=True)
+
+    d_=[]
+    all_dkeys = cells[['visual_area', 'datakey']].drop_duplicates().reset_index(drop=True)
+    for (visual_area, datakey), g in all_dkeys.groupby(['visual_area', 'datakey']):
+        if visual_area not in visual_areas:
+            continue
+        found_exps = sdata[(sdata['datakey']==datakey)]['experiment'].values
+        tmpd = pd.DataFrame({'experiment': found_exps})
+        tmpd['visual_area'] = visual_area
+        tmpd['datakey'] = datakey
+        d_.append(tmpd)
+    all_sdata = pd.concat(d_, axis=0).reset_index(drop=True)
+    all_sdata = split_datakey(all_sdata)
+    all_sdata['fovnum'] = [int(f.split('_')[0][3:]) for f in all_sdata['fov']]
+
+    return all_sdata
+
+
 
 def get_aggregate_data_filepath(experiment, traceid='traces001', response_type='dff', 
                         epoch='stimulus', 
