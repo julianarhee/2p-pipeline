@@ -59,8 +59,9 @@ def load_metadata(experiment, responsive_test='nstds', responsive_thr=10.,
                   traceid='traces001'):
     from pipeline.python.classifications import aggregate_data_stats as aggr
     sdata = aggr.get_aggregate_info(traceid=traceid) #, fov_type=fov_type, state=state)
+    #print('%s:' % experiment, sdata.head())
     sdata_exp = sdata[sdata['experiment']==experiment] 
-      
+  
     if visual_area is not None:
         sdata_exp = sdata_exp[sdata_exp['visual_area']==visual_area]
  
@@ -120,6 +121,7 @@ def load_metadata(experiment, responsive_test='nstds', responsive_thr=10.,
                   traceid='traces001'):
     from pipeline.python.classifications import aggregate_data_stats as aggr
     sdata = aggr.get_aggregate_info(traceid=traceid) #, fov_type=fov_type, state=state)
+    print("%s: %s" % (experiment, sdata.head()))
     sdata_exp = sdata[sdata['experiment']==experiment] 
       
     if visual_area is not None:
@@ -188,6 +190,7 @@ elif analysis_type in ['by_fov', 'split_pupil']:
     #['20190614_jc091_fov1', '20190602_jc091_fov1', '20190609_jc099_fov1']
     if included_datakeys is not None: #len(included_datakeys) > 0:
         dsets = dsets[dsets['datakey'].isin(included_datakeys[0])]
+        
     if len(dsets)==0:
         fatal("no fovs found.")
     info("found %i [%s] datasets to process." % (len(dsets), experiment))
@@ -221,9 +224,12 @@ else:
     if args.included_datakeys is not None:
         included_datakeys = args.included_datakeys[0]
     print("dkeys:", included_datakeys)
+
+ 
     #['20190614_jc091_fov1', '20190602_jc091_fov1', '20190609_jc099_fov1']
     if len(included_datakeys) > 0:
         dsets = dsets[dsets['datakey'].isin(included_datakeys)]
+
     if len(dsets)==0:
         fatal("no fovs found.")
     info("found %i [%s] datasets to process." % (len(dsets), experiment))
