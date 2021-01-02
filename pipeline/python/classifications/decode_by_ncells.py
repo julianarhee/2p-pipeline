@@ -287,11 +287,12 @@ def decode_by_ncells(ncells, celldf, sdf, NEURALDATA,
     results_outfile = os.path.join(dst_dir, '%s_%i.pkl' % (results_id, ncells))
     if create_new is False: 
         try:
+            print("... loading: %s" % results_outfile)
             with open(results_outfile, 'rb') as f:
                 iter_results = pkl.load(f)
         except Exception as e:
+            print("... no results. creating new.")
             create_new=True 
-
 
     if create_new:    
         # Decoding -----------------------------------------------------
@@ -325,32 +326,44 @@ def decode_by_ncells(ncells, celldf, sdf, NEURALDATA,
     print("@@@@@@@@@ done. %s, n=%i @@@@@@@@@@" % (results_id, ncells))
     return iterd
 
+def get_traceid_dir_from_datakey(datakey, traceid='traces001', rootdir='/n/coxfs01/2p-data'):
+    session, animalid, fov_ = datakey.split('_')
+    fovnum = int(fov_[3:])
+    fov = 'FOV%i_zoom2p0x' % fovnum
+    traceid_dir = glob.glob(os.path.join(rootdir, animalid, session, 
+                            fov, 'combined_%s*' % experiment, 'traces', '%s*' % traceid))[0]
+    return traceid_dir
+
+def single_cell_dst_dir(traceid_dir, results_id):
+    analysis_flag, rparams, tepoch, C_str = results_id.split('__')
+    response_filter, rf_filter = rparams.split('_')
+    curr_dst_dir = os.path.join(traceid_dir, 'decoding', 'single_cells', '%s_%s' % (response_filter, tepoch))
+    if not os.path.exists(curr_dst_dir):
+        os.makedirs(curr_dst_dir)
+ 
+    varea = analysis_flag.split('_')[-1]
+    # results_outfile = os.path.join(curr_dst_dir,'%s_%s__%03d.pkl' % (varea, C_str, int(rid+1)))
+    save_prefix = '%s_%s' % (varea, C_str)
+
+    return curr_dst_dir, save_prefix
+ 
+     
 def decode_from_cell(datakey, rid, neuraldf, sdf, do_shuffle=True,
                     C_value=None, experiment='blobs',
                     n_iterations=50, n_processes=2, results_id='single_cell',
                     class_a=0, class_b=0, visual_area=None,
                     rootdir='/n/coxfs01/2p-data', create_new=False, verbose=False):
     # tmp save
-    session, animalid, fov_ = datakey.split('_')
-    fovnum = int(fov_[3:])
-    fov = 'FOV%i_zoom2p0x' % fovnum
-    traceid_dir = glob.glob(os.path.join(rootdir, animalid, session, 
-                            fov, 'combined_%s*' % experiment, 'traces', '%s*' % traceid))[0]
-    #results_id='%s_%s__%s-%s_%s__%s__%s' \
+   #results_id='%s_%s__%s-%s_%s__%s__%s' \
     #                % (prefix, visual_area, response_type, responsive_test, overlap_str, trial_epoch, C_str)
 
+ 
+    print("SINGLE_CELLS | (rid=%i, %s)" % (rid, results_id))
 
-    analysis_flag, rparams, tepoch, C_str = results_id.split('__')
-    response_filter, rf_filter = rparams.split('_')
-    curr_dst_dir = os.path.join(traceid_dir, 'decoding', 'single_cells', '%s_%s' % (response_filter, tepoch))
-    #print("DST: %s" % curr_dst_dir.split(traceid_dir)[-1])
+    traceid_dir = get_traceid_dir_from_datakey(datakey, traceid=traceid) 
+    curr_dst_dir, save_prefix = single_cell_dst_dir(traceid_dir, results_id)    
+    results_outfile = os.path.join(curr_dst_dir, '%s__%03d.pkl' % (save_prefix, int(rid+1)))
 
-    print("SINGLE_CELLS | (rid=%i, %s)" % (rid, analysis_flag))
-    varea = analysis_flag.split('_')[-1]
-    results_outfile = os.path.join(curr_dst_dir,'%s_%s__%03d.pkl' % (varea, C_str, int(rid+1)))
-
-    if not os.path.exists(curr_dst_dir):
-        os.makedirs(curr_dst_dir)
     if create_new and os.path.exists(results_outfile):
         fname = os.path.split(results_outfile)[-1]
         print("... deleting old files: %s" % fname)
@@ -816,13 +829,17 @@ def main(options):
     #### Source data
     curr_visual_area = None if opts.visual_area in ['None', None] else opts.visual_area
     curr_datakey = None if opts.datakey in ['None', None] else opts.datakey    
+    # Notes:
+    # images_only=True if by_ncells, since need to concatenate trials 
+    # TODO:  Fix so that we can train on anchors only and/or subset of configs
     _, assigned_cells, MEANS, SDF = aggr.get_source_data(experiment, 
                         equalize_now=True, zscore_now=True,
                         response_type=response_type, responsive_test=responsive_test, 
                         responsive_thr=responsive_thr, trial_epoch=trial_epoch, #use_all=False,
                         visual_area=None if match_distns else curr_visual_area,
                         datakey=None if match_distns else curr_datakey,
-                        check_configs=True, return_configs=True, return_missing=False)
+                        check_configs=True, return_configs=True, return_missing=False,
+                        images_only=analysis_type=='by_ncells')
     assigned_cells = assigned_cells[assigned_cells['visual_area'].isin(['V1', 'Lm', 'Li', 'Ll'])] #, 'Ll'])]
     stack_neuraldf = match_distns==True
 
@@ -907,9 +924,9 @@ def main(options):
     if curr_datakey is not None:
         sdf = SDF[curr_datakey].copy()
     else:
-        sdf_master = aggr.get_master_sdf(images_only=False)
+        images_only=analysis_type=='by_ncells'
+        sdf_master = aggr.get_master_sdf(images_only=True)
         sdf = sdf_master.copy() #SDF[SDF.keys()[-1]].copy()
-
 
     # ============================================================ 
     # PER FOV analysis - for each fov, do something. 
@@ -933,8 +950,7 @@ def main(options):
             # -----------------------------------------------------------------------
             neuraldf = aggr.get_neuraldf_for_cells_in_area(cells, MEANS, 
                                                        datakey=curr_datakey, visual_area=curr_visual_area)
-            if int(neuraldf.shape[1]-1) >= min_ncells:
-            
+            if int(neuraldf.shape[1]-1) >= min_ncells: 
                 decode_from_fov(curr_datakey, curr_visual_area, neuraldf, sdf, C_value=C_value,
                             n_iterations=n_iterations, n_processes=n_processes, 
                             results_id=results_id,
@@ -961,6 +977,14 @@ def main(options):
             # -----------------------------------------------------------------------
             # SINGLE_CELLS - for each fov, for each cell, do decode
             # -----------------------------------------------------------------------
+            if create_new: # remove all old files
+                traceid_dir = get_traceid_dir_from_datakey(curr_datakey, traceid=traceid) 
+                curr_dst_dir, save_prefix = single_cell_dst_dir(traceid_dir, results_id)    
+                old_files = glob.glob(os.path.join(curr_dst_dir, '%s_*.pkl' % save_prefix))
+                print("... deleting %i old files" % len(old_files))
+                for f in old_files:
+                    os.remove(f)
+
             for ri, rid in enumerate(gdf['dset_roi'].values):
                 if ri % 10 == 0:
                     print("%i of %i cells (%s|%s), rid=%i." \
@@ -1007,6 +1031,7 @@ def main(options):
                 # ----------------------------------------------
                 # Do decode w CURR_NCELLS, CURR_VISUAL_AREA
                 # ----------------------------------------------
+                print("**** %s (n=%i cells)****" % (curr_visual_area, curr_ncells))
                 decode_by_ncells(curr_ncells, gdf, sdf, NEURALDATA, 
                                 C_value=C_value,
                                 n_iterations=n_iterations, n_processes=n_processes, 
