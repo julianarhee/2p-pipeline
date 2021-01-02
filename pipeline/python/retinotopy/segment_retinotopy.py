@@ -339,6 +339,7 @@ def get_cells_by_area(sdata, excluded_datasets=[], return_missing=False, verbose
             d_.append(tmpd)
 
     cells = pd.concat(d_, axis=0).reset_index(drop=True)
+    cells = cells[~cells['datakey'].isin(excluded_datasets)]
     
     #print("Missing %i datasets for segmentation:" % len(missing_segmentation)) 
     if verbose: 
