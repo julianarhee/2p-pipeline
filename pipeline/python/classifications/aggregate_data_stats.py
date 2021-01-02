@@ -784,7 +784,7 @@ def get_active_cells_in_current_datasets(rois, MEANS, verbose=False):
 def load_aggregate_data(experiment, traceid='traces001', response_type='dff', epoch='stimulus', 
                        responsive_test='ROC', responsive_thr=0.05, n_stds=0.0,
                         check_configs=True, equalize_now=False, zscore_now=False,
-                        return_configs=False,
+                        return_configs=False, images_only=False,
                         aggregate_dir='/n/coxfs01/julianarhee/aggregate-visual-areas'):
     '''
     Return dict of neural dataframes (keys are datakeys).
@@ -809,13 +809,18 @@ def load_aggregate_data(experiment, traceid='traces001', response_type='dff', ep
     #### Fix config labels 
     if check_configs or return_configs:
         SDF, renamed_configs = check_sdfs(MEANS.keys(), traceid=traceid, 
-                                          images_only=False, return_incorrect=True)
+                                          images_only=images_only, return_incorrect=True)
         if check_configs:
-            sdf_master = get_master_sdf(images_only=False)
+            sdf_master = get_master_sdf(images_only=images_only)
             for k, renamed_c in renamed_configs.items():
                 #print("... updating %s" % k)
                 updated_cfgs = [renamed_c[cfg] for cfg in MEANS[k]['config']]
                 MEANS[k]['config'] = updated_cfgs
+
+    if images_only: #Update MEANS dict
+        for k, md in MEANS.items():
+            incl_configs = SDF[k].index.tolist()
+            MEANS[k] = md[md['config'].isin(incl_configs)]
 
     if equalize_now:
         # Get equal counts
@@ -851,6 +856,7 @@ def get_source_data(experiment, traceid='traces001',
                     responsive_test='nstds', responsive_thr=10., response_type='dff',
                     trial_epoch='stimulus', fov_type='zoom2p0x', state='awake', 
                     verbose=False, visual_area=None, datakey=None, return_configs=False,
+                    images_only=False,
                     return_missing=False, check_configs=True, equalize_now=False,zscore_now=False): 
     '''
     Returns metainfo, cell dataframe, and dict of neuraldfs for all 
@@ -867,7 +873,7 @@ def get_source_data(experiment, traceid='traces001',
                 responsive_test=responsive_test, responsive_thr=responsive_thr, 
                 response_type=response_type, epoch=trial_epoch,
                 check_configs=check_configs, equalize_now=equalize_now, zscore_now=zscore_now,
-                return_configs=return_configs)
+                return_configs=return_configs, images_only=images_only)
     if return_configs:
         MEANS, SDF = means0
     else:
@@ -875,8 +881,11 @@ def get_source_data(experiment, traceid='traces001',
  
    # Get dataset metainfo
     sdata = get_aggregate_info(traceid=traceid, fov_type=fov_type, state=state)
-    edata = sdata[sdata['experiment']==experiment].copy()
+    excluded_datakeys = ['20190327_JC073_fov1', '20190314_JC070_fov1'] if images_only else []
+    sdata = sdata[~sdata.isin(excluded_datakeys)]
 
+    edata = sdata[sdata['experiment']==experiment].copy()
+     
     # Get cell assignemnts (based on retinotopy/segment_retinotopy.py)
     rois, missing_seg = seg.get_cells_by_area(edata, return_missing=True)
     cells = get_active_cells_in_current_datasets(rois, MEANS, verbose=False)
@@ -957,7 +966,7 @@ def check_sdfs(stim_datakeys, experiment='blobs', traceid='traces001', images_on
     Notes: only tested with blobs, and renaming only works with blobs.
     '''
 
-    sdf_master = get_master_sdf(images_only=images_only)
+    sdf_master = get_master_sdf(images_only=False)
     n_configs = sdf_master.shape[0]
     
     #### Check that all datasets have same stim configs
@@ -975,8 +984,8 @@ def check_sdfs(stim_datakeys, experiment='blobs', traceid='traces001', images_on
             return None
 
         sdf = obj.get_stimuli()
-        if images_only:
-            sdf = sdf[sdf['morphlevel']!=-1]
+        #if images_only:
+        #    sdf = sdf[sdf['morphlevel']!=-1]
 
         if len(sdf['xpos'].unique())>1 or len(sdf['ypos'].unique())>1:
             print("*Warning* <%s> More than 1 pos? x: %s, y: %s" \
@@ -1019,6 +1028,7 @@ def check_sdfs(stim_datakeys, experiment='blobs', traceid='traces001', images_on
     compare_params = [p for p in sdf_master.columns if p not in ignore_params] 
     different_configs = renamed_configs.keys()
 
+    sdf_master = get_master_sdf(images_only=images_only)
     assert all([all(sdf_master[compare_params]==d[compare_params]) for k, d in SDF.items() \
               if k not in different_configs]), "Incorrect stimuli..."
 
