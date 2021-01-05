@@ -420,7 +420,7 @@ def create_results_id(prefix='fov_results', visual_area='varea', C_value=None,
                         response_type='dff', responsive_test='resp', overlap_thr=None):
 
     C_str = 'tuneC' if C_value is None else 'C%.2f' % C_value
-    overlap_str = 'no-rfs' if overlap_thr is None else 'overlap%.1f' % overlap_thr
+    overlap_str = 'noRF' if overlap_thr is None else 'overlap%.1f' % overlap_thr
     #results_id='%s_%s_%s__%s-%s_%s__%s' % (prefix, visual_area, C_str, response_type, responsive_test, overlap_str, trial_epoch)
     results_id='%s_%s__%s-%s_%s__%s__%s' \
                     % (prefix, visual_area, response_type, responsive_test, overlap_str, trial_epoch, C_str)
@@ -470,12 +470,16 @@ def load_decode_within_fov(animalid, session, fov, results_id='fov_results',
         print("... saving tmp results to:\n  %s" % curr_dst_dir)
 
     if not os.path.exists(os.path.join(curr_dst_dir, '%s.pkl' % results_id)):
-        print("... renaming")
         varea, rparams, tepoch, cstr = results_id.split('__')
+        if 'noRF' in rparams:
+            rparams = rparams.replace('noRF', 'no-rfs')
+        else:
+            rparams = rparams.replace('overlap', 'overlap-')
         old_id = '%s_%s__%s__%s' % (varea, cstr, rparams, tepoch)
-        results_outfile = os.path.join(curr_dst_dir, '%s.pkl' % old_id)
-        if os.path.exists(results_outfile):
-            os.rename(results_outfile, os.path.join(curr_dst_dir, '%s.pkl' % results_id))
+        old_outfile = os.path.join(curr_dst_dir, '%s.pkl' % old_id)
+        if os.path.exists(old_outfile):
+            print("... renaming (%s-->%s" % (old_id, results_id))
+            os.rename(old_outfile, os.path.join(curr_dst_dir, '%s.pkl' % results_id))
     results_outfile = os.path.join(curr_dst_dir, '%s.pkl' % results_id)
        
     if verbose:
@@ -498,6 +502,7 @@ def aggregate_decode_within_fov(dsets, results_prefix='fov_results',
                 responsive_test='nstds', responsive_thr=10., overlap_thr=None,
                 rootdir='/n/coxfs01/2p-data', verbose=False):
     no_results=[]
+    found_results=[]
     #i=0
     popdf = []
     for (visual_area, datakey), g in dsets.groupby(['visual_area', 'datakey']): 
@@ -515,7 +520,8 @@ def aggregate_decode_within_fov(dsets, results_prefix='fov_results',
         if iter_df is None:
             no_results.append((visual_area, datakey))
             continue
- 
+        else:
+            found_results.append((visual_area, datakey)) 
 #        # Pool mean
 #        if 'fov' in results_prefix:
 #            iterd = dict(iter_results.mean())
@@ -532,15 +538,18 @@ def aggregate_decode_within_fov(dsets, results_prefix='fov_results',
         popdf.append(iter_df)
         #i += 1
 
-    if len(popdf)==0:
-        return None
-    pooled = pd.concat(popdf, axis=0)
-
     if len(no_results)>0:
         print("No results for %i dsets:" % len(no_results))
         if verbose:
             for d in no_results:
                 print(d)
+    else:
+        print("Found results for %i dsets." % len(found_results))
+
+
+    if len(popdf)==0:
+        return None
+    pooled = pd.concat(popdf, axis=0)
 
     return pooled
 
@@ -557,7 +566,7 @@ def do_decode_within_fov(analysis_type='by_fov', experiment='blobs',
 
     #### Output dir
     stats_dir = os.path.join(aggregate_dir, 'data-stats')
-    dst_dir = os.path.join(aggregate_dir, 'decoding', 'by_fov')
+    dst_dir = os.path.join(aggregate_dir, 'decoding', analysis_type)
     if not os.path.exists(dst_dir):
         os.makedirs(dst_dir)
 
@@ -763,10 +772,10 @@ def main(options):
     # Dataset filtering --------------------------------
     filter_fovs = True
     remove_too_few = True
-    min_ncells = 10 if remove_too_few else 0
+    min_ncells = 5 #10 if remove_too_few else 0
     overlap_thr = None if opts.overlap_thr in ['None', None] else float(opts.overlap_thr)
     has_rfs = overlap_thr is not None
-    overlap_str = 'no-rfs' if overlap_thr is None else 'overlap-%.1f' % overlap_thr
+    overlap_str = 'noRF' if overlap_thr is None else 'overlap%.1f' % overlap_thr
    
     stim_filterby = None # 'first'
     has_gratings = experiment!='blobs'
@@ -810,9 +819,9 @@ def main(options):
 
     #### Get metadata for experiment type
     sdata = aggr.get_aggregate_info(traceid=traceid, fov_type=fov_type, state=state)
-    edata, expmeta = aggr.experiment_datakeys(sdata, experiment=experiment,
-                                has_gratings=has_gratings, stim_filterby=stim_filterby)
-        
+    edata, keys_by_area = aggr.experiment_datakeys(sdata, experiment=experiment, experiment_only=False,
+                                      has_gratings=has_gratings, stim_filterby=stim_filterby)
+     
     # Get blob metadata only - and only if have RFs
     if has_rfs:
         dsets = pd.concat([g for k, g in edata.groupby(['animalid', 'session', 'fov']) \
@@ -907,7 +916,7 @@ def main(options):
 
     #### Setup output dirs  
     results_prefix = analysis_type #set_results_prefix(analysis_type=analysis_type)
-    overlap_str = 'no-rfs' if overlap_thr is None else 'overlap-%.1f' % overlap_thr
+    overlap_str = 'noRF' if overlap_thr is None else 'overlap%.1f' % overlap_thr
     #data_info='%s%s_%s_%s_iter-%i' \
     #    % (match_str, response_type, responsive_test, overlap_str, n_iterations)
 
@@ -1001,7 +1010,7 @@ def main(options):
             print("Finished %s (%s). ID=%s" % (curr_datakey, curr_visual_area, results_id))
 
     elif analysis_type=='by_ncells':
-        data_info='%s%s-%s_%s_iter-%i' % (match_str, response_type, responsive_test, overlap_str, n_iterations)
+        data_info='%s%s-%s_%s_iter%i' % (match_str, response_type, responsive_test, overlap_str, n_iterations)
 
         # Create aggregate output dir
         dst_dir = os.path.join(aggregate_dir, 'decoding', analysis_type, data_info)
