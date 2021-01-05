@@ -30,6 +30,10 @@ def split_datakey(df):
     df['session'] = [s.split('_')[0] for s in df['datakey']]
     return df
 
+def split_datakey_str(s):
+    session, animalid, fovn = s.split('_')
+    fovnum = int(fovn[3:])
+    return session, animalid, fovnum
 
 def cart2sph(x,y,z):
     azimuth = np.arctan2(y,x)
