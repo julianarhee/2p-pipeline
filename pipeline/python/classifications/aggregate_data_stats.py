@@ -1038,7 +1038,8 @@ def check_sdfs(stim_datakeys, experiment='blobs', traceid='traces001', images_on
         return SDF
 
 
-def experiment_datakeys(sdata, experiment='blobs', has_gratings=False, stim_filterby='first'):
+def experiment_datakeys(sdata, experiment='blobs', has_gratings=False, stim_filterby='first',
+                        experiment_only=True):
 
     # Drop duplicates and whatnot fovs
     if experiment=='blobs':
@@ -1056,9 +1057,12 @@ def experiment_datakeys(sdata, experiment='blobs', has_gratings=False, stim_filt
                         & (edata['session']==s.split('_')[0])]['fovnum'].unique()[0]) for s in dictkeys]
     #expmeta = dict((k, [dv for dv in stim_datakeys for vv in v \
     #                if vv in dv]) for k, v in exp_dkeys.items())
-                     
-    emeta = edata[edata['datakey'].isin(stim_datakeys)]
-                     
+    if experiment_only:                 
+        emeta = edata[edata['datakey'].isin(stim_datakeys)]
+    else:
+        emeta = pd.concat([sdata[(sdata['visual_area']==v) & (sdata['datakey'].isin(dkeys))] \
+                            for v, dkeys in exp_dkeys.items()]) 
+
     return emeta, exp_dkeys #expmeta
 
 def neuraldf_dict_to_dataframe(NEURALDATA, response_type='response'):
@@ -1802,7 +1806,7 @@ def get_blobs_and_rf_meta(experiment='blobs', has_gratings=False, stim_filterby=
     #### Get metadata for experiment type
     sdata = get_aggregate_info(traceid=traceid, fov_type=fov_type, state=state)
     edata, expmeta = experiment_datakeys(sdata, experiment=experiment,
-                                has_gratings=has_gratings, stim_filterby=stim_filterby)
+                                has_gratings=has_gratings, stim_filterby=stim_filterby, experiment_only=False)
         
     # Get blob metadata only - and only if have RFs
     dsets = pd.concat([g for k, g in edata.groupby(['animalid', 'session', 'fov']) if 
