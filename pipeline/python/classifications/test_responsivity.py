@@ -393,8 +393,14 @@ def group_roidata_stimresponse(roidata, labels_df, roi_list=None, return_grouped
 #        roidata = roidata - np.nanmin(roidata)
 #        print(roidata.min())
 
+    
     if isinstance(roidata, pd.DataFrame):
         roidata = roidata.values
+    if roi_list is not None:
+        roi_list = np.array(roi_list)
+        roidata0 = roidata.copy()
+        roidata = roidata0[:, roi_list]
+        print("... selecting %i of %i rois" % (roidata0.shape[1], roidata.shape[1]))
 #    
     try:
         stimdur_vary = False
@@ -451,8 +457,8 @@ def group_roidata_stimresponse(roidata, labels_df, roi_list=None, return_grouped
                                      'base_mean': base_mean,
                                      
                                      'stim_mean_df': stim_mean_df,
-                                     'bas_mean_df': bas_mean_df,
-                                     'bas_std_df': bas_std_df
+                                     'base_mean_df': bas_mean_df,
+                                     'base_std_df': bas_std_df
                                      
                                      }, index=roi_list))
 
@@ -461,6 +467,7 @@ def group_roidata_stimresponse(roidata, labels_df, roi_list=None, return_grouped
         df_by_rois = df.groupby(df.index)
         return df_by_rois
     else:
+        df['cell'] = df.index.tolist()
         return df
 
 
