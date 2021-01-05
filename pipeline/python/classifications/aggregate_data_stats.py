@@ -7,6 +7,7 @@ import sys
 import optparse
 import itertools
 import copy
+import traceback
 
 import statsmodels as sm
 import scipy.stats as spstats
@@ -17,7 +18,7 @@ import seaborn as sns
 import cPickle as pkl
 
 from pipeline.python.classifications import experiment_classes as util
-from pipeline.python.utils import label_figure, natural_keys, reformat_morph_values, add_meta_to_df, isnumber, split_datakey
+from pipeline.python.utils import label_figure, natural_keys, reformat_morph_values, add_meta_to_df, isnumber, split_datakey, split_datakey_str
 
 # ===============================================================
 # Dataset selection
@@ -165,7 +166,23 @@ def get_metadata(traceid='traces001', filter_by='most_cells', stimulus=None, sti
         return dsets
 
 
-def get_blob_datasets(filter_by='most_fits', excluded_sessions=[], as_dict=True, has_gratings=False):
+def include_dsets_with(edata, experiment='blobs', also_include='rfs'):
+    if also_include=='rfs':
+        dsets = pd.concat([g for k, g in edata.groupby(['animalid', 'session', 'fov']) if 
+                    (experiment in g['experiment'].values 
+                    and ('rfs' in g['experiment'].values or 'rfs10' in g['experiment'].values)) ])
+    else:
+        dsets = pd.concat([g for k, g in edata.groupby(['animalid', 'session', 'fov']) if 
+                    (experiment in g['experiment'].values) and (also_include in g['experiment'].values)]) 
+
+    return dsets
+ 
+def get_blob_datasets(filter_by='most_fits', excluded_sessions=[], as_dict=True, 
+                        has_gratings=False, has_rfs=False):
+    '''
+    filter_by:  None to return all, most_fits to retun ones with most # responsive.
+    Others are untested
+    '''
     from pipeline.python.retinotopy import segment_retinotopy as seg
 
     included_sessions=[]
@@ -174,21 +191,26 @@ def get_blob_datasets(filter_by='most_fits', excluded_sessions=[], as_dict=True,
     # Get meta info 
     sdata = get_aggregate_info() 
     if has_gratings:
-        edata = sdata[('blobs' in sdata['experiment'].values)
-                    & ('gratings' in sdata['experiment'].values)].copy()
+        sdata = include_dsets_with(sdata, experiment='blobs', also_include='gratings')
+
+    # Get blob metadata only - and only if have RFs
+    if has_rfs:
+        edata = include_dsets_with(sdata, experiment='blobs', also_include='rfs')
     else:
-        edata = sdata[sdata['experiment']=='blobs'].copy()
+        edata = sdata[sdata['experiment']=='blobs']
 
     if filter_by == 'most_fits':
-        assigned_cells = seg.get_cells_by_area(edata)
-        best_dfs = get_dsets_with_most_blobs(edata, assigned_cells)
+        dsets = edata[edata['experiment']=='blobs'].copy()
+        assigned_cells = seg.get_cells_by_area(dsets)
+        best_dfs = get_dsets_with_most_blobs(dsets, assigned_cells)
         if as_dict:
             included_sessions = make_metadict_from_df(best_dfs)
         else:
             included_sessions = best_dfs
+
     elif filter_by is None:
         if as_dict:
-            included_sessions = make_metadict_from_df(edata)
+            included_sessions = make_metadict_from_df(dsets)
         else:
             included_sessions = edata
     else:
@@ -311,18 +333,27 @@ def make_metadict_from_df(df):
     return ddict
 
 def get_gratings_datasets(filter_by='most_fits', excluded_sessions=[], as_dict=True):
+    '''
+    filter_by:  None to return all, most_fits to retun ones with most # responsive.
+    Others are untested
+    ''' 
     from pipeline.python.retinotopy import segment_retinotopy as seg
 
     included_sessions=[]
 
     #excluded_sessions.extend(always_exclude)
-   
+    # Get blob metadata only - and only if have RFs
+    sdata = get_aggregate_info() 
+    if has_rfs:
+        edata = include_dsets_with(sdata, experiment='gratings', also_include='rfs')
+    else:
+        edata = sdata[sdata['experiment']=='gratings']
+
     if filter_by is 'most_fits':
         # Get meta info 
-        sdata = get_aggregate_info()
-        edata = sdata[sdata['experiment']=='gratings'].copy()
-        assigned_cells = seg.get_cells_by_area(edata)
-        best_dfs = get_dsets_with_most_gratings(edata, assigned_cells)
+        dsets = edata[edata['experiment']=='gratings'].copy()
+        assigned_cells = seg.get_cells_by_area(dsets)
+        best_dfs = get_dsets_with_most_gratings(dsets, assigned_cells)
         if as_dict:
             included_sessions = make_metadict_from_df(best_dfs)
         else:
@@ -1038,32 +1069,33 @@ def check_sdfs(stim_datakeys, experiment='blobs', traceid='traces001', images_on
         return SDF
 
 
-def experiment_datakeys(sdata, experiment='blobs', has_gratings=False, stim_filterby='first',
+def experiment_datakeys(experiment='blobs', has_gratings=False, has_rfs=False, stim_filterby='most_fits',
                         experiment_only=True):
 
     # Drop duplicates and whatnot fovs
     if experiment=='blobs':
         g_str = 'hasgratings' if has_gratings else 'blobsonly'
-        exp_dkeys = get_blob_datasets(filter_by=stim_filterby, has_gratings=has_gratings, as_dict=True)
+        edata = get_blob_datasets(filter_by=stim_filterby, has_gratings=has_gratings, has_rfs=has_rfs,
+                                     as_dict=False)
     else:
         g_str = 'gratingsonly'
-        exp_dkeys = get_gratings_datasets(filter_by=stim_filterby, as_dict=True)
+        edata = get_gratings_datasets(filter_by=stim_filterby, has_rfs=has_rfs, as_dict=False)
+    
+    exp_dict = make_metadict_from_df(edata)
 
 
-    dictkeys = [d for d in list(itertools.chain(*exp_dkeys.values()))]
-    edata = sdata[sdata['experiment']==experiment]
+    dictkeys = [d for d in list(itertools.chain(*exp_dict.values()))]
     stim_datakeys = ['%s_%s_fov%i' % (s.split('_')[0], s.split('_')[1], 
                        edata[(edata['animalid']==s.split('_')[1]) 
                         & (edata['session']==s.split('_')[0])]['fovnum'].unique()[0]) for s in dictkeys]
-    #expmeta = dict((k, [dv for dv in stim_datakeys for vv in v \
-    #                if vv in dv]) for k, v in exp_dkeys.items())
+
     if experiment_only:                 
         emeta = edata[edata['datakey'].isin(stim_datakeys)]
     else:
-        emeta = pd.concat([sdata[(sdata['visual_area']==v) & (sdata['datakey'].isin(dkeys))] \
-                            for v, dkeys in exp_dkeys.items()]) 
+        emeta = pd.concat([edata[(edata['visual_area']==v) & (edata['datakey'].isin(dkeys))] \
+                            for v, dkeys in exp_dict.items()]) 
 
-    return emeta, exp_dkeys #expmeta
+    return emeta, exp_dict #expmeta
 
 def neuraldf_dict_to_dataframe(NEURALDATA, response_type='response'):
     ndfs = []
@@ -1701,14 +1733,11 @@ def global_cells(cells, remove_too_few=True, min_ncells=5,  return_counts=False)
     else:
         return roidf
 
-def get_pooled_cells(stim_overlaps, stim_datakeys=None, remove_too_few=False, 
-                      overlap_thr=0.8, min_ncells=20, visual_areas=None):
+def get_pooled_cells(stim_overlaps, remove_too_few=False, 
+                      overlap_thr=0.8, min_ncells=20, visual_areas=None, return_counts=True):
     '''
     stim_overlaps (dataframe)
         Dataframe of all cell IDs and overlap values for all dkeys and visual areas.
-    stim_datakeys (list)
-        List of experiment datakeys to include. Default includes all in provided dataframe.
-
     cells - dataframe, each row is a cell, has datakey/visual_area fields
 
     Returns:
@@ -1736,8 +1765,10 @@ def get_pooled_cells(stim_overlaps, stim_datakeys=None, remove_too_few=False,
     globalcells, cellcounts = filter_rois(stim_overlaps[stim_overlaps['datakey'].isin(incl_keys)], 
                                         overlap_thr=overlap_thr, return_counts=True, visual_areas=visual_areas)
 
-    return globalcells, cellcounts
-
+    if return_counts:
+        return globalcells, cellcounts
+    else:
+        return globalcells
 
 
 def filter_rois(stim_overlaps, overlap_thr=0.50, return_counts=False, visual_areas=None):
@@ -1805,18 +1836,167 @@ def get_blobs_and_rf_meta(experiment='blobs', has_gratings=False, stim_filterby=
                             traceid='traces001', fov_type='zoom2p0x', state='awake'):
     #### Get metadata for experiment type
     sdata = get_aggregate_info(traceid=traceid, fov_type=fov_type, state=state)
-    edata, expmeta = experiment_datakeys(sdata, experiment=experiment,
-                                has_gratings=has_gratings, stim_filterby=stim_filterby, experiment_only=False)
-        
-    # Get blob metadata only - and only if have RFs
-    dsets = pd.concat([g for k, g in edata.groupby(['animalid', 'session', 'fov']) if 
-                (experiment in g['experiment'].values 
-                and ('rfs' in g['experiment'].values or 'rfs10' in g['experiment'].values)) ])
-    dsets[['visual_area', 'datakey']].drop_duplicates().groupby(['visual_area']).count()
-    
+    edata, expmeta = experiment_datakeys(experiment=experiment,
+                            has_grating=shas_gratings, stim_filterby=stim_filterby, 
+                            has_rfs=True, experiment_only=False)
+           
     return dsets
 #
 
+
+# ===============================================================
+# SNR 
+# ===============================================================
+
+def load_snr_data(experiment='blobs', traceid='traces001', responsive_test='nstds', 
+                 responsive_thr=10.0, trial_epoch='stimulus', 
+                 aggregate_dir='/n/coxfs01/julianarhee/aggregate-visual-areas'):
+    SNR=None
+    fname = 'aggr_%s_trialmeans_%s_%s-thr-%.2f_snr_%s' \
+                % (experiment, traceid, responsive_test, responsive_thr, trial_epoch)
+    #print(fname)
+    create_new_df=False
+    outfile = os.path.join(aggregate_dir, 'data-stats', '%s.pkl' % fname)
+    try:
+        print("... loading SNR (%s)" % fname)
+        with open(outfile, 'rb') as f:
+            SNR = pkl.load(f)
+        print(SNR.shape)
+    except Exception as e:
+        traceback.print_exc() #print(e)
+        #return None
+    
+    return SNR, outfile
+
+
+def create_snr_df(RCELLS, experiment='blobs', trial_epoch='stimulus', traceid='traces001', 
+                    outfile='/tmp/results.pkl'):
+    '''
+    RCELLS (df): all assigned and responsive cells for each dset/visual area
+    Labels are loaded from experiment_classes.py()
+    '''
+    from pipeline.python.classifications import test_responsivity as resp
+    print("... creating SNR df")
+    print("... dst: %s" % outfile)
+
+    d_=[]
+    for (visual_area, datakey), g in RCELLS.groupby(['visual_area', 'datakey']):
+
+        # Load experiment data
+        session, animalid, fovnum = split_datakey_str(datakey)
+        E = util.Objects(animalid, session, 'FOV%i_zoom2p0x' % fovnum, traceid=traceid)
+        E.load(trace_type='corrected')
+
+        # Get trial metrics for each roi
+        curr_rois = g['cell'].unique().astype(int)
+        nframes_on = float(E.data.labels['nframes_on'].unique())
+        nframes_post = (nframes_on*0.5) if trial_epoch=='plushalf' else 0.
+        
+        gdf = resp.group_roidata_stimresponse(E.data.traces, E.data.labels, roi_list=curr_rois, 
+                                          nframes_post=nframes_post, return_grouped=False)
+        
+        gdf['snr'] = gdf['stim_mean'] / gdf['base_std']
+        
+        df_ = gdf[['snr', 'config', 'cell']]
+        df_['visual_area'] = visual_area
+        df_['datakey'] = datakey
+        d_.append(df_)
+
+    SNR = pd.concat(d_, axis=0).reset_index(drop=True)
+    #print(SNR.shape)
+    SNR = split_datakey(SNR)
+
+    print("... saving")
+    with open(outfile, 'wb') as f:
+        pkl.dump(SNR, f, protocol=pkl.HIGHEST_PROTOCOL)
+    print("Saved! %s" % outfile)
+    
+    return SNR
+    
+    
+def get_snr_data(RCELLS, experiment='blobs', traceid='traces001', responsive_test='nstds', 
+                 responsive_thr=10.0, trial_epoch='stimulus', create_new=False, rename_configs=True,
+                aggregate_dir='/n/coxfs01/julianarhee/aggregate-visual-areas'):
+    
+    if not create_new:
+        SNR, outfile = load_snr_data(experiment=experiment, traceid=traceid, responsive_test=responsive_test,
+                                        responsive_thr=responsive_thr, trial_epoch=trial_epoch)
+        create_new = SNR is None
+        
+    if create_new:
+
+        fname = 'aggr_%s_trialmeans_%s_%s-thr-%.2f_snr_%s' \
+                    % (experiment, traceid, responsive_test, responsive_thr, trial_epoch)
+        outfile = os.path.join(aggregate_dir, 'data-stats', '%s.pkl' % fname)
+        SNR = create_snr_df(RCELLS, experiment=experiment, trial_epoch=trial_epoch, traceid=traceid,
+                            outfile=outfile)
+
+    if rename_configs:
+        SNR, _ = rename_neuraldf_configs(SNR, experiment=experiment, traceid=traceid)
+#         stim_datakeys=NEURALDATA['datakey'].unique()
+#         SDF, renamed_configs = aggr.check_sdfs(stim_datakeys, experiment='blobs', 
+#                                 traceid=traceid, images_only=True, rename=True, return_incorrect=True)
+#         for k, curr_lut in renamed_configs.items():
+#             new_cfgs = [curr_lut[c] for c in SNR[SNR['datakey']==k]['config']]
+#             SNR.loc[SNR['datakey']==k, 'config'] = new_cfgs
+    
+    # Save mean 
+    outdir, outfname = os.path.split(outfile)
+    f_id = outfname.split('_trialmeans_')[-1]
+    mean_fname = 'snr_by_cell_%s' % f_id
+    outf = os.path.join(aggregate_dir, 'data-stats', fname) 
+    print(mean_fname)
+    mean_snr = SNR.groupby(['visual_area', 'datakey', 'cell', 'config']).mean().reset_index()
+    with open(outf, 'wb') as f:
+        pkl.dump(mean_snr, f, protocol=pkl.HIGHEST_PROTOCOL)
+        
+    return SNR
+
+def rename_neuraldf_configs(NEURALDATA, experiment='blobs', traceid='traces001'):
+
+    stim_datakeys = NEURALDATA['datakey'].unique()
+
+    SDF, renamed_configs = check_sdfs(stim_datakeys, experiment=experiment, 
+                            traceid=traceid, images_only=True, rename=True, return_incorrect=True)
+    
+    for k, curr_lut in renamed_configs.items():
+        new_cfgs = [curr_lut[c] for c in NEURALDATA[NEURALDATA['datakey']==k]['config']]
+        NEURALDATA.loc[NEURALDATA['datakey']==k, 'config'] = new_cfgs
+
+    return NEURALDATA, SDF
+
+def get_mean_snr(experiment='blobs', traceid='traces001', responsive_test='nstds', 
+                 responsive_thr=10.0, trial_epoch='stimulus',
+                aggregate_dir='/n/coxfs01/julianarhee/aggregate-visual-areas'):
+    mean_snr=None
+    fname = 'aggr_by_cell_%s_%s_%s-thr-%.2f_snr_%s' \
+                % (experiment, traceid, responsive_test, responsive_thr, trial_epoch)
+    outf = os.path.join(aggregate_dir, 'data-stats', '%s.pkl' % fname)
+    try:
+        print("... loading SNR (%s)" % fname)
+        with open(outf, 'rb') as f:
+            mean_snr = pkl.load(f)
+        print(mean_snr.shape)
+    except Exception as e:
+        print(e)
+        return None
+    
+    return mean_snr
+
+def threshold_cells_by_snr(mean_snr, globalcells, snr_thr=10.0):
+    
+    # mean_snr = SNR.groupby(['visual_area', 'datakey', 'cell', 'config']).mean().reset_index()
+    thresh_snr = mean_snr[mean_snr['snr']>=snr_thr].groupby(['visual_area', 'datakey', 'cell'])\
+                    .mean().reset_index()
+
+    # Get global cells that pass threshold
+    CELLS = pd.concat([globalcells[(globalcells['visual_area']==visual_area)
+                                 & (globalcells['datakey']==datakey)
+                                 & (globalcells['dset_roi'].isin(g['cell'].unique()))] \
+                       for (visual_area, datakey), g in thresh_snr.groupby(['visual_area', 'datakey'])])
+    CELLS['cell'] = CELLS['dset_roi'] # Add 'cell' column to use as 'assigned_cells' df
+    
+    return CELLS
 
 
 # ===============================================================
@@ -2348,6 +2528,79 @@ def create_dataframe_name(traceid='traces001', response_type='dff',
     data_desc = 'trialmeans_%s_%s-thr-%.2f_%s_%s' % (traceid, str(responsive_test), responsive_thr, response_type, epoch)
     return data_desc
 
+
+def load_trial_metrics(animalid, session, fovnum, experiment, traceid='traces001', 
+                   response_type='dff', epoch='stimulus',
+                   responsive_test='ROC', responsive_thr=0.05, n_stds=2.5, 
+                   create_new=False, redo_stats=False, n_processes=1,
+                   rootdir='/n/coxfs01/2p-data'):
+    tmetrics=None
+
+    fns = glob.glob(os.path.join(rootdir, animalid, session, 'FOV%i_zoom2p0x' % fovnum, 
+                        'combined_%s_static' % experiment, 'traces', '%s*' % traceid,
+                    'summary_stats', responsive_test, 'METRICS_*%s.pkl' % epoch))
+    assert len(fns)==1, "What to load? %s" % str(fns)
+
+    with open(fns[0], 'rb') as f:
+        tmetrics = pkl.load(f)
+
+    return tmetrics
+
+def save_trial_metrics(animalid, session, fovnum, experiment, traceid='traces001', 
+                   response_type='dff', epoch='stimulus',
+                   responsive_test='ROC', responsive_thr=0.05, n_stds=2.5, 
+                   create_new=False, redo_stats=False, n_processes=1,
+                   rootdir='/n/coxfs01/2p-data'):
+    from pipeline.python.classifications import test_responsivity as resp
+    '''
+    epoch options
+        stimulus: use full stimulus period
+        baseline: average over baseline period
+        firsthalf: use first HALF of stimulus period
+        plushalf:  use stimulus period + extra half 
+    '''
+    # output
+    traceid_dir = glob.glob(os.path.join(rootdir, animalid, session, 
+                            'FOV%i_*' % fovnum, 'combined_%s_static' % experiment,
+                            'traces', '%s*' % traceid))[0]
+    if responsive_test is not None:
+        statdir = os.path.join(traceid_dir, 'summary_stats', str(responsive_test))
+    else:
+        statdir = os.path.join(traceid_dir, 'summary_stats')
+    data_desc_base = create_dataframe_name(traceid=traceid, 
+                                            response_type=response_type, 
+                                            responsive_test=responsive_test,
+                                            responsive_thr=responsive_thr,
+                                            epoch=epoch)
+    ndf_fpath = os.path.join(statdir, 'METRICS_%s.pkl' % data_desc_base)
+    print("... creating trial metrics (%s)" % data_desc_base) #ndf_fpath) 
+   
+    # Load traces
+    traces, labels, sdf = load_traces(animalid, session, fovnum, 
+                                      experiment, traceid=traceid, 
+                                      response_type='corrected',
+                                      responsive_test=responsive_test, 
+                                      responsive_thr=responsive_thr, 
+                                      n_stds=n_stds,
+                                      redo_stats=redo_stats, 
+                                      n_processes=n_processes)
+    if traces is None:
+        return None
+    # Calculate mean trial metric
+    nframes_on = float(labels['nframes_on'].unique())
+    nframes_post = (nframes_on*0.5) if epoch=='plushalf' else 0.
+
+    gdf = resp.group_roidata_stimresponse(traces, labels, 
+                                      nframes_post=nframes_post, return_grouped=False)        
+    gdf['snr'] = gdf['stim_mean'] / gdf['base_std']
+
+    # save
+    with open(ndf_fpath, 'wb') as f:
+        pkl.dump(gdf, f, protocol=pkl.HIGHEST_PROTOCOL)
+
+    return gdf 
+
+
 def get_neuraldf(animalid, session, fovnum, experiment, traceid='traces001', 
                    response_type='dff', epoch='stimulus',
                    responsive_test='ROC', responsive_thr=0.05, n_stds=2.5, 
@@ -2406,6 +2659,53 @@ def get_neuraldf(animalid, session, fovnum, experiment, traceid='traces001',
             pkl.dump(mean_responses, f, protocol=pkl.HIGHEST_PROTOCOL)
 
     return mean_responses
+
+def save_trial_metrics_cycle(experiment, traceid='traces001', 
+                       response_type='dff', epoch='stimulus',
+                       responsive_test='ROC', responsive_thr=0.05, n_stds=2.5, 
+                       create_new=False, redo_stats=False, redo_fov=False,
+                       always_exclude=['20190426_JC078'], n_processes=1,
+                       aggregate_dir='/n/coxfs01/julianarhee/aggregate-visual-areas'):
+    '''
+    create_new: remake aggregate file
+    redo_stats: for each loaded FOV, re-calculate stats 
+    redo_fov: create new neuraldf (otherwise just loads existing)
+    '''
+    #if experiment=='gratings':
+    #    always_exclude.append('20190517_JC083')
+
+    #### Load mean trial info for responsive cells
+    data_dir = os.path.join(aggregate_dir, 'data-stats')
+    sdata = get_aggregate_info(traceid=traceid)
+    
+    #### Get DATA   
+
+    print("RUNNING METRICS: %s" % experiment)
+    dsets = sdata[sdata['experiment']==experiment].copy()
+    no_stats = []
+    #DATA = {}
+    for (animalid, session, fovnum), g in dsets.groupby(['animalid', 'session', 'fovnum']):
+        datakey = '%s_%s_fov%i' % (session, animalid, fovnum)
+        if '%s_%s' % (session, animalid) in always_exclude:
+            continue 
+        else:
+            print(datakey)
+        mean_responses = save_trial_metrics(animalid, session, fovnum, experiment, 
+                            traceid=traceid, 
+                            response_type=response_type, epoch=epoch,
+                            responsive_test=responsive_test, 
+                            responsive_thr=responsive_thr, n_stds=n_stds,
+                            redo_stats=any([redo_fov, redo_stats]))          
+        if mean_responses is None:
+            print("NO stats, rerun: %s" % datakey)
+            no_stats.append(datakey)
+            continue
+
+    print("There were %i datasets without stats:" % len(no_stats))
+    for d in no_stats:
+        print(d)
+    
+    return #data_outfile
 
 
 
@@ -2541,6 +2841,10 @@ def extract_options(options):
     parser.add_option('--all',  action='store_true', dest='aggregate', default=False,
                       help="Set flag to cycle thru ALL dsets")
 
+    parser.add_option('--metrics',  action='store_true', dest='do_metrics', default=False,
+                      help="Set flag to cycle thru and save all metrics for each dset")
+
+
 
 
 
@@ -2578,8 +2882,18 @@ def main(options):
     fov_type=opts.fov_type
     state=opts.state
 
+    do_metrics = opts.do_metrics
     if run_aggregate: 
         data_outfile = aggregate_and_save(experiment, traceid=traceid, 
+                                       response_type=response_type, epoch=epoch,
+                                       responsive_test=responsive_test, 
+                                       n_stds=n_stds,
+                                       responsive_thr=responsive_thr, 
+                                       create_new=any([create_new, redo_stats, redo_fov]),
+                                       n_processes=n_processes,
+                                       redo_stats=redo_stats, redo_fov=redo_fov)
+    elif do_metrics:
+         save_trial_metrics_cycle(experiment, traceid=traceid, 
                                        response_type=response_type, epoch=epoch,
                                        responsive_test=responsive_test, 
                                        n_stds=n_stds,
