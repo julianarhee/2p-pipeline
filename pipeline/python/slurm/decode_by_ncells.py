@@ -35,6 +35,8 @@ parser.add_argument('--match', dest='match_distns', action='store_true', default
 
 parser.add_argument('--epoch', dest='trial_epoch', action='store', default='stimulus', help='Trial epoch for data input (options: stimulus, firsthalf, plushalf, baseline. default=stimulus')
 
+parser.add_argument('--snr', dest='threshold_snr', action='store_true', default=False, help='Set to threshold SNR')
+
 
 
 args = parser.parse_args()
@@ -83,16 +85,20 @@ overlap_thr = None if args.overlap_thr in ['None', None] else float(args.overlap
 analysis_type = args.analysis_type
 c_value = None if args.c_value in ['None', None] else float(args.c_value)
 c_str = 'tune-C' if c_value is None else 'C-%.2f' % c_value
-match_distns = args.match_distns
-
 trial_epoch = args.trial_epoch
+match_distns = args.match_distns
+threshold_snr = args.threshold_snr
 
 # Create a (hopefully) unique prefix for the names of all jobs in this 
 # particular run of the pipeline. This makes sure that runs can be
 # identified unambiguously
 piper = uuid.uuid4()
 piper = str(piper)[0:4]
-match_str = 'matchdistns_' if match_distns else ''
+if threshold_snr:
+    match_str='snr_'
+else:
+    match_str = 'matchdistns_' if match_distns else ''
+
 if overlap_thr is None:
     logdir = 'LOG__%s%s_%s_%s__%s_no-rfs' % (match_str, analysis_type, str(visual_area), experiment, trial_epoch) 
 else:
@@ -164,15 +170,26 @@ if analysis_type=='by_ncells':
                     CVAL=c_value, VAREA=visual_area, NCELLS=ncells, DKEY=datakey, EPOCH=trial_epoch) 
  
             else:
-                cmd = "sbatch --job-name={PROCID}.{ANALYSIS}.{MTAG} \
-                -o '{LOGDIR}/{PROCID}.{ANALYSIS}.{MTAG}.out' \
-                -e '{LOGDIR}/{PROCID}.{ANALYSIS}.{MTAG}.err' \
-        /n/coxfs01/2p-pipeline/repos/2p-pipeline/pipeline/python/slurm/decode_by_ncells.sbatch \
-        {EXP} {TRACEID} {RTEST} {OVERLAP} {ANALYSIS} {CVAL} {VAREA} {NCELLS} {DKEY} {EPOCH}".format(
-                    PROCID=piper, MTAG=mtag, LOGDIR=logdir,
-                    EXP=experiment, TRACEID=traceid, ANALYSIS=analysis_type,
-                    RTEST=responsive_test, OVERLAP=overlap_thr, 
-                    CVAL=c_value, VAREA=visual_area, NCELLS=ncells, DKEY=datakey, EPOCH=trial_epoch) 
+                if threshold_snr:
+                    cmd = "sbatch --job-name={PROCID}.{ANALYSIS}.{MTAG} \
+                    -o '{LOGDIR}/{PROCID}.{ANALYSIS}.{MTAG}.out' \
+                    -e '{LOGDIR}/{PROCID}.{ANALYSIS}.{MTAG}.err' \
+            /n/coxfs01/2p-pipeline/repos/2p-pipeline/pipeline/python/slurm/decode_by_ncells_snr.sbatch \
+            {EXP} {TRACEID} {RTEST} {OVERLAP} {ANALYSIS} {CVAL} {VAREA} {NCELLS} {DKEY} {EPOCH}".format(
+                        PROCID=piper, MTAG=mtag, LOGDIR=logdir,
+                        EXP=experiment, TRACEID=traceid, ANALYSIS=analysis_type,
+                        RTEST=responsive_test, OVERLAP=overlap_thr, 
+                        CVAL=c_value, VAREA=visual_area, NCELLS=ncells, DKEY=datakey, EPOCH=trial_epoch) 
+                else: 
+                    cmd = "sbatch --job-name={PROCID}.{ANALYSIS}.{MTAG} \
+                    -o '{LOGDIR}/{PROCID}.{ANALYSIS}.{MTAG}.out' \
+                    -e '{LOGDIR}/{PROCID}.{ANALYSIS}.{MTAG}.err' \
+            /n/coxfs01/2p-pipeline/repos/2p-pipeline/pipeline/python/slurm/decode_by_ncells.sbatch \
+            {EXP} {TRACEID} {RTEST} {OVERLAP} {ANALYSIS} {CVAL} {VAREA} {NCELLS} {DKEY} {EPOCH}".format(
+                        PROCID=piper, MTAG=mtag, LOGDIR=logdir,
+                        EXP=experiment, TRACEID=traceid, ANALYSIS=analysis_type,
+                        RTEST=responsive_test, OVERLAP=overlap_thr, 
+                        CVAL=c_value, VAREA=visual_area, NCELLS=ncells, DKEY=datakey, EPOCH=trial_epoch) 
                 #
             status, joboutput = commands.getstatusoutput(cmd)
             jobnum = joboutput.split(' ')[-1]
