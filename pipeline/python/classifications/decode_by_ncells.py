@@ -725,6 +725,8 @@ def extract_options(options):
 
     parser.add_option('--shuffle', action='store_true', dest='do_shuffle', 
             default=False, help="included shuffled results")
+    parser.add_option('--snr', action='store_true', dest='threshold_snr', 
+            default=False, help="use min. snr to filter out cells")
 
 
     (options, args) = parser.parse_args(options)
@@ -785,6 +787,8 @@ def main(options):
         match_distns = False
     match_str = 'matchdistns_' if match_distns else ''
     print("INFO: %s|overlap=%s|match-distns? %s" % (analysis_type, overlap_str, str(match_distns)))
+    threshold_snr = opts.threshold_snr
+    print("INFO: %s|overlap=%s|match-distns? %s (%s)" % (analysis_type, overlap_str, str(match_distns), match_str))
 
     trial_epoch = opts.trial_epoch #'plushalf' # 'stimulus'
 
@@ -819,19 +823,9 @@ def main(options):
 
     #### Get metadata for experiment type
     sdata = aggr.get_aggregate_info(traceid=traceid, fov_type=fov_type, state=state)
-    edata, keys_by_area = aggr.experiment_datakeys(sdata, experiment=experiment, experiment_only=False,
-                                      has_gratings=has_gratings, stim_filterby=stim_filterby)
+    dsets, keys_by_area = aggr.experiment_datakeys(experiment=experiment, experiment_only=False,
+                                      has_gratings=has_gratings, stim_filterby=stim_filterby, has_rfs=has_rfs)
      
-    # Get blob metadata only - and only if have RFs
-    if has_rfs:
-        dsets = pd.concat([g for k, g in edata.groupby(['animalid', 'session', 'fov']) \
-                    if (experiment in g['experiment'].values \
-                    and ('rfs' in g['experiment'].values or 'rfs10' in g['experiment'].values)) ])
-    else:
-        dsets = pd.concat([g for k, g in edata.groupby(['animalid', 'session', 'fov']) \
-                    if (experiment in g['experiment'].values)])
-    dsets[['visual_area', 'datakey']].drop_duplicates().groupby(['visual_area']).count()
-
     #### Check stimulus configs
     stim_datakeys = dsets['datakey'].unique()
 
@@ -875,8 +869,8 @@ def main(options):
         NEURALDATA, assigned_cells = aggr.match_neuraldata_distn(NEURALDATA, src='Li')
         if has_rfs:
             RFDATA = aggr.select_dataframe_subset(assigned_cells, RFDATA)
-    dist_str = 'matchdist_' if match_distns else ''
-
+    match_str = 'matchdist_' if match_distns else ''
+ 
     if NEURALDATA is None: # or RFDATA is None:
         print("There is no data. Aborting.")
         return None
@@ -898,9 +892,24 @@ def main(options):
         print("NO CELLS. Exiting.")
         return None
 
-    #### Get final cells dataframe          
-    cells = globalcells[['visual_area', 'datakey', 'dset_roi']]\
-                    .drop_duplicates().rename(columns={'dset_roi': 'cell'})
+    # TMP TMP
+    if threshold_snr:
+        snr_thr=10.0
+        print("~~~~~~~~~~~~~~~~SNR (thr=%.2f)~~~~~~~~~~~~~" % snr_thr)
+        mean_snr = aggr.get_mean_snr(experiment=experiment, traceid=traceid, responsive_test=responsive_test,
+                                        responsive_thr=responsive_thr, trial_epoch=trial_epoch)
+        CELLS = aggr.threshold_cells_by_snr(mean_snr, globalcells, snr_thr=snr_thr)
+        if has_rfs:
+            NEURALDATA, RFDATA = aggr.get_neuraldata_and_rfdata(CELLS, rfdf, MEANS, 
+                                                stack=stack_neuraldf)
+        else: 
+            NEURALDATA = aggr.get_neuraldata(CELLS, MEANS, stack=stack_neuraldf, verbose=False)
+        match_str = 'snr_'
+    else:
+        #### Get final cells dataframe          
+        CELLS = globalcells.copy()
+        CELLS['cell'] = globalcells['dset_roi']
+
     print("@@@@@@@@ cell counts @@@@@@@@@@@")
     print(cell_counts)
 
@@ -927,8 +936,8 @@ def main(options):
     # ---------------------------------------------------------------------   
     if (curr_visual_area is None) and (curr_datakey is not None):
         # Get the visual area (first one) for datakey
-        assert curr_datakey in globalcells['datakey'].unique(), "No dkey: %s" % curr_datakey
-        curr_visual_area = globalcells[globalcells['datakey']==curr_datakey]['visual_area'].unique()[0]
+        assert curr_datakey in CELLS['datakey'].unique(), "No dkey: %s" % curr_datakey
+        curr_visual_area = CELLS[CELLS['datakey']==curr_datakey]['visual_area'].unique()[0]
 
     if curr_datakey is not None:
         sdf = SDF[curr_datakey].copy()
@@ -942,8 +951,8 @@ def main(options):
     # ============================================================ 
     # datakey is not None and visual_area is not None
     if (curr_visual_area is not None) and (curr_datakey is not None):
-        gdf = globalcells[(globalcells['visual_area']==curr_visual_area) 
-                        & (globalcells['datakey']==curr_datakey)]
+        gdf = CELLS[(CELLS['visual_area']==curr_visual_area) 
+                        & (CELLS['datakey']==curr_datakey)]
         ncells_total = gdf.shape[0] 
         if gdf.shape[0]==0:
             print("... skipping %s (%s) - no cells." % (curr_datakey, curr_visual_area))
@@ -957,7 +966,7 @@ def main(options):
             # -----------------------------------------------------------------------
             # BY_FOV - for each fov, do_decode
             # -----------------------------------------------------------------------
-            neuraldf = aggr.get_neuraldf_for_cells_in_area(cells, MEANS, 
+            neuraldf = aggr.get_neuraldf_for_cells_in_area(CELLS, MEANS, 
                                                        datakey=curr_datakey, visual_area=curr_visual_area)
             if int(neuraldf.shape[1]-1) >= min_ncells: 
                 decode_from_fov(curr_datakey, curr_visual_area, neuraldf, sdf, C_value=C_value,
@@ -974,7 +983,7 @@ def main(options):
                 print("ERR: PUPILDATA, %s key not found in dict." % curr_datakey)
                 return None
 
-            decode_split_pupil(curr_datakey, curr_visual_area, cells, MEANS, pupildata,
+            decode_split_pupil(curr_datakey, curr_visual_area, CELLS, MEANS, pupildata,
                             n_cuts=3, feature_name=pupil_feature,
                             min_ncells=min_ncells, C_value=C_value,
                             n_iterations=n_iterations, n_processes=n_processes, 
@@ -1019,9 +1028,9 @@ def main(options):
             print("...making dir")
         print("DST: %s" % dst_dir)
         # Save inputs
-        inputs_file = os.path.join(dst_dir, 'input_dataframes.pkl')
+        inputs_file = os.path.join(dst_dir, 'input_dataframes_%s.pkl' % analysis_type)
         with open(inputs_file, 'wb') as f:
-            pkl.dump(globalcells, f, protocol=pkl.HIGHEST_PROTOCOL)
+            pkl.dump(CELLS, f, protocol=pkl.HIGHEST_PROTOCOL)
 
         # ============================================================ 
         # by NCELLS - pools across datasets
@@ -1030,7 +1039,7 @@ def main(options):
         curr_ncells = None if opts.ncells in ['None', None] else int(opts.ncells) 
 
         if curr_visual_area is not None:
-            gdf = globalcells[globalcells['visual_area']==curr_visual_area]
+            gdf = CELLS[CELLS['visual_area']==curr_visual_area]
             results_id = create_results_id(prefix=results_prefix, 
                             visual_area=curr_visual_area, C_value=C_value, 
                             response_type=response_type, responsive_test=responsive_test,
@@ -1081,7 +1090,7 @@ def main(options):
             NCELLS = incl_range
 
             try:
-                for curr_visual_area, gdf in globalcells.groupby(['visual_area']):    
+                for curr_visual_area, gdf in CELLS.groupby(['visual_area']):    
                     results_id = create_results_id(prefix=results_prefix,
                                         visual_area=curr_visual_area, 
                                         C_value=C_value, 
