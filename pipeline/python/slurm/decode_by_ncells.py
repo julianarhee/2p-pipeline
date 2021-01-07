@@ -37,6 +37,7 @@ parser.add_argument('--epoch', dest='trial_epoch', action='store', default='stim
 
 parser.add_argument('--snr', dest='threshold_snr', action='store_true', default=False, help='Set to threshold SNR')
 
+parser.add_argument('-S', '--sample-sizes', nargs='+', dest='sample_sizes', default=[], help='Use like: -S 1 2 4')
 
 
 args = parser.parse_args()
@@ -88,6 +89,9 @@ c_str = 'tune-C' if c_value is None else 'C-%.2f' % c_value
 trial_epoch = args.trial_epoch
 match_distns = args.match_distns
 threshold_snr = args.threshold_snr
+
+
+sample_sizes = [int(i) for i in args.sample_sizes]
 
 # Create a (hopefully) unique prefix for the names of all jobs in this 
 # particular run of the pipeline. This makes sure that runs can be
@@ -146,16 +150,14 @@ if analysis_type=='by_ncells':
     # BY NCELLS
     # -----------------------------------------------------------------
     datakey=None
-    ncells_test = [2**i for i in np.arange(0, 9)]  
-    if visual_area is not None:
-        visual_areas = [visual_area]    
-    else:
-        visual_areas = ['V1', 'Lm', 'Li']
+    if len(sample_sizes)==0:
+        sample_sizes = [1, 4, 16, 32, 64, 128, 256] #[2**i for i in np.arange(0, 9)]  
+    visual_areas = ['V1', 'Lm', 'Li'] if visual_area is None else [visual_area]
     info("Testing %i areas: %s" % (len(visual_areas), str(visual_areas)))
-    info("Testing %i sample size: %s" % (len(ncells_test), str(ncells_test)))
+    info("Testing %i sample size: %s" % (len(sample_sizes), str(sample_sizes)))
 
     for visual_area in visual_areas:
-        for ncells in ncells_test:
+        for ncells in sample_sizes: #ncells_test:
             mtag = '%s_%s_%i' % (visual_area, C_str, ncells) 
             #
             if match_distns:

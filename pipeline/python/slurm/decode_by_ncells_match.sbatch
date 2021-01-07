@@ -2,7 +2,7 @@
 # decode_by_ncells_match_distns.sbatch
 #
 #SBATCH -J decode # A single job name for the array
-#SBATCH -p shared # run on cox gpu to use correct env 
+#SBATCH -p cox # run on cox gpu to use correct env 
 #SBATCH -n 8 # one core
 #SBATCH -N 1 # on one node
 #SBATCH -t 0-01:00 # Running time of 3 hours
