@@ -1253,7 +1253,9 @@ def get_rfdata(cells, rfdf, verbose=False, visual_area=None, datakey=None, avera
 def get_neuraldata_and_rfdata_2(cells, rfdf, MEANS, verbose=False, stack=False):
     NEURALDATA = get_neuraldata(cells, MEANS, stack=stack, verbose=verbose)
     RFDATA = get_rfdata(cells, rfdf, verbose=verbose, visual_area=visual_area, datakey=datakey)
-    return NEURALDATA, RFDATA 
+    updated_cells = cells_in_experiment_df(cells, RFDATA)
+
+    return NEURALDATA, RFDATA, updated_cells
 
 def get_common_cells_from_dataframes(NEURALDATA, RFDATA):
     ndf_list=[]
@@ -1284,6 +1286,12 @@ def get_common_cells_from_dataframes(NEURALDATA, RFDATA):
 
     return N, R
 
+def cells_in_experiment_df(cells, rfdf):
+    updated_cells = pd.concat([cells[(cells['visual_area']==v) 
+                              & (cells['datakey']==dk) 
+                              & (cells['cell'].isin(g['cell'].unique()))] \
+                        for (v, dk), g in rfdf.groupby(['visual_area', 'datakey'])])
+    return updated_cells
 
 def get_neuraldata_and_rfdata(cells, rfdf, MEANS,
                             visual_areas=['V1','Lm','Li'], verbose=False, stack=False):
@@ -1320,7 +1328,8 @@ def get_neuraldata_and_rfdata(cells, rfdf, MEANS,
         curr_assigned = curr_c[curr_c['cell'].isin(cells_with_rfs)]
         assigned_with_rfs = curr_assigned['cell'].unique()
         if verbose:
-            print("[%s] %s: %i cells with RFs (%i responsive)" % (visual_area, datakey, len(cells_with_rfs), len(assigned_with_rfs)))
+            print("[%s] %s: %i cells with RFs (%i responsive)" \
+                % (visual_area, datakey, len(cells_with_rfs), len(assigned_with_rfs)))
 
         if len(assigned_with_rfs) > 0:
             # Get neuradf for these cells only
@@ -1351,7 +1360,10 @@ def get_neuraldata_and_rfdata(cells, rfdf, MEANS,
     if stack:
         NEURALDATA = neuraldf_dict_to_dataframe(NEURALDATA)
 
-    return NEURALDATA, RFDATA
+    # Update cells
+    updated_cells = cells_in_experiment_df(cells, RFDATA) 
+
+    return NEURALDATA, RFDATA, updated_cells
 
 
 def load_rfdf_and_pos(dsets, response_type='dff', rf_filter_by=None, reliable_only=True,
@@ -1983,10 +1995,15 @@ def get_mean_snr(experiment='blobs', traceid='traces001', responsive_test='nstds
     
     return mean_snr
 
-def threshold_cells_by_snr(mean_snr, globalcells, snr_thr=10.0):
+def threshold_cells_by_snr(mean_snr, globalcells, snr_thr=10.0, max_snr_thr=None):
     
     # mean_snr = SNR.groupby(['visual_area', 'datakey', 'cell', 'config']).mean().reset_index()
-    thresh_snr = mean_snr[mean_snr['snr']>=snr_thr].groupby(['visual_area', 'datakey', 'cell'])\
+    if max_snr_thr is not None:
+        thresh_snr = mean_snr[(mean_snr['snr']>=snr_thr) & (mean_snr['snr']<=max_snr_thr)]\
+                        .groupby(['visual_area', 'datakey', 'cell'])\
+                        .mean().reset_index()
+    else:
+        thresh_snr = mean_snr[mean_snr['snr']>=snr_thr].groupby(['visual_area', 'datakey', 'cell'])\
                     .mean().reset_index()
 
     # Get global cells that pass threshold
