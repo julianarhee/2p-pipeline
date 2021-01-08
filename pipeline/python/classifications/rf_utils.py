@@ -155,6 +155,10 @@ def plot_all_rfs(RFs, MEANS=None, screeninfo=None, cmap='cubehelix', dpi=150):
 def load_aggregate_rfs(rf_dsets, traceid='traces001', 
                         fit_desc='fit-2dgaus_dff-no-cutoff', 
                         reliable_only=True, verbose=False):
+#    try:
+#        df
+#    except Exception as e:
+#        con
     rf_dpaths, no_fits = get_fit_dpaths(rf_dsets, traceid=traceid, fit_desc=fit_desc)
     rfdf = aggregate_rf_data(rf_dpaths, reliable_only=reliable_only, 
                                         fit_desc=fit_desc, traceid=traceid, verbose=verbose)
@@ -376,6 +380,9 @@ def aggregate_rf_data(rf_dpaths, fit_desc=None, traceid='traces001', fit_thr=0.5
 
     df_list = []
     for (visual_area, animalid, session, fovnum, experiment), g in rf_dpaths.groupby(['visual_area', 'animalid', 'session', 'fovnum', 'experiment']):
+        if experiment not in ['rfs', 'rfs10']:
+            continue
+
         datakey = '%s_%s_fov%i' % (session, animalid, fovnum) #'-'.join([animalid, session, fovnum])
         #print(datakey)
         fov = 'FOV%i_zoom2p0x' % fovnum
@@ -390,7 +397,7 @@ def aggregate_rf_data(rf_dpaths, fit_desc=None, traceid='traces001', fit_thr=0.5
                                                 traceid=traceid, 
                                                 fit_desc=fit_desc)   
             if eval_results is None:
-                print('-- no good (%s), skipping' % datakey)
+                print('-- no good (%s (%s, %s)), skipping' % (datakey, visual_area, experiment))
                 continue
             
             #### Load fit results from measured
@@ -455,6 +462,7 @@ def aggregate_rf_data(rf_dpaths, fit_desc=None, traceid='traces001', fit_thr=0.5
 
     return rfdf
 
+
 def update_rf_metrics(rfdf, scale_sigma=True):
     # Include average RF size (average of minor/major axes of fit ellipse)
     if scale_sigma:
@@ -514,6 +522,64 @@ def update_rf_metrics(rfdf, scale_sigma=True):
     sins_c = convert_range(sins, oldmin=0, oldmax=1, newmin=-1, newmax=1)
     rfdf['aniso_index'] = sins_c * rfdf['anisotropy']
  
+    return rfdf
+
+
+def load_rfdf_with_positions(rf_fit_desc, traceid='traces001', filter_by=None, reliable_only=True,
+                                create_new=False, aggr_dir='/n/coxfs01/julianarhee/aggregate-visual-areas'):
+
+    src_dir = os.path.join(aggr_dir, 'receptive-fields', '%s__%s' % (traceid, rf_fit_desc))
+    reliable_str = 'reliable' if reliable_only else ''
+    df_fpath = os.path.join(src_dir, 'fits_and_coords_%s_%s.pkl' % (str(filter_by), reliable_str))
+    if not os.path.exists(df_fpath):
+        print("file does not exist")
+        create_new=True
+    
+    if os.path.exists(df_fpath) or create_new is False:
+        print("Loading existing RF coord conversions...")
+        try:
+            with open(df_fpath, 'rb') as f:
+                rfdf = pkl.load(f)
+            if isinstance(rfdf, dict):
+                rfdf = rfdf['df']
+            create_new=False
+        except Exception as e:
+            print("Creating new RFDF")
+            create_new=True
+            traceback.print_exc()
+
+    if create_new:      
+        rfdf, _ = aggregate_rf_dataframes(filter_by, fit_desc=rf_fit_desc, traceid=traceid, 
+                                        reliable_only=reliable_only) 
+        rfdf = update_roi_positions(rfdf, traceid=traceid)
+
+        with open(df_fpath, 'wb') as f:
+            pkl.dump(rfdf, f, protocol=pkl.HIGHEST_PROTOCOL)
+        print("... saved: %s" % df_fpath)
+
+    return rfdf
+
+
+def update_roi_positions(rfdf, traceid='traces001'):
+    from pipeline.python.rois.utils import load_roi_coords
+    print("Calculating RF coord conversions...")
+    pos_params = ['fov_xpos', 'fov_xpos_pix', 'fov_ypos', 'fov_ypos_pix', 'ml_pos','ap_pos']
+    for p in pos_params:
+        rfdf[p] = ''
+    
+    # Add fov coord info and save
+    p_list=[]
+    for (visual_area, animalid, session, fovnum, exp), g in rfdf.groupby(['visual_area', 'animalid', 'session', 'fovnum', 'experiment']):
+        cell_ids = g['cell'].unique()
+        fcoords = load_roi_coords(animalid, session, 'FOV%i_zoom2p0x' % fovnum, 
+                                  traceid=traceid, create_new=False)
+        p_ = fcoords['roi_positions'].loc[cell_ids]
+        for p in pos_params:
+            try:
+                rfdf[p][g.index] = p_[p]
+            except Exception as e:
+                print(p)
+                print(session, animalid, fovnum, exp)
     return rfdf
 
 
