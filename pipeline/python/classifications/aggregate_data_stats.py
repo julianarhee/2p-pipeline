@@ -131,9 +131,7 @@ def get_metadata(traceid='traces001', filter_by='most_cells', stimulus=None, sti
                  aggregate_dir='/n/coxfs01/julianarhee/aggregate-visual-areas'):
        
     # Get all datasets
-    sdata = get_aggregate_info(traceid=traceid, fov_type=fov_type, state=state,
-                             aggregate_dir=aggregate_dir)
-
+    sdata = get_aggregate_info(traceid=traceid, fov_type=fov_type, state=state)
     if stimulus == 'gratings':
         included_sessions = get_gratings_datasets(filter_by=filter_by, 
                                                  excluded_sessions=excluded_sessions,
@@ -1246,7 +1244,7 @@ def get_rfdata(cells, rfdf, verbose=False, visual_area=None, datakey=None, avera
                     final_rf = rfutils.update_rf_metrics(final_rf, scale_sigma=True)
                     rf_.append(final_rf)
 
-    RFDATA = pd.concat(rf_, axis=0)
+    RFDATA = pd.concat(rf_, axis=0).reset_index(drop=True)
 
     return RFDATA
 
@@ -2929,8 +2927,7 @@ def main(options):
         assert animalid is not None, "NO animalid specified, aborting"
 
         if session is None or fov is None:
-            sdata = get_aggregate_info(traceid=traceid, fov_type=fov_type, state=state,
-                             aggregate_dir=aggregate_dir)
+            sdata = get_aggregate_info(traceid=traceid, fov_type=fov_type, state=state)
             #dsets = sdata[(sdata['animalid']==animalid) & (sdata['experiment']==experiment)].copy()
             if session is not None:
                 dsets = sdata[(sdata['animalid']==animalid) & (sdata['experiment']==experiment) 
