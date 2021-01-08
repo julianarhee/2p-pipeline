@@ -677,6 +677,12 @@ def extract_options(options):
     parser.add_option('--snr', action='store_true', dest='threshold_snr', 
             default=False, help="use min. snr to filter out cells")
 
+    parser.add_option('--snr-min', action='store', dest='snr_thr', 
+            default=10.0, help="Min cut-off if --snr (default: 10.)")
+    parser.add_option('--snr-max', action='store', dest='snr_thr', 
+            default=None, help="Max cut-off if --snr (default: None)")
+
+
 
     (options, args) = parser.parse_args(options)
 
@@ -737,6 +743,9 @@ def main(options):
     match_str = 'matchdistns_' if match_distns else ''
     print("INFO: %s|overlap=%s|match-distns? %s" % (analysis_type, overlap_str, str(match_distns)))
     threshold_snr = opts.threshold_snr
+    snr_thr = float(opts.snr_thr)
+    max_snr_thr = None if opts.max_snr_thr in ['None', None] else float(opts.max_snr_thr)
+
     print("INFO: %s|overlap=%s|match-distns? %s (%s)" % (analysis_type, overlap_str, str(match_distns), match_str))
 
     trial_epoch = opts.trial_epoch #'plushalf' # 'stimulus'
@@ -845,8 +854,8 @@ def main(options):
 
     # TMP TMP
     if threshold_snr:
-        snr_thr=10.0
-        max_snr_thr=None #15.0 #None #15.0 #None
+        #snr_thr=10.0
+        #max_snr_thr=None #15.0 #None #15.0 #None
         match_str='snrlim_' if max_snr_thr is not None else 'snr_'
         print("~~~~~~~~~~~~~~~~SNR (thr=%.2f)~~~~~~~~~~~~~" % snr_thr)
         mean_snr = aggr.get_mean_snr(experiment=experiment, traceid=traceid, responsive_test=responsive_test,
