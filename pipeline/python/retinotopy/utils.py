@@ -160,7 +160,8 @@ def select_strongest_retinorun(projection_df):
 
 
 def get_responsive_cells(animalid, session, fov, traceid='traces001', retinorun=None, 
-                         pass_criterion='max', mag_thr=0.01, create_new=False, 
+                         pass_criterion='max', mag_thr=0.01, create_new=False, trace_type='corrected',
+                        detrend_after_average=True,
                         rootdir='/n/coxfs01/2p-data'):
     '''
     Get list of cells that are responsive to retino moving bar stimulus.
@@ -179,7 +180,8 @@ def get_responsive_cells(animalid, session, fov, traceid='traces001', retinorun=
     nrois_total=None
     for retinorun in retinoruns:
         fft_results = load_fft_results(animalid, session, fov, retinorun=retinorun, 
-                        traceid=traceid, rootdir=rootdir, create_new=create_new)
+                        traceid=traceid, rootdir=rootdir, create_new=create_new, trace_type=trace_type,
+                        detrend_after_average=detrend_after_average)
 
         if fft_results is None:
             continue
@@ -203,8 +205,9 @@ def get_responsive_cells(animalid, session, fov, traceid='traces001', retinorun=
     return list(set(responsive_cells)), nrois_total
 
 
-def load_fft_results(animalid, session, fov, retinorun='retino_run1', 
-                    traceid='traces001', rootdir='/n/coxfs01/2p-data', create_new=False):
+def load_fft_results(animalid, session, fov, retinorun='retino_run1', trace_type='corrected',
+                    traceid='traces001', rootdir='/n/coxfs01/2p-data', create_new=False,
+                    detrend_after_average=True):
     
     run_dir = os.path.join(rootdir, animalid, session, fov, retinorun)
     try:
@@ -241,9 +244,9 @@ def load_fft_results(animalid, session, fov, retinorun='retino_run1',
         #### Load raw and process traces -- returns average trace for condition
         # retino_dpath = os.path.join(analysis_dir, 'traces', 'extracted_traces.h5')
         np_traces = load_traces(animalid, session, fov, run=retinorun,
-                                          analysisid=retinoid, trace_type='neuropil')
+                        analysisid=retinoid, trace_type='neuropil', detrend_after_average=detrend_after_average)
         soma_traces = load_traces(animalid, session, fov, run=retinorun,
-                                          analysisid=retinoid, trace_type='raw')
+                        analysisid=retinoid, trace_type=trace_type, detrend_after_average=detrend_after_average)
 
         # Do fft
         n_frames = scaninfo['stimulus']['n_frames']
@@ -286,7 +289,7 @@ def load_mw(run_dir):
 
 # preprocessing ---------------
 def load_traces(animalid, session, fov, run='retino_run1', analysisid='analysis002',
-                trace_type='raw', rootdir='/n/coxfs01/2p-data'):
+                trace_type='corrected', detrend_after_average=True, rootdir='/n/coxfs01/2p-data'):
     print("... loading traces (%s)" % trace_type)
     retinoid_path = glob.glob(os.path.join(rootdir, animalid, session, fov, '%s*' % run,
                                 'retino_analysis', 'analysisids_*.json'))[0]
@@ -303,12 +306,12 @@ def load_traces(animalid, session, fov, run='retino_run1', analysisid='analysis0
     scaninfo = get_protocol_info(animalid, session, fov, run=run)
     temporal_ds = RIDS[analysisid]['PARAMS']['downsample_factor']
     traces = load_traces_from_file(retino_dpath, scaninfo, trace_type=trace_type, 
-                                    temporal_ds=temporal_ds)
+                                    temporal_ds=temporal_ds, detrend_after_average=detrend_after_average)
     return traces
 
 
 def load_traces_from_file(retino_dpath, scaninfo, trace_type='corrected', 
-                            temporal_ds=None):
+                            temporal_ds=None, detrend_after_average=False):
     '''
     Pre-processes raw extracted traces by:
         - adding back in neuropil offsets, and 
@@ -325,10 +328,22 @@ def load_traces_from_file(retino_dpath, scaninfo, trace_type='corrected',
         tfile = h5py.File(retino_dpath, 'r')
         for condition, trialnums in trials_by_cond.items():
             #print("... loading cond: %s" % condition)
-            dlist = tuple([process_data(tfile, trialnum, trace_type=trace_type, frame_rate=frame_rate, stim_freq=stim_freq) for trialnum in trialnums])
+            do_detrend = detrend_after_average is False
+            dlist = tuple([process_data(tfile, trialnum, trace_type=trace_type, \
+                        frame_rate=frame_rate, stim_freq=stim_freq, detrend=do_detrend) \
+                        for trialnum in trialnums])
             dfcat = pd.concat(dlist)
             df_rowix = dfcat.groupby(dfcat.index)
+            # Average raw traces together
             meandf = df_rowix.mean()
+
+            # detrend
+            if detrend_after_average:
+                f0 = meandf.mean().mean()
+                drift_corr = detrend_array(meandf, frame_rate=frame_rate, stim_freq=stim_freq)
+                meandf = drift_corr + f0
+            
+            # smooth
             if temporal_ds is not None:
                 #print("Temporal ds: %.2f" % temporal_ds)
                 meandf = downsample_array(meandf, temporal_ds=temporal_ds)
@@ -340,23 +355,32 @@ def load_traces_from_file(retino_dpath, scaninfo, trace_type='corrected',
         
     return traces
 
-def process_data(tfile, trialnum, trace_type='corrected', add_offset=True,
-                frame_rate=44.65, stim_freq=0.13):
+def process_data(tfile, trialnum, trace_type='corrected', add_offset=True, #'corrected', add_offset=True,
+                frame_rate=44.65, stim_freq=0.13, correction_factor=0.7, detrend=True):
     #print(tfile['File001'].keys())
     if trace_type != 'neuropil' and add_offset:
         # Get raw soma traces and raw neuropil -- add neuropil offset to soma traces
+        # print(tfile['File%03d' % int(trialnum)].keys())
+        # trace_types:  corrected, neuropil, processed, raw (+ masks)
         soma = pd.DataFrame(tfile['File%03d' % int(trialnum)][trace_type][:].T)
         neuropil = pd.DataFrame(tfile['File%03d' % int(trialnum)]['neuropil'][:].T)
         np_offset = neuropil.mean(axis=0) #neuropil.mean().mean()
-        xd = soma.subtract(neuropil) + np_offset
+        if trace_type=='raw':
+            #print("raw")
+            xd = soma.subtract(correction_factor*neuropil) + np_offset
+        else:
+            xd = soma + np_offset
         del neuropil
         del soma
     else:
         xd = pd.DataFrame(tfile['File%03d' % int(trialnum)][trace_type][:].T)
-    
-    f0 = xd.mean().mean()
-    drift_corrected = detrend_array(xd, frame_rate=frame_rate, stim_freq=stim_freq)
-    xdata = drift_corrected + f0
+   
+    if detrend: 
+        f0 = xd.mean().mean()
+        drift_corrected = detrend_array(xd, frame_rate=frame_rate, stim_freq=stim_freq)
+        xdata = drift_corrected + f0
+    else:
+        xdata = xd.copy()
     #if temporal_ds is not None:
     #    xdata = downsample_array(xdata, temporal_ds=temporal_ds)
     
