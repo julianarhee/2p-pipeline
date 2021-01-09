@@ -123,7 +123,7 @@ def decode_from_fov(datakey, visual_area, neuraldf, sdf=None, #min_ncells=5,
                                 n_iterations=n_iterations, 
                                 n_processes=n_processes, verbose=verbose,
                                 class_a=class_a, class_b=class_b, do_shuffle=do_shuffle) 
-    print("%i items in mp list" % len(iter_list))
+    # print("%i items in mp list" % len(iter_list))
     # Save all iterations
     iter_results = pd.concat(iter_list, axis=0) 
     metainfo = {'visual_area': visual_area, 'datakey': datakey,'n_cells': n_cells}
@@ -131,8 +131,10 @@ def decode_from_fov(datakey, visual_area, neuraldf, sdf=None, #min_ncells=5,
 
     with open(results_outfile, 'wb') as f:
         pkl.dump(iter_results, f, protocol=pkl.HIGHEST_PROTOCOL)
-    print("done!")
 
+    print(iter_results.groupby(['condition']).mean())   
+    print("@@@@@@@@@ done. %s|%s (%s)  @@@@@@@@@@" % (visual_area, datakey, results_id))
+    
     return
 
 
@@ -365,11 +367,14 @@ def set_results_prefix(analysis_type='by_fov'):
     return prefix
  
 def create_results_id(prefix='fov_results', visual_area='varea', C_value=None, 
-                        trial_epoch='stimulus', 
+                        trial_epoch='stimulus', has_retino=False,
                         response_type='dff', responsive_test='resp', overlap_thr=None):
 
     C_str = 'tuneC' if C_value is None else 'C%.2f' % C_value
-    overlap_str = 'noRF' if overlap_thr is None else 'overlap%.1f' % overlap_thr
+    if has_retino:      
+        overlap_str = 'retino'
+    else:
+        overlap_str = 'noRF' if overlap_thr is None else 'overlap%.1f' % overlap_thr
     #results_id='%s_%s_%s__%s-%s_%s__%s' % (prefix, visual_area, C_str, response_type, responsive_test, overlap_str, trial_epoch)
     results_id='%s_%s__%s-%s_%s__%s__%s' \
                     % (prefix, visual_area, response_type, responsive_test, overlap_str, trial_epoch, C_str)
@@ -383,7 +388,7 @@ def create_aggr_results_id(prefix='fov_results', C_value=None,
     tmp_id = create_results_id(prefix=prefix, visual_area='NA',
                                C_value=C_value, response_type=response_type, 
                                trial_epoch=trial_epoch, 
-                               responsive_test=responsive_test, overlap_thr=overlap_thr)
+                               responsive_test=responsive_test, overlap_thr=overlap_thr, has_retino=has_retino)
     param_str = tmp_id.split('_NA_')[-1]
     aggr_results_id = '%s__%s' % (prefix, param_str) 
     print("AGGREGATE: %s" % aggr_results_id)
@@ -448,7 +453,7 @@ def load_decode_within_fov(animalid, session, fov, results_id='fov_results',
 
 def aggregate_decode_within_fov(dsets, results_prefix='fov_results', 
                  C_value=None, response_type='dff', trial_epoch='stimulus',
-                responsive_test='nstds', responsive_thr=10., overlap_thr=None,
+                responsive_test='nstds', responsive_thr=10., overlap_thr=None, has_retino=False, 
                 rootdir='/n/coxfs01/2p-data', verbose=False):
     no_results=[]
     found_results=[]
@@ -456,7 +461,7 @@ def aggregate_decode_within_fov(dsets, results_prefix='fov_results',
     popdf = []
     for (visual_area, datakey), g in dsets.groupby(['visual_area', 'datakey']): 
         results_id=create_results_id(prefix=results_prefix, 
-                                    visual_area=visual_area, C_value=C_value, 
+                                    visual_area=visual_area, C_value=C_value, has_retino=has_retino,
                                     response_type=response_type, responsive_test=responsive_test,
                                     overlap_thr=overlap_thr, trial_epoch=trial_epoch)
         # Load dataset results
@@ -679,8 +684,11 @@ def extract_options(options):
 
     parser.add_option('--snr-min', action='store', dest='snr_thr', 
             default=10.0, help="Min cut-off if --snr (default: 10.)")
-    parser.add_option('--snr-max', action='store', dest='snr_thr', 
+    parser.add_option('--snr-max', action='store', dest='max_snr_thr', 
             default=None, help="Max cut-off if --snr (default: None)")
+
+    parser.add_option('--retino', action='store_true', dest='has_retino', 
+            default=False, help="Use retino for filtering)")
 
 
 
@@ -732,7 +740,11 @@ def main(options):
     min_ncells = 5 #10 if remove_too_few else 0
     overlap_thr = None if opts.overlap_thr in ['None', None] else float(opts.overlap_thr)
     has_rfs = overlap_thr is not None
-    overlap_str = 'noRF' if overlap_thr is None else 'overlap%.1f' % overlap_thr
+    has_retino = opts.has_retino
+    if has_retino:
+        overlap_str = 'retino'
+    else:
+        overlap_str = 'noRF' if overlap_thr is None else 'overlap%.1f' % overlap_thr
    
     stim_filterby = None # 'first'
     has_gratings = experiment!='blobs'
@@ -768,6 +780,11 @@ def main(options):
     rf_filter_by=None
     reliable_only = True
     rf_fit_thr = 0.5
+
+    # Retino stuf
+    #has_retino=True
+    retino_mag_thr = 0.01
+    retino_pass_criterion='all'
 
     # Create data ID for labeling figures with data-types
     #### Responsive params
@@ -817,6 +834,19 @@ def main(options):
         # RF dataframes
         NEURALDATA, RFDATA, assigned_cells = aggr.get_neuraldata_and_rfdata(assigned_cells, rfdf, MEANS, 
                                                 stack=stack_neuraldf)
+    elif has_retino:
+        print("~~~~~~~~~~~~~~~~Loading Retinotopy Bar ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~")
+        edata = sdata[sdata['experiment'].isin(['retino'])]
+        assigned_rois, missing_ = seg.get_cells_by_area(edata, return_missing=True)
+        retino_cells = aggr.aggregate_responsive_retino(assigned_rois, traceid=traceid,
+                                        mag_thr=retino_mag_thr, pass_criterion=retino_pass_criterion, 
+                                        verbose=False, create_new=True)
+        assigned_cells = retino_cells[retino_cells['visual_area'].isin(visual_areas)]
+        print("Missing %i retino analyses" % len(missing_))
+        #for r in missing_:
+        #    print(r)
+        NEURALDATA = aggr.get_neuraldata(retino_cells, MEANS, stack=True)
+
     else:
         print("~~~~~~~~~~~~~~~~No Receptive Fields~~~~~~~~~~~~~~~~~~~~~~~~~")
         # EXP dataframes 
@@ -888,7 +918,10 @@ def main(options):
 
     #### Setup output dirs  
     results_prefix = analysis_type #set_results_prefix(analysis_type=analysis_type)
-    overlap_str = 'noRF' if overlap_thr is None else 'overlap%.1f' % overlap_thr
+    if has_retino:
+        overlap_str = 'retino'
+    else:
+        overlap_str = 'noRF' if overlap_thr is None else 'overlap%.1f' % overlap_thr
     #data_info='%s%s_%s_%s_iter-%i' \
     #    % (match_str, response_type, responsive_test, overlap_str, n_iterations)
 
@@ -921,7 +954,7 @@ def main(options):
             print("... skipping %s (%s) - no cells." % (curr_datakey, curr_visual_area))
             return None
         results_id = create_results_id(prefix=results_prefix, 
-                                visual_area=curr_visual_area, C_value=C_value, 
+                                visual_area=curr_visual_area, C_value=C_value, has_retino=has_retino,
                                 response_type=response_type, responsive_test=responsive_test,
                                 overlap_thr=overlap_thr, trial_epoch=trial_epoch)
 
@@ -1007,7 +1040,7 @@ def main(options):
         if curr_visual_area is not None:
             gdf = CELLS[CELLS['visual_area']==curr_visual_area]
             results_id = create_results_id(prefix=results_prefix, 
-                            visual_area=curr_visual_area, C_value=C_value, 
+                            visual_area=curr_visual_area, C_value=C_value, has_retino=has_retino, 
                             response_type=response_type, responsive_test=responsive_test,
                             overlap_thr=overlap_thr, trial_epoch=trial_epoch)
 
@@ -1062,7 +1095,7 @@ def main(options):
                                         C_value=C_value, 
                                         response_type=response_type, 
                                         responsive_test=responsive_test, 
-                                        overlap_thr=overlap_thr,
+                                        overlap_thr=overlap_thr, has_retino=has_retino,
                                         trial_epoch=trial_epoch)
                         
                     for curr_ncells in NCELLS:
