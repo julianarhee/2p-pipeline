@@ -104,7 +104,7 @@ if threshold_snr:
 else:
     match_str = 'matchdistns_' if match_distns else ''
 
-if has_rfs:
+if has_retino:
     overlap_str = 'retino'
 else:
     overlap_str = 'noRF' if overlap_thr is None else 'overlap%i' % int(overlapp_thr*10)
