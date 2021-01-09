@@ -781,8 +781,9 @@ def get_neuraldf_for_cells_in_area(cells, MEANS, datakey=None, visual_area=None)
         assert datakey in cells['datakey'].values, "%s--not found in SEGMENTED" % datakey
 
         curr_rois = cells[(cells['datakey']==datakey) 
-                        & (cells['visual_area']==visual_area)]['cell'].values
-        curr_cols = list(curr_rois.copy())
+                        & (cells['visual_area']==visual_area)]['cell'].astype(int).values
+        curr_cols = [i for i in np.array(curr_rois.copy()) if i in neuraldf_dict[datakey].columns.tolist()]
+        #curr_cols = list(curr_rois.copy())
         neuraldf = neuraldf_dict[datakey][curr_cols].copy()
         neuraldf['config'] = neuraldf_dict[datakey]['config'].copy()
     except Exception as e:
@@ -1158,7 +1159,7 @@ def get_neuraldata(cells, MEANS, stack=False, verbose=False):
             continue
 
        # Get neuradf for these cells only
-        neuraldf = get_neuraldf_for_cells_in_area(cells, MEANS, 
+        neuraldf = get_neuraldf_for_cells_in_area(curr_c, MEANS, 
                                                   datakey=datakey, visual_area=visual_area)
         if verbose:
             # Which cells are in assigned area
@@ -1847,10 +1848,13 @@ def get_blobs_and_rf_meta(experiment='blobs', has_gratings=False, stim_filterby=
     #### Get metadata for experiment type
     sdata = get_aggregate_info(traceid=traceid, fov_type=fov_type, state=state)
     edata, expmeta = experiment_datakeys(experiment=experiment,
-                            has_grating=shas_gratings, stim_filterby=stim_filterby, 
+                            has_gratings=has_gratings, stim_filterby=stim_filterby, 
                             has_rfs=True, experiment_only=False)
-           
-    return dsets
+   # experiment_datakeys(experiment='blobs', has_gratings=False, has_rfs=False, stim_filterby='most_fits',
+   #                     experiment_only=True):
+
+ 
+    return edata 
 #
 
 
