@@ -207,7 +207,7 @@ def get_responsive_cells(animalid, session, fov, traceid='traces001', retinorun=
 
 def load_fft_results(animalid, session, fov, retinorun='retino_run1', trace_type='corrected',
                     traceid='traces001', rootdir='/n/coxfs01/2p-data', create_new=False,
-                    detrend_after_average=True):
+                    detrend_after_average=True, in_negative=False):
     
     run_dir = os.path.join(rootdir, animalid, session, fov, retinorun)
     try:
@@ -257,7 +257,8 @@ def load_fft_results(animalid, session, fov, retinorun='retino_run1', trace_type
         freqs = np.fft.fftfreq(n_frames, float(1./frame_rate))
         sorted_freq_idxs = np.argsort(freqs)
 
-        fft_soma = dict((cond, do_fft_analysis(tdf, sorted_freq_idxs, stim_freq_idx)) \
+        sign = -1 if in_negative else 1
+        fft_soma = dict((cond, do_fft_analysis(sign*tdf, sorted_freq_idxs, stim_freq_idx)) \
                         for cond, tdf in soma_traces.items())
         fft_np = dict((cond, do_fft_analysis(tdf, sorted_freq_idxs, stim_freq_idx)) \
                       for cond, tdf in np_traces.items())
@@ -339,7 +340,7 @@ def load_traces_from_file(retino_dpath, scaninfo, trace_type='corrected',
 
             # detrend
             if detrend_after_average:
-                f0 = meandf.mean().mean()
+                f0 = meandf.mean() #.mean()
                 drift_corr = detrend_array(meandf, frame_rate=frame_rate, stim_freq=stim_freq)
                 meandf = drift_corr + f0
             
@@ -376,7 +377,7 @@ def process_data(tfile, trialnum, trace_type='corrected', add_offset=True, #'cor
         xd = pd.DataFrame(tfile['File%03d' % int(trialnum)][trace_type][:].T)
    
     if detrend: 
-        f0 = xd.mean().mean()
+        f0 = xd.mean() #.mean()
         drift_corrected = detrend_array(xd, frame_rate=frame_rate, stim_freq=stim_freq)
         xdata = drift_corrected + f0
     else:
@@ -769,12 +770,19 @@ def do_fft_analysis(avg_traces, sorted_idxs, stim_freq_idx):
     phase_data = phase_data[sorted_idxs]
 
     # exclude DC offset from data
-    mag_data = mag_data[int(np.round(n_frames/2.))+1:, :]
-    phase_data = phase_data[int(np.round(n_frames/2.))+1:, :]
+    if len(mag_data.shape)==1:
+        mag_data = mag_data[int(np.round(n_frames/2.))+1:]
+        phase_data = phase_data[int(np.round(n_frames/2.))+1:]
+        #unpack values from frequency analysis
+        mag_array = mag_data[stim_freq_idx]
+        phase_array = phase_data[stim_freq_idx]
+    else:
+        mag_data = mag_data[int(np.round(n_frames/2.))+1:, :]
+        phase_data = phase_data[int(np.round(n_frames/2.))+1:, :]
 
-    #unpack values from frequency analysis
-    mag_array = mag_data[stim_freq_idx, :]
-    phase_array = phase_data[stim_freq_idx, :]
+        #unpack values from frequency analysis
+        mag_array = mag_data[stim_freq_idx, :]
+        phase_array = phase_data[stim_freq_idx, :]
 
     #get magnitude ratio
     tmp = np.copy(mag_data)
@@ -1095,6 +1103,7 @@ def get_interp_positions(condname, mwinfo, stiminfo, trials_by_cond):
                 xs = np.array(mwinfo[str(trial)]['stiminfo']['values'][mw_cyc_ixs[cix]:mw_cyc_ixs[cix+1]])
                 si_ts = si_tstamps[si_cyc_ixs[cix]:si_cyc_ixs[cix+1]]
 
+            #print(len(xs))
             recentered_mw_ts = [t-mw_ts[0] for t in mw_ts]
             recentered_si_ts = [t-si_ts[0] for t in si_ts]
 
