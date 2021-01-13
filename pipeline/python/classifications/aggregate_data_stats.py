@@ -912,6 +912,7 @@ def get_source_data(experiment, traceid='traces001',
    # Get dataset metainfo
     sdata = get_aggregate_info(traceid=traceid, fov_type=fov_type, state=state)
     excluded_datakeys = ['20190327_JC073_fov1', '20190314_JC070_fov1'] if images_only else []
+    print("SDF, images_only=%s (excluding dsetes: %s)" % (str(images_only), str(excluded_datakeys)))
     sdata = sdata[~sdata.isin(excluded_datakeys)]
 
     edata = sdata[sdata['experiment']==experiment].copy()
@@ -1069,7 +1070,7 @@ def check_sdfs(stim_datakeys, experiment='blobs', traceid='traces001', images_on
 
 
 def experiment_datakeys(experiment='blobs', has_gratings=False, has_rfs=False, stim_filterby='most_fits',
-                        experiment_only=True):
+                        experiment_only=True, traceid='traces001'):
 
     # Drop duplicates and whatnot fovs
     if experiment=='blobs':
@@ -1091,7 +1092,8 @@ def experiment_datakeys(experiment='blobs', has_gratings=False, has_rfs=False, s
     if experiment_only:                 
         emeta = edata[edata['datakey'].isin(stim_datakeys)]
     else:
-        emeta = pd.concat([edata[(edata['visual_area']==v) & (edata['datakey'].isin(dkeys))] \
+        sdata = get_aggregate_info(traceid=traceid)
+        emeta = pd.concat([sdata[(sdata['visual_area']==v) & (sdata['datakey'].isin(dkeys))] \
                             for v, dkeys in exp_dict.items()]) 
 
     return emeta, exp_dict #expmeta
@@ -1286,6 +1288,9 @@ def get_common_cells_from_dataframes(NEURALDATA, RFDATA):
     return N, R
 
 def cells_in_experiment_df(cells, rfdf):
+    if isinstance(rfdf, dict):
+        rfdf = neuraldf_dict_to_dataframe(rfdf) #, response_type='response'):
+
     updated_cells = pd.concat([cells[(cells['visual_area']==v) 
                               & (cells['datakey']==dk) 
                               & (cells['cell'].isin(g['cell'].unique()))] \
@@ -2024,11 +2029,11 @@ def threshold_cells_by_snr(mean_snr, globalcells, snr_thr=10.0, max_snr_thr=None
 from matplotlib.lines import Line2D
 def plot_pairwise_by_axis(plotdf, curr_metric='abs_coef', c1='az', c2='el', 
                           compare_var='cond', fontsize=10, fontcolor='k', fmt='%.2f', xytext=(0, 10),
-                          area_colors=None, legend=True):
-
-    fig, ax = pl.subplots(figsize=(5,4), dpi=150)
-    fig.patch.set_alpha(0)
-    ax.patch.set_alpha(0)
+                          area_colors=None, legend=True, ax=None):
+    if ax is None:
+        fig, ax = pl.subplots(figsize=(5,4), dpi=150)
+        fig.patch.set_alpha(0)
+        ax.patch.set_alpha(0)
     ax = pairwise_compare_single_metric(plotdf, curr_metric=curr_metric, ax=ax,
                                                 c1=c1, c2=c2, compare_var=compare_var)
     plotdf.apply(annotateBars, ax=ax, axis=1, fontsize=fontsize, 
@@ -2042,7 +2047,7 @@ def plot_pairwise_by_axis(plotdf, curr_metric='abs_coef', c1='az', c2='el',
                                                 markersize=10, marker='_')
         ax.legend(handles=legend_elements, bbox_to_anchor=(1.5,1.1), fontsize=8)
 
-    return fig
+    return ax #fig
 
 
 def pairwise_compare_single_metric(comdf, curr_metric='avg_size', 
@@ -2221,14 +2226,17 @@ def get_counts_for_legend(df, area_colors=None, markersize=10, marker='_', lw=1,
         roistr = 'cell' if 'cell' in df.columns else 'roi'
         counts = df.groupby(['visual_area', 'animalid', dkey_name])[roistr].count().reset_index()
         counts.rename(columns={roistr: 'n_cells'}, inplace=True)
+    elif 'n_cells' in df.columns or 'ncells' in df_columns:
+        roi_str = 'n_cells' if 'n_cells' in df.columns else 'ncells'
+        counts = df.groupby(['visual_area']).mean().reset_index()[['visual_area', roi_str]]
     else:
         counts = df.groupby(['visual_area', 'animalid', dkey_name]).count().reset_index()
 
     # Get counts of samples for legend
     n_rats = dict((v, len(g['animalid'].unique())) \
-                        for v, g in counts.groupby(['visual_area']))
+                        for v, g in df.groupby(['visual_area']))
     n_fovs = dict((v, len(g[[dkey_name]].drop_duplicates())) \
-                        for v, g in counts.groupby(['visual_area']))
+                        for v, g in df.groupby(['visual_area']))
     for v in area_colors.keys():
         if v not in n_rats.keys():
             n_rats.update({v: 0})
@@ -2240,7 +2248,7 @@ def get_counts_for_legend(df, area_colors=None, markersize=10, marker='_', lw=1,
         legend_elements = [Line2D([0], [0], marker=marker, markersize=markersize, \
                                   lw=lw, color=area_colors[v], 
                                   markerfacecolor=area_colors[v],
-                                  label='%s (n=%i rats, %i fovs, %i cells)' % (v, n_rats[v], n_fovs[v], n_cells[v]))\
+                                  label='%s (n=%i rats, %i fovs, avg %i cells)' % (v, n_rats[v], n_fovs[v], n_cells[v]))\
                            for v in visual_areas]
     else:
         legend_elements = [Line2D([0], [0], marker=marker, markersize=markersize, \
