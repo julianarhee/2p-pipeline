@@ -378,12 +378,12 @@ def create_results_id(prefix='fov_results', visual_area='varea', C_value=None,
     #results_id='%s_%s_%s__%s-%s_%s__%s' % (prefix, visual_area, C_str, response_type, responsive_test, overlap_str, trial_epoch)
     results_id='%s_%s__%s-%s_%s__%s__%s' \
                     % (prefix, visual_area, response_type, responsive_test, overlap_str, trial_epoch, C_str)
-
+    
     return results_id
 
 def create_aggr_results_id(prefix='fov_results', C_value=None, 
                         response_type='dff', trial_epoch='stimulus',
-                        responsive_test='resp', overlap_thr=None):
+                        responsive_test='resp', overlap_thr=None, has_retino=False):
 
     tmp_id = create_results_id(prefix=prefix, visual_area='NA',
                                C_value=C_value, response_type=response_type, 
@@ -512,7 +512,7 @@ def do_decode_within_fov(analysis_type='by_fov', experiment='blobs',
                         responsive_test='nstds', responsive_thr=10.,
                         response_type='dff', trial_epoch='stimulus', 
                         min_ncells=5, n_iterations=100, C_value=None,
-                        match_distns=False, overlap_thr=0.5, 
+                        match_distns=False, overlap_thr=0.5, has_retino=False,
                         test_split=0.2, cv_nfolds=5, class_a=0, class_b=106, 
                         traceid='traces001', fov_type='zoom2p0x', state='awake',
                         aggregate_dir='/n/coxfs01/julianarhee/aggregate-visual-areas',
@@ -530,9 +530,9 @@ def do_decode_within_fov(analysis_type='by_fov', experiment='blobs',
     aggr_results_id = create_aggr_results_id(prefix=results_prefix,
                                  C_value=C_value, response_type=response_type, 
                                  trial_epoch=trial_epoch,  
-                                 responsive_test=responsive_test, overlap_thr=overlap_thr)
+                                 responsive_test=responsive_test, overlap_thr=overlap_thr, has_retino=has_retino)
     # Get all data sets
-    if overlap_thr is not None:
+    if (has_retino is False) and (overlap_thr is not None):
         edata = aggr.get_blobs_and_rf_meta(experiment=experiment, traceid=traceid, 
                                         stim_filterby=None)
     else:
@@ -542,7 +542,7 @@ def do_decode_within_fov(analysis_type='by_fov', experiment='blobs',
     pooled = aggregate_decode_within_fov(edata, C_value=C_value, results_prefix=results_prefix,
                                 response_type=response_type, responsive_test=responsive_test, 
                                 trial_epoch=trial_epoch,
-                                responsive_thr=responsive_thr, overlap_thr=overlap_thr,
+                                responsive_thr=responsive_thr, overlap_thr=overlap_thr, has_retino=has_retino,
                                 rootdir=rootdir, verbose=verbose) 
     # Save data
     print("SAVING.....")  #datestr = datetime.datetime.now().strftime("%Y%m%d")
@@ -736,13 +736,15 @@ def main(options):
 
     # Dataset filtering --------------------------------
     filter_fovs = True
-    remove_too_few = True
+    remove_too_few = False #True
     min_ncells = 5 #10 if remove_too_few else 0
     overlap_thr = None if opts.overlap_thr in ['None', None] else float(opts.overlap_thr)
-    has_rfs = overlap_thr is not None
     has_retino = opts.has_retino
+
+    has_rfs = (overlap_thr is not None) and (has_retino is False)
     if has_retino:
         overlap_str = 'retino'
+        has_rfs = False
     else:
         overlap_str = 'noRF' if overlap_thr is None else 'overlap%.1f' % overlap_thr
    
@@ -798,6 +800,7 @@ def main(options):
 
     #### Get metadata for experiment type
     sdata = aggr.get_aggregate_info(traceid=traceid, fov_type=fov_type, state=state)
+    has_filter = 'retino' if has_retino else 'rfs'
     dsets, keys_by_area = aggr.experiment_datakeys(experiment=experiment, experiment_only=False,
                                       has_gratings=has_gratings, stim_filterby=stim_filterby, has_rfs=has_rfs)
      
@@ -805,12 +808,13 @@ def main(options):
     stim_datakeys = dsets['datakey'].unique()
 
     #### Source data
+    visual_areas = ['V1', 'Lm', 'Li', 'Ll']
     curr_visual_area = None if opts.visual_area in ['None', None] else opts.visual_area
     curr_datakey = None if opts.datakey in ['None', None] else opts.datakey    
     # Notes:
     # images_only=True if by_ncells, since need to concatenate trials 
     # TODO:  Fix so that we can train on anchors only and/or subset of configs
-    _, assigned_cells, MEANS, SDF = aggr.get_source_data(experiment, 
+    _, all_cells, MEANS, SDF = aggr.get_source_data(experiment, 
                         equalize_now=True, zscore_now=True,
                         response_type=response_type, responsive_test=responsive_test, 
                         responsive_thr=responsive_thr, trial_epoch=trial_epoch, #use_all=False,
@@ -818,7 +822,7 @@ def main(options):
                         datakey=None if match_distns else curr_datakey,
                         check_configs=True, return_configs=True, return_missing=False,
                         images_only=analysis_type=='by_ncells')
-    assigned_cells = assigned_cells[assigned_cells['visual_area'].isin(['V1', 'Lm', 'Li', 'Ll'])] #, 'Ll'])]
+    all_cells = all_cells[all_cells['visual_area'].isin(visual_areas)].copy() #, 'Ll'])]
     stack_neuraldf = analysis_type in ['by_ncells'] #match_distns==True
 
     #### Load RFs
@@ -832,25 +836,26 @@ def main(options):
         rfdf = aggr.load_rfdf_and_pos(dsets, rf_filter_by=None, 
                                         reliable_only=True, traceid=traceid)
         # RF dataframes
-        NEURALDATA, RFDATA, assigned_cells = aggr.get_neuraldata_and_rfdata(assigned_cells, rfdf, MEANS, 
+        NEURALDATA, RFDATA, assigned_cells = aggr.get_neuraldata_and_rfdata(all_cells, rfdf, MEANS, 
                                                 stack=stack_neuraldf)
     elif has_retino:
         print("~~~~~~~~~~~~~~~~Loading Retinotopy Bar ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~")
-        edata = sdata[sdata['experiment'].isin(['retino'])]
-        assigned_rois, missing_ = seg.get_cells_by_area(edata, return_missing=True)
-        retino_cells = aggr.aggregate_responsive_retino(assigned_rois, traceid=traceid,
+        #edata = sdata[sdata['experiment'].isin(['retino'])]
+        #assigned_rois, missing_ = seg.get_cells_by_area(edata, return_missing=True)
+        retino_cells = aggr.aggregate_responsive_retino(all_cells, traceid=traceid,
                                         mag_thr=retino_mag_thr, pass_criterion=retino_pass_criterion, 
                                         verbose=False, create_new=True)
-        assigned_cells = retino_cells[retino_cells['visual_area'].isin(visual_areas)]
-        print("Missing %i retino analyses" % len(missing_))
+        #cells = retino_cells[retino_cells['visual_area'].isin(visual_areas)]
+        #print("Missing %i retino analyses" % len(missing_))
         #for r in missing_:
         #    print(r)
-        NEURALDATA = aggr.get_neuraldata(retino_cells, MEANS, stack=True)
-
+        NEURALDATA = aggr.get_neuraldata(retino_cells, MEANS, stack=stack_neuraldf) #True)
+        assigned_cells = aggr.cells_in_experiment_df(retino_cells, NEURALDATA)
     else:
         print("~~~~~~~~~~~~~~~~No Receptive Fields~~~~~~~~~~~~~~~~~~~~~~~~~")
         # EXP dataframes 
-        NEURALDATA = aggr.get_neuraldata(assigned_cells, MEANS, stack=stack_neuraldf)
+        NEURALDATA = aggr.get_neuraldata(all_cells, MEANS, stack=stack_neuraldf)
+        assigned_cells = aggr.cells_in_experiment_df(all_cells, NEURALDATA)
 
     if match_distns:
         print("~~~~~~~~~~~~~~~~Matching max %s distNs~~~~~~~~~~~~~~~~~~~~~" % response_type)
