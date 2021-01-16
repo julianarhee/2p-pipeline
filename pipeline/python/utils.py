@@ -244,13 +244,17 @@ def warp_spherical(image_values, cart_pointsX, cart_pointsY, sphr_pointsTh, sphr
 # -----------------------------------------------------------------------------
 # Plotting:
 # -----------------------------------------------------------------------------
-def set_threecolor_palette(c1='magenta', c2='orange', c3='dodgerblue', cmap=None):
+def set_threecolor_palette(c1='magenta', c2='orange', c3='dodgerblue', cmap=None, soft=False,
+                            visual_areas = ['V1', 'Lm', 'Li']):
+    if soft:
+        c1='turquoise';c2='cornflowerblue';c3='orchid';
+
     # colors = ['k', 'royalblue', 'darkorange'] #sns.color_palette(palette='colorblind') #, n_colors=3)
     # area_colors = {'V1': colors[0], 'Lm': colors[1], 'Li': colors[2]}
-    visual_areas = ['V1', 'Lm', 'Li']
     if cmap is not None:
-        c1, c2, c3 = sns.color_palette(palette='colorblind') #, n_colors=3) 
-    area_colors = {'V1': c1, 'Lm': c2, 'Li': c3}
+        c1, c2, c3 = sns.color_palette(palette=cmap, n_colors=len(visual_areas))#'colorblind') #, n_colors=3) 
+    area_colors = dict((k, v) for k, v in zip(visual_areas, [c1, c2, c3]))
+    #area_colors = {'V1': c1, 'Lm': c2, 'Li': c3}
     return visual_areas, area_colors
 
 def set_plot_params(lw_axes=1, labelsize=12, color='k'):
