@@ -1184,6 +1184,8 @@ def match_trials_df(neuraldf, pupildf, equalize_conditions=False):
     trials_with_neural = neuraldf.index.tolist()
     n_pupil_trials = len(trials_with_pupil)
     n_neural_trials = len(trials_with_neural)
+    if 'trial' in neuraldf.columns:
+        neuraldf.index = neuraldf['trial']
 
     if n_pupil_trials > n_neural_trials:
         pupildf = pupildf[pupildf['trial'].isin(trials_with_neural)]
