@@ -60,6 +60,42 @@ from sklearn.model_selection import GridSearchCV
 from sklearn.metrics import classification_report
 from sklearn import svm
 
+
+def get_percentile_shuffled(iterdf, metric='heldout_test_score'):
+    # p_thr=0.05
+    excl_cols = ['fit_time', 'iteration', 'n_cells',  'randi', 'score_time']
+    incl_cols = [c for c in iterdf.columns if c not in excl_cols]
+
+    # Use bootstrap distn to calculate percentiles
+    s_=[]
+    if 'cell' in iterdf.columns:
+        for (visual_area, datakey, rid), d_ in iterdf.groupby(['visual_area', 'datakey', 'cell']):
+
+            mean_score = d_[d_['condition']=='data'][metric].mean()
+            percentile = np.mean(mean_score < d_[d_['condition']=='shuffled'][metric])
+            n_iterations = d_[d_['condition']=='data'].shape[0]
+            rdict = dict(d_[d_['condition']=='data'][incl_cols].mean())
+            rdict.update({'visual_area': visual_area, 'datakey': datakey, 'cell': rid, 
+                           'mean_score': mean_score, 'percentile': percentile, 'n_iterations': n_iterations})
+            s = pd.Series(rdict)
+            s_.append(s)
+    else:
+         for (visual_area, datakey), d_ in iterdf.groupby(['visual_area', 'datakey']):
+
+            mean_score = d_[d_['condition']=='data'][metric].mean()
+            percentile = np.mean(mean_score < d_[d_['condition']=='shuffled'][metric])
+            n_iterations = d_[d_['condition']=='data'].shape[0]
+            rdict = dict(d_[d_['condition']=='data'][incl_cols].mean())
+            rdict.update({'visual_area': visual_area, 'datakey': datakey, 
+                           'mean_score': mean_score, 'percentile': percentile, 'n_iterations': n_iterations})
+            s = pd.Series(rdict)
+            s_.append(s)
+            
+    scores_by_cell = pd.concat(s_, axis=1).T.reset_index(drop=True)
+    
+    return scores_by_cell
+
+
 # ======================================================================
 # Load/Aggregate data functions 
 # ======================================================================
@@ -401,7 +437,8 @@ def get_trials_for_N_cells(curr_ncells, gdf, MEANS):
     cfg_df = pd.concat(c_list, axis=1)
     cfg_df = cfg_df.T.drop_duplicates().T
     assert cfg_df.shape[0]==curr_neuraldf.shape[0], "Bad trials"
-    assert cfg_df.shape[1]==1, "Bad configs"
+
+    assert curr_configdf.shape[1]==1, "Bad configs: %s" % str(curr_roidf['datakey'].unique())
     df = pd.concat([curr_neuraldf, cfg_df], axis=1)
 
     return df
@@ -461,7 +498,7 @@ def get_trials_for_N_cells_split(curr_ncells, gdf, NEURALDATA):
     curr_configdf = pd.concat(c_list, axis=1).T.drop_duplicates().T
 
     assert curr_configdf.shape[0]==curr_neuraldf.shape[0], "Bad trials"
-    assert curr_configdf.shape[1]==1, "Bad configs"
+    assert cfg_df.shape[1]==1, "Bad configs: %s" % str(curr_roidf['datakey'].unique()) #cfg_df
     df = pd.concat([curr_neuraldf, curr_configdf], axis=1)
 
     return df
@@ -484,6 +521,7 @@ def get_trials_for_N_cells_df(curr_ncells, gdf, NEURALDATA):
 
     d_list=[]
     for datakey, dkey_rois in curr_roidf.groupby(['datakey']):
+        assert datakey in currd['datakey'].unique(), "ERROR: %s not found" % datakey
         # Get current trials, make equal to min_ntrials_by_config
         tmpd = pd.concat([trialmat.sample(n=min_ntrials_by_config) 
                          for (rid, cfg), trialmat in currd[currd['datakey']==datakey].groupby(['cell', 'config'])], axis=0)
@@ -509,7 +547,7 @@ def get_trials_for_N_cells_df(curr_ncells, gdf, NEURALDATA):
     assert cfg_df.shape[0]==curr_neuraldf.shape[0], "Bad trials"
     if len(cfg_df.shape) > 1:
         cfg_df = cfg_df.loc[:,~cfg_df.T.duplicated(keep='first')]
-        assert cfg_df.shape[1]==1, "Bad configs"
+        assert cfg_df.shape[1]==1, "Bad configs: %s" % str(curr_roidf['datakey'].unique()) #cfg_df
 
     df = pd.concat([curr_neuraldf, cfg_df], axis=1)
     
@@ -855,13 +893,17 @@ def do_fit(iter_num, global_rois=None, MEANS=None, sdf=None, sample_ncells=None,
     
     '''   
     #### Get new sample set
-    if isinstance(MEANS, dict):
-        if df_is_split:
-            curr_data = get_trials_for_N_cells_split(sample_ncells, global_rois, MEANS)
+    try:
+        if isinstance(MEANS, dict):
+            if df_is_split:
+                curr_data = get_trials_for_N_cells_split(sample_ncells, global_rois, MEANS)
+            else:
+                curr_data = get_trials_for_N_cells(sample_ncells, global_rois, MEANS)
         else:
-            curr_data = get_trials_for_N_cells(sample_ncells, global_rois, MEANS)
-    else:
-        curr_data = get_trials_for_N_cells_df(sample_ncells, global_rois, MEANS)
+            curr_data = get_trials_for_N_cells_df(sample_ncells, global_rois, MEANS)
+    except Exception as e:
+        traceback.print_exc()
+        return None
 
     #### Select train/test configs for clf A vs B
     train_configs = sdf[sdf['morphlevel'].isin([class_a, class_b])].index.tolist() 
@@ -883,7 +925,7 @@ def do_fit(iter_num, global_rois=None, MEANS=None, sdf=None, sample_ncells=None,
                             cv_nfolds=cv_nfolds, randi=randi)
 
     if do_shuffle:
-        print("... shuffling")
+        #print("... shuffling")
         labels_shuffled = targets['label'].copy().values 
         np.random.shuffle(labels_shuffled)
         targets['label'] = labels_shuffled
