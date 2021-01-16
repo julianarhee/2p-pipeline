@@ -270,7 +270,7 @@ def calculate_overlaps(RFs, datakeys=None, experiment='blobs'):
 
 
 def aggregate_rf_dataframes(filter_by, fit_desc=None, scale_sigma=True, fit_thr=0.5, 
-                            traceid='traces001',
+                            traceid='traces001', assign_cells=True,
                             reliable_only=True, verbose=False,
                             fov_type='zoom2p0x', state='awake', stimulus='rfs', 
                             excluded_sessions = ['JC110_20191004_FOV1_zoom2p0x',
@@ -279,20 +279,27 @@ def aggregate_rf_dataframes(filter_by, fit_desc=None, scale_sigma=True, fit_thr=
                                                  'JC113_20191108_FOV2_zoom2p0x']):
     
     from pipeline.python.classifications import aggregate_data_stats as aggr
-                            
+    from pipeline.python.retinotopy import segment_retinotopy as seg
+                         
     assert fit_desc is not None, "No fit_desc provided!"
     #### Get metadata
     dsets = aggr.get_metadata(traceid=traceid, fov_type=fov_type, state=state, 
-                                  filter_by=filter_by, stimulus='rfs')
-    
+                                  filter_by=filter_by, stimulus='rfs') 
     rf_dsets = dsets[dsets['experiment'].isin(['rfs', 'rfs10'])].copy()
 
     #### Check for any datasets that need RF fits
     rf_dpaths, _ = get_fit_dpaths(rf_dsets, traceid=traceid, fit_desc=fit_desc, 
                                               excluded_sessions=excluded_sessions)
 
+
+    #####
+    assigned_cells = None
+    if assign_cells:
+        assigned_cells, missing_seg = seg.get_cells_by_area(rf_dsets, return_missing=True)
+    
     #### Get RF dataframe for all datasets (filter to include only good fits)
-    all_df = aggregate_rf_data(rf_dpaths, scale_sigma=scale_sigma, verbose=verbose,
+    all_df = aggregate_rf_data(rf_dpaths, assigned_cells=assigned_cells,
+                                scale_sigma=scale_sigma, verbose=verbose,
                                 reliable_only=reliable_only,
                                 fit_desc=fit_desc, traceid=traceid)
     all_df.groupby(['visual_area', 'experiment'])['datakey'].count()
@@ -367,6 +374,7 @@ def get_fit_dpaths(dsets, traceid='traces001', fit_desc=None,
 
 
 def aggregate_rf_data(rf_dpaths, fit_desc=None, traceid='traces001', fit_thr=0.5, 
+                        assigned_cells=None,
                       scale_sigma=True, sigma_scale=2.35, verbose=False, 
                       response_type='None', reliable_only=True,
                       rootdir='/n/coxfs01/2p-data'):
@@ -377,7 +385,6 @@ def aggregate_rf_data(rf_dpaths, fit_desc=None, traceid='traces001', fit_thr=0.5
     from pipeline.python.retinotopy import fit_2d_rfs as fitrf
     from pipeline.python.classifications import evaluate_receptivefield_fits as evalrf
 
-
     df_list = []
     for (visual_area, animalid, session, fovnum, experiment), g in rf_dpaths.groupby(['visual_area', 'animalid', 'session', 'fovnum', 'experiment']):
         if experiment not in ['rfs', 'rfs10']:
@@ -386,6 +393,12 @@ def aggregate_rf_data(rf_dpaths, fit_desc=None, traceid='traces001', fit_thr=0.5
         datakey = '%s_%s_fov%i' % (session, animalid, fovnum) #'-'.join([animalid, session, fovnum])
         #print(datakey)
         fov = 'FOV%i_zoom2p0x' % fovnum
+
+        curr_cells=None
+        if assigned_cells is not None and datakey in assigned_cells['datakey'].values: 
+            curr_cells = assigned_cells[(assigned_cells['visual_area']==visual_area) 
+                                 & (assigned_cells['datakey']==datakey)]['cell'].unique() 
+
         try:
             #### Load evaluation results (bootstrap analysis of each fit paramater)
             curr_rfname = experiment if int(session)>=20190511 else 'gratings'
@@ -432,6 +445,9 @@ def aggregate_rf_data(rf_dpaths, fit_desc=None, traceid='traces001', fit_thr=0.5
 
             #### Create dataframe with params only for good fit cells
             keep_rois = reliable_rois if reliable_only else pass_rois
+            if curr_cells is not None:
+                keep_rois = [r for r in keep_rois if r in curr_cells]
+
             passdf = rfit_df.loc[keep_rois].copy()
             # "un-scale" size, if flagged
             if not scale_sigma:
@@ -525,8 +541,12 @@ def update_rf_metrics(rfdf, scale_sigma=True):
     return rfdf
 
 
-def load_rfdf_with_positions(rf_fit_desc, traceid='traces001', filter_by=None, reliable_only=True,
-                                create_new=False, aggr_dir='/n/coxfs01/julianarhee/aggregate-visual-areas'):
+def load_rfdf_with_positions(rf_fit_desc, traceid='traces001', filter_by=None, 
+                            assign_cells=True, reliable_only=True,
+                            create_new=False, aggr_dir='/n/coxfs01/julianarhee/aggregate-visual-areas'):
+    '''
+    Does the same thing as aggr.load_rfedf_and_pos(assign_cells=True)
+    '''
 
     src_dir = os.path.join(aggr_dir, 'receptive-fields', '%s__%s' % (traceid, rf_fit_desc))
     reliable_str = 'reliable' if reliable_only else ''
@@ -535,7 +555,7 @@ def load_rfdf_with_positions(rf_fit_desc, traceid='traces001', filter_by=None, r
         print("file does not exist")
         create_new=True
     
-    if os.path.exists(df_fpath) or create_new is False:
+    if os.path.exists(df_fpath) and create_new is False:
         print("Loading existing RF coord conversions...")
         try:
             with open(df_fpath, 'rb') as f:
@@ -550,7 +570,7 @@ def load_rfdf_with_positions(rf_fit_desc, traceid='traces001', filter_by=None, r
 
     if create_new:      
         rfdf, _ = aggregate_rf_dataframes(filter_by, fit_desc=rf_fit_desc, traceid=traceid, 
-                                        reliable_only=reliable_only) 
+                                        reliable_only=reliable_only, assign_cells=assign_cells) 
         rfdf = update_roi_positions(rfdf, traceid=traceid)
 
         with open(df_fpath, 'wb') as f:

@@ -814,7 +814,7 @@ def get_active_cells_in_current_datasets(rois, MEANS, verbose=False):
 def load_aggregate_data(experiment, traceid='traces001', response_type='dff', epoch='stimulus', 
                        responsive_test='ROC', responsive_thr=0.05, n_stds=0.0,
                         check_configs=True, equalize_now=False, zscore_now=False,
-                        return_configs=False, images_only=False,
+                        return_configs=False, images_only=False, diff_configs=['20190314_JC070_fov1'],
                         aggregate_dir='/n/coxfs01/julianarhee/aggregate-visual-areas'):
     '''
     Return dict of neural dataframes (keys are datakeys).
@@ -843,6 +843,9 @@ def load_aggregate_data(experiment, traceid='traces001', response_type='dff', ep
         if check_configs:
             sdf_master = get_master_sdf(images_only=images_only)
             for k, renamed_c in renamed_configs.items():
+                if k in diff_configs:
+                    print("(skipping %s)" % k)
+                    continue
                 #print("... updating %s" % k)
                 updated_cfgs = [renamed_c[cfg] for cfg in MEANS[k]['config']]
                 MEANS[k]['config'] = updated_cfgs
@@ -921,6 +924,8 @@ def get_source_data(experiment, traceid='traces001',
     rois, missing_seg = seg.get_cells_by_area(edata, return_missing=True)
     cells = get_active_cells_in_current_datasets(rois, MEANS, verbose=False)
 
+    # Assign global index
+    cells = assign_global_cell_id(cells)
 
     if (visual_area is not None) or (datakey is not None):
         means0 = MEANS.copy()
@@ -990,7 +995,7 @@ def get_master_sdf(images_only=False):
 
 
 def check_sdfs(stim_datakeys, experiment='blobs', traceid='traces001', images_only=False, 
-                rename=True, return_incorrect=False):
+                rename=True, return_incorrect=False, diff_configs=['20190314_JC070_fov1'] ):
 
     '''
     Checks config names and reutrn master dict of all stimconfig dataframes
@@ -1041,7 +1046,7 @@ def check_sdfs(stim_datakeys, experiment='blobs', traceid='traces001', images_on
                 #    continue
                 updated_keys.update({old_ix: new_ix})
        
-            if rename: 
+            if rename and (datakey not in diff_configs): 
                 sdf = sdf.rename(index=updated_keys)
 
             # Save renamed key 
@@ -1135,7 +1140,7 @@ def neuraldf_dataframe_to_dict(NDATA):
     return NEURALDATA
 
 
-def get_neuraldata(cells, MEANS, stack=False, verbose=False):
+def get_neuraldata(assigned_cells, MEANS, stack=False, verbose=False):
     '''
     cells (dataframe)
         Cells assigned to each datakey/visual area 
@@ -1151,11 +1156,11 @@ def get_neuraldata(cells, MEANS, stack=False, verbose=False):
         values = MEANS (i.e., dict of dfs) for each visual area
         Only inclues cells that are assigned to the specified area.
     '''
-    visual_areas = cells['visual_area'].unique()
+    visual_areas = assigned_cells['visual_area'].unique()
 
     NEURALDATA = dict((visual_area, {}) for visual_area in visual_areas)
     rf_=[]
-    for (visual_area, datakey), curr_c in cells.groupby(['visual_area', 'datakey']):
+    for (visual_area, datakey), curr_c in assigned_cells.groupby(['visual_area', 'datakey']):
         if visual_area not in NEURALDATA.keys():
             print("... skipping: %s" % visual_area)
             continue
@@ -1184,7 +1189,7 @@ def get_neuraldata(cells, MEANS, stack=False, verbose=False):
 
 # -------- RFs -----------------------------------------------------------
 
-def get_rfdata(cells, rfdf, verbose=False, visual_area=None, datakey=None, average_repeats=True):
+def get_rfdata(assigned_cells, rfdf, verbose=False, visual_area=None, datakey=None, average_repeats=True):
     '''
     cells (dataframe)
         Cells assigned to each datakey/visual area 
@@ -1200,7 +1205,7 @@ def get_rfdata(cells, rfdf, verbose=False, visual_area=None, datakey=None, avera
     from pipeline.python.classifications import rf_utils as rfutils
 
     rf_=[]
-    for (visual_area, datakey), curr_c in cells.groupby(['visual_area', 'datakey']):
+    for (visual_area, datakey), curr_c in assigned_cells.groupby(['visual_area', 'datakey']):
         # Which cells have receptive fields
         cells_with_rfs = rfdf[rfdf['datakey']==datakey]['cell'].unique()
 
@@ -1251,10 +1256,10 @@ def get_rfdata(cells, rfdf, verbose=False, visual_area=None, datakey=None, avera
 
     return RFDATA
 
-def get_neuraldata_and_rfdata_2(cells, rfdf, MEANS, verbose=False, stack=False):
-    NEURALDATA = get_neuraldata(cells, MEANS, stack=stack, verbose=verbose)
-    RFDATA = get_rfdata(cells, rfdf, verbose=verbose, visual_area=visual_area, datakey=datakey)
-    updated_cells = cells_in_experiment_df(cells, RFDATA)
+def get_neuraldata_and_rfdata_2(assigned_cells, rfdf, MEANS, verbose=False, stack=False):
+    NEURALDATA = get_neuraldata(assigned_cells, MEANS, stack=stack, verbose=verbose)
+    RFDATA = get_rfdata(assigned_cells, rfdf, verbose=verbose, visual_area=visual_area, datakey=datakey)
+    updated_cells = cells_in_experiment_df(assigned_cells, RFDATA)
 
     return NEURALDATA, RFDATA, updated_cells
 
@@ -1287,17 +1292,17 @@ def get_common_cells_from_dataframes(NEURALDATA, RFDATA):
 
     return N, R
 
-def cells_in_experiment_df(cells, rfdf):
+def cells_in_experiment_df(assigned_cells, rfdf):
     if isinstance(rfdf, dict):
         rfdf = neuraldf_dict_to_dataframe(rfdf) #, response_type='response'):
 
-    updated_cells = pd.concat([cells[(cells['visual_area']==v) 
-                              & (cells['datakey']==dk) 
-                              & (cells['cell'].isin(g['cell'].unique()))] \
+    updated_cells = pd.concat([assigned_cells[(assigned_cells['visual_area']==v) 
+                              & (assigned_cells['datakey']==dk) 
+                              & (assigned_cells['cell'].isin(g['cell'].unique()))] \
                         for (v, dk), g in rfdf.groupby(['visual_area', 'datakey'])])
     return updated_cells
 
-def get_neuraldata_and_rfdata(cells, rfdf, MEANS,
+def get_neuraldata_and_rfdata(assigned_cells, rfdf, MEANS,
                             visual_areas=['V1','Lm','Li'], verbose=False, stack=False):
     '''
     cells (dataframe)
@@ -1321,7 +1326,7 @@ def get_neuraldata_and_rfdata(cells, rfdf, MEANS,
     '''
     NEURALDATA = dict((visual_area, {}) for visual_area in visual_areas)
     rf_=[]
-    for (visual_area, datakey), curr_c in cells.groupby(['visual_area', 'datakey']):
+    for (visual_area, datakey), curr_c in assigned_cells.groupby(['visual_area', 'datakey']):
         if visual_area not in NEURALDATA.keys():
             continue
 
@@ -1329,7 +1334,7 @@ def get_neuraldata_and_rfdata(cells, rfdf, MEANS,
         cells_with_rfs = rfdf[rfdf['datakey']==datakey]['cell'].unique()
 
         # Which cells with RFs are in assigned area
-        curr_assigned = curr_c[curr_c['cell'].isin(cells_with_rfs)]
+        curr_assigned = curr_c[curr_c['cell'].isin(cells_with_rfs)].copy()
         assigned_with_rfs = curr_assigned['cell'].unique()
         if verbose:
             print("[%s] %s: %i cells with RFs (%i responsive)" \
@@ -1348,8 +1353,10 @@ def get_neuraldata_and_rfdata(cells, rfdf, MEANS,
             meanrf = curr_rfdf.groupby(['cell']).mean().reset_index()
             mean_thetas = curr_rfdf.groupby(['cell'])['theta'].apply(spstats.circmean, low=0, high=2*np.pi).values
             meanrf['theta'] = mean_thetas
-            meanrf['visual_area'] = [visual_area for _ in  np.arange(0, len(assigned_with_rfs))] # reassign area
-            meanrf['experiment'] = ['average_rfs' for _ in np.arange(0, len(assigned_with_rfs))]
+            meanrf['visual_area'] = visual_area 
+            #[visual_area for _ in  np.arange(0, len(assigned_with_rfs))] # reassign area
+            meanrf['experiment'] = 'average_rfs' #['average_rfs' for _ in np.arange(0, len(assigned_with_rfs))]
+
             # Add the meta/non-numeric info
             non_num = [c for c in curr_rfdf.columns if c not in meanrf.columns and c!='experiment']
             metainfo = pd.concat([g[non_num].iloc[0] for c, g in curr_rfdf.groupby(['cell'])], axis=1).T.reset_index(drop=True)
@@ -1365,15 +1372,20 @@ def get_neuraldata_and_rfdata(cells, rfdf, MEANS,
         NEURALDATA = neuraldf_dict_to_dataframe(NEURALDATA)
 
     # Update cells
-    updated_cells = cells_in_experiment_df(cells, RFDATA) 
+    updated_cells = cells_in_experiment_df(assigned_cells, RFDATA) 
 
     return NEURALDATA, RFDATA, updated_cells
 
 
 def load_rfdf_and_pos(dsets, response_type='dff', rf_filter_by=None, reliable_only=True,
-                        rf_fit_thr=0.05, traceid='traces001',
+                        rf_fit_thr=0.05, traceid='traces001', assign_cells=True,
                         aggregate_dir='/n/coxfs01/2p-data'):
+    '''
+    Does the same thing as rfutils.load_rfdf_with_positions(assign_cells=True)
+    '''
+
     from pipeline.python.retinotopy import fit_2d_rfs as fitrf
+    from pipeline.python.retinotopy import segment_retinotopy as seg
     from pipeline.python.classifications import rf_utils as rfutils
 
     rf_fit_desc = fitrf.get_fit_desc(response_type=response_type)
@@ -1385,6 +1397,12 @@ def load_rfdf_and_pos(dsets, response_type='dff', rf_filter_by=None, reliable_on
                         'fits_and_coords_%s_%s.pkl' % (rf_filter_by, reliable_str))
     rf_dsets = dsets[dsets['experiment'].isin(['rfs', 'rfs10'])].copy()
     rfdf = rfutils.get_rf_positions(rf_dsets, df_fpath)
+
+    # if assign
+    if assign_cells:
+        assigned_cells, _ = seg.get_cells_by_area(rf_dsets, return_missing=True)
+        rfdf = get_rfdata(assigned_cells, rfdf, average_repeats=False)
+
 
     return rfdf
 
@@ -1677,6 +1695,11 @@ def select_cells(cells, visual_area=None, datakey=None):
 
     return currcells
 
+def assign_global_cell_id(cells):
+    cells['global_ix'] = 0
+    for v, g in cells.groupby(['visual_area']):
+        cells['global_ix'].loc[g.index] = np.arange(0, g.shape[0])
+    return cells.reset_index(drop=True)
 
 def global_cells(cells, remove_too_few=True, min_ncells=5,  return_counts=False):
     '''
@@ -1704,29 +1727,30 @@ def global_cells(cells, remove_too_few=True, min_ncells=5,  return_counts=False)
         incl_keys = cells['datakey'].unique()
  
     nocells=[]; notrials=[];
-    global_rois = dict((v, []) for v in visual_areas)
     roi_counters = dict((v, 0) for v in visual_areas)
     #count_of_sel = cells[['visual_area', 'datakey', 'cell']].drop_duplicates().groupby(['visual_area', 'datakey']).count().reset_index()
     #print(count_of_sel.groupby(['visual_area']).sum())
 
     roidf = []
-    datakeys = dict((v, []) for v in visual_areas)
     for (visual_area, datakey), g in cells[cells['datakey'].isin(incl_keys)].groupby(['visual_area', 'datakey']):
 
         roi_counter = roi_counters[visual_area]
-        datakeys[visual_area].append(datakey)
-        roi_list = sorted(g['cell'].unique()) #[int(r) for r in ddf.columns if r != 'config']
 
         # Reindex roi ids for global
-        roi_ids = [i+roi_counter for i, r in enumerate(roi_list)]
+        roi_list = sorted(g['cell'].unique()) #[int(r) for r in ddf.columns if r != 'config']
         nrs = len(roi_list)
-        global_rois[visual_area].extend(roi_ids)
-       
+        roi_ids = [i+roi_counter for i, r in enumerate(roi_list)]
+      
         # Append to full df
-        roidf.append(pd.DataFrame({'roi': roi_ids,
-                                   'dset_roi': roi_list,
-                                   'visual_area': [visual_area for _ in np.arange(0, nrs)],
-                                   'datakey': [datakey for _ in np.arange(0, nrs)]}))
+        roi_dict = {'roi': roi_ids,
+                   'dset_roi': roi_list,
+                   'visual_area': [visual_area for _ in np.arange(0, nrs)],
+                   'datakey': [datakey for _ in np.arange(0, nrs)]}
+        if 'global_ix' in g.columns:
+            roi_dict.update({'global_ix': g['global_ix'].values})
+
+        roidf.append(pd.DataFrame(roi_dict))
+      
         # Update global roi id counter
         roi_counters[visual_area] += len(roi_ids)
 
@@ -1736,7 +1760,7 @@ def global_cells(cells, remove_too_few=True, min_ncells=5,  return_counts=False)
         else:
             return None
 
-    roidf = pd.concat(roidf, axis=0) #.groupby(['visual_area']).count()
+    roidf = pd.concat(roidf, axis=0).reset_index(drop=True)  #.groupby(['visual_area']).count()
     #for k, v in global_rois.items():
     #    print(k, len(v))
       
@@ -1749,7 +1773,7 @@ def global_cells(cells, remove_too_few=True, min_ncells=5,  return_counts=False)
     else:
         return roidf
 
-def get_pooled_cells(stim_overlaps, remove_too_few=False, 
+def get_pooled_cells(stim_overlaps, assigned_cells=None, remove_too_few=False, 
                       overlap_thr=0.8, min_ncells=20, visual_areas=None, return_counts=True):
     '''
     stim_overlaps (dataframe)
@@ -1778,14 +1802,47 @@ def get_pooled_cells(stim_overlaps, remove_too_few=False,
         visual_areas = stim_overlaps['visual_area'].unique()
 
     # Filter out cells that dont pass overlap threshold
-    globalcells, cellcounts = filter_rois(stim_overlaps[stim_overlaps['datakey'].isin(incl_keys)], 
-                                        overlap_thr=overlap_thr, return_counts=True, visual_areas=visual_areas)
+    filtered_ = filter_cells_by_overlap(stim_overlaps[stim_overlaps['datakey'].isin(incl_keys)],
+                                overlap_thr=overlap_thr,  visual_areas=visual_areas)
+    if assigned_cells is not None:
+        updated_ = cells_in_experiment_df(assigned_cells, filtered_)
+    else:
+        updated_  = filtered_.copy()
+
+    globalcells, cellcounts = global_cells(updated_, remove_too_few=remove_too_few, 
+                                min_ncells=min_ncells, return_counts=True)
+
+    #globalcells, cellcounts = filter_rois(stim_overlaps[stim_overlaps['datakey'].isin(incl_keys)], 
+    #                                    overlap_thr=overlap_thr, return_counts=True, visual_areas=visual_areas)
 
     if return_counts:
         return globalcells, cellcounts
     else:
         return globalcells
 
+def filter_cells_by_overlap(stim_overlaps,overlap_thr=0.5, visual_areas=None):
+    '''
+    Only get cells that pass overlap_thr of some value.
+    '''
+    # visual_areas=['V1', 'Lm', 'Li']
+    if visual_areas is None:
+        visual_areas = stim_overlaps['visual_area'].unique()
+ 
+    nocells=[]; notrials=[];
+    roi_counters = dict((v, 0) for v in visual_areas)
+    
+    pass_overlaps = stim_overlaps[stim_overlaps['perc_overlap']>=overlap_thr].copy()
+    n_orig = len(stim_overlaps['cell'].unique())
+    n_pass = len(pass_overlaps['cell'].unique())
+    print("%i of %i cells pass overlap (thr=%.2f)" % (n_pass, n_orig, overlap_thr))
+
+    cols = ['visual_area', 'datakey', 'cell']
+    if 'global_ix' in pass_overlaps.columns:
+        cols.append(['global_ix'])
+
+    filtered_cells = pass_overlaps[cols].drop_duplicates().reset_index(drop=True)
+
+    return filtered_cells
 
 def filter_rois(stim_overlaps, overlap_thr=0.50, return_counts=False, visual_areas=None):
     '''
@@ -1796,7 +1853,6 @@ def filter_rois(stim_overlaps, overlap_thr=0.50, return_counts=False, visual_are
         visual_areas = stim_overlaps['visual_area'].unique()
  
     nocells=[]; notrials=[];
-    global_rois = dict((v, []) for v in visual_areas)
     roi_counters = dict((v, 0) for v in visual_areas)
     
     pass_overlaps = stim_overlaps[stim_overlaps['perc_overlap']>=overlap_thr]
@@ -1808,23 +1864,23 @@ def filter_rois(stim_overlaps, overlap_thr=0.50, return_counts=False, visual_are
     #print(count_of_sel.groupby(['visual_area']).sum())
 
     roidf = []
-    datakeys = dict((v, []) for v in visual_areas)
     for (visual_area, datakey), g in pass_overlaps.groupby(['visual_area', 'datakey']):
 
         roi_counter = roi_counters[visual_area]
-        datakeys[visual_area].append(datakey)
-        roi_list = sorted(g['cell'].unique()) #[int(r) for r in ddf.columns if r != 'config']
-
         # Reindex roi ids for global
-        roi_ids = [i+roi_counter for i, r in enumerate(roi_list)]
+        roi_list = sorted(g['cell'].unique()) #[int(r) for r in ddf.columns if r != 'config']
         nrs = len(roi_list)
-        global_rois[visual_area].extend(roi_ids)
-       
+        roi_ids = [i+roi_counter for i, r in enumerate(roi_list)]
+      
         # Append to full df
-        roidf.append(pd.DataFrame({'roi': roi_ids,
-                                   'dset_roi': roi_list,
-                                   'visual_area': [visual_area for _ in np.arange(0, nrs)],
-                                   'datakey': [datakey for _ in np.arange(0, nrs)]}))
+        roi_dict = {'roi': roi_ids,
+                   'dset_roi': roi_list,
+                   'visual_area': [visual_area for _ in np.arange(0, nrs)],
+                   'datakey': [datakey for _ in np.arange(0, nrs)]}
+        if 'global_ix' in g.columns:
+            roi_dict.update({'global_ix': g['global_ix'].values})
+
+        roidf.append(pd.DataFrame(roi_dict))
         # Update global roi id counter
         roi_counters[visual_area] += len(roi_ids)
 
@@ -1835,9 +1891,7 @@ def filter_rois(stim_overlaps, overlap_thr=0.50, return_counts=False, visual_are
             return None
 
     roidf = pd.concat(roidf, axis=0) #.groupby(['visual_area']).count()
-    #for k, v in global_rois.items():
-    #    print(k, len(v))
-    
+   
     roidf['animalid'] = [d.split('_')[1] for d in roidf['datakey']]
     roidf['session'] = [d.split('_')[0] for d in roidf['datakey']]
     roidf['fovnum'] = [int(d.split('_')[2][3:]) for d in roidf['datakey']]
@@ -2027,15 +2081,24 @@ def threshold_cells_by_snr(mean_snr, globalcells, snr_thr=10.0, max_snr_thr=None
 # Plotting
 # ===============================================================
 from matplotlib.lines import Line2D
+
+def crop_legend_labels(ax, n_hues, bbox_to_anchor=(1.05, 1)):
+    # Get the handles and labels.
+    leg_handles, leg_labels = ax.get_legend_handles_labels()
+    # When creating the legend, only use the first two elements
+    leg = ax.legend(leg_handles[0:n_hues], leg_labels[0:n_hues], bbox_to_anchor=(1.05, 1), loc=2, borderaxespad=0.)
+    return leg
+
+
 def plot_pairwise_by_axis(plotdf, curr_metric='abs_coef', c1='az', c2='el', 
                           compare_var='cond', fontsize=10, fontcolor='k', fmt='%.2f', xytext=(0, 10),
-                          area_colors=None, legend=True, ax=None):
+                          area_colors=None, legend=True, bbox_to_anchor=(1.5,1.1), ax=None):
     if ax is None:
         fig, ax = pl.subplots(figsize=(5,4), dpi=150)
         fig.patch.set_alpha(0)
         ax.patch.set_alpha(0)
     ax = pairwise_compare_single_metric(plotdf, curr_metric=curr_metric, ax=ax,
-                                                c1=c1, c2=c2, compare_var=compare_var)
+                                        c1=c1, c2=c2, compare_var=compare_var, area_colors=area_colors)
     plotdf.apply(annotateBars, ax=ax, axis=1, fontsize=fontsize, 
                     fontcolor=fontcolor, fmt=fmt, xytext=xytext) 
     # Set x labels
@@ -2045,9 +2108,34 @@ def plot_pairwise_by_axis(plotdf, curr_metric='abs_coef', c1='az', c2='el',
         # Get counts of samples for legend
         legend_elements = get_counts_for_legend(plotdf, area_colors=area_colors, 
                                                 markersize=10, marker='_')
-        ax.legend(handles=legend_elements, bbox_to_anchor=(1.5,1.1), fontsize=8)
+        ax.legend(handles=legend_elements, bbox_to_anchor=bbox_to_anchor, fontsize=8)
 
     return ax #fig
+
+
+def plot_paired(plotdf, aix=0, curr_metric='avg_size', ax=None,
+                c1='rfs', c2='rfs10', compare_var='experiment',
+                marker='o', offset=0.25, color='k', label=None, lw=0.5, alpha=1, return_vals=False):
+
+    if ax is None:
+        fig, ax = pl.subplots()
+        
+    a_vals = plotdf[plotdf[compare_var]==c1].sort_values(by='datakey')[curr_metric].values
+    b_vals = plotdf[plotdf[compare_var]==c2].sort_values(by='datakey')[curr_metric].values
+
+    by_exp = [(a, e) for a, e in zip(a_vals, b_vals)]
+    for pi, p in enumerate(by_exp):
+        ax.plot([aix-offset, aix+offset], p, marker=marker, color=color,
+                alpha=alpha, lw=lw,  zorder=0, markerfacecolor=None,
+                markeredgecolor=color, label=label)
+    if return_vals:
+        return ax, a_vals, b_vals
+
+    else:
+        tstat, pval = spstats.ttest_rel(a_vals, b_vals)
+        print("%s: (t-stat:%.2f, p=%.2f)" % (visual_area, tstat, pval))
+        
+        return ax
 
 
 def pairwise_compare_single_metric(comdf, curr_metric='avg_size', 
@@ -2072,16 +2160,20 @@ def pairwise_compare_single_metric(comdf, curr_metric='avg_size',
     for ai, visual_area in enumerate(visual_areas):
 
         plotdf = comdf[comdf['visual_area']==visual_area]
-        a_vals = plotdf[plotdf[compare_var]==c1].sort_values(by='datakey')[curr_metric].values
-        b_vals = plotdf[plotdf[compare_var]==c2].sort_values(by='datakey')[curr_metric].values
+        ax = plot_paired(plotdf, aix=aix, curr_metric=curr_metric, ax=ax,
+                        c1=c1, c2=c2, compare_var=compare_var, offset=offset,
+                        marker=marker, color=area_colors[visual_area], lw=0.5)
 
-        by_exp = [(a, e) for a, e in zip(a_vals, b_vals)]
-        for pi, p in enumerate(by_exp):
-            ax.plot([aix-offset, aix+offset], p, marker=marker, color=area_colors[visual_area], 
-                    alpha=1, lw=0.5,  zorder=0, markerfacecolor=None, 
-                    markeredgecolor=area_colors[visual_area])
-        tstat, pval = spstats.ttest_rel(a_vals, b_vals)
-        print("%s: (t-stat:%.2f, p=%.2f)" % (visual_area, tstat, pval))
+#        a_vals = plotdf[plotdf[compare_var]==c1].sort_values(by='datakey')[curr_metric].values
+#        b_vals = plotdf[plotdf[compare_var]==c2].sort_values(by='datakey')[curr_metric].values
+#
+#        by_exp = [(a, e) for a, e in zip(a_vals, b_vals)]
+#        for pi, p in enumerate(by_exp):
+#            ax.plot([aix-offset, aix+offset], p, marker=marker, color=area_colors[visual_area], 
+#                    alpha=1, lw=0.5,  zorder=0, markerfacecolor=None, 
+#                    markeredgecolor=area_colors[visual_area])
+#        tstat, pval = spstats.ttest_rel(a_vals, b_vals)
+#        print("%s: (t-stat:%.2f, p=%.2f)" % (visual_area, tstat, pval))
         aix = aix+1
 
     # Plot average
@@ -2095,11 +2187,19 @@ def pairwise_compare_single_metric(comdf, curr_metric='avg_size',
     
     return ax
 
-def set_split_xlabels(ax, offset=0.25, a_label='rfs', b_label='rfs10', rotation=0, ha='center'):
-    ax.set_xticks([0-offset, 0+offset, 1-offset, 1+offset, 2-offset, 2+offset])
-    ax.set_xticklabels([a_label, b_label, a_label, b_label, a_label, b_label], 
-                        rotation=rotation, ha=ha)
-    ax.set_xlabel('')
+def set_split_xlabels(ax, offset=0.25, a_label='rfs', b_label='rfs10', rotation=0, ha='center', ncols=3):
+    locs = []
+    labs = []
+    for li in np.arange(0, ncols):
+        locs.extend([li-offset, li+offset])
+        labs.extend([a_label, b_label])
+    ax.set_xticks(locs)
+    ax.set_xticklabels(labs, rotation=rotation, ha=ha)
+
+#    ax.set_xticks([0-offset, 0+offset, 1-offset, 1+offset, 2-offset, 2+offset])
+#    ax.set_xticklabels([a_label, b_label, a_label, b_label, a_label, b_label], 
+#                        rotation=rotation, ha=ha)
+#    ax.set_xlabel('')
     ax.tick_params(axis='x', size=0)
     sns.despine(bottom=True, offset=4)
     return ax
@@ -2214,6 +2314,7 @@ def get_counts_for_legend(df, area_colors=None, markersize=10, marker='_', lw=1,
     if area_colors is None:
         colors = ['magenta', 'orange', 'dodgerblue'] #sns.color_palette(palette='colorblind') #, n_colors=3)
         area_colors = {'V1': colors[0], 'Lm': colors[1], 'Li': colors[2]}
+    visual_areas = area_colors.keys()
 
     dkey_name = 'retinokey' if 'datakey' not in df.columns else 'datakey'
 
