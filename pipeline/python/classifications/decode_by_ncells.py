@@ -209,6 +209,7 @@ def decode_split_pupil(datakey, visual_area, cells, MEANS, pupildata,
         arousal_trial_ixs = [all_trial_ixs, low_trial_ixs, high_trial_ixs]
         iter_list=[]
         for arousal_cond, curr_trial_ixs in zip(arousal_conds, arousal_trial_ixs):
+            print(arousal_cond)
             # Get neuraldf for current trials
             curr_data = neuraldf.loc[curr_trial_ixs].copy()
             # Fit.
@@ -236,6 +237,8 @@ def decode_split_pupil(datakey, visual_area, cells, MEANS, pupildata,
         with open(data_inputfile, 'wb') as f:
             pkl.dump(inputdata, f, protocol=pkl.HIGHEST_PROTOCOL)
 
+
+    print(iter_results.groupby(['condition', 'arousal']).mean())
     print("@@@@@@@@@ done. %s|%s (%s)  @@@@@@@@@@" % (visual_area, datakey, results_id))
 
     return 
@@ -279,6 +282,8 @@ def decode_by_ncells(ncells, celldf, sdf, NEURALDATA,
     with open(results_outfile, 'wb') as f:
         pkl.dump(iter_results, f, protocol=pkl.HIGHEST_PROTOCOL)
 
+    print(iter_results.groupby(['condition']).mean())
+
     print("@@@@@@@@@ done. %s, n=%i @@@@@@@@@@" % (results_id, ncells))
 
     return 
@@ -295,7 +300,9 @@ def get_traceid_dir_from_datakey(datakey, traceid='traces001', rootdir='/n/coxfs
 def single_cell_dst_dir(traceid_dir, results_id):
     analysis_flag, rparams, tepoch, C_str = results_id.split('__')
     response_filter, rf_filter = rparams.split('_')
-    curr_dst_dir = os.path.join(traceid_dir, 'decoding', 'single_cells', '%s_%s' % (response_filter, tepoch))
+    response_type, response_test = response_filter.split('-')
+
+    curr_dst_dir = os.path.join(traceid_dir, 'decoding', 'single_cells', '%s_%s' % (response_type, tepoch))
     if not os.path.exists(curr_dst_dir):
         os.makedirs(curr_dst_dir)
  
@@ -346,6 +353,7 @@ def decode_from_cell(datakey, rid, neuraldf, sdf, do_shuffle=True,
             pkl.dump(iter_results, f, protocol=pkl.HIGHEST_PROTOCOL)
 
         print("... saved: %s" % os.path.split(results_outfile)[-1])
+    #print(iter_results.mean())
 
     print("Done!")
 
@@ -355,27 +363,30 @@ def decode_from_cell(datakey, rid, neuraldf, sdf, do_shuffle=True,
 # --------------------------------------------------------------------
 # Aggregating, Loading, saving, ec.
 # -------------------------------------------------------------------
-def set_results_prefix(analysis_type='by_fov'):
-    prefix=None
-    if analysis_type=='by_fov':
-        prefix = 'fov_results'
-    elif analysis_type=='split_pupil':
-        prefix = 'splitpupil_results'
-    else:
-        prefix = analysis_type
-
-    return prefix
- 
+#def set_results_prefix(analysis_type='by_fov'):
+#    prefix=None
+#    if analysis_type=='by_fov':
+#        prefix = 'fov_results'
+#    elif analysis_type=='split_pupil':
+#        prefix = 'splitpupil_results'
+#    else:
+#        prefix = analysis_type
+#
+#    return prefix
+# 
 def create_results_id(prefix='fov_results', visual_area='varea', C_value=None, 
-                        trial_epoch='stimulus', has_retino=False,
+                        trial_epoch='stimulus', has_retino=False, threshold_dff=False,
                         response_type='dff', responsive_test='resp', overlap_thr=None):
 
     C_str = 'tuneC' if C_value is None else 'C%.2f' % C_value
-    if has_retino:      
-        overlap_str = 'retino'
+    if threshold_dff:
+        overlap_str = 'threshdff'
     else:
-        overlap_str = 'noRF' if overlap_thr is None else 'overlap%.1f' % overlap_thr
-    #results_id='%s_%s_%s__%s-%s_%s__%s' % (prefix, visual_area, C_str, response_type, responsive_test, overlap_str, trial_epoch)
+        if has_retino:      
+            overlap_str = 'retino'
+        else:
+            overlap_str = 'noRF' if overlap_thr is None else 'overlap%.1f' % overlap_thr
+        #results_id='%s_%s_%s__%s-%s_%s__%s' % (prefix, visual_area, C_str, response_type, responsive_test, overlap_str, trial_epoch)
     results_id='%s_%s__%s-%s_%s__%s__%s' \
                     % (prefix, visual_area, response_type, responsive_test, overlap_str, trial_epoch, C_str)
     
@@ -383,12 +394,13 @@ def create_results_id(prefix='fov_results', visual_area='varea', C_value=None,
 
 def create_aggr_results_id(prefix='fov_results', C_value=None, 
                         response_type='dff', trial_epoch='stimulus',
-                        responsive_test='resp', overlap_thr=None, has_retino=False):
+                        responsive_test='resp', overlap_thr=None, has_retino=False, threshold_dff=False):
 
     tmp_id = create_results_id(prefix=prefix, visual_area='NA',
                                C_value=C_value, response_type=response_type, 
                                trial_epoch=trial_epoch, 
-                               responsive_test=responsive_test, overlap_thr=overlap_thr, has_retino=has_retino)
+                               responsive_test=responsive_test, overlap_thr=overlap_thr, has_retino=has_retino,
+                            threshold_dff=threshold_dff)
     param_str = tmp_id.split('_NA_')[-1]
     aggr_results_id = '%s__%s' % (prefix, param_str) 
     print("AGGREGATE: %s" % aggr_results_id)
@@ -410,6 +422,20 @@ def check_old_naming(animalid, session, fov, experiment='blobs', traceid='traces
             os.rename(r, os.path.join(curr_dir, new_name))
     return
 
+def load_fov_results(animalid, session, fov, traceid='traces001', 
+                     visual_area=None, C_value=None, response_type='dff', 
+                    responsive_test='nstds', trial_epoch='stimulus', 
+                    overlap_thr=None, has_retino=False, threshold_dff=False):
+    analysis_type='by_fov'
+    # Get result ID
+    results_id = create_results_id(prefix=analysis_type, visual_area=visual_area, 
+                                  C_value=C_value, response_type=response_type, responsive_test=responsive_test,
+                                  trial_epoch=trial_epoch, 
+                            overlap_thr=overlap_thr, has_retino=has_retino, threshold_dff=threshold_dff)
+    # Load FOV results
+    iterdf = load_decode_within_fov(animalid, session, fov, traceid=traceid, results_id=results_id)
+    
+    return iterdf, results_id
 
 def load_decode_within_fov(animalid, session, fov, results_id='fov_results',
                             traceid='traces001', 
@@ -453,7 +479,8 @@ def load_decode_within_fov(animalid, session, fov, results_id='fov_results',
 
 def aggregate_decode_within_fov(dsets, results_prefix='fov_results', 
                  C_value=None, response_type='dff', trial_epoch='stimulus',
-                responsive_test='nstds', responsive_thr=10., overlap_thr=None, has_retino=False, 
+                responsive_test='nstds', responsive_thr=10., overlap_thr=None, 
+                has_retino=False, threshold_dff=False, 
                 rootdir='/n/coxfs01/2p-data', verbose=False):
     no_results=[]
     found_results=[]
@@ -463,7 +490,7 @@ def aggregate_decode_within_fov(dsets, results_prefix='fov_results',
         results_id=create_results_id(prefix=results_prefix, 
                                     visual_area=visual_area, C_value=C_value, has_retino=has_retino,
                                     response_type=response_type, responsive_test=responsive_test,
-                                    overlap_thr=overlap_thr, trial_epoch=trial_epoch)
+                                    overlap_thr=overlap_thr, trial_epoch=trial_epoch, threshold_dff=threshold_dff)
         # Load dataset results
         session, animalid, fov_ = datakey.split('_')
         fovnum = int(fov_[3:])
@@ -512,7 +539,7 @@ def do_decode_within_fov(analysis_type='by_fov', experiment='blobs',
                         responsive_test='nstds', responsive_thr=10.,
                         response_type='dff', trial_epoch='stimulus', 
                         min_ncells=5, n_iterations=100, C_value=None,
-                        match_distns=False, overlap_thr=0.5, has_retino=False,
+                        match_distns=False, overlap_thr=0.5, has_retino=False, threshold_dff=False,
                         test_split=0.2, cv_nfolds=5, class_a=0, class_b=106, 
                         traceid='traces001', fov_type='zoom2p0x', state='awake',
                         aggregate_dir='/n/coxfs01/julianarhee/aggregate-visual-areas',
@@ -530,7 +557,8 @@ def do_decode_within_fov(analysis_type='by_fov', experiment='blobs',
     aggr_results_id = create_aggr_results_id(prefix=results_prefix,
                                  C_value=C_value, response_type=response_type, 
                                  trial_epoch=trial_epoch,  
-                                 responsive_test=responsive_test, overlap_thr=overlap_thr, has_retino=has_retino)
+                                 responsive_test=responsive_test, overlap_thr=overlap_thr, 
+                                has_retino=has_retino, threshold_dff=threshold_dff)
     # Get all data sets
     if (has_retino is False) and (overlap_thr is not None):
         edata = aggr.get_blobs_and_rf_meta(experiment=experiment, traceid=traceid, 
@@ -542,7 +570,8 @@ def do_decode_within_fov(analysis_type='by_fov', experiment='blobs',
     pooled = aggregate_decode_within_fov(edata, C_value=C_value, results_prefix=results_prefix,
                                 response_type=response_type, responsive_test=responsive_test, 
                                 trial_epoch=trial_epoch,
-                                responsive_thr=responsive_thr, overlap_thr=overlap_thr, has_retino=has_retino,
+                                responsive_thr=responsive_thr, overlap_thr=overlap_thr, 
+                                has_retino=has_retino, threshold_dff=threshold_dff,
                                 rootdir=rootdir, verbose=verbose) 
     # Save data
     print("SAVING.....")  #datestr = datetime.datetime.now().strftime("%Y%m%d")
@@ -574,6 +603,130 @@ def do_decode_within_fov(analysis_type='by_fov', experiment='blobs',
     print("DONE!")
 
     return pooled
+
+
+def get_cells_and_data(all_cells, MEANS, traceid='traces001', response_type='dff', stack_neuraldf=True,
+                       overlap_thr=None, has_retino=False, threshold_snr=False, snr_thr=10, max_snr_thr=None,
+                      remove_too_few=False, min_ncells=5, match_distns=False, threshold_dff=False):
+    
+    has_rfs = (overlap_thr is not None) and (has_retino is False) and (threshold_dff is False)
+    #### Get metadata for experiment type
+    dsets, keys_by_area = aggr.experiment_datakeys(experiment=experiment, experiment_only=False,
+                                    has_gratings=False, stim_filterby=None, has_rfs=has_rfs)
+    
+    #### Load RFs
+    NEURALDATA=None; RFDATA=None;
+    if has_rfs:
+        print("~~~~~~~~~~~~~~~~Loading RFs~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~")
+        reliable_only=True
+        rf_fit_desc = fitrf.get_fit_desc(response_type=response_type)
+        reliable_str = 'reliable' if reliable_only else ''
+        # Get position info for RFs
+        rfdf = aggr.load_rfdf_and_pos(dsets, rf_filter_by=None, assign_cells=True,
+                                    reliable_only=True, traceid=traceid)
+        #rfdf_avg = aggr.get_rfdata(all_cells, rfdf, average_repeats=True)
+
+        # RF dataframes
+        NEURALDATA, RFDATA, assigned_cells = aggr.get_neuraldata_and_rfdata(all_cells, rfdf, MEANS,
+                                                stack=stack_neuraldf)
+    elif has_retino:
+        print("~~~~~~~~~~~~~~~~Loading Retinotopy Bar ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~")
+        retino_mag_thr=0.01
+        retino_pass_criterion='all'
+        retino_cells = aggr.aggregate_responsive_retino(all_cells, traceid=traceid,
+                                        mag_thr=retino_mag_thr, pass_criterion=retino_pass_criterion,
+                                        verbose=False, create_new=True)
+        NEURALDATA = aggr.get_neuraldata(retino_cells, MEANS, stack=stack_neuraldf) #True)
+        assigned_cells = aggr.cells_in_experiment_df(retino_cells, NEURALDATA)
+    else:
+        print("~~~~~~~~~~~~~~~~No Receptive Fields~~~~~~~~~~~~~~~~~~~~~~~~~")
+        NEURALDATA = aggr.get_neuraldata(all_cells, MEANS, stack=stack_neuraldf)
+        assigned_cells = aggr.cells_in_experiment_df(all_cells, NEURALDATA)
+
+    if match_distns:
+        print("~~~~~~~~~~~~~~~~Matching max %s distNs~~~~~~~~~~~~~~~~~~~~~" % response_type)
+        NEURALDATA, assigned_cells = aggr.match_neuraldata_distn(NEURALDATA, src='Li')
+        if has_rfs:
+            RFDATA = aggr.select_dataframe_subset(assigned_cells, RFDATA)
+
+    if NEURALDATA is None: # or RFDATA is None:
+        print("There is no data. Aborting.")
+        return None, None
+
+    if has_rfs:
+        print("~~~~~~~~~~~~~~~~Calculating overlaps (thr=%.2f)~~~~~~~~~~~~~" % overlap_thr)
+        # Calculate overlap with stimulus
+        stim_overlaps = rfutils.calculate_overlaps(RFDATA, experiment=experiment)
+        # Filter cells
+        globalcells, cell_counts = aggr.get_pooled_cells(stim_overlaps, assigned_cells=assigned_cells,
+                                            remove_too_few=remove_too_few, 
+                                            overlap_thr=0 if overlap_thr is None else overlap_thr,
+                                            min_ncells=min_ncells)
+        #print(globalcells.head())
+    else:
+        globalcells, cell_counts = aggr.global_cells(assigned_cells,
+                                            remove_too_few=remove_too_few,
+                                            min_ncells=min_ncells, return_counts=True)
+    if globalcells is None:
+        print("NO CELLS. Exiting.")
+        return None
+
+    print("@@@@@@@@ cell counts @@@@@@@@@@@")
+    print(cell_counts)
+
+    # TMP TMP
+    if threshold_snr:
+        #snr_thr=10.0
+        #max_snr_thr=None #15.0 #None #15.0 #None
+        #match_str='snrlim_' if max_snr_thr is not None else 'snr_'
+        print("~~~~~~~~~~~~~~~~SNR (thr=%.2f)~~~~~~~~~~~~~" % snr_thr)
+        mean_snr = aggr.get_mean_snr(experiment=experiment, traceid=traceid, responsive_test=responsive_test,
+                                        responsive_thr=responsive_thr, trial_epoch=trial_epoch)
+        CELLS = aggr.threshold_cells_by_snr(mean_snr, globalcells, snr_thr=snr_thr, max_snr_thr=max_snr_thr)
+        if has_rfs:
+            NEURALDATA, RFDATA, CELLS = aggr.get_neuraldata_and_rfdata(CELLS, rfdf, MEANS,
+                                                stack=stack_neuraldf)
+        else:
+            NEURALDATA = aggr.get_neuraldata(CELLS, MEANS, stack=stack_neuraldf, verbose=False)
+    else:
+        #### Get final cells dataframe
+        CELLS = globalcells.copy()
+        CELLS['cell'] = globalcells['dset_roi']
+
+    print("------------------------------------")
+    #print("Final cell counts:")
+    #CELLS[['visual_area', 'datakey', 'cell']].drop_duplicates().groupby(['visual_area']).count()
+
+    return NEURALDATA, CELLS.reset_index(drop=True)
+
+
+def filter_cells_by_dff(all_cells, MEANS, traceid='traces001', response_type='dff', 
+                       minv=0., maxv=1.0, aggregate_dir='/n/coxfs01/julianarhee/aggregate-visual-areas'):
+   
+    cells_fn = os.path.join(aggregate_dir, 'decoding', 'thr_dff_cells_m%.2f_M%.2f.pkl' % (minv, maxv))
+    print(cells_fn)
+
+    if os.path.exists(cells_fn):
+        with open(cells_fn, 'rb') as f:
+            thr_cells = pkl.load(f)
+
+    else:
+        ndata_df, cells_df = get_cells_and_data(all_cells, MEANS, traceid=traceid, response_type=response_type, 
+                                    stack_neuraldf=True, overlap_thr=None, has_retino=False, threshold_snr=False) 
+                                    
+        meandf = ndata_df.groupby(['visual_area', 'datakey', 'cell', 'config']).mean().reset_index()
+        means_c = meandf.groupby(['visual_area', 'datakey', 'cell']).mean().reset_index()
+
+        thr_resp = means_c[(means_c['response']<=maxv) & (means_c['response']>=minv)].reset_index(drop=True)
+
+        thr_cells = pd.concat([cells_df[(cells_df['visual_area']==v) & (cells_df['datakey']==d)
+                      & (cells_df['cell'].isin(g['cell'].unique()))] \
+                    for (v, d), g in thr_resp.groupby(['visual_area', 'datakey'])]).reset_index(drop=True)
+
+        with open(cells_fn, 'wb') as f:
+            pkl.dump(thr_cells, f, protocol=pkl.HIGHEST_PROTOCOL)
+        
+    return thr_cells
 
 
 #%%
@@ -631,7 +784,7 @@ def extract_options(options):
             default=default_e, type='choice', choices=choices_e,
             help="Trial epoch for input data, choices: %s. (default: %s" % (choices_e, default_e))
 
-    choices_c = ('all', 'roc', 'nstds', None, 'None')
+    choices_c = ('all', 'ROC', 'nstds', None, 'None')
     default_c = 'nstds'
     parser.add_option('-R', '--responsive_test', action='store', dest='responsive_test', 
             default=default_c, type='choice', choices=choices_c,
@@ -651,7 +804,7 @@ def extract_options(options):
 
     parser.add_option('-o', action='store', dest='overlap_thr', 
             default=0.5, help="% overlap between RF and stimulus (default: 0.5)")
-    parser.add_option('-v', action='store_true', dest='verbose', 
+    parser.add_option('--verbose', action='store_true', dest='verbose', 
             default=False, help="verbose printage")
     parser.add_option('--new', action='store_true', dest='create_new', 
             default=False, help="re-do decode")
@@ -690,6 +843,9 @@ def extract_options(options):
     parser.add_option('--retino', action='store_true', dest='has_retino', 
             default=False, help="Use retino for filtering)")
 
+    parser.add_option('--dff', action='store_true', dest='threshold_dff', 
+            default=False, help="Threshold dff values")
+
 
 
     (options, args) = parser.parse_args(options)
@@ -715,6 +871,8 @@ def main(options):
         responsive_test=None
     responsive_thr = float(opts.responsive_thr) if responsive_test is not None else 0.05 #10
     #responsive_thr = float(5) if responsive_test is not None else 0.05 #10
+    if responsive_test == 'ROC':
+        responsive_thr = 0.05
 
     # Classifier info ---------------------------------
     experiment = opts.experiment #'blobs'
@@ -742,12 +900,18 @@ def main(options):
     has_retino = opts.has_retino
 
     has_rfs = (overlap_thr is not None) and (has_retino is False)
-    if has_retino:
-        overlap_str = 'retino'
-        has_rfs = False
+
+    threshold_dff = opts.threshold_dff
+
+    if threshold_dff:
+        overlap_str = 'threshdff'
     else:
-        overlap_str = 'noRF' if overlap_thr is None else 'overlap%.1f' % overlap_thr
-   
+        if has_retino:
+            overlap_str = 'retino'
+            has_rfs = False
+        else:
+            overlap_str = 'noRF' if overlap_thr is None else 'overlap%.1f' % overlap_thr
+       
     stim_filterby = None # 'first'
     has_gratings = experiment!='blobs'
 
@@ -759,6 +923,8 @@ def main(options):
     threshold_snr = opts.threshold_snr
     snr_thr = float(opts.snr_thr)
     max_snr_thr = None if opts.max_snr_thr in ['None', None] else float(opts.max_snr_thr)
+    if threshold_snr:
+        match_str='snrlim_' if max_snr_thr is not None else 'snr_'
 
     print("INFO: %s|overlap=%s|match-distns? %s (%s)" % (analysis_type, overlap_str, str(match_distns), match_str))
 
@@ -811,6 +977,13 @@ def main(options):
     visual_areas = ['V1', 'Lm', 'Li', 'Ll']
     curr_visual_area = None if opts.visual_area in ['None', None] else opts.visual_area
     curr_datakey = None if opts.datakey in ['None', None] else opts.datakey    
+
+    
+    diff_sdfs = ['20190327_JC073_fov1', '20190314_JC070_fov1'] # 20190426_JC078 (LM, backlight)
+    if curr_datakey in diff_sdfs:
+        images_only=False #True
+    else:
+        images_only = analysis_type=='by_ncells'
     # Notes:
     # images_only=True if by_ncells, since need to concatenate trials 
     # TODO:  Fix so that we can train on anchors only and/or subset of configs
@@ -818,97 +991,115 @@ def main(options):
                         equalize_now=True, zscore_now=True,
                         response_type=response_type, responsive_test=responsive_test, 
                         responsive_thr=responsive_thr, trial_epoch=trial_epoch, #use_all=False,
-                        visual_area=None if match_distns else curr_visual_area,
-                        datakey=None if match_distns else curr_datakey,
+                        visual_area=None, # if match_distns else curr_visual_area,
+                        datakey=None, # if match_distns else curr_datakey,
                         check_configs=True, return_configs=True, return_missing=False,
-                        images_only=analysis_type=='by_ncells')
+                        images_only=images_only) #analysis_type=='by_ncells')
     all_cells = all_cells[all_cells['visual_area'].isin(visual_areas)].copy() #, 'Ll'])]
     stack_neuraldf = analysis_type in ['by_ncells'] #match_distns==True
 
-    #### Load RFs
-    NEURALDATA=None; RFDATA=None;
-    if has_rfs: 
-        print("~~~~~~~~~~~~~~~~Loading RFs~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~")
-        rf_fit_desc = fitrf.get_fit_desc(response_type=response_type)
-        reliable_str = 'reliable' if reliable_only else ''
-        #rf_str = 'match%s_%s' % (experiment, reliable_str)
-        # Get position info for RFs 
-        rfdf = aggr.load_rfdf_and_pos(dsets, rf_filter_by=None, 
-                                        reliable_only=True, traceid=traceid)
-        # RF dataframes
-        NEURALDATA, RFDATA, assigned_cells = aggr.get_neuraldata_and_rfdata(all_cells, rfdf, MEANS, 
-                                                stack=stack_neuraldf)
-    elif has_retino:
-        print("~~~~~~~~~~~~~~~~Loading Retinotopy Bar ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~")
-        #edata = sdata[sdata['experiment'].isin(['retino'])]
-        #assigned_rois, missing_ = seg.get_cells_by_area(edata, return_missing=True)
-        retino_cells = aggr.aggregate_responsive_retino(all_cells, traceid=traceid,
-                                        mag_thr=retino_mag_thr, pass_criterion=retino_pass_criterion, 
-                                        verbose=False, create_new=True)
-        #cells = retino_cells[retino_cells['visual_area'].isin(visual_areas)]
-        #print("Missing %i retino analyses" % len(missing_))
-        #for r in missing_:
-        #    print(r)
-        NEURALDATA = aggr.get_neuraldata(retino_cells, MEANS, stack=stack_neuraldf) #True)
-        assigned_cells = aggr.cells_in_experiment_df(retino_cells, NEURALDATA)
-    else:
-        print("~~~~~~~~~~~~~~~~No Receptive Fields~~~~~~~~~~~~~~~~~~~~~~~~~")
-        # EXP dataframes 
-        NEURALDATA = aggr.get_neuraldata(all_cells, MEANS, stack=stack_neuraldf)
-        assigned_cells = aggr.cells_in_experiment_df(all_cells, NEURALDATA)
+    # THRESHOLD
+    min_dff=0
+    max_dff=1.0
+    if threshold_dff:
+        print("TMP: loading thresholded cells")
+        all_cells = filter_cells_by_dff(all_cells, MEANS, traceid=traceid, response_type=response_type,
+                       minv=min_dff, maxv=max_dff)
 
-    if match_distns:
-        print("~~~~~~~~~~~~~~~~Matching max %s distNs~~~~~~~~~~~~~~~~~~~~~" % response_type)
-        NEURALDATA, assigned_cells = aggr.match_neuraldata_distn(NEURALDATA, src='Li')
-        if has_rfs:
-            RFDATA = aggr.select_dataframe_subset(assigned_cells, RFDATA)
- 
-    if NEURALDATA is None: # or RFDATA is None:
-        print("There is no data. Aborting.")
+    NEURALDATA, CELLS = get_cells_and_data(all_cells, MEANS, traceid=traceid, response_type=response_type, 
+                            stack_neuraldf=stack_neuraldf, overlap_thr=overlap_thr, has_retino=has_retino, 
+                            threshold_snr=threshold_snr, snr_thr=snr_thr, max_snr_thr=max_snr_thr,
+                            remove_too_few=remove_too_few, min_ncells=min_ncells, match_distns=match_distns)
+    if NEURALDATA is None:
         return None
 
-    if has_rfs:
-        print("~~~~~~~~~~~~~~~~Calculating overlaps (thr=%.2f)~~~~~~~~~~~~~" % overlap_thr)
-        # Calculate overlap with stimulus
-        stim_overlaps = rfutils.calculate_overlaps(RFDATA, experiment=experiment)
-        # Filter cells
-        globalcells, cell_counts = aggr.get_pooled_cells(stim_overlaps,
-                                            remove_too_few=remove_too_few, 
-                                            overlap_thr=0 if overlap_thr is None else overlap_thr,
-                                            min_ncells=min_ncells)
-    else:
-        globalcells, cell_counts = aggr.global_cells(assigned_cells,
-                                            remove_too_few=remove_too_few, 
-                                            min_ncells=min_ncells, return_counts=True)
-    if globalcells is None:
-        print("NO CELLS. Exiting.")
-        return None
-
-    print("@@@@@@@@ cell counts @@@@@@@@@@@")
-    print(cell_counts)
-
-    # TMP TMP
-    if threshold_snr:
-        #snr_thr=10.0
-        #max_snr_thr=None #15.0 #None #15.0 #None
-        match_str='snrlim_' if max_snr_thr is not None else 'snr_'
-        print("~~~~~~~~~~~~~~~~SNR (thr=%.2f)~~~~~~~~~~~~~" % snr_thr)
-        mean_snr = aggr.get_mean_snr(experiment=experiment, traceid=traceid, responsive_test=responsive_test,
-                                        responsive_thr=responsive_thr, trial_epoch=trial_epoch)
-        CELLS = aggr.threshold_cells_by_snr(mean_snr, globalcells, snr_thr=snr_thr, max_snr_thr=max_snr_thr)
-        if has_rfs:
-            NEURALDATA, RFDATA, CELLS = aggr.get_neuraldata_and_rfdata(CELLS, rfdf, MEANS, 
-                                                stack=stack_neuraldf)
-        else: 
-            NEURALDATA = aggr.get_neuraldata(CELLS, MEANS, stack=stack_neuraldf, verbose=False)
-    else:
-        #### Get final cells dataframe          
-        CELLS = globalcells.copy()
-        CELLS['cell'] = globalcells['dset_roi']
+#    #### Load RFs
+#    NEURALDATA=None; RFDATA=None;
+#    if has_rfs: 
+#        print("~~~~~~~~~~~~~~~~Loading RFs~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~")
+#        rf_fit_desc = fitrf.get_fit_desc(response_type=response_type)
+#        reliable_str = 'reliable' if reliable_only else ''
+#        #rf_str = 'match%s_%s' % (experiment, reliable_str)
+#        # Get position info for RFs 
+#        rfdf = aggr.load_rfdf_and_pos(dsets, rf_filter_by=None, 
+#                                        reliable_only=True, traceid=traceid)
+#        # RF dataframes
+#        NEURALDATA, RFDATA, assigned_cells = aggr.get_neuraldata_and_rfdata(all_cells, rfdf, MEANS, 
+#                                                stack=stack_neuraldf)
+#    elif has_retino:
+#        print("~~~~~~~~~~~~~~~~Loading Retinotopy Bar ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~")
+#        #edata = sdata[sdata['experiment'].isin(['retino'])]
+#        #assigned_rois, missing_ = seg.get_cells_by_area(edata, return_missing=True)
+#        retino_cells = aggr.aggregate_responsive_retino(all_cells, traceid=traceid,
+#                                        mag_thr=retino_mag_thr, pass_criterion=retino_pass_criterion, 
+#                                        verbose=False, create_new=True)
+#        #cells = retino_cells[retino_cells['visual_area'].isin(visual_areas)]
+#        #print("Missing %i retino analyses" % len(missing_))
+#        #for r in missing_:
+#        #    print(r)
+#        NEURALDATA = aggr.get_neuraldata(retino_cells, MEANS, stack=stack_neuraldf) #True)
+#        assigned_cells = aggr.cells_in_experiment_df(retino_cells, NEURALDATA)
+#    else:
+#        print("~~~~~~~~~~~~~~~~No Receptive Fields~~~~~~~~~~~~~~~~~~~~~~~~~")
+#        # EXP dataframes 
+#        NEURALDATA = aggr.get_neuraldata(all_cells, MEANS, stack=stack_neuraldf)
+#        assigned_cells = aggr.cells_in_experiment_df(all_cells, NEURALDATA)
+#        #print(assigned_cells.groupby(['visual_area']).count())
+#
+#    if match_distns:
+#        print("~~~~~~~~~~~~~~~~Matching max %s distNs~~~~~~~~~~~~~~~~~~~~~" % response_type)
+#        NEURALDATA, assigned_cells = aggr.match_neuraldata_distn(NEURALDATA, src='Li')
+#        if has_rfs:
+#            RFDATA = aggr.select_dataframe_subset(assigned_cells, RFDATA)
+# 
+#    if NEURALDATA is None: # or RFDATA is None:
+#        print("There is no data. Aborting.")
+#        return None
+#
+#    if has_rfs:
+#        print("~~~~~~~~~~~~~~~~Calculating overlaps (thr=%.2f)~~~~~~~~~~~~~" % overlap_thr)
+#        # Calculate overlap with stimulus
+#        stim_overlaps = rfutils.calculate_overlaps(RFDATA, experiment=experiment)
+#        # Filter cells
+#        globalcells, cell_counts = aggr.get_pooled_cells(stim_overlaps,
+#                                            remove_too_few=remove_too_few, 
+#                                            overlap_thr=0 if overlap_thr is None else overlap_thr,
+#                                            min_ncells=min_ncells)
+#    else:
+#        globalcells, cell_counts = aggr.global_cells(assigned_cells,
+#                                            remove_too_few=remove_too_few, 
+#                                            min_ncells=min_ncells, return_counts=True)
+#    if globalcells is None:
+#        print("NO CELLS. Exiting.")
+#        return None
+#
+#    print("@@@@@@@@ cell counts @@@@@@@@@@@")
+#    print(cell_counts)
+#
+#    # TMP TMP
+#    if threshold_snr:
+#        #snr_thr=10.0
+#        #max_snr_thr=None #15.0 #None #15.0 #None
+#        #match_str='snrlim_' if max_snr_thr is not None else 'snr_'
+#        print("~~~~~~~~~~~~~~~~SNR (thr=%.2f)~~~~~~~~~~~~~" % snr_thr)
+#        mean_snr = aggr.get_mean_snr(experiment=experiment, traceid=traceid, responsive_test=responsive_test,
+#                                        responsive_thr=responsive_thr, trial_epoch=trial_epoch)
+#        CELLS = aggr.threshold_cells_by_snr(mean_snr, globalcells, snr_thr=snr_thr, max_snr_thr=max_snr_thr)
+#        if has_rfs:
+#            NEURALDATA, RFDATA, CELLS = aggr.get_neuraldata_and_rfdata(CELLS, rfdf, MEANS, 
+#                                                stack=stack_neuraldf)
+#        else: 
+#            NEURALDATA = aggr.get_neuraldata(CELLS, MEANS, stack=stack_neuraldf, verbose=False)
+#    else:
+#        #### Get final cells dataframe          
+#        CELLS = globalcells.copy()
+#        CELLS['cell'] = globalcells['dset_roi']
+#
+#
 
     print("------------------------------------")
     print("Final cell counts:")
-    CELLS[['visual_area', 'datakey', 'cell']].drop_duplicates().groupby(['visual_area']).count()
+    print(CELLS[['visual_area', 'datakey', 'cell']].drop_duplicates().groupby(['visual_area']).count())
 
 
     #### Get pupil responses
@@ -923,16 +1114,21 @@ def main(options):
 
     #### Setup output dirs  
     results_prefix = analysis_type #set_results_prefix(analysis_type=analysis_type)
-    if has_retino:
-        overlap_str = 'retino'
+    if threshold_dff:
+        overlap_str = 'threshdff'
     else:
-        overlap_str = 'noRF' if overlap_thr is None else 'overlap%.1f' % overlap_thr
-    #data_info='%s%s_%s_%s_iter-%i' \
-    #    % (match_str, response_type, responsive_test, overlap_str, n_iterations)
+        if has_retino:
+            overlap_str = 'retino'
+        else:
+            overlap_str = 'noRF' if overlap_thr is None else 'overlap%.1f' % overlap_thr
+        #data_info='%s%s_%s_%s_iter-%i' \
+        #    % (match_str, response_type, responsive_test, overlap_str, n_iterations)
 
     print('... Classify %i v %i (C=%s)' % (m0, m100, str(C_value)))
     print('... N=%i iters (%i proc), %s' % (n_iterations, n_processes, overlap_str))
 
+    if n_processes > n_iterations:
+        n_processes = n_iterations
 
     # ---------------------------------------------------------------------   
     if (curr_visual_area is None) and (curr_datakey is not None):
@@ -942,6 +1138,7 @@ def main(options):
 
     if curr_datakey is not None:
         sdf = SDF[curr_datakey].copy()
+        print(sdf.head())
     else:
         images_only=analysis_type=='by_ncells'
         sdf_master = aggr.get_master_sdf(images_only=images_only)
@@ -961,7 +1158,7 @@ def main(options):
         results_id = create_results_id(prefix=results_prefix, 
                                 visual_area=curr_visual_area, C_value=C_value, has_retino=has_retino,
                                 response_type=response_type, responsive_test=responsive_test,
-                                overlap_thr=overlap_thr, trial_epoch=trial_epoch)
+                                overlap_thr=overlap_thr, trial_epoch=trial_epoch, threshold_dff=threshold_dff)
 
         if analysis_type=='by_fov':
             # -----------------------------------------------------------------------
@@ -969,12 +1166,13 @@ def main(options):
             # -----------------------------------------------------------------------
             neuraldf = aggr.get_neuraldf_for_cells_in_area(CELLS, MEANS, 
                                                        datakey=curr_datakey, visual_area=curr_visual_area)
-            if int(neuraldf.shape[1]-1) >= min_ncells: 
+            if int(neuraldf.shape[1]-1) > 0:# min_ncells: 
                 decode_from_fov(curr_datakey, curr_visual_area, neuraldf, sdf, C_value=C_value,
-                            n_iterations=n_iterations, n_processes=n_processes, 
-                            results_id=results_id,
-                            class_a=class_a, class_b=class_b, do_shuffle=do_shuffle,
-                            rootdir=rootdir, create_new=create_new, verbose=verbose)
+                        n_iterations=n_iterations, n_processes=n_processes, 
+                        results_id=results_id,
+                        class_a=class_a, class_b=class_b, do_shuffle=do_shuffle,
+                        rootdir=rootdir, create_new=create_new, verbose=verbose)
+            print("--- done by_fov ---")
 
         elif analysis_type=='split_pupil': 
             # -----------------------------------------------------------------------
@@ -1009,6 +1207,7 @@ def main(options):
                     print("%i of %i cells (%s|%s), rid=%i." \
                             % (int(ri+1), ncells_total, curr_datakey, curr_visual_area, rid))
                 neuraldf = NEURALDATA[curr_visual_area][curr_datakey][[rid, 'config']].copy()
+                #print(sorted(neuraldf['config'].unique()))
                 decode_from_cell(curr_datakey, rid, neuraldf, sdf, experiment=experiment,
                                 C_value=C_value, 
                                 n_iterations=n_iterations, n_processes=n_processes, 
@@ -1047,7 +1246,7 @@ def main(options):
             results_id = create_results_id(prefix=results_prefix, 
                             visual_area=curr_visual_area, C_value=C_value, has_retino=has_retino, 
                             response_type=response_type, responsive_test=responsive_test,
-                            overlap_thr=overlap_thr, trial_epoch=trial_epoch)
+                            overlap_thr=overlap_thr, trial_epoch=trial_epoch, threshold_dff=threshold_dff)
 
             if curr_ncells is not None:
                 # ----------------------------------------------
@@ -1101,7 +1300,7 @@ def main(options):
                                         response_type=response_type, 
                                         responsive_test=responsive_test, 
                                         overlap_thr=overlap_thr, has_retino=has_retino,
-                                        trial_epoch=trial_epoch)
+                                        trial_epoch=trial_epoch, threshold_dff=threshold_dff)
                         
                     for curr_ncells in NCELLS:
                         print("**** %s (n=%i cells)****" % (curr_visual_area, curr_ncells))
