@@ -125,8 +125,22 @@ def load_experiment_data(experiment_name, animalid, session, fov, traceid,
 
     return exp, gdf        
 
-def calculate_roc_bootstrap(roi_df, n_iters=1000):
+def calculate_roc_bootstrap(roi_df, n_iters=1000, dst_dir='/tmp', create_new=False):
 
+    rid = int(roi_df['cell'].unique())
+    out_fn = os.path.join(dst_dir, 'results', 'roc_%03d.pkl' % int(rid+1))
+    print(out_fn)
+#    if create_new is False and os.path.exists(out_fn):
+#        try:
+#            with open(out_fn, 'rb') as f:
+#                roc_results = pkl.load(f)
+#            assert 'p_hits' in roc_results.keys(), "Error loading roi results. Creating new."
+#        except Exception as e:
+#            create_new=True
+#    else:
+#        create_new=True
+#
+#    if create_new:
     #resp_stim = np.vstack(roi_df.groupby(['config'])['stim_mean'].apply(np.array).values)
     #resp_bas = np.vstack(roi_df.groupby(['config'])['base_mean'].apply(np.array).values)
     resp_stim = [g.values for c, g in roi_df.groupby(['config'])['stim_mean']]
@@ -157,7 +171,7 @@ def calculate_roc_bootstrap(roi_df, n_iters=1000):
     assert all([len(s1)==len(b1) for s1, b1 in zip(t1, t2)]), "bad shuffle indices..."
 
     shuff_auc = []
-    print("... getting shuffle")
+    #print("... getting shuffle")
     for i in range(n_iters):
         #if i%20==0:
         #    print('%i of %i' % ((i+1), n_iters))
@@ -168,7 +182,8 @@ def calculate_roc_bootstrap(roi_df, n_iters=1000):
         shuff_stim = [X[si:ei] for (si, ei) in ixs]
         shuff_bas = [X[si:ei] for (si, ei) in ixs2]
         shuff_p_hits, shuff_p_fas, shuff_crit_vals = get_hits_and_fas(shuff_stim, shuff_bas)
-        shuff_auc.append(np.max([-np.trapz(shuff_p_hits[ci, :], x=shuff_p_fas[ci, :]) for ci in range(n_conditions)]))
+        shuff_auc.append(np.max([-np.trapz(shuff_p_hits[ci, :], x=shuff_p_fas[ci, :]) \
+                    for ci in range(n_conditions)]))
 
     pval = sum(shuff_auc >= max_true_auc)/ float(len(shuff_auc))
 
@@ -180,6 +195,11 @@ def calculate_roc_bootstrap(roi_df, n_iters=1000):
                     'shuffled_auc': shuff_auc,
                     'pval': pval,
                     'n_iters': n_iters}
+
+    with open(out_fn, 'wb') as f:
+        pkl.dump(roc_results, f, protocol=pkl.HIGHEST_PROTOCOL)
+
+    print("... done rid %i" % rid)
 
     return roc_results
 
@@ -229,24 +249,25 @@ def plot_roc_bootstrap_results(roc_results):
 
     
 def do_roc_bootstrap_mp(gdf, dst_dir='/tmp', n_iters=1000, n_processes=1, plot_rois=False,
-                        data_identifier='DATAID'):
+                        data_identifier='DATAID', create_new=False):
     
     # create output dir for roi figures:
     roi_figdir = os.path.join(dst_dir, 'rois')
-    if not os.path.exists(roi_figdir):
-        os.makedirs(roi_figdir)
-               
-    def worker(roi_list, gdf, n_iters, plot_rois, roi_figdir, out_q): 
+    results_tmp_dir = os.path.join(dst_dir,  'results')
+    if not os.path.exists(results_tmp_dir):
+        os.makedirs(results_tmp_dir)
+
+    def worker(roi_list, gdf, n_iters, plot_rois, dst_dir, create_new, out_q): 
         curr_results = {}
         for roi in roi_list:
             roi_df = gdf.get_group(roi)
-            roc_results = calculate_roc_bootstrap(roi_df, n_iters=n_iters)
+            roc_results = calculate_roc_bootstrap(roi_df, n_iters=n_iters, dst_dir=dst_dir, create_new=create_new) 
             # PLOT:
             if plot_rois:
                 fig = plot_roc_bootstrap_results(roc_results)
                 fig.suptitle('cell %i' % (int(roi+1)))
                 label_figure(fig, data_identifier)
-                pl.savefig(os.path.join(roi_figdir, 'roi%05d.png' % (int(roi+1))))
+                pl.savefig(os.path.join(dst_dir, 'rois', 'roi%05d.png' % (int(roi+1))))
                 pl.close()
             curr_results[roi] = {'max_auc': np.max(roc_results['auc']),
                                 'pval': roc_results['pval']}
@@ -255,13 +276,23 @@ def do_roc_bootstrap_mp(gdf, dst_dir='/tmp', n_iters=1000, n_processes=1, plot_r
         
     # Each process gets "chunksize' filenames and a queue to put his out-dict into:
     roi_list = gdf.groups.keys()
+    
+    if not create_new:    
+        out_fns = ['roc_%03d.pkl' % (int(rid)+1) for rid in roi_list]
+        existing_fns = glob.glob(os.path.join(dst_dir, 'results', 'roc_*.pkl'))
+        todo_fns = [fn for fn in out_fns if os.path.join(dst_dir, 'results', fn) not in existing_fns]
+        todo_rois = [int(os.path.splitext(fn)[0].split('_')[-1])-1 for fn in todo_fns]
+    else:
+        todo_rois = roi_list
+
+    print("%i of %i cells need ROC analysis." % (len(todo_rois), len(roi_list)))
     out_q = mp.Queue()
-    chunksize = int(math.ceil(len(roi_list) / float(n_processes)))
+    chunksize = int(math.ceil(len(todo_rois) / float(n_processes)))
     procs = []
     for i in range(n_processes):
         p = mp.Process(target=worker,
-                       args=(roi_list[chunksize * i:chunksize * (i + 1)],
-                                      gdf, n_iters, plot_rois, roi_figdir, out_q))
+                       args=(todo_rois[chunksize * i:chunksize * (i + 1)],
+                                      gdf, n_iters, plot_rois, dst_dir, create_new, out_q))
         procs.append(p)
         p.start()
 
@@ -291,7 +322,8 @@ def do_roc_bootstrap_mp(gdf, dst_dir='/tmp', n_iters=1000, n_processes=1, plot_r
     return results, dst_dir
 
 
-def bootstrap_roc_func(animalid, session, fov, traceid, experiment, trace_type='corrected', rootdir='/n/coxfs01/2p-data',
+def bootstrap_roc_func(animalid, session, fov, traceid, experiment, trace_type='corrected', 
+                    rootdir='/n/coxfs01/2p-data',
                         n_processes=1, plot_rois=True, n_iters=1000, create_new=False):
  
 
@@ -309,9 +341,14 @@ def bootstrap_roc_func(animalid, session, fov, traceid, experiment, trace_type='
     #                                        'traces', '%s*' % traceid))[0]
     stats_dir = os.path.join(traces_basedir, 'summary_stats')
     roc_dir = os.path.join(stats_dir, 'ROC')
-    if not os.path.exists(roc_dir):
-        os.makedirs(roc_dir)
 
+    roi_figdir = os.path.join(roc_dir, 'rois') #, 'results')
+    if not os.path.exists(roi_figdir):
+        os.makedirs(roi_figdir) 
+    roi_resultsdir = os.path.join(roc_dir, 'results')
+    if not os.path.exists(roi_resultsdir):
+        os.makedirs(roi_resultsdir)
+ 
     #raw_traces, labels, sdf, run_info = load_dataset(soma_fpath, trace_type='corrected')
     # Each group is roi's trials x metrics
     #gdf = resp.group_roidata_stimresponse(raw_traces.values, labels, return_grouped=True) 
@@ -320,7 +357,7 @@ def bootstrap_roc_func(animalid, session, fov, traceid, experiment, trace_type='
     start_t = time.time()
     results, roc_dir = do_roc_bootstrap_mp(gdf, dst_dir=roc_dir, n_iters=n_iters, 
                                   n_processes=n_processes, plot_rois=plot_rois,
-                                  data_identifier=data_identifier) 
+                                  data_identifier=data_identifier, create_new=create_new) 
     print("FINISHED CALCULATING ROC BOOTSTRAP ANALYSIS.")
     end_t = time.time() - start_t
     print("--> Elapsed time: {0:.2f}sec".format(end_t))
