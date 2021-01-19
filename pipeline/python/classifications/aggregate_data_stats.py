@@ -176,7 +176,8 @@ def include_dsets_with(edata, experiment='blobs', also_include='rfs'):
     return dsets
  
 def get_blob_datasets(filter_by='most_fits', excluded_sessions=[], as_dict=True, 
-                        has_gratings=False, has_rfs=False):
+                        has_gratings=False, has_rfs=False, response_type='dff',
+                    responsive_test='nstds', responsive_thr=10.0):
     '''
     filter_by:  None to return all, most_fits to retun ones with most # responsive.
     Others are untested
@@ -200,7 +201,8 @@ def get_blob_datasets(filter_by='most_fits', excluded_sessions=[], as_dict=True,
     if filter_by == 'most_fits':
         dsets = edata[edata['experiment']=='blobs'].copy()
         assigned_cells = seg.get_cells_by_area(dsets)
-        best_dfs = get_dsets_with_most_blobs(dsets, assigned_cells)
+        best_dfs = get_dsets_with_most_blobs(dsets, assigned_cells, response_type=response_type,
+                        responsive_test=responsive_test, responsive_thr=responsive_thr)
         if as_dict:
             included_sessions = make_metadict_from_df(best_dfs)
         else:
@@ -330,7 +332,8 @@ def make_metadict_from_df(df):
 
     return ddict
 
-def get_gratings_datasets(filter_by='most_fits', excluded_sessions=[], as_dict=True):
+def get_gratings_datasets(filter_by='most_fits', excluded_sessions=[], as_dict=True,
+                        response_type='dff', responsive_test='nstds', responsive_thr=10.0):
     '''
     filter_by:  None to return all, most_fits to retun ones with most # responsive.
     Others are untested
@@ -351,7 +354,8 @@ def get_gratings_datasets(filter_by='most_fits', excluded_sessions=[], as_dict=T
         # Get meta info 
         dsets = edata[edata['experiment']=='gratings'].copy()
         assigned_cells = seg.get_cells_by_area(dsets)
-        best_dfs = get_dsets_with_most_gratings(dsets, assigned_cells)
+        best_dfs = get_dsets_with_most_gratings(dsets, assigned_cells, response_type=response_type,
+                                responsive_test=responsive_test, responsive_thr=responsive_thr)
         if as_dict:
             included_sessions = make_metadict_from_df(best_dfs)
         else:
@@ -1436,7 +1440,8 @@ def aggr_cells_blobs(assigned_cells, traceid='traces001', response_type='dff',
                                                          response_type=response_type,
                                                          responsive_test=responsive_test, 
                                                          responsive_thr=responsive_thr)
-        df_ = pd.DataFrame({'cell': roi_list})
+        curr_rois = [r for r in roi_list if r in g['cell'].unique()]
+        df_ = pd.DataFrame({'cell': curr_rois})
         metadict = {'visual_area': visual_area, 'datakey': datakey}
         df_ = add_meta_to_df(df_, metadict)
         d_list.append(df_)
@@ -2133,7 +2138,7 @@ def plot_paired(plotdf, aix=0, curr_metric='avg_size', ax=None,
 
     else:
         tstat, pval = spstats.ttest_rel(a_vals, b_vals)
-        print("%s: (t-stat:%.2f, p=%.2f)" % (visual_area, tstat, pval))
+        print("(t-stat:%.2f, p=%.2f)" % (tstat, pval))
         
         return ax
 
