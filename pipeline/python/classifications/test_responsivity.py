@@ -463,11 +463,11 @@ def group_roidata_stimresponse(roidata, labels_df, roi_list=None, return_grouped
                                      }, index=roi_list))
 
     df = pd.concat(df_list, axis=0) # size:  ntrials * 2 * nrois\
+    df['cell'] = df.index.tolist()
     if return_grouped:    
         df_by_rois = df.groupby(df.index)
         return df_by_rois
     else:
-        df['cell'] = df.index.tolist()
         return df
 
 
