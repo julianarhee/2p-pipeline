@@ -37,8 +37,12 @@ parser.add_argument('--epoch', dest='trial_epoch', action='store', default='stim
 
 parser.add_argument('--snr', dest='threshold_snr', action='store_true', default=False, help='Set to threshold SNR')
 parser.add_argument('--retino', dest='has_retino', action='store_true', default=False, help='Set to filter rois by retino')
+parser.add_argument('--dff', dest='threshold_dff', action='store_true', default=False, help='Set to filter rois by dff')
+
 
 parser.add_argument('-S', '--sample-sizes', nargs='+', dest='sample_sizes', default=[], help='Use like: -S 1 2 4')
+
+parser.add_argument('-T', '--test', action='store', dest='test_type', default=None, help='Test type, if generalization (options: size_single, size_subset, morph)')
 
 
 args = parser.parse_args()
@@ -91,7 +95,9 @@ trial_epoch = args.trial_epoch
 match_distns = args.match_distns
 threshold_snr = args.threshold_snr
 has_retino = args.has_retino
+threshold_dff = args.threshold_dff
 
+test_type = args.test_type
 sample_sizes = [int(i) for i in args.sample_sizes]
 
 # Create a (hopefully) unique prefix for the names of all jobs in this 
@@ -104,11 +110,18 @@ if threshold_snr:
 else:
     match_str = 'matchdistns_' if match_distns else ''
 
-if has_retino:
-    overlap_str = 'retino'
+if threshold_dff:
+    overlap_str = 'threshdff'
 else:
-    overlap_str = 'noRF' if overlap_thr is None else 'overlap%i' % int(overlapp_thr*10)
-logdir = 'LOG__%s%s_%s_%s__%s_%s' % (match_str, analysis_type, str(visual_area), experiment,  trial_epoch, overlap_str) 
+    if has_retino:
+        overlap_str = 'retino'
+    else:
+        overlap_str = 'noRF' if overlap_thr is None else 'overlap%i' % int(overlap_thr*10)
+
+test_str = 'TEST_%s' % test_type if test_type is not None else ''
+
+# Set LOGS
+logdir = 'LOG_%s__%s%s_%s_%s__%s_%s' % (analysis_type, match_str, str(visual_area), experiment,  trial_epoch, overlap_str, test_str) 
 if not os.path.exists(logdir):
     os.mkdir(logdir)
 
@@ -194,6 +207,17 @@ if analysis_type=='by_ncells':
                         EXP=experiment, TRACEID=traceid, ANALYSIS=analysis_type,
                         RTEST=responsive_test, OVERLAP=overlap_thr, 
                         CVAL=c_value, VAREA=visual_area, NCELLS=ncells, DKEY=datakey, EPOCH=trial_epoch) 
+                elif threshold_dff:
+                    cmd = "sbatch --job-name={PROCID}.{ANALYSIS}.{MTAG} \
+                    -o '{LOGDIR}/{PROCID}.{ANALYSIS}.{MTAG}.out' \
+                    -e '{LOGDIR}/{PROCID}.{ANALYSIS}.{MTAG}.err' \
+            /n/coxfs01/2p-pipeline/repos/2p-pipeline/pipeline/python/slurm/decode_by_ncells_dff.sbatch \
+            {EXP} {TRACEID} {RTEST} {OVERLAP} {ANALYSIS} {CVAL} {VAREA} {NCELLS} {DKEY} {EPOCH}".format(
+                        PROCID=piper, MTAG=mtag, LOGDIR=logdir,
+                        EXP=experiment, TRACEID=traceid, ANALYSIS=analysis_type,
+                        RTEST=responsive_test, OVERLAP=overlap_thr, 
+                        CVAL=c_value, VAREA=visual_area, NCELLS=ncells, DKEY=datakey, EPOCH=trial_epoch) 
+
 
                 else: 
                     cmd = "sbatch --job-name={PROCID}.{ANALYSIS}.{MTAG} \
@@ -229,6 +253,9 @@ elif analysis_type in ['by_fov', 'split_pupil']:
 
     for (visual_area, datakey), g in dsets.groupby(['visual_area', 'datakey']):
         mtag = '%s_%s_%s' % (datakey, visual_area, C_str) 
+        if test_type is not None:
+            mtag = 'GENTEST_%s' % mtag
+
         if has_retino:
             cmd = "sbatch --job-name={procid}.{mtag}.{analysis} \
                     -o '{logdir}/{procid}.{mtag}.{analysis}.out' \
@@ -239,18 +266,27 @@ elif analysis_type in ['by_fov', 'split_pupil']:
                 exp=experiment, traceid=traceid, analysis=analysis_type,
                 rtest=responsive_test, overlap=overlap_thr, 
                 cval=c_value, varea=visual_area, ncells=ncells, dkey=datakey, epoch=trial_epoch) 
-
+        elif threshold_dff:
+            cmd = "sbatch --job-name={procid}.{mtag}.{analysis} \
+                    -o '{logdir}/{procid}.{mtag}.{analysis}.out' \
+                    -e '{logdir}/{procid}.{mtag}.{analysis}.err' \
+            /n/coxfs01/2p-pipeline/repos/2p-pipeline/pipeline/python/slurm/decode_by_ncells_dff.sbatch \
+            {exp} {traceid} {rtest} {overlap} {analysis} {cval} {varea} {ncells} {dkey} {epoch}".format(
+                procid=piper, mtag=mtag, logdir=logdir,
+                exp=experiment, traceid=traceid, analysis=analysis_type,
+                rtest=responsive_test, overlap=overlap_thr, 
+                cval=c_value, varea=visual_area, ncells=ncells, dkey=datakey, epoch=trial_epoch) 
         #
         else:
             cmd = "sbatch --job-name={procid}.{mtag}.{analysis} \
                     -o '{logdir}/{procid}.{mtag}.{analysis}.out' \
                     -e '{logdir}/{procid}.{mtag}.{analysis}.err' \
             /n/coxfs01/2p-pipeline/repos/2p-pipeline/pipeline/python/slurm/decode_by_ncells.sbatch \
-            {exp} {traceid} {rtest} {overlap} {analysis} {cval} {varea} {ncells} {dkey} {epoch}".format(
+            {exp} {traceid} {rtest} {overlap} {analysis} {cval} {varea} {ncells} {dkey} {epoch} {test}".format(
                 procid=piper, mtag=mtag, logdir=logdir,
                 exp=experiment, traceid=traceid, analysis=analysis_type,
                 rtest=responsive_test, overlap=overlap_thr, 
-                cval=c_value, varea=visual_area, ncells=ncells, dkey=datakey, epoch=trial_epoch) 
+                cval=c_value, varea=visual_area, ncells=ncells, dkey=datakey, epoch=trial_epoch, test=test_type) 
         #
         status, joboutput = commands.getstatusoutput(cmd)
         jobnum = joboutput.split(' ')[-1]

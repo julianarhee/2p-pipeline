@@ -17,6 +17,7 @@ import copy
 import copy
 import itertools
 import datetime
+import time
 import pprint 
 pp = pprint.PrettyPrinter(indent=4)
 import traceback
@@ -89,7 +90,8 @@ def decode_from_fov(datakey, visual_area, neuraldf, sdf=None, #min_ncells=5,
                     C_value=None, experiment='blobs',
                     n_iterations=50, n_processes=2, results_id='fov_results',
                     class_a=0, class_b=0, do_shuffle=True,
-                    rootdir='/n/coxfs01/2p-data', create_new=False, verbose=False):
+                    rootdir='/n/coxfs01/2p-data', create_new=False, verbose=False,
+                    test_type=None): 
     '''
     Fit FOV n_iterations times (multiproc). Save all iterations in dataframe.
     '''
@@ -119,22 +121,29 @@ def decode_from_fov(datakey, visual_area, neuraldf, sdf=None, #min_ncells=5,
         sdf = obj.get_stimuli()
 
     # Decodinng -----------------------------------------------------
-    iter_list = decutils.fit_svm_mp(neuraldf, sdf, C_value=C_value, 
-                                n_iterations=n_iterations, 
-                                n_processes=n_processes, verbose=verbose,
-                                class_a=class_a, class_b=class_b, do_shuffle=do_shuffle) 
-    # print("%i items in mp list" % len(iter_list))
-    # Save all iterations
-    iter_results = pd.concat(iter_list, axis=0) 
-    metainfo = {'visual_area': visual_area, 'datakey': datakey,'n_cells': n_cells}
-    iter_results = putils.add_meta_to_df(iter_results, metainfo)
+    start_t = time.time()
+    iter_results = decutils.pool_bootstrap(neuraldf, sdf, C_value=C_value, 
+                                n_iterations=n_iterations, n_processes=n_processes, verbose=verbose,
+                                class_a=class_a, class_b=class_b, do_shuffle=do_shuffle,
+                                test_type=test_type) 
+    end_t = time.time() - start_t
+    print("--> Elapsed time: {0:.2f}sec".format(end_t))
+    # DATA - get mean across items
+    # iter_results = pd.concat(i_chunks, axis=0)
+    iter_results['n_cells'] = n_cells 
+    iter_results['visual_area'] = visual_area
+    iter_results['datakey'] = datakey
 
+    # Save all iterations
+    #iter_results = pd.concat(iter_list, axis=0) 
+    #metainfo = {'visual_area': visual_area, 'datakey': datakey,'n_cells': n_cells}
+    #iter_results = putils.add_meta_to_df(iter_results, metainfo)
     with open(results_outfile, 'wb') as f:
         pkl.dump(iter_results, f, protocol=pkl.HIGHEST_PROTOCOL)
 
     print(iter_results.groupby(['condition']).mean())   
-    print("@@@@@@@@@ done. %s|%s (%s)  @@@@@@@@@@" % (visual_area, datakey, results_id))
-    
+    print("@@@@@@@@@ done. %s|%s  @@@@@@@@@@" % (visual_area, datakey))
+    print(results_outfile) 
     return
 
 
@@ -166,6 +175,8 @@ def decode_split_pupil(datakey, visual_area, cells, MEANS, pupildata,
         try:
             with open(results_outfile, 'rb') as f:
                 iter_results = pkl.load(f)
+            if do_shuffle:
+                assert 'condition' in iter_results.columns, "No shuffle, re-running now."
         except Exception as e:
             create_new=True 
 
@@ -213,37 +224,38 @@ def decode_split_pupil(datakey, visual_area, cells, MEANS, pupildata,
             # Get neuraldf for current trials
             curr_data = neuraldf.loc[curr_trial_ixs].copy()
             # Fit.
-            a_list = decutils.fit_svm_mp(curr_data, sdf, C_value=C_value, 
+            start_t = time.time()
+            arousal_df = decutils.fit_svm_mp(curr_data, sdf, C_value=C_value, 
                                     n_iterations=n_iterations, 
                                     n_processes=n_processes, verbose=verbose,
                                     class_a=class_a, class_b=class_b, do_shuffle=do_shuffle) 
-            print("%i items in mp list" % len(a_list))
+            end_t = time.time() - start_t
+            print("--> Elapsed time: {0:.2f}sec".format(end_t))
+
+            arousal_df['n_trials'] = len(curr_trial_ixs)
+            arousal_df['arousal'] = arousal_cond
             # Aggregate 
-            arousal_df = pd.concat(a_list, axis=0)
-            metainfo = {'visual_area': visual_area, 'datakey': datakey,
-                        'arousal': arousal_cond, 'n_cells': n_cells}
-            arousal_df = putils.add_meta_to_df(arousal_df, metainfo)
             iter_list.append(arousal_df)
        
         print("%i items in split-pupil list" % len(iter_list))
         # DATA - get mean across items
         iter_results = pd.concat(iter_list, axis=0)
+        iter_results['visual_area'] = visual_area
+        iter_results['datakey'] = datakey
+        iter_results['n_cells'] = n_cells
         with open(results_outfile, 'wb') as f:
             pkl.dump(iter_results, f, protocol=pkl.HIGHEST_PROTOCOL)
-
         data_inputfile = os.path.join(curr_dst_dir, 'inputdata_%s.pkl' % results_id)
         inputdata = {'neuraldf': neuraldf, 'pupildf': pupildf, 'sdf': sdf,
                     'low_ixs': low_trial_ixs, 'high_ixs': high_trial_ixs}
         with open(data_inputfile, 'wb') as f:
             pkl.dump(inputdata, f, protocol=pkl.HIGHEST_PROTOCOL)
 
-
+    #print(iter_results.columns)
     print(iter_results.groupby(['condition', 'arousal']).mean())
     print("@@@@@@@@@ done. %s|%s (%s)  @@@@@@@@@@" % (visual_area, datakey, results_id))
 
     return 
-
-
 
 
 def decode_by_ncells(ncells, celldf, sdf, NEURALDATA, 
@@ -268,15 +280,16 @@ def decode_by_ncells(ncells, celldf, sdf, NEURALDATA,
 
     if create_new:    
         # Decoding -----------------------------------------------------
-        i_chunks = decutils.by_ncells_fit_svm_mp(ncells, celldf, NEURALDATA, sdf, 
+        start_t = time.time()
+        iter_results = decutils.by_ncells_fit_svm_mp(ncells, celldf, NEURALDATA, sdf, 
                         n_iterations=n_iterations, n_processes=n_processes, 
                         C_value=C_value, cv_nfolds=cv_nfolds, test_split=test_split, 
                         class_a=class_a, class_b=class_b)
-        print("%i items in mp list" % len(i_chunks))
+        end_t = time.time() - start_t
+        print("--> Elapsed time: {0:.2f}sec".format(end_t))
         # DATA - get mean across items
-        iter_results = pd.concat(i_chunks, axis=0)
-        iter_results['n_cells'] = [ncells for _ in np.arange(0, iter_results.shape[0])]
-        #iter_list.append(iter_df)
+        # iter_results = pd.concat(i_chunks, axis=0)
+        iter_results['n_cells'] = ncells 
    
     # Save 
     with open(results_outfile, 'wb') as f:
@@ -313,46 +326,49 @@ def single_cell_dst_dir(traceid_dir, results_id):
     return curr_dst_dir, save_prefix
  
      
-def decode_from_cell(datakey, rid, neuraldf, sdf, do_shuffle=True,
-                    C_value=None, experiment='blobs',
+def decode_from_cell(datakey, rid, neuraldf, sdf, results_outfile='/tmp/roi.pkl', 
+                    do_shuffle=True, C_value=None, experiment='blobs',
                     n_iterations=50, n_processes=2, results_id='single_cell',
-                    class_a=0, class_b=0, visual_area=None,
-                    rootdir='/n/coxfs01/2p-data', create_new=False, verbose=False):
+                    class_a=0, class_b=0, visual_area=None, verbose=False):
     # tmp save
    #results_id='%s_%s__%s-%s_%s__%s__%s' \
     #                % (prefix, visual_area, response_type, responsive_test, overlap_str, trial_epoch, C_str)
 
  
-    print("SINGLE_CELLS | (rid=%i, %s)" % (rid, results_id))
+    #print("SINGLE_CELLS | (rid=%i, %s)" % (rid, results_id))
 
-    traceid_dir = get_traceid_dir_from_datakey(datakey, traceid=traceid) 
-    curr_dst_dir, save_prefix = single_cell_dst_dir(traceid_dir, results_id)    
-    results_outfile = os.path.join(curr_dst_dir, '%s__%03d.pkl' % (save_prefix, int(rid+1)))
+#    traceid_dir = get_traceid_dir_from_datakey(datakey, traceid=traceid) 
+#    curr_dst_dir, save_prefix = single_cell_dst_dir(traceid_dir, results_id)    
+#    results_outfile = os.path.join(curr_dst_dir, '%s__%03d.pkl' % (save_prefix, int(rid+1)))
+#
+#    if not os.path.exists(results_outfile):
+#        create_new=True
+#
+#    if create_new and os.path.exists(results_outfile):
+#        fname = os.path.split(results_outfile)[-1]
+#        print("... deleting old files: %s" % fname)
+#        os.remove(results_outfile)
+#   
+    #if create_new:    
+    print("... starting analysis ")
+    # zscore full
+    #neuraldf = aggr.zscore_neuraldf(neuraldf)
+    # Decodinng -----------------------------------------------------
+    start_t = time.time()
+    iter_results = decutils.fit_svm_mp(neuraldf, sdf, C_value=C_value, 
+                                n_iterations=n_iterations, 
+                                n_processes=n_processes, verbose=verbose,
+                                class_a=class_a, class_b=class_b, do_shuffle=do_shuffle)
+    end_t = time.time() - start_t
+    print("--> Elapsed time: {0:.2f}sec".format(end_t))
+ 
+    iter_results['cell'] = rid
+    iter_results['datakey'] = datakey
 
-    if not os.path.exists(results_outfile):
-        create_new=True
+    with open(results_outfile, 'wb') as f:
+        pkl.dump(iter_results, f, protocol=pkl.HIGHEST_PROTOCOL)
 
-    if create_new and os.path.exists(results_outfile):
-        fname = os.path.split(results_outfile)[-1]
-        print("... deleting old files: %s" % fname)
-        os.remove(results_outfile)
-   
-    metainfo = {'cell': rid, 'datakey': datakey}
-    if create_new:    
-        print("... starting analysis ")
-        # zscore full
-        #neuraldf = aggr.zscore_neuraldf(neuraldf)
-        # Decodinng -----------------------------------------------------
-        iter_list = decutils.fit_svm_mp(neuraldf, sdf, C_value=C_value, 
-                                    n_iterations=n_iterations, 
-                                    n_processes=n_processes, verbose=verbose,
-                                    class_a=class_a, class_b=class_b, do_shuffle=do_shuffle)
-        iter_results = pd.concat(iter_list, axis=0) 
-        iter_results = putils.add_meta_to_df(iter_results, metainfo)
-        with open(results_outfile, 'wb') as f:
-            pkl.dump(iter_results, f, protocol=pkl.HIGHEST_PROTOCOL)
-
-        print("... saved: %s" % os.path.split(results_outfile)[-1])
+    print("... saved: %s" % os.path.split(results_outfile)[-1])
     #print(iter_results.mean())
 
     print("Done!")
@@ -376,7 +392,8 @@ def decode_from_cell(datakey, rid, neuraldf, sdf, do_shuffle=True,
 # 
 def create_results_id(prefix='fov_results', visual_area='varea', C_value=None, 
                         trial_epoch='stimulus', has_retino=False, threshold_dff=False,
-                        response_type='dff', responsive_test='resp', overlap_thr=None):
+                        response_type='dff', responsive_test='resp', overlap_thr=None,
+                        test_type=None): 
 
     C_str = 'tuneC' if C_value is None else 'C%.2f' % C_value
     if threshold_dff:
@@ -389,18 +406,22 @@ def create_results_id(prefix='fov_results', visual_area='varea', C_value=None,
         #results_id='%s_%s_%s__%s-%s_%s__%s' % (prefix, visual_area, C_str, response_type, responsive_test, overlap_str, trial_epoch)
     results_id='%s_%s__%s-%s_%s__%s__%s' \
                     % (prefix, visual_area, response_type, responsive_test, overlap_str, trial_epoch, C_str)
-    
+   
+    if test_type is not None:
+        results_id = '%s__%s' % (results_id, test_type)
+ 
     return results_id
 
-def create_aggr_results_id(prefix='fov_results', C_value=None, 
+def create_results_id_aggr(prefix='fov_results', C_value=None, 
                         response_type='dff', trial_epoch='stimulus',
-                        responsive_test='resp', overlap_thr=None, has_retino=False, threshold_dff=False):
+                        responsive_test='resp', overlap_thr=None, has_retino=False, threshold_dff=False,
+                        test_type=None): 
 
     tmp_id = create_results_id(prefix=prefix, visual_area='NA',
-                               C_value=C_value, response_type=response_type, 
-                               trial_epoch=trial_epoch, 
-                               responsive_test=responsive_test, overlap_thr=overlap_thr, has_retino=has_retino,
-                            threshold_dff=threshold_dff)
+                        C_value=C_value, response_type=response_type, trial_epoch=trial_epoch, 
+                        responsive_test=responsive_test, overlap_thr=overlap_thr, has_retino=has_retino,
+                        threshold_dff=threshold_dff, 
+                        test_type=test_type) 
     param_str = tmp_id.split('_NA_')[-1]
     aggr_results_id = '%s__%s' % (prefix, param_str) 
     print("AGGREGATE: %s" % aggr_results_id)
@@ -425,13 +446,15 @@ def check_old_naming(animalid, session, fov, experiment='blobs', traceid='traces
 def load_fov_results(animalid, session, fov, traceid='traces001', 
                      visual_area=None, C_value=None, response_type='dff', 
                     responsive_test='nstds', trial_epoch='stimulus', 
-                    overlap_thr=None, has_retino=False, threshold_dff=False):
+                    overlap_thr=None, has_retino=False, threshold_dff=False,
+                    test_type=None): 
     analysis_type='by_fov'
     # Get result ID
     results_id = create_results_id(prefix=analysis_type, visual_area=visual_area, 
-                                  C_value=C_value, response_type=response_type, responsive_test=responsive_test,
-                                  trial_epoch=trial_epoch, 
-                            overlap_thr=overlap_thr, has_retino=has_retino, threshold_dff=threshold_dff)
+                        C_value=C_value, response_type=response_type, responsive_test=responsive_test,
+                        trial_epoch=trial_epoch, 
+                        overlap_thr=overlap_thr, has_retino=has_retino, threshold_dff=threshold_dff,
+                        test_type=test_type) 
     # Load FOV results
     iterdf = load_decode_within_fov(animalid, session, fov, traceid=traceid, results_id=results_id)
     
@@ -450,7 +473,10 @@ def load_decode_within_fov(animalid, session, fov, results_id='fov_results',
         print("... saving tmp results to:\n  %s" % curr_dst_dir)
 
     if not os.path.exists(os.path.join(curr_dst_dir, '%s.pkl' % results_id)):
-        varea, rparams, tepoch, cstr = results_id.split('__')
+        if len(results_id.split('__'))==5:
+            varea, rparams, tepoch, cstr, testinfo = results_id.split('__')
+        else:
+            varea, rparams, tepoch, cstr = results_id.split('__')
         if 'noRF' in rparams:
             rparams = rparams.replace('noRF', 'no-rfs')
         else:
@@ -468,7 +494,8 @@ def load_decode_within_fov(animalid, session, fov, results_id='fov_results',
     try:
         with open(results_outfile, 'rb') as f:
             iter_df = pkl.load(f)
-        iter_df['iteration'] = iter_df.index.tolist()
+        if 'iteration' not in iter_df.columns:
+            iter_df['iteration'] = iter_df.index.tolist()
         iter_df = iter_df.sort_values(by='iteration').reset_index(drop=True)
  
     except Exception as e:
@@ -481,6 +508,7 @@ def aggregate_decode_within_fov(dsets, results_prefix='fov_results',
                  C_value=None, response_type='dff', trial_epoch='stimulus',
                 responsive_test='nstds', responsive_thr=10., overlap_thr=None, 
                 has_retino=False, threshold_dff=False, 
+                test_type=None,
                 rootdir='/n/coxfs01/2p-data', verbose=False):
     no_results=[]
     found_results=[]
@@ -488,9 +516,10 @@ def aggregate_decode_within_fov(dsets, results_prefix='fov_results',
     popdf = []
     for (visual_area, datakey), g in dsets.groupby(['visual_area', 'datakey']): 
         results_id=create_results_id(prefix=results_prefix, 
-                                    visual_area=visual_area, C_value=C_value, has_retino=has_retino,
-                                    response_type=response_type, responsive_test=responsive_test,
-                                    overlap_thr=overlap_thr, trial_epoch=trial_epoch, threshold_dff=threshold_dff)
+                                visual_area=visual_area, C_value=C_value, has_retino=has_retino,
+                                response_type=response_type, responsive_test=responsive_test,
+                                overlap_thr=overlap_thr, trial_epoch=trial_epoch, threshold_dff=threshold_dff,
+                                test_type=test_type)
         # Load dataset results
         session, animalid, fov_ = datakey.split('_')
         fovnum = int(fov_[3:])
@@ -540,6 +569,7 @@ def do_decode_within_fov(analysis_type='by_fov', experiment='blobs',
                         response_type='dff', trial_epoch='stimulus', 
                         min_ncells=5, n_iterations=100, C_value=None,
                         match_distns=False, overlap_thr=0.5, has_retino=False, threshold_dff=False,
+                        test_type=None, 
                         test_split=0.2, cv_nfolds=5, class_a=0, class_b=106, 
                         traceid='traces001', fov_type='zoom2p0x', state='awake',
                         aggregate_dir='/n/coxfs01/julianarhee/aggregate-visual-areas',
@@ -554,11 +584,12 @@ def do_decode_within_fov(analysis_type='by_fov', experiment='blobs',
     results_prefix = analysis_type #set_results_prefix(analysis_type=analysis_type)
     #aggr_results_id='%s__%s_%s-%s_%s' % (analysis_type, C_str, response_type, responsive_test, C_str)
 
-    aggr_results_id = create_aggr_results_id(prefix=results_prefix,
+    aggr_results_id = create_results_id_aggr(prefix=results_prefix,
                                  C_value=C_value, response_type=response_type, 
                                  trial_epoch=trial_epoch,  
                                  responsive_test=responsive_test, overlap_thr=overlap_thr, 
-                                has_retino=has_retino, threshold_dff=threshold_dff)
+                                has_retino=has_retino, threshold_dff=threshold_dff,
+                                test_type=test_type)
     # Get all data sets
     if (has_retino is False) and (overlap_thr is not None):
         edata = aggr.get_blobs_and_rf_meta(experiment=experiment, traceid=traceid, 
@@ -817,8 +848,7 @@ def extract_options(options):
     default_a = 'by_ncells'
     parser.add_option('-X','--analysis', action='store', dest='analysis_type', 
             default=default_a, type='choice', choices=choices_a,
-            help="Analysis type, choices: %s. (default: %s" % (choices_a, default_a))
-
+            help="Analysis type, choices: %s. (default: %s)" % (choices_a, default_a))
 
     parser.add_option('-V','--visual-area', action='store', dest='visual_area', 
             default=None, help="(set for by_ncells) Must be None to run all serially")
@@ -845,6 +875,16 @@ def extract_options(options):
 
     parser.add_option('--dff', action='store_true', dest='threshold_dff', 
             default=False, help="Threshold dff values")
+
+#    parser.add_option('--single', action='store_true', dest='train_test_single', 
+#            default=False, help="Set to split train/test by single transform")
+#
+    choices_t = (None, 'None', 'size_single', 'size_subset', 'morph')
+    default_t = None  
+    parser.add_option('-T', '--test', action='store', dest='test_type', 
+            default=default_t, type='choice', choices=choices_t,
+            help="Test type, choices: %s. (default: %s)" % (choices_t, default_t))
+
 
 
 
@@ -930,6 +970,11 @@ def main(options):
 
     trial_epoch = opts.trial_epoch #'plushalf' # 'stimulus'
 
+    # Generalization Test ------------------------------
+    test_type = None if opts.test_type in ['None', None] else opts.test_type
+    
+    #train_test_single = opts.train_test_single
+
     # Pupil -------------------------------------------
     pupil_feature='pupil_fraction'
     pupil_alignment='trial'
@@ -1010,93 +1055,22 @@ def main(options):
                             stack_neuraldf=stack_neuraldf, overlap_thr=overlap_thr, has_retino=has_retino, 
                             threshold_snr=threshold_snr, snr_thr=snr_thr, max_snr_thr=max_snr_thr,
                             remove_too_few=remove_too_few, min_ncells=min_ncells, match_distns=match_distns)
+    visual_areas=['V1', 'Lm', 'Li']
+    CELLS = CELLS[CELLS['visual_area'].isin(visual_areas)]
+
     if NEURALDATA is None:
+        print("***NO DATA. ABORTING***")
         return None
 
-#    #### Load RFs
-#    NEURALDATA=None; RFDATA=None;
-#    if has_rfs: 
-#        print("~~~~~~~~~~~~~~~~Loading RFs~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~")
-#        rf_fit_desc = fitrf.get_fit_desc(response_type=response_type)
-#        reliable_str = 'reliable' if reliable_only else ''
-#        #rf_str = 'match%s_%s' % (experiment, reliable_str)
-#        # Get position info for RFs 
-#        rfdf = aggr.load_rfdf_and_pos(dsets, rf_filter_by=None, 
-#                                        reliable_only=True, traceid=traceid)
-#        # RF dataframes
-#        NEURALDATA, RFDATA, assigned_cells = aggr.get_neuraldata_and_rfdata(all_cells, rfdf, MEANS, 
-#                                                stack=stack_neuraldf)
-#    elif has_retino:
-#        print("~~~~~~~~~~~~~~~~Loading Retinotopy Bar ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~")
-#        #edata = sdata[sdata['experiment'].isin(['retino'])]
-#        #assigned_rois, missing_ = seg.get_cells_by_area(edata, return_missing=True)
-#        retino_cells = aggr.aggregate_responsive_retino(all_cells, traceid=traceid,
-#                                        mag_thr=retino_mag_thr, pass_criterion=retino_pass_criterion, 
-#                                        verbose=False, create_new=True)
-#        #cells = retino_cells[retino_cells['visual_area'].isin(visual_areas)]
-#        #print("Missing %i retino analyses" % len(missing_))
-#        #for r in missing_:
-#        #    print(r)
-#        NEURALDATA = aggr.get_neuraldata(retino_cells, MEANS, stack=stack_neuraldf) #True)
-#        assigned_cells = aggr.cells_in_experiment_df(retino_cells, NEURALDATA)
-#    else:
-#        print("~~~~~~~~~~~~~~~~No Receptive Fields~~~~~~~~~~~~~~~~~~~~~~~~~")
-#        # EXP dataframes 
-#        NEURALDATA = aggr.get_neuraldata(all_cells, MEANS, stack=stack_neuraldf)
-#        assigned_cells = aggr.cells_in_experiment_df(all_cells, NEURALDATA)
-#        #print(assigned_cells.groupby(['visual_area']).count())
-#
-#    if match_distns:
-#        print("~~~~~~~~~~~~~~~~Matching max %s distNs~~~~~~~~~~~~~~~~~~~~~" % response_type)
-#        NEURALDATA, assigned_cells = aggr.match_neuraldata_distn(NEURALDATA, src='Li')
-#        if has_rfs:
-#            RFDATA = aggr.select_dataframe_subset(assigned_cells, RFDATA)
-# 
-#    if NEURALDATA is None: # or RFDATA is None:
-#        print("There is no data. Aborting.")
-#        return None
-#
-#    if has_rfs:
-#        print("~~~~~~~~~~~~~~~~Calculating overlaps (thr=%.2f)~~~~~~~~~~~~~" % overlap_thr)
-#        # Calculate overlap with stimulus
-#        stim_overlaps = rfutils.calculate_overlaps(RFDATA, experiment=experiment)
-#        # Filter cells
-#        globalcells, cell_counts = aggr.get_pooled_cells(stim_overlaps,
-#                                            remove_too_few=remove_too_few, 
-#                                            overlap_thr=0 if overlap_thr is None else overlap_thr,
-#                                            min_ncells=min_ncells)
-#    else:
-#        globalcells, cell_counts = aggr.global_cells(assigned_cells,
-#                                            remove_too_few=remove_too_few, 
-#                                            min_ncells=min_ncells, return_counts=True)
-#    if globalcells is None:
-#        print("NO CELLS. Exiting.")
-#        return None
-#
-#    print("@@@@@@@@ cell counts @@@@@@@@@@@")
-#    print(cell_counts)
-#
-#    # TMP TMP
-#    if threshold_snr:
-#        #snr_thr=10.0
-#        #max_snr_thr=None #15.0 #None #15.0 #None
-#        #match_str='snrlim_' if max_snr_thr is not None else 'snr_'
-#        print("~~~~~~~~~~~~~~~~SNR (thr=%.2f)~~~~~~~~~~~~~" % snr_thr)
-#        mean_snr = aggr.get_mean_snr(experiment=experiment, traceid=traceid, responsive_test=responsive_test,
-#                                        responsive_thr=responsive_thr, trial_epoch=trial_epoch)
-#        CELLS = aggr.threshold_cells_by_snr(mean_snr, globalcells, snr_thr=snr_thr, max_snr_thr=max_snr_thr)
-#        if has_rfs:
-#            NEURALDATA, RFDATA, CELLS = aggr.get_neuraldata_and_rfdata(CELLS, rfdf, MEANS, 
-#                                                stack=stack_neuraldf)
-#        else: 
-#            NEURALDATA = aggr.get_neuraldata(CELLS, MEANS, stack=stack_neuraldf, verbose=False)
-#    else:
-#        #### Get final cells dataframe          
-#        CELLS = globalcells.copy()
-#        CELLS['cell'] = globalcells['dset_roi']
-#
-#
+    if analysis_type=='by_ncells' and responsive_test=='ROC':
+        incl_ddict = {'Li': ['20190315_JC070_fov1', '20190322_JC073_fov1',
+                            '20190602_JC091_fov1', '20190609_JC099_fov1', '20190614_JC091_fov1',
+                            '20191018_JC113_fov1', '20191111_JC120_fov1'],
+                     'Lm': ['20190306_JC061_fov3', '20190322_JC073_fov1', '20190504_JC078_fov1', '20190512_JC083_fov1', '20190517_JC083_fov1', '20190618_JC097_fov1'], 
+                     'V1': ['20190501_JC076_fov1', '20190504_JC078_fov1', '20190508_JC083_fov1', '20190512_JC083_fov1', '20191006_JC110_fov1']}
 
+        tmpc = pd.concat([g for (v, d), g in CELLS.groupby(['visual_area', 'datakey']) if d in incl_ddict[v]])
+        CELLS=tmpc.copy()
     print("------------------------------------")
     print("Final cell counts:")
     print(CELLS[['visual_area', 'datakey', 'cell']].drop_duplicates().groupby(['visual_area']).count())
@@ -1126,6 +1100,7 @@ def main(options):
 
     print('... Classify %i v %i (C=%s)' % (m0, m100, str(C_value)))
     print('... N=%i iters (%i proc), %s' % (n_iterations, n_processes, overlap_str))
+    print("... Shuffle? %s" % str(do_shuffle))
 
     if n_processes > n_iterations:
         n_processes = n_iterations
@@ -1156,10 +1131,13 @@ def main(options):
             print("... skipping %s (%s) - no cells." % (curr_datakey, curr_visual_area))
             return None
         results_id = create_results_id(prefix=results_prefix, 
-                                visual_area=curr_visual_area, C_value=C_value, has_retino=has_retino,
-                                response_type=response_type, responsive_test=responsive_test,
-                                overlap_thr=overlap_thr, trial_epoch=trial_epoch, threshold_dff=threshold_dff)
-
+                            visual_area=curr_visual_area, C_value=C_value, has_retino=has_retino,
+                            response_type=response_type, responsive_test=responsive_test,
+                            overlap_thr=overlap_thr, trial_epoch=trial_epoch, threshold_dff=threshold_dff,
+                            test_type=test_type) 
+        print("~~~~~~~~~~~~~~~~ RESULTS ID ~~~~~~~~~~~~~~~~~~~~~")
+        print(results_id)
+        print('~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~')
         if analysis_type=='by_fov':
             # -----------------------------------------------------------------------
             # BY_FOV - for each fov, do_decode
@@ -1171,7 +1149,8 @@ def main(options):
                         n_iterations=n_iterations, n_processes=n_processes, 
                         results_id=results_id,
                         class_a=class_a, class_b=class_b, do_shuffle=do_shuffle,
-                        rootdir=rootdir, create_new=create_new, verbose=verbose)
+                        rootdir=rootdir, create_new=create_new, verbose=verbose,
+                        test_type=test_type) 
             print("--- done by_fov ---")
 
         elif analysis_type=='split_pupil': 
@@ -1194,27 +1173,37 @@ def main(options):
             # -----------------------------------------------------------------------
             # SINGLE_CELLS - for each fov, for each cell, do decode
             # -----------------------------------------------------------------------
+            traceid_dir = get_traceid_dir_from_datakey(curr_datakey, traceid=traceid) 
+            curr_dst_dir, save_prefix = single_cell_dst_dir(traceid_dir, results_id)    
+            # old_files = glob.glob(os.path.join(curr_dst_dir, '%s_*.pkl' % save_prefix))
+
+            all_rois = gdf['dset_roi'].unique()
+            all_fnames = ['%s__%03d.pkl' % (save_prefix, int(rid+1)) for rid in all_rois]
+            old_files = glob.glob(os.path.join(curr_dst_dir, '%s__*.pkl' % save_prefix)) # fn) for fn in all_fnames]
+            #old_files = [os.path.join(curr_dst_dir, fn) for fn in all_fnames] 
             if create_new: # remove all old files
-                traceid_dir = get_traceid_dir_from_datakey(curr_datakey, traceid=traceid) 
-                curr_dst_dir, save_prefix = single_cell_dst_dir(traceid_dir, results_id)    
-                old_files = glob.glob(os.path.join(curr_dst_dir, '%s_*.pkl' % save_prefix))
                 print("... deleting %i old files" % len(old_files))
                 for f in old_files:
                     os.remove(f)
+            else:
+                todo_fnames = [fname for fname in all_fnames if \
+                                    os.path.join(curr_dst_dir, fname) not in old_files]
+                print("SINGLE_CELLS: Need to run %i out of %i cells." % (len(todo_fnames), len(all_fnames)))
+                #todo_rois = [int(os.path.splitext(fn)[0].split('__')[-1]) for fn in todo_fnames]
 
-            for ri, rid in enumerate(gdf['dset_roi'].values):
+            nt = len(todo_fnames)
+            for ri, fname in enumerate(todo_fnames): #enumerate(todo_rois): #enumerate(gdf['dset_roi'].values):
+                rid = int(os.path.splitext(fname)[0].split('__')[-1]) - 1
                 if ri % 10 == 0:
-                    print("%i of %i cells (%s|%s), rid=%i." \
-                            % (int(ri+1), ncells_total, curr_datakey, curr_visual_area, rid))
+                    print("%i of %i cells (rid %i, %s|%s)" % (int(ri+1), nt, rid, curr_datakey, curr_visual_area))
+                results_outfile = os.path.join(curr_dst_dir, fname)
                 neuraldf = NEURALDATA[curr_visual_area][curr_datakey][[rid, 'config']].copy()
                 #print(sorted(neuraldf['config'].unique()))
                 decode_from_cell(curr_datakey, rid, neuraldf, sdf, experiment=experiment,
-                                C_value=C_value, 
+                                C_value=C_value, results_outfile=results_outfile,
                                 n_iterations=n_iterations, n_processes=n_processes, 
                                 results_id=results_id, visual_area=curr_visual_area,
-                                class_a=class_a, class_b=class_b,
-                                create_new=create_new, verbose=verbose, 
-                                do_shuffle=do_shuffle)          
+                                class_a=class_a, class_b=class_b, verbose=verbose, do_shuffle=do_shuffle)          
             print("Finished %s (%s). ID=%s" % (curr_datakey, curr_visual_area, results_id))
 
     elif analysis_type=='by_ncells':
@@ -1237,16 +1226,15 @@ def main(options):
 
         # Save inputs
         inputs_file = os.path.join(dst_dir, 'cells_%s_%s.pkl' % (analysis_type, str(curr_visual_area)))
-        with open(inputs_file, 'wb') as f:
-            pkl.dump(CELLS, f, protocol=pkl.HIGHEST_PROTOCOL)
-
+        with open(inputs_file, 'wb') as f: pkl.dump(CELLS, f, protocol=pkl.HIGHEST_PROTOCOL) 
 
         if curr_visual_area is not None:
             gdf = CELLS[CELLS['visual_area']==curr_visual_area]
             results_id = create_results_id(prefix=results_prefix, 
                             visual_area=curr_visual_area, C_value=C_value, has_retino=has_retino, 
                             response_type=response_type, responsive_test=responsive_test,
-                            overlap_thr=overlap_thr, trial_epoch=trial_epoch, threshold_dff=threshold_dff)
+                            overlap_thr=overlap_thr, trial_epoch=trial_epoch, threshold_dff=threshold_dff,
+                            test_type=test_type)
 
             if curr_ncells is not None:
                 # ----------------------------------------------
@@ -1300,7 +1288,8 @@ def main(options):
                                         response_type=response_type, 
                                         responsive_test=responsive_test, 
                                         overlap_thr=overlap_thr, has_retino=has_retino,
-                                        trial_epoch=trial_epoch, threshold_dff=threshold_dff)
+                                        trial_epoch=trial_epoch, threshold_dff=threshold_dff,
+                                        test_type=test_type) 
                         
                     for curr_ncells in NCELLS:
                         print("**** %s (n=%i cells)****" % (curr_visual_area, curr_ncells))

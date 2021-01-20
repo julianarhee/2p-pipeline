@@ -26,6 +26,8 @@ import pandas as pd
 import statsmodels as sm
 import cPickle as pkl
 import multiprocessing as mp
+from functools import partial
+
 from scipy import stats as spstats
 
 from pipeline.python.classifications import experiment_classes as util
@@ -101,8 +103,17 @@ def get_percentile_shuffled(iterdf, metric='heldout_test_score'):
 # ======================================================================
 # load_aggregate_rfs : now in rf_utils.py
 # get_rf_positions: in rf_utils.py
-def pool_bootstrap(neuraldf, sdf, n_iterations=50, n_processes=1, C_value=None,
-                   test=None, single=False, n_train_configs=4, verbose=False):   
+def initializer(terminating_):
+    # This places terminating in the global namespace of the worker subprocesses.
+    # This allows the worker function to access `terminating` even though it is
+    # not passed as an argument to the function.
+    global terminating
+    terminating = terminating_
+
+def pool_bootstrap(neuraldf, sdf, n_iterations=50, n_processes=1, 
+                   C_value=None, cv_nfolds=5, test_split=0.2, 
+                   test_type=None, n_train_configs=4, verbose=False,
+                   class_a=0, class_b=106, do_shuffle=True):   
     '''
     test (string, None)
         None  : Classify A/B only 
@@ -112,6 +123,8 @@ def pool_bootstrap(neuraldf, sdf, n_iterations=50, n_processes=1, C_value=None,
         size  : Train on specific size(s), test on un-trained sizes
                 single=True to train/test on each size
     '''
+    iter_df = None
+
     C=C_value
     vb = verbose 
     results = []
@@ -120,7 +133,7 @@ def pool_bootstrap(neuraldf, sdf, n_iterations=50, n_processes=1, C_value=None,
     pool = mp.Pool(initializer=initializer, initargs=(terminating, ), processes=n_processes)  
     try:
         ntrials, sample_size = neuraldf.shape
-        print("... n: %i (%i procs)" % (int(sample_size-1), n_processes))
+        print("[%s]... n: %i (%i procs)" % (test_type, int(sample_size-1), n_processes))
 #        if test=='morph':
 #            if single: # train on 1 size, test on other sizes
 #                func = partial(dutils.do_fit_train_single_test_morph, global_rois=global_rois, 
@@ -128,21 +141,24 @@ def pool_bootstrap(neuraldf, sdf, n_iterations=50, n_processes=1, C_value=None,
 #            else: # combine data across sizes
 #                func = partial(dutils.do_fit_train_test_morph, global_rois=global_rois, 
 #                               MEANS=MEANS, sdf=sdf, sample_size=sample_size)             
-#        elif test=='size':
-#            if single:
+        if test_type=='size_single':
+            func = partial(train_test_single_transform, curr_data=neuraldf, sdf=sdf,
+                                verbose=verbose, C_value=C_value) 
 #                func = partial(dutils.do_fit_train_test_single, global_rois=global_rois, 
 #                               MEANS=MEANS, sdf=sdf, sample_size=sample_size)
 #            else:
 #                func = partial(dutils.cycle_train_sets, global_rois=global_rois, 
 #                               MEANS=MEANS, sdf=sdf, sample_size=sample_size, 
 #                                n_train_configs=n_train_configs)
-#        else:
-#        func = partial(dutils.do_fit_within_fov, curr_data=neuraldf, sdf=sdf, verbose=verbose,
-#                                                    C_value=C_value)
-#        results = pool.map_async(func, range(n_iterations)).get(99999999)
-        results = [pool.apply_async(dutils.do_fit_within_fov, args=(i, neuraldf, sdf, vb, C)) \
-                    for i in range(n_iterations)]
-        output= [p.get(99999999) for p in results]
+        else:
+            func = partial(do_fit_within_fov, curr_data=neuraldf, sdf=sdf, verbose=verbose,
+                                                    C_value=C_value)
+        output = pool.map_async(func, range(n_iterations)).get(999999)
+        #results = [pool.apply_async(do_fit_within_fov, args=(i, neuraldf, sdf, vb, C)) \
+        #            for i in range(n_iterations)]
+        #output= [p.get(99999999) for p in results]
+        iter_df = pd.concat(output, axis=0)
+ 
     except KeyboardInterrupt:
         terminating.set()
         print("**interupt")
@@ -155,17 +171,14 @@ def pool_bootstrap(neuraldf, sdf, n_iterations=50, n_processes=1, C_value=None,
         pool.close()
         pool.join()
 
-    return output #results
-
-
+    return iter_df #output #results
 #
 def fit_svm_mp(neuraldf, sdf, n_iterations=50, n_processes=1, 
                    C_value=None, cv_nfolds=5, test_split=0.2, 
                    test=None, single=False, n_train_configs=4, verbose=False,
                    class_a=0, class_b=106, do_shuffle=True):   
-    #### Select train/test configs for clf A vs B
-    train_configs = sdf[sdf['morphlevel'].isin([class_a, class_b])].index.tolist() 
-    
+    iter_df = None
+ 
     #### Define MP worker
     results = []
     terminating = mp.Event() 
@@ -208,7 +221,11 @@ def fit_svm_mp(neuraldf, sdf, n_iterations=50, n_processes=1,
     finally:
         for p in procs:
             p.join()
-    return results
+
+    if len(results)>0:
+        iter_df = pd.concat(results, axis=0)
+
+    return iter_df #results
 
 
 def by_ncells_fit_svm_mp(ncells, celldf, NEURALDATA, sdf, 
@@ -216,9 +233,7 @@ def by_ncells_fit_svm_mp(ncells, celldf, NEURALDATA, sdf,
                            C_value=None, cv_nfolds=5, test_split=0.2, 
                            test=None, single=False, n_train_configs=4, verbose=False,
                            class_a=0, class_b=106):   
-    #### Select train/test configs for clf A vs B
-    train_configs = sdf[sdf['morphlevel'].isin([class_a, class_b])].index.tolist() 
-
+    iter_df = None
     #### Define multiprocessing worker
     results = []
     terminating = mp.Event()    
@@ -226,7 +241,7 @@ def by_ncells_fit_svm_mp(ncells, celldf, NEURALDATA, sdf,
         r_ = []        
         for ni in n_iters:
             curr_iter = do_fit_sample_cells(ni, sample_ize=sample_size, global_rois=celldf, sdf=sdf,
-                                        MEANS=NEURALDATA, df_is_split=True, do_shuffle=True, 
+                                        MEANS=NEURALDATA, do_shuffle=True, 
                                         C_value=C_value, class_a=class_a, class_b=class_b)
             r_.append(curr_iter)
         curr_iterdf = pd.concat(r_, axis=0)
@@ -262,7 +277,10 @@ def by_ncells_fit_svm_mp(ncells, celldf, NEURALDATA, sdf,
         for p in procs:
             p.join()
 
-    return results
+    if len(results)>0:
+        iter_df = pd.concat(results, axis=0)
+ 
+    return iter_df #results
 
 #
 # ======================================================================
@@ -769,10 +787,9 @@ def do_fit_within_fov(iter_num, curr_data=None, sdf=None, verbose=False,
 
     return iter_df 
 
-
-def sample_neuraldata(sample_size, global_rois, MEANS):
+def sample_neuraldata(sample_size, global_rois, ):
     if isinstance(MEANS, dict):
-        if df_is_split:
+        if isinstance(MEANS[MEANS.keys()[0]], dict): # df_is_split
             curr_data = get_trials_for_N_cells_split(sample_size, global_rois, MEANS)
         else:
             curr_data = get_trials_for_N_cells(sample_size, global_rois, MEANS)
@@ -783,14 +800,13 @@ def sample_neuraldata(sample_size, global_rois, MEANS):
 
 def do_fit_sample_cells(iter_num, sample_size=1, global_rois=None, MEANS=None, sdf=None, 
            C_value=None, test_split=0.2, cv_nfolds=5, class_a=0, class_b=106, 
-           do_shuffle=True, df_is_split=True, verbose=False):
+           do_shuffle=True, verbose=False):
     #[gdf, MEANS, sdf, sample_size, cv] * n_times)
     '''
     Resample w/ replacement from pooled cells (across datasets). Assumes 'sdf' is same for all datasets.
     Do n_iterations, return mean/sem/std over iterations as dict of results.
     Classes (class_a, class_b) should be the actual labels of the target (i.e., value of morph level)
 
-    df_is_split (bool):  Whether MEANS dict is actually MEANS[visual_area][datakey]
     do_shuffle (bool):   Calls 'fit_svm' twice, once on true data, once on shuffled labels
    
     sample_size (int):  sample size 
@@ -948,8 +964,7 @@ def train_test_single_transform(iter_num, curr_data=None, sdf=None, verbose=Fals
             if do_shuffle:
                 curr_iter_shuffled = fit_shuffled(train_data, targets, C_value=C_value, verbose=verbose,
                                         test_split=test_split, cv_nfolds=cv_nfolds, randi=randi)
-                curr_iter_shuffled.update({'train_transform': train_transform, 'test_transform': train_transform
-                                          })
+                curr_iter_shuffled.update({'train_transform': train_transform, 'test_transform': train_transform})
                 testdf_shuffled = pd.DataFrame(curr_iter_shuffled, index=[i])
                 i += 1
                 # combine
@@ -963,15 +978,7 @@ def train_test_single_transform(iter_num, curr_data=None, sdf=None, verbose=Fals
  
     return iterdf
 
- 
-    # Meta info
-    iter_df['n_cells'] = zdata.shape[1]
-    iter_df['n_trials'] = zdata.shape[0]
-
-    return iter_df 
-
 # -------------------------
-
 def do_fit_train_test_single(iter_num, sample_size=None, global_rois=None, MEANS=None, sdf=None,
                             cv=True, C_value=None, test_size=0.2, cv_nfolds=5, class_a=0, class_b=106):
     '''
