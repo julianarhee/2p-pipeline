@@ -1,11 +1,11 @@
 #!/bin/bash
-# decode_single_cells.sbatch
+# decode_by_ncells_match_distns.sbatch
 #
 #SBATCH -J decode # A single job name for the array
 #SBATCH -p shared # run on cox gpu to use correct env 
 #SBATCH -n 8 # one core
 #SBATCH -N 1 # on one node
-#SBATCH -t 0-00:30 # Running time of 3 hours
+#SBATCH -t 0-01:00 # Running time of 3 hours
 #SBATCH --mem 32764 #70656 # Memory request of 70 GB (set to 98304 if exceed lim)
 #SBATCH -o decode_%A_%a.out # Standard output
 #SBATCH -e decode_%A_%a.err # Standard error
@@ -38,9 +38,8 @@ echo "varea: ${VAREA}"
 echo "ncells: ${SAMPLE_SIZE}"
 echo "dkey: ${DKEY}"
 echo "EPOCH: ${EPOCH}"
-
 #
-python /n/coxfs01/2p-pipeline/repos/2p-pipeline/pipeline/python/classifications/decode_by_ncells.py -E $EXP -t $TRACEID -R $RTEST -n 8 -N 100 -o $OVERLAP -C ${CVAL} -V $VAREA -S $SAMPLESIZE -X $ANALYSIS -k $DKEY --epoch $EPOCH --shuffle #--new
+python /n/coxfs01/2p-pipeline/repos/2p-pipeline/pipeline/python/classifications/decode_by_ncells.py -E $EXP -t $TRACEID -R $RTEST -n 8 -N 100 --new -o $OVERLAP -C ${CVAL} -V $VAREA -S $SAMPLESIZE -X $ANALYSIS -k $DKEY --epoch $EPOCH --shuffle --dff
 
 #{EXP} {TRACEID} {RTEST} {OVERLAP} {ANALYSIS} {CVAL} {VAREA} {NCELLS} {DKEY}".format(
 
