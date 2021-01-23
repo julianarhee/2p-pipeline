@@ -254,7 +254,7 @@ elif analysis_type in ['by_fov', 'split_pupil']:
     for (visual_area, datakey), g in dsets.groupby(['visual_area', 'datakey']):
         mtag = '%s_%s_%s' % (datakey, visual_area, C_str) 
         if test_type is not None:
-            mtag = 'GENTEST_%s' % mtag
+            mtag = 'GEN_%s__%s' % (test_type, mtag)
 
         if has_retino:
             cmd = "sbatch --job-name={procid}.{mtag}.{analysis} \
