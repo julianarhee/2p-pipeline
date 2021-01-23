@@ -91,7 +91,7 @@ def decode_from_fov(datakey, visual_area, neuraldf, sdf=None, #min_ncells=5,
                     n_iterations=50, n_processes=2, results_id='fov_results',
                     class_a=0, class_b=0, do_shuffle=True,
                     rootdir='/n/coxfs01/2p-data', create_new=False, verbose=False,
-                    test_type=None): 
+                    test_type=None, n_train_configs=4): 
     '''
     Fit FOV n_iterations times (multiproc). Save all iterations in dataframe.
     '''
@@ -125,7 +125,7 @@ def decode_from_fov(datakey, visual_area, neuraldf, sdf=None, #min_ncells=5,
     iter_results = decutils.pool_bootstrap(neuraldf, sdf, C_value=C_value, 
                                 n_iterations=n_iterations, n_processes=n_processes, verbose=verbose,
                                 class_a=class_a, class_b=class_b, do_shuffle=do_shuffle,
-                                test_type=test_type) 
+                                test_type=test_type, n_train_configs=n_train_configs) 
     end_t = time.time() - start_t
     print("--> Elapsed time: {0:.2f}sec".format(end_t))
     # DATA - get mean across items
@@ -879,12 +879,14 @@ def extract_options(options):
 #    parser.add_option('--single', action='store_true', dest='train_test_single', 
 #            default=False, help="Set to split train/test by single transform")
 #
-    choices_t = (None, 'None', 'size_single', 'size_subset', 'morph')
+    choices_t = (None, 'None', 'size_single', 'size_subset', 'morph', 'morph_single')
     default_t = None  
     parser.add_option('-T', '--test', action='store', dest='test_type', 
             default=default_t, type='choice', choices=choices_t,
             help="Test type, choices: %s. (default: %s)" % (choices_t, default_t))
-
+    parser.add_option('--ntrain', action='store', dest='n_train_configs', 
+            default=4, help="N training sizes to use (default: 4, test 1)")
+ 
 
 
 
@@ -972,7 +974,7 @@ def main(options):
 
     # Generalization Test ------------------------------
     test_type = None if opts.test_type in ['None', None] else opts.test_type
-    
+    n_train_configs = int(opts.n_train_configs) 
     #train_test_single = opts.train_test_single
 
     # Pupil -------------------------------------------
@@ -1150,7 +1152,7 @@ def main(options):
                         results_id=results_id,
                         class_a=class_a, class_b=class_b, do_shuffle=do_shuffle,
                         rootdir=rootdir, create_new=create_new, verbose=verbose,
-                        test_type=test_type) 
+                        test_type=test_type, n_train_configs=n_train_configs) 
             print("--- done by_fov ---")
 
         elif analysis_type=='split_pupil': 
