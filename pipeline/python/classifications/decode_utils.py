@@ -64,38 +64,103 @@ from sklearn import svm
 
 
 def get_percentile_shuffled(iterdf, metric='heldout_test_score'):
+    # Use bootstrap distn to calculate percentiles
+    s_=[]
+    if 'cell' in iterdf.columns:
+        if 'train_transform' in iterdf.columns:
+            percentiles = group_iters_by_cell_and_transform(iterdf, metric=metric)
+        else:
+            percentiles = group_iters_by_cell(iterdf, metric=metric)
+    else:
+        if 'train_transform' in iterdf.columns:
+            percentiles = group_iters_by_fov_and_transform(iterdf, metric=metric)
+        else:
+            percentiles = group_iters_by_fov(iterdf, metric=metric)
+   
+    return percentiles
+
+def group_iters_by_cell(iterdf, metric='heldout_test_score'):
     # p_thr=0.05
     excl_cols = ['fit_time', 'iteration', 'n_cells',  'randi', 'score_time']
     incl_cols = [c for c in iterdf.columns if c not in excl_cols]
 
-    # Use bootstrap distn to calculate percentiles
     s_=[]
-    if 'cell' in iterdf.columns:
-        for (visual_area, datakey, rid), d_ in iterdf.groupby(['visual_area', 'datakey', 'cell']):
+    for (visual_area, datakey, rid), d_ in iterdf.groupby(['visual_area', 'datakey', 'cell']):
 
-            mean_score = d_[d_['condition']=='data'][metric].mean()
-            percentile = np.mean(mean_score < d_[d_['condition']=='shuffled'][metric])
-            n_iterations = d_[d_['condition']=='data'].shape[0]
-            rdict = dict(d_[d_['condition']=='data'][incl_cols].mean())
-            rdict.update({'visual_area': visual_area, 'datakey': datakey, 'cell': rid, 
-                           'mean_score': mean_score, 'percentile': percentile, 'n_iterations': n_iterations})
-            s = pd.Series(rdict)
-            s_.append(s)
-    else:
-         for (visual_area, datakey), d_ in iterdf.groupby(['visual_area', 'datakey']):
+        mean_score = d_[d_['condition']=='data'][metric].mean()
+        percentile = np.mean(mean_score < d_[d_['condition']=='shuffled'][metric])
+        n_iterations = d_[d_['condition']=='data'].shape[0]
+        rdict = dict(d_[d_['condition']=='data'][incl_cols].mean())
+        rdict.update({'visual_area': visual_area, 'datakey': datakey, 'cell': rid, 
+                       'mean_score': mean_score, 'percentile': percentile, 'n_iterations': n_iterations})
+        s = pd.Series(rdict)
+        s_.append(s) 
+    percentiles = pd.concat(s_, axis=1).T.reset_index(drop=True)
 
-            mean_score = d_[d_['condition']=='data'][metric].mean()
-            percentile = np.mean(mean_score < d_[d_['condition']=='shuffled'][metric])
-            n_iterations = d_[d_['condition']=='data'].shape[0]
-            rdict = dict(d_[d_['condition']=='data'][incl_cols].mean())
-            rdict.update({'visual_area': visual_area, 'datakey': datakey, 
-                           'mean_score': mean_score, 'percentile': percentile, 'n_iterations': n_iterations})
-            s = pd.Series(rdict)
-            s_.append(s)
-            
-    scores_by_cell = pd.concat(s_, axis=1).T.reset_index(drop=True)
-    
-    return scores_by_cell
+    return percentiles 
+
+def group_iters_by_cell_and_transform(iterdf, metric='heldout_test_score'):
+    # p_thr=0.05
+    excl_cols = ['fit_time', 'iteration', 'n_cells',  'randi', 'score_time']
+    incl_cols = [c for c in iterdf.columns if c not in excl_cols]
+
+    s_=[]
+    for (visual_area, datakey, rid, tr), d_ in iterdf.groupby(['visual_area', 'datakey', 'cell', 'train_transform']):
+
+        mean_score = d_[d_['condition']=='data'][metric].mean()
+        percentile = np.mean(mean_score < d_[d_['condition']=='shuffled'][metric])
+        n_iterations = d_[d_['condition']=='data'].shape[0]
+        rdict = dict(d_[d_['condition']=='data'][incl_cols].mean())
+        rdict.update({'visual_area': visual_area, 'datakey': datakey, 'cell': rid, 'train_transform': tr,
+                       'mean_score': mean_score, 'percentile': percentile, 'n_iterations': n_iterations})
+        s = pd.Series(rdict)
+        s_.append(s) 
+    percentiles = pd.concat(s_, axis=1).T.reset_index(drop=True)
+
+    return percentiles 
+
+
+def group_iters_by_fov_and_transform(iterdf, metric='heldout_test_score'):
+    # p_thr=0.05
+    excl_cols = ['fit_time', 'iteration', 'n_cells',  'randi', 'score_time']
+    incl_cols = [c for c in iterdf.columns if c not in excl_cols]
+
+    s_=[]
+    for (visual_area, datakey, sz), d_ in iterdf.groupby(['visual_area', 'datakey', 'train_transform']):
+
+        mean_score = d_[d_['condition']=='data'][metric].mean()
+        percentile = np.mean(mean_score < d_[d_['condition']=='shuffled'][metric])
+        n_iterations = d_[d_['condition']=='data'].shape[0]
+        rdict = dict(d_[d_['condition']=='data'][incl_cols].mean())
+        rdict.update({'visual_area': visual_area, 'datakey': datakey, 'train_transform': sz,
+                       'mean_score': mean_score, 'percentile': percentile, 'n_iterations': n_iterations})
+        s = pd.Series(rdict)
+        s_.append(s) 
+    percentiles = pd.concat(s_, axis=1).T.reset_index(drop=True)
+
+    return percentiles 
+
+def group_iters_by_fov(iterdf, metric='heldout_test_score'):
+    # p_thr=0.05
+    excl_cols = ['fit_time', 'iteration', 'n_cells',  'randi', 'score_time']
+    incl_cols = [c for c in iterdf.columns if c not in excl_cols]
+
+    s_=[]
+    for (visual_area, datakey), d_ in iterdf.groupby(['visual_area', 'datakey']):
+
+        mean_score = d_[d_['condition']=='data'][metric].mean()
+        percentile = np.mean(mean_score < d_[d_['condition']=='shuffled'][metric])
+        n_iterations = d_[d_['condition']=='data'].shape[0]
+        rdict = dict(d_[d_['condition']=='data'][incl_cols].mean())
+        rdict.update({'visual_area': visual_area, 'datakey': datakey,
+                       'mean_score': mean_score, 'percentile': percentile, 'n_iterations': n_iterations})
+        s = pd.Series(rdict)
+        s_.append(s) 
+    percentiles = pd.concat(s_, axis=1).T.reset_index(drop=True)
+
+    return percentiles 
+
+
 
 
 # ======================================================================
@@ -115,7 +180,10 @@ def pool_bootstrap(neuraldf, sdf, n_iterations=50, n_processes=1,
                    test_type=None, n_train_configs=4, verbose=False,
                    class_a=0, class_b=106, do_shuffle=True):   
     '''
-    test (string, None)
+    This function replaces fit_svm_mp() -- includes opts for generalization test.
+    Only tested for within-fov analyses (by_fov).
+
+    test_type (str, None)
         None  : Classify A/B only 
                 single=True to train/test on each size
         morph : Train on anchors, test on intermediate morphs
@@ -787,7 +855,7 @@ def do_fit_within_fov(iter_num, curr_data=None, sdf=None, verbose=False,
     if do_shuffle:
         tmpdf_shuffled = fit_shuffled(zdata, targets, C_value=C_value, verbose=verbose,
                                 test_split=test_split, cv_nfolds=cv_nfolds, randi=randi)
-        tmpdf_shuffled.index = iter_num   
+        tmpdf_shuffled.index = [iter_num]   
         i_list.append(tmpdf_shuffled)
  
     iter_df = pd.concat(i_list, axis=0) 
@@ -903,6 +971,7 @@ def fit_shuffled(zdata, targets, C_value=None, test_split=0.2, cv_nfolds=5, rand
         iterdf = pd.DataFrame(iterdict, index=[i])
 
     iterdf['condition'] = 'shuffled'
+    #print("shuffled")
 
     return iterdf
 
@@ -953,7 +1022,7 @@ def train_test_size_single(iter_num, curr_data=None, sdf=None, verbose=False,
                                                 test_split=test_split, cv_nfolds=cv_nfolds, 
                                                 C_value=C_value, randi=randi)
         iterdict.update({'train_transform': train_transform, 'test_transform': train_transform,
-                        'condition': 'data', 'n_trials': len(targets)})
+                        'condition': 'data', 'n_trials': len(targets), 'novel': False})
         tmpdf = pd.DataFrame(iterdict, index=[i])
         i_list.append(tmpdf) #_shuffled = pd.DataFrame(curr_iter_shuffled, index=[i])
         i+=1
@@ -992,9 +1061,10 @@ def train_test_size_single(iter_num, curr_data=None, sdf=None, verbose=False,
             predicted_labels = trained_svc.predict(curr_test_data)
             mi_dict = get_mutual_info_metrics(curr_test_labels, predicted_labels)
             iterdict.update(mi_dict) 
+            is_novel = train_transform==test_transform
             iterdict.update({'heldout_test_score': curr_test_score, 'C': fit_C_value, 'randi': randi,
                              'train_transform': train_transform, 'test_transform': test_transform,
-                             'n_trials': len(predicted_labels)}) 
+                             'n_trials': len(predicted_labels), 'novel': is_novel}) 
             testdf = pd.DataFrame(iterdict, index=[i])
             i += 1
 
@@ -1057,7 +1127,7 @@ def train_test_size_subset(iter_num, curr_data=None, sdf=None, verbose=False,
                                                 test_split=test_split, cv_nfolds=cv_nfolds, 
                                                 C_value=C_value, randi=randi)
         iterdict.update({'train_transform': train_transform, 'test_transform': train_transform, 
-                         'condition': 'data', 'n_trials': len(targets)})
+                         'condition': 'data', 'n_trials': len(targets), 'novel': False})
         tmpdf = pd.DataFrame(iterdict, index=[i])
         i+=1
         i_list.append(tmpdf)
@@ -1098,8 +1168,10 @@ def train_test_size_subset(iter_num, curr_data=None, sdf=None, verbose=False,
             predicted_labels = trained_svc.predict(curr_test_data)
             mi_dict = get_mutual_info_metrics(curr_test_labels, predicted_labels)
             iterdict.update(mi_dict) 
+            is_novel = train_transform==test_transform
             iterdict.update({'heldout_test_score': curr_test_score, 'C': fit_C_value, 'randi': randi,
-                             'train_transform': train_transform, 'test_transform': test_transform,
+                             'train_transform': train_transform, 'test_transform': test_transform, 
+                             'novel': is_novel,
                              'condition': 'data', 'n_trials': len(predicted_labels)}) 
             testdf = pd.DataFrame(iterdict, index=[i])
             i += 1
@@ -1107,7 +1179,7 @@ def train_test_size_subset(iter_num, curr_data=None, sdf=None, verbose=False,
             #### Shuffle labels  - no shuffle, already testd above
             i_list.append(testdf) 
     
-    print([i for i in i_list if not isinstance(i, pd.DataFrame)])
+    #print([i for i in i_list if not isinstance(i, pd.DataFrame)])
     iterdf = pd.concat(i_list, axis=0).reset_index(drop=True)
     iterdf['iteration'] = [iter_num for _ in np.arange(0, len(iterdf))]
     iterdf['n_cells'] = curr_data.shape[1]-1
