@@ -548,12 +548,24 @@ def select_best_fovs(counts_by_fov):
         # This is correctional: if a given FOV is NOT in fovkeys dict, it was a non-repeat FOV
         # for that visual area.
         dkeys_flat = list(itertools.chain(*curr_dsets))
+        # These are datakeys assigned to current visual area:
         reformat_dkeys_check = ['%s_%s' % (s.split('_')[0], s.split('_')[2]) \
-                                    for s in g['datakey'].unique()]
+                                    for s in g['datakey'].unique()] 
+        # Assigned dkeys not in original source dict (which was made manually)
         missing_segmented_fovs = [s for s in reformat_dkeys_check \
-                                if (s not in dkeys_flat) and (s.split('_')[0] not in dkeys_flat) ]
-        for s in missing_segmented_fovs:
-            curr_dsets.append(s)
+                                if (s not in dkeys_flat) and (s.split('_')[0] not in dkeys_flat) ] 
+
+        #for s in missing_segmented_fovs:
+        #    curr_dsets.append(s)
+
+        missing_dsets=[]
+        for fkey in missing_segmented_fovs:
+            found_areas = [k for k, v in fovkeys[animalid].items() \
+                             if any([fkey in vv for vv in v]) or any([fkey.split('_')[0] in vv for vv in v])]    
+            for va in found_areas:
+                if fovkeys[animalid][va] not in missing_dsets:
+                    missing_dsets.append(fovkeys[animalid][va])
+        curr_dsets.extend(list(itertools.chain(*missing_dsets)))
 
         # Select "best" dset if there is a repeat
         if g.shape[0]>1:
@@ -2087,11 +2099,12 @@ def threshold_cells_by_snr(mean_snr, globalcells, snr_thr=10.0, max_snr_thr=None
 # ===============================================================
 from matplotlib.lines import Line2D
 
-def crop_legend_labels(ax, n_hues, bbox_to_anchor=(1.05, 1)):
+def crop_legend_labels(ax, n_hues, bbox_to_anchor=(1.05, 1), loc='upper left', fontsize=12):
     # Get the handles and labels.
     leg_handles, leg_labels = ax.get_legend_handles_labels()
     # When creating the legend, only use the first two elements
-    leg = ax.legend(leg_handles[0:n_hues], leg_labels[0:n_hues], bbox_to_anchor=(1.05, 1), loc=2, borderaxespad=0.)
+    leg = ax.legend(leg_handles[0:n_hues], leg_labels[0:n_hues], 
+            bbox_to_anchor=(1.05, 1), fontsize=fontsize, loc=loc) # borderaxespad=0.)
     return leg
 
 
@@ -2332,7 +2345,7 @@ def get_counts_for_legend(df, area_colors=None, markersize=10, marker='_', lw=1,
         roistr = 'cell' if 'cell' in df.columns else 'roi'
         counts = df.groupby(['visual_area', 'animalid', dkey_name])[roistr].count().reset_index()
         counts.rename(columns={roistr: 'n_cells'}, inplace=True)
-    elif 'n_cells' in df.columns or 'ncells' in df_columns:
+    elif 'n_cells' in df.columns or 'ncells' in df.columns:
         roi_str = 'n_cells' if 'n_cells' in df.columns else 'ncells'
         counts = df.groupby(['visual_area']).mean().reset_index()[['visual_area', roi_str]]
     else:
