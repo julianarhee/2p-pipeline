@@ -830,8 +830,11 @@ def do_fit_within_fov(iter_num, curr_data=None, sdf=None, verbose=False,
     train_configs = sdf[sdf['morphlevel'].isin([class_a, class_b])].index.tolist() 
 
     #### Get trial data for selected cells and config types
-    curr_roi_list = [int(c) for c in curr_data.columns if c != 'config']
+    curr_roi_list = [int(c) for c in curr_data.columns if c not in ['config', 'trial']]
     sample_data = curr_data[curr_data['config'].isin(train_configs)]
+    #### Make sure training data has equal nums of each config
+    sample_data = aggr.equal_counts_df(sample_data)
+
     zdata = sample_data.drop('config', 1)
 
     #### Get labels
@@ -901,8 +904,11 @@ def do_fit_sample_cells(iter_num, sample_size=1, global_rois=None, MEANS=None, s
     train_configs = sdf[sdf['morphlevel'].isin([class_a, class_b])].index.tolist() 
 
     #### Get trial data for selected cells and config types
-    curr_roi_list = [int(c) for c in curr_data.columns if c != 'config']
+    curr_roi_list = [int(c) for c in curr_data.columns if c not in ['config', 'trial']]
     sample_data = curr_data[curr_data['config'].isin(train_configs)]
+    #### Make sure equal counts per config
+    sample_data = aggr.equal_counts_df(sample_data)
+
     zdata = sample_data.drop('config', 1) #sample_data[curr_roi_list].copy()
     #zdata = (data - data.mean()) / data.std()
 
@@ -958,9 +964,7 @@ def fit_shuffled(zdata, targets, C_value=None, test_split=0.2, cv_nfolds=5, rand
         for anchor in class_types: #[class_a, class_b]:
             a_ixs = [i for i, v in enumerate(true_labels) if v==anchor] 
             p_chooseB = sum([1 if p==class_b else 0 for p in predicted_labels[a_ixs]])/float(len(a_ixs))
-            iter_shuffled.update({'p_chooseB': p_chooseB, 
-                                  '%s' % class_name: anchor, 
-                                  'n_split': len(a_ixs), 'n_trials': len(true_labels)})
+            iter_shuffled.update({'p_chooseB': p_chooseB, '%s' % class_name: anchor, 'n_split': len(a_ixs)})
             tmpdf_shuffled = pd.DataFrame(iter_shuffled, index=[i])
             i+=1
             tmp_.append(tmpdf_shuffled)            
@@ -1005,8 +1009,11 @@ def train_test_size_single(iter_num, curr_data=None, sdf=None, verbose=False,
                                 & (sdf[constant_transform]==train_transform))].index.tolist()
 
         #### TRAIN SET: Get trial data for selected cells and config types
-        curr_roi_list = [int(c) for c in curr_data.columns if c != 'config']
+        curr_roi_list = [int(c) for c in curr_data.columns if c not in ['config', 'trial']]
         trainset = curr_data[curr_data['config'].isin(train_configs)].copy()
+        #### Make sure train set has equal counts per config
+        trainset = aggr.equal_counts_df(trainset)
+
         train_data = trainset.drop('config', 1)#zdata = (data - data.mean()) / data.std()
 
         #### TRAIN SET: Get labels
@@ -1035,6 +1042,7 @@ def train_test_size_single(iter_num, curr_data=None, sdf=None, verbose=False,
             tmpdf_shuffled['train_transform'] = train_transform
             tmpdf_shuffled['test_transform'] = train_transform
             tmpdf_shuffled['n_trials'] = len(targets)
+            tmpdf_shuffled['novel'] = False
             i_list.append(tmpdf_shuffled) #iter_df) 
 
         #### Select generalization-test set
@@ -1061,7 +1069,7 @@ def train_test_size_single(iter_num, curr_data=None, sdf=None, verbose=False,
             predicted_labels = trained_svc.predict(curr_test_data)
             mi_dict = get_mutual_info_metrics(curr_test_labels, predicted_labels)
             iterdict.update(mi_dict) 
-            is_novel = train_transform==test_transform
+            is_novel = train_transform!=test_transform
             iterdict.update({'heldout_test_score': curr_test_score, 'C': fit_C_value, 'randi': randi,
                              'train_transform': train_transform, 'test_transform': test_transform,
                              'n_trials': len(predicted_labels), 'novel': is_novel}) 
@@ -1109,8 +1117,11 @@ def train_test_size_subset(iter_num, curr_data=None, sdf=None, verbose=False,
                                 & (sdf[constant_transform].isin(train_sizes))].index.tolist()
 
         #### TRAIN SET: Get trial data for selected cells and config types
-        curr_roi_list = [int(c) for c in curr_data.columns if c != 'config']
+        curr_roi_list = [int(c) for c in curr_data.columns if c not in ['config', 'trial']]
         trainset = curr_data[curr_data['config'].isin(train_configs)].copy()
+        #### Make sure train set has equal counts per config
+        trainset = aggr.equal_counts_df(trainset)
+
         train_data = trainset.drop('config', 1)#zdata = (data - data.mean()) / data.std()
 
         #### TRAIN SET: Get labels
@@ -1140,6 +1151,7 @@ def train_test_size_subset(iter_num, curr_data=None, sdf=None, verbose=False,
             tmpdf_shuffled['train_transform'] = train_transform
             tmpdf_shuffled['test_transform'] = train_transform
             tmpdf_shuffled['n_trials'] = len(targets)
+            tmpdf_shuffled['novel'] = False
             # combine
             i_list.append(tmpdf_shuffled)
 
@@ -1168,7 +1180,7 @@ def train_test_size_subset(iter_num, curr_data=None, sdf=None, verbose=False,
             predicted_labels = trained_svc.predict(curr_test_data)
             mi_dict = get_mutual_info_metrics(curr_test_labels, predicted_labels)
             iterdict.update(mi_dict) 
-            is_novel = train_transform==test_transform
+            is_novel = train_transform!=test_transform
             iterdict.update({'heldout_test_score': curr_test_score, 'C': fit_C_value, 'randi': randi,
                              'train_transform': train_transform, 'test_transform': test_transform, 
                              'novel': is_novel,
@@ -1222,8 +1234,11 @@ def do_fit_train_test_single(iter_num, sample_size=None, global_rois=None, MEANS
                                 & (sdf[constant_transform]==train_transform))].index.tolist()
 
         #### TRAIN SET: Get trial data for selected cells and config types
-        curr_roi_list = [int(c) for c in curr_data.columns if c != 'config']
+        curr_roi_list = [int(c) for c in curr_data.columns if c not in ['config', 'trial']]
         trainset = curr_data[curr_data['config'].isin(train_configs)].copy()
+        #### Make sure train set has equal counts per config
+        trainset = aggr.equal_counts_df(trainset)
+
         train_data = trainset.drop('config', 1)#zdata = (data - data.mean()) / data.std()
 
         #### TRAIN SET: Get labels
@@ -1307,8 +1322,11 @@ def do_fit_train_test_subset(iter_num, global_rois=None, MEANS=None, sdf=None, s
                             & (sdf[constant_transform].isin(train_sizes)))].index.tolist()
 
     #### TRAIN SET: Get trial data for selected cells and config types
-    curr_roi_list = np.array([int(c) for c in curr_data.columns if c != 'config'])
+    curr_roi_list = np.array([int(c) for c in curr_data.columns if c not in ['config', 'trial']])
     train_subset = curr_data[curr_data['config'].isin(train_configs)].copy()
+    #### Make sure train set has equal counts per config
+    train_subset = aggr.equal_counts_df(train_subset)
+
     train_data = train_subset.drop('config', 1)#zdata = (data - data.mean()) / data.std()
 
     #### TRAIN SET: Get labels
@@ -1414,11 +1432,12 @@ def train_test_morph(iter_num, curr_data=None, sdf=None, verbose=False,
 
     #[gdf, MEANS, sdf, sample_size, cv] * n_times)
     '''
-    Does SVC fit for cells within FOV (no global rois). Assumes 'config' column in curr_data.
-    Does n_iterations, return mean/sem/std over iterations as dict of results.
-    Classes (class_a, class_b) should be the labels of the target (i.e., value of morph level).
-   
-    do_shuffle (bool):  Runs fit_svm() twice, once reg and once with labels shuffled. 
+    Test generalization to morph stimuli (combine diff sizes)
+    train_transform: 0_106 (class types)
+    test_transform:  intermediate morphs
+
+    Note: 
+    If do_pchoose=True for fit_shuffled(), returns df updated with ['p_chooseB', 'morphlevel', n_split']. 
     '''   
     #### Select train/test configs for clf A vs B
     class_types = [class_a, class_b]
@@ -1434,8 +1453,11 @@ def train_test_morph(iter_num, curr_data=None, sdf=None, verbose=False,
     i=0
 
     #### TRAIN SET: Get trial data for selected cells and config types
-    curr_roi_list = [int(c) for c in curr_data.columns if c != 'config']
+    curr_roi_list = [int(c) for c in curr_data.columns if c not in ['config', 'trial']]
     trainset = curr_data[curr_data['config'].isin(train_configs)].copy()
+    #### Make sure train set has equal counts per config
+    trainset = aggr.equal_counts_df(trainset)
+
     train_data = trainset.drop('config', 1)#zdata = (data - data.mean()) / data.std()
     train_transform = '_'.join([str(c) for c in class_types]) #'anchor'
 
@@ -1455,15 +1477,14 @@ def train_test_morph(iter_num, curr_data=None, sdf=None, verbose=False,
                                                         test_split=test_split, cv_nfolds=cv_nfolds, 
                                                         C_value=C_value, randi=randi) 
     iterdict.update({'train_transform': train_transform, 'test_transform': train_transform, 
-                     'condition': 'data'})
+                     'condition': 'data', 'novel': False, 'n_trials': len(targets)})
     # Calculate P(choose B)
     #pchoose_dict = get_pchoose(predicted_labels, true_labels, class_a=class_a, class_b=class_b)
 
     for anchor in class_types:
         a_ixs = [i for i, v in enumerate(true_labels) if v==anchor] 
         p_chooseB = sum([1 if p==class_b else 0 for p in predicted_labels[a_ixs]])/float(len(a_ixs))
-        iterdict.update({'p_chooseB': p_chooseB, 'morphlevel': anchor, 'n_split': len(a_ixs), 
-                         'n_trials': len(targets)})
+        iterdict.update({'p_chooseB': p_chooseB, 'morphlevel': anchor, 'n_split': len(a_ixs)})
         tmpdf = pd.DataFrame(iterdict, index=[i])
         i += 1
         i_list.append(tmpdf)
@@ -1477,6 +1498,7 @@ def train_test_morph(iter_num, curr_data=None, sdf=None, verbose=False,
         tmpdf_shuffled['train_transform'] = train_transform
         tmpdf_shuffled['test_transform'] = train_transform
         tmpdf_shuffled['n_trials'] = len(targets)
+        tmpdf_shuffled['novel'] = False
         i_list.append(tmpdf_shuffled) 
 
 
@@ -1496,7 +1518,6 @@ def train_test_morph(iter_num, curr_data=None, sdf=None, verbose=False,
     for test_transform, curr_test_group in test_targets.groupby(['label']): #(['group']):
         # print(test_transform, curr_test_group.shape)
         iterdict = dict((k, None) for k in train_columns) 
-
         curr_test_labels = curr_test_group['label'].values
         curr_test_data = test_data.loc[curr_test_group.index].copy()
         curr_test_data = trained_scaler.transform(curr_test_data)
@@ -1504,7 +1525,9 @@ def train_test_morph(iter_num, curr_data=None, sdf=None, verbose=False,
         # Ignore midp trials
         if test_transform in [-1, midp]:
             split_trials = np.array([int(i) for i, v in enumerate(curr_test_labels) ])
-            split_labels = [class_a for _ in np.arange(0, len(split_trials))]
+            # rando assign values
+            split_labels = [class_a if i<0.5 else class_b for i in np.random.rand(len(split_trials),)]
+            #[class_a for _ in np.arange(0, len(split_trials))]
         else:
             split_trials = np.array([int(i) for i, v in enumerate(curr_test_labels) if v!=midp])
             split_labels = [class_a if lvl < midp else class_b for lvl in curr_test_labels[split_trials]] 
@@ -1514,8 +1537,7 @@ def train_test_morph(iter_num, curr_data=None, sdf=None, verbose=False,
         curr_test_score = trained_svc.score(split_data, split_labels) #(curr_test_data, curr_test_labels)
         iterdict.update({'heldout_test_score': curr_test_score, 'C': fit_C_value, 'randi': randi,
                          'train_transform': train_transform, 'test_transform': test_transform, 
-                         'morphlevel': test_transform,
-                         'n_split': len(split_labels)}) 
+                         'novel': True, 'n_trials': len(curr_test_labels), 'condition': 'data'}) 
  
         # predict
         predicted_labels = trained_svc.predict(curr_test_data)
@@ -1528,9 +1550,7 @@ def train_test_morph(iter_num, curr_data=None, sdf=None, verbose=False,
         #pchoose_dict = get_pchoose(predicted_labels[split_trials], split_labels, class_a=class_a, class_b=class_b)
         #iterdict.update(pchoose_dict)
      
-        iterdict.update({'p_chooseB': p_chooseB, 'C': fit_C_value, 'randi': randi,
-                         'train_transform': train_transform, 'test_transform': test_transform, 
-                         'n_trials': len(predicted_labels), 'condition': 'data'}) 
+        iterdict.update({'p_chooseB': p_chooseB, 'morphlevel': test_transform, 'n_split': len(predicted_labels)}) 
         testdf = pd.DataFrame(iterdict, index=[i])
         i += 1
 
@@ -1570,8 +1590,11 @@ def train_test_morph_single(iter_num, curr_data=None, sdf=None, verbose=False,
 
         #### TRAIN SET --------------------------------------------------------------------
         # Get trial data for selected cells and config types
-        curr_roi_list = [int(c) for c in curr_data.columns if c != 'config']
+        curr_roi_list = [int(c) for c in curr_data.columns if c not in ['config', 'trial']]
         trainset = curr_data[curr_data['config'].isin(train_configs)].copy()
+        #### Make sure train set has equal counts per config
+        trainset = aggr.equal_counts_df(trainset)
+
         train_data = trainset.drop('config', 1)#zdata = (data - data.mean()) / data.std()
 
         # Get labels
@@ -1587,14 +1610,14 @@ def train_test_morph_single(iter_num, curr_data=None, sdf=None, verbose=False,
                                                             test_split=test_split, cv_nfolds=cv_nfolds, 
                                                             C_value=C_value, randi=randi) 
         iterdict.update({'train_transform': train_transform, 'test_transform': train_transform, 
-                         'condition': 'data'})
+                         'condition': 'data', 'n_trials': len(true_labels), 'novel': False})
 
         for anchor in class_types:
             a_ixs = [i for i, v in enumerate(true_labels) if v==anchor] 
             p_chooseB = sum([1 if p==class_b else 0 for p in predicted_labels[a_ixs]])/float(len(a_ixs))
             iterdict.update({'p_chooseB': p_chooseB, 
-                            '%s' % class_name: anchor, '%s' % constant_transform: train_transform, 
-                            'n_split': len(a_ixs), 'n_trials': len(true_labels)})
+                            '%s' % class_name: anchor, #'%s' % constant_transform: train_transform, 
+                            'n_split': len(a_ixs)})
             tmpdf = pd.DataFrame(iterdict, index=[i])
             i += 1
             i_list.append(tmpdf)
@@ -1607,8 +1630,9 @@ def train_test_morph_single(iter_num, curr_data=None, sdf=None, verbose=False,
                                     do_pchoose=True, class_types=class_types, class_name=class_name) 
             tmpdf_shuffled['train_transform'] = train_transform
             tmpdf_shuffled['test_transform'] = train_transform
-            tmpdf_shuffled['%s' % constant_transform] = train_transform 
-            tmpdf_shuffled['condition'] = 'shuffled'
+            #tmpdf_shuffled['%s' % constant_transform] = train_transform 
+            tmpdf_shuffled['n_trials'] = len(targets) 
+            tmpdf_shuffled['novel'] = False
             i_list.append(tmpdf_shuffled) 
 
         #### TEST SET --------------------------------------------------------------------
@@ -1625,12 +1649,28 @@ def train_test_morph_single(iter_num, curr_data=None, sdf=None, verbose=False,
         test_targets['label'] = [sdf['morphlevel'][cfg] for cfg in test_targets['config'].values]
         test_targets['group'] = [sdf['size'][cfg] for cfg in test_targets['config'].values]
 
-
+        fit_C_value = iterdict['C']
         #### Test SVM
-        iterdict={}
-        for test_transform, curr_test_group in test_targets.groupby(['label']):
+        for curr_morph_test, curr_test_group in test_targets.groupby(['label']):
+            iterdict = dict((k, None) for k in train_columns) 
+            curr_test_labels = curr_test_group['label'].values
             curr_test_data = test_data.loc[curr_test_group.index].copy()
             curr_test_data = trained_scaler.transform(curr_test_data)
+
+            # Ignore midp trials
+            if curr_morph_test in [-1, midp]:
+                split_trials = np.array([int(i) for i, v in enumerate(curr_test_labels) ])
+                # rando assign values
+                split_labels = [class_a if i<0.5 else class_b for i in np.random.rand(len(split_trials),)]
+            else:
+                split_trials = np.array([int(i) for i, v in enumerate(curr_test_labels) if v!=midp])
+                split_labels = [class_a if lvl < midp else class_b for lvl in curr_test_labels[split_trials]] 
+
+            split_data = curr_test_data[split_trials, :]
+            curr_test_score = trained_svc.score(split_data, split_labels) #(curr_test_data, curr_test_labels)
+            iterdict.update({'heldout_test_score': curr_test_score, 'C': fit_C_value, 'randi': randi,
+                             'train_transform': train_transform, 'test_transform': train_transform, 
+                             'novel': True, 'n_trials': len(curr_test_labels), 'condition': 'data'}) 
 
             #### Calculate p choose B on trials where morph X shown (test_transform)
             predicted_labels = trained_svc.predict(curr_test_data)
@@ -1638,11 +1678,10 @@ def train_test_morph_single(iter_num, curr_data=None, sdf=None, verbose=False,
                                 for p in predicted_labels])/float(len(predicted_labels))
 
             iterdict.update({'p_chooseB': p_chooseB, 
-                             '%s' % class_name: test_transform,
-                             '%s' % constant_transform: train_transform,
-                             'train_transform': train_transform, 'test_transform': train_transform})
-            iterdict.update({'condition': 'data', 'n_trials': len(predicted_labels), 
-                             'n_split': len(predicted_labels)}) 
+                             '%s' % class_name: curr_morph_test, #test_transform,
+                             #'%s' % constant_transform: train_transform,
+                            'n_split': len(predicted_labels)})
+                             
             i_list.append(pd.DataFrame(iterdict, index=[i]))
             i+=1 
             
@@ -1684,8 +1723,11 @@ def do_fit_train_test_morph(iter_num, global_rois=None, MEANS=None, sdf=None, sa
 
     #### TRAIN SET --------------------------------------------------------------------
     # Get trial data for selected cells and config types
-    curr_roi_list = [int(c) for c in curr_data.columns if c != 'config']
+    curr_roi_list = [int(c) for c in curr_data.columns if c not in ['config', 'trial']]
     trainset = curr_data[curr_data['config'].isin(train_configs)].copy()
+    #### Make sure train set has equal counts per config
+    trainset = aggr.equal_counts_df(trainset)
+
     train_data = trainset.drop('config', 1)#zdata = (data - data.mean()) / data.std()
 
     # Get labels
@@ -1767,8 +1809,11 @@ def do_fit_train_single_test_morph(iter_num, global_rois=None, MEANS=None, sdf=N
 
         #### TRAIN SET --------------------------------------------------------------------
         # Get trial data for selected cells and config types
-        curr_roi_list = [int(c) for c in curr_data.columns if c != 'config']
+        curr_roi_list = [int(c) for c in curr_data.columns if c not in ['config', 'trial']]
         trainset = curr_data[curr_data['config'].isin(train_configs)].copy()
+        #### Make sure train set has equal counts per config
+        trainset = aggr.equal_counts_df(trainset)
+
         train_data = trainset.drop('config', 1)#zdata = (data - data.mean()) / data.std()
 
         # Get labels
