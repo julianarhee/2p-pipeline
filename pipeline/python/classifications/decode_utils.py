@@ -62,6 +62,81 @@ from sklearn.model_selection import GridSearchCV
 from sklearn.metrics import classification_report
 from sklearn import svm
 
+def balance_pupil_split(pupildf, feature_name='pupil_fraction', n_cuts=3,
+                        match_cond=True, match_cond_name='size', equalize_after_split=True, 
+                        equalize_by='config', common_labels=None, verbose=False):
+    '''
+    Split pupildf (trials) by "low" and "high" states, with diff options for balancing samples.
+    match_cond (bool): 
+        Set to split pupil distribution within condition (for ex., match pupil for each SIZE separately).
+    match_cond_name (str):
+        The condition to split by, if match_cond==True *(Should be a column in pupildf)
+    equalize_after_split (bool):
+        Set to equalize across stimulus configs AFTER doing pupil split.
+    equalize_by (str):
+        Condition to match across, e.g., config label, or, morphlevel, etc. *(Should be column in pupildf)
+    '''
+    from pipeline.python.eyetracker import dlc_utils as dlcutils
+    if match_cond:
+        assert match_cond_name in pupildf.columns, "Requested split within <%s>, but not found." % match_cond_name
+        low_=[]; high_=[];
+        for sz, sd in pupildf.groupby([match_cond_name]):
+            p_low, p_high = dlcutils.split_pupil_range(sd, feature_name=feature_name, n_cuts=n_cuts)
+            if equalize_after_split:
+                p_low_eq, p_high_eq = balance_samples_by_config(p_low, p_high, 
+                                            config_label=equalize_by, common_labels=common_labels)
+                if verbose:
+                    print("... sz %i, pre/post balance. Low: %i/%i | High: %i/%i" \
+                      % (sz, p_low.shape[0], p_low_eq.shape[0], p_high.shape[0], p_high_eq.shape[0]))
+                low_.append(p_low_eq)
+                high_.append(p_high_eq)
+            else:
+                low_.append(p_low)
+                high_.append(p_high)
+        high = pd.concat(high_)
+        low = pd.concat(low_)
+    else:
+        low, high = dlcutils.split_pupil_range(pupildf, feature_name=pupil_feature, n_cuts=n_cuts)
+
+    return low, high
+
+def balance_samples_by_config(df1, df2, config_label='config', common_labels=None):
+    '''
+    Given 2 dataframes with config labels on each trial, match reps per config.
+    config_label: if 'config', matches across all configs found (config001, config002, etc.)
+    For ex., can also use "morphlevel" to just match counts of morphlevel (ignoring unique size, etc.)
+    '''
+    assert config_label in df1.columns, "Label <%s> not in df1 columns" % config_label
+    assert config_label in df2.columns, "Label <%s> not in df2 columns" % config_label
+
+    if common_labels is None:
+        common_labels = np.intersect1d(df1[config_label].unique(), df2[config_label].unique())
+        config_subset = False
+    else:
+        config_subset = True
+ 
+    df1_eq = aggr.equal_counts_df(df1[df1[config_label].isin(common_labels)], equalize_by=config_label)
+    df2_eq = aggr.equal_counts_df(df2[df2[config_label].isin(common_labels)], equalize_by=config_label) 
+ 
+    # Get min N reps per condition
+    min_reps_per = min([df1_eq[config_label].value_counts()[0], df2_eq[config_label].value_counts()[0]])
+    
+    # Draw min_reps_per samples without replacement
+    if config_subset:
+        # we set sample #s by train configs, and include the other trials for test
+        df1_resampled = pd.concat([g.sample(n=min_reps_per, replace=False) if g.shape[0]>min_reps_per \
+                                    else g for c, g in df1.groupby([config_label])])
+        df2_resampled = pd.concat([g.sample(n=min_reps_per, replace=False) if g.shape[0]>min_reps_per \
+                                    else g for c, g in df2.groupby([config_label])])
+
+    else:
+        df2_resampled = pd.concat([g.sample(n=min_reps_per, replace=False) \
+                                    for c, g in df2_eq.groupby([config_label])])
+        df1_resampled = pd.concat([g.sample(n=min_reps_per, replace=False) \
+                                    for c, g in df1_eq.groupby([config_label])])
+
+    return df1_resampled, df2_resampled
+
 
 def get_percentile_shuffled(iterdf, metric='heldout_test_score'):
     # Use bootstrap distn to calculate percentiles
@@ -178,7 +253,7 @@ def initializer(terminating_):
 def pool_bootstrap(neuraldf, sdf, n_iterations=50, n_processes=1, 
                    C_value=None, cv_nfolds=5, test_split=0.2, 
                    test_type=None, n_train_configs=4, verbose=False,
-                   class_a=0, class_b=106, do_shuffle=True):   
+                   class_a=0, class_b=106, do_shuffle=True, balance_configs=True):   
     '''
     This function replaces fit_svm_mp() -- includes opts for generalization test.
     Only tested for within-fov analyses (by_fov).
@@ -205,12 +280,12 @@ def pool_bootstrap(neuraldf, sdf, n_iterations=50, n_processes=1,
         if test_type=='morph':
             func = partial(train_test_morph, curr_data=neuraldf, sdf=sdf, 
                                 verbose=verbose, C_value=C_value, test_split=test_split, cv_nfolds=cv_nfolds,
-                                class_a=class_a, class_b=class_b) 
+                                class_a=class_a, class_b=class_b, balance_configs=balance_configs) 
 #                               MEANS=MEANS, sdf=sdf, sample_size=sample_size)
         elif test_type=='morph_single':
             func = partial(train_test_morph_single, curr_data=neuraldf, sdf=sdf, 
                                 verbose=verbose, C_value=C_value, test_split=test_split, cv_nfolds=cv_nfolds,
-                                class_a=class_a, class_b=class_b) 
+                                class_a=class_a, class_b=class_b, balance_configs=balance_configs) 
 #
 #            if single: # train on 1 size, test on other sizes
 #                func = partial(dutils.do_fit_train_single_test_morph, global_rois=global_rois, 
@@ -220,18 +295,19 @@ def pool_bootstrap(neuraldf, sdf, n_iterations=50, n_processes=1,
 #                               MEANS=MEANS, sdf=sdf, sample_size=sample_size)             
         elif test_type=='size_single':
             func = partial(train_test_size_single, curr_data=neuraldf, sdf=sdf,
-                                verbose=verbose, C_value=C_value) 
+                                verbose=verbose, C_value=C_value, balance_configs=balance_configs) 
 #                func = partial(dutils.do_fit_train_test_single, global_rois=global_rois, 
 #                               MEANS=MEANS, sdf=sdf, sample_size=sample_size)
         elif test_type=='size_subset':
             func = partial(train_test_size_subset, curr_data=neuraldf, sdf=sdf,
-                                verbose=verbose, C_value=C_value, n_train_configs=n_train_configs) 
+                                verbose=verbose, C_value=C_value, n_train_configs=n_train_configs,
+                                balance_configs=balance_configs) 
 #                func = partial(dutils.cycle_train_sets, global_rois=global_rois, 
 #                               MEANS=MEANS, sdf=sdf, sample_size=sample_size, 
 #                                n_train_configs=n_train_configs)
         else:
             func = partial(do_fit_within_fov, curr_data=neuraldf, sdf=sdf, verbose=verbose,
-                                                    C_value=C_value)
+                            C_value=C_value, balance_configs=balance_configs)
         output = pool.map_async(func, range(n_iterations)).get(999999)
         #results = [pool.apply_async(do_fit_within_fov, args=(i, neuraldf, sdf, vb, C)) \
         #            for i in range(n_iterations)]
@@ -661,7 +737,7 @@ def fit_svm_shuffle(zdata, targets, test_split=0.2, cv_nfolds=5, verbose=False, 
     #### Cross validate (tune C w/ train data)
     if cv:
         cv_grid = tune_C(train_data, train_labels, scoring_metric='accuracy', 
-                            cv_nfolds=3, #cv_nfolds, 
+                            cv_nfolds=cv_nfolds, 
                            test_split=test_split, verbose=verbose) #, n_processes=n_processes)
 
         C_value = cv_grid.best_params_['C'] #cv_results['accuracy']['C']
@@ -752,7 +828,7 @@ def fit_svm(zdata, targets, test_split=0.2, cv_nfolds=5,  n_processes=1,
     #### Cross validate (tune C w/ train data)
     if cv:
         cv_grid = tune_C(train_data, train_labels, scoring_metric='accuracy', 
-                            cv_nfolds=3, #cv_nfolds, 
+                        cv_nfolds=cv_nfolds, #cv_nfolds, 
                            test_split=test_split, verbose=verbose) #, n_processes=n_processes)
 
         C_value = cv_grid.best_params_['C'] #cv_results['accuracy']['C']
@@ -815,7 +891,7 @@ def get_mutual_info_metrics(curr_test_labels, predicted_labels):
 # --------------------------------------------------------------------------------
 def do_fit_within_fov(iter_num, curr_data=None, sdf=None, verbose=False,
                     C_value=None, test_split=0.2, cv_nfolds=5, class_a=0, class_b=106,
-                    do_shuffle=True):
+                    do_shuffle=True, balance_configs=True):
 
     #[gdf, MEANS, sdf, sample_size, cv] * n_times)
     '''
@@ -832,8 +908,9 @@ def do_fit_within_fov(iter_num, curr_data=None, sdf=None, verbose=False,
     #### Get trial data for selected cells and config types
     curr_roi_list = [int(c) for c in curr_data.columns if c not in ['config', 'trial']]
     sample_data = curr_data[curr_data['config'].isin(train_configs)]
-    #### Make sure training data has equal nums of each config
-    sample_data = aggr.equal_counts_df(sample_data)
+    if balance_configs:
+        #### Make sure training data has equal nums of each config
+        sample_data = aggr.equal_counts_df(sample_data)
 
     zdata = sample_data.drop('config', 1)
 
@@ -865,11 +942,14 @@ def do_fit_within_fov(iter_num, curr_data=None, sdf=None, verbose=False,
     # Meta info
     iter_df['n_cells'] = zdata.shape[1]
     iter_df['n_trials'] = zdata.shape[0]
+    for label, g in targets.groupby(['label']):
+        iter_df['n_samples_%i' % label] = len(g['label'])
+
     iter_df['iteration'] = iter_num
 
     return iter_df 
 
-def sample_neuraldata(sample_size, global_rois, ):
+def sample_neuraldata(sample_size, global_rois, MEANS):
     if isinstance(MEANS, dict):
         if isinstance(MEANS[MEANS.keys()[0]], dict): # df_is_split
             curr_data = get_trials_for_N_cells_split(sample_size, global_rois, MEANS)
@@ -880,9 +960,14 @@ def sample_neuraldata(sample_size, global_rois, ):
 
     return curr_data
 
+#def do_fit_within_fov(iter_num, curr_data=None, sdf=None, verbose=False,
+#                    C_value=None, test_split=0.2, cv_nfolds=5, class_a=0, class_b=106,
+#                    do_shuffle=True, balance_configs=True):
+#
+
 def do_fit_sample_cells(iter_num, sample_size=1, global_rois=None, MEANS=None, sdf=None, 
            C_value=None, test_split=0.2, cv_nfolds=5, class_a=0, class_b=106, 
-           do_shuffle=True, verbose=False):
+           do_shuffle=True, verbose=False, balance_configs=True):
     #[gdf, MEANS, sdf, sample_size, cv] * n_times)
     '''
     Resample w/ replacement from pooled cells (across datasets). Assumes 'sdf' is same for all datasets.
@@ -893,6 +978,7 @@ def do_fit_sample_cells(iter_num, sample_size=1, global_rois=None, MEANS=None, s
    
     sample_size (int):  sample size 
     '''   
+    i_list=[]
     #### Get new sample set
     try:
         curr_data = sample_neuraldata(sample_size, global_rois, MEANS)
@@ -906,8 +992,9 @@ def do_fit_sample_cells(iter_num, sample_size=1, global_rois=None, MEANS=None, s
     #### Get trial data for selected cells and config types
     curr_roi_list = [int(c) for c in curr_data.columns if c not in ['config', 'trial']]
     sample_data = curr_data[curr_data['config'].isin(train_configs)]
-    #### Make sure equal counts per config
-    sample_data = aggr.equal_counts_df(sample_data)
+    if balance_configs:
+        #### Make sure equal counts per config
+        sample_data = aggr.equal_counts_df(sample_data)
 
     zdata = sample_data.drop('config', 1) #sample_data[curr_roi_list].copy()
     #zdata = (data - data.mean()) / data.std()
@@ -923,17 +1010,17 @@ def do_fit_sample_cells(iter_num, sample_size=1, global_rois=None, MEANS=None, s
                             cv_nfolds=cv_nfolds, randi=randi)
     curr_iter['condition'] = 'data'
     tmp_df = pd.DataFrame(curr_iter, index=[iter_num]) 
+    i_list.append(tmp_df)
 
+    #### Shuffle labels
     if do_shuffle:
-        #print("... shuffling")
-        curr_iter_shuffled = fit_shuffled(zdata, targets, C_value=C_value, verbose=verbose,
-                                test_split=test_split, cv_nfolds=cv_nfolds, randi=randi) 
-        iter_df_shuffled = pd.DataFrame(curr_iter_shuffled, index=[iter_num])    
-        # combine
-        iter_df = pd.concat([tmp_df, iter_df_shuffled], axis=0) 
-    else:
-        iter_df = tmp_df.copy() #pd.DataFrame(curr_iter, index=[iter_num])
-
+        tmpdf_shuffled = fit_shuffled(zdata, targets, C_value=C_value, verbose=verbose,
+                                test_split=test_split, cv_nfolds=cv_nfolds, randi=randi)
+        tmpdf_shuffled.index = [iter_num]   
+        i_list.append(tmpdf_shuffled)
+ 
+    iter_df = pd.concat(i_list, axis=0) 
+ 
     iter_df['n_cells'] = zdata.shape[1]
     iter_df['n_trials'] = zdata.shape[0]
     iter_df['iteration'] = iter_num 
@@ -983,7 +1070,7 @@ def fit_shuffled(zdata, targets, C_value=None, test_split=0.2, cv_nfolds=5, rand
 # ------
 def train_test_size_single(iter_num, curr_data=None, sdf=None, verbose=False,
                     C_value=None, test_split=0.2, cv_nfolds=5, class_a=0, class_b=106,
-                    do_shuffle=True):
+                    do_shuffle=True, balance_configs=True):
 
     #[gdf, MEANS, sdf, sample_size, cv] * n_times)
     '''
@@ -1011,8 +1098,9 @@ def train_test_size_single(iter_num, curr_data=None, sdf=None, verbose=False,
         #### TRAIN SET: Get trial data for selected cells and config types
         curr_roi_list = [int(c) for c in curr_data.columns if c not in ['config', 'trial']]
         trainset = curr_data[curr_data['config'].isin(train_configs)].copy()
-        #### Make sure train set has equal counts per config
-        trainset = aggr.equal_counts_df(trainset)
+        if balance_configs:
+            #### Make sure train set has equal counts per config
+            trainset = aggr.equal_counts_df(trainset)
 
         train_data = trainset.drop('config', 1)#zdata = (data - data.mean()) / data.std()
 
@@ -1031,6 +1119,9 @@ def train_test_size_single(iter_num, curr_data=None, sdf=None, verbose=False,
         iterdict.update({'train_transform': train_transform, 'test_transform': train_transform,
                         'condition': 'data', 'n_trials': len(targets), 'novel': False})
         tmpdf = pd.DataFrame(iterdict, index=[i])
+        for label, g in targets.groupby(['label']):
+            tmpdf['n_samples_%i' % label] = len(g['label'])
+         
         i_list.append(tmpdf) #_shuffled = pd.DataFrame(curr_iter_shuffled, index=[i])
         i+=1
         train_columns = tmpdf.columns.tolist()
@@ -1043,6 +1134,8 @@ def train_test_size_single(iter_num, curr_data=None, sdf=None, verbose=False,
             tmpdf_shuffled['test_transform'] = train_transform
             tmpdf_shuffled['n_trials'] = len(targets)
             tmpdf_shuffled['novel'] = False
+            for label, g in targets.groupby(['label']):
+                tmpdf['n_samples_%i' % label] = len(g['label']) 
             i_list.append(tmpdf_shuffled) #iter_df) 
 
         #### Select generalization-test set
@@ -1074,6 +1167,9 @@ def train_test_size_single(iter_num, curr_data=None, sdf=None, verbose=False,
                              'train_transform': train_transform, 'test_transform': test_transform,
                              'n_trials': len(predicted_labels), 'novel': is_novel}) 
             testdf = pd.DataFrame(iterdict, index=[i])
+            for label, g in test_targets.groupby(['label']):
+                testdf['n_samples_%i' % label] = len(g['label'])
+     
             i += 1
 
             #### Shuffle labels  - no shuffle, already testd above
@@ -1088,7 +1184,7 @@ def train_test_size_single(iter_num, curr_data=None, sdf=None, verbose=False,
 
 def train_test_size_subset(iter_num, curr_data=None, sdf=None, verbose=False,
                     C_value=None, test_split=0.2, cv_nfolds=5, class_a=0, class_b=106,
-                    do_shuffle=True, n_train_configs=4):
+                    do_shuffle=True, n_train_configs=4, balance_configs=True):
 
     #[gdf, MEANS, sdf, sample_size, cv] * n_times)
     '''
@@ -1119,8 +1215,9 @@ def train_test_size_subset(iter_num, curr_data=None, sdf=None, verbose=False,
         #### TRAIN SET: Get trial data for selected cells and config types
         curr_roi_list = [int(c) for c in curr_data.columns if c not in ['config', 'trial']]
         trainset = curr_data[curr_data['config'].isin(train_configs)].copy()
-        #### Make sure train set has equal counts per config
-        trainset = aggr.equal_counts_df(trainset)
+        if balance_configs:
+            #### Make sure train set has equal counts per config
+            trainset = aggr.equal_counts_df(trainset)
 
         train_data = trainset.drop('config', 1)#zdata = (data - data.mean()) / data.std()
 
@@ -1140,6 +1237,8 @@ def train_test_size_subset(iter_num, curr_data=None, sdf=None, verbose=False,
         iterdict.update({'train_transform': train_transform, 'test_transform': train_transform, 
                          'condition': 'data', 'n_trials': len(targets), 'novel': False})
         tmpdf = pd.DataFrame(iterdict, index=[i])
+        for label, g in targets.groupby(['label']):
+            tmpdf['n_samples_%i' % label] = len(g['label']) 
         i+=1
         i_list.append(tmpdf)
         train_columns = tmpdf.columns.tolist()
@@ -1186,6 +1285,8 @@ def train_test_size_subset(iter_num, curr_data=None, sdf=None, verbose=False,
                              'novel': is_novel,
                              'condition': 'data', 'n_trials': len(predicted_labels)}) 
             testdf = pd.DataFrame(iterdict, index=[i])
+            for label, g in test_targets.groupby(['label']):
+                testdf['n_samples_%i' % label] = len(g['label']) 
             i += 1
 
             #### Shuffle labels  - no shuffle, already testd above
@@ -1201,7 +1302,8 @@ def train_test_size_subset(iter_num, curr_data=None, sdf=None, verbose=False,
 
 # -------------------------
 def do_fit_train_test_single(iter_num, sample_size=None, global_rois=None, MEANS=None, sdf=None,
-                            cv=True, C_value=None, test_size=0.2, cv_nfolds=5, class_a=0, class_b=106):
+                            cv=True, C_value=None, test_size=0.2, cv_nfolds=5, class_a=0, class_b=106,
+                            balance_configs=True):
     '''
     Train/test PER SIZE.
 
@@ -1236,8 +1338,9 @@ def do_fit_train_test_single(iter_num, sample_size=None, global_rois=None, MEANS
         #### TRAIN SET: Get trial data for selected cells and config types
         curr_roi_list = [int(c) for c in curr_data.columns if c not in ['config', 'trial']]
         trainset = curr_data[curr_data['config'].isin(train_configs)].copy()
-        #### Make sure train set has equal counts per config
-        trainset = aggr.equal_counts_df(trainset)
+        if balance_configs:
+            #### Make sure train set has equal counts per config
+            trainset = aggr.equal_counts_df(trainset)
 
         train_data = trainset.drop('config', 1)#zdata = (data - data.mean()) / data.std()
 
@@ -1295,7 +1398,8 @@ def do_fit_train_test_single(iter_num, sample_size=None, global_rois=None, MEANS
 
 def do_fit_train_test_subset(iter_num, global_rois=None, MEANS=None, sdf=None, sample_size=None,
                              train_sizes=[10, 30, 50], test_sizes=[20, 40],
-                             cv=True, C_value=None, test_split=0.2, cv_nfolds=5, class_a=0, class_b=106):
+                             cv=True, C_value=None, test_split=0.2, cv_nfolds=5, class_a=0, class_b=106,
+                            balance_configs=True):
     '''
     Resample w/ replacement from pooled cells (across datasets). Assumes 'sdf' is same for all datasets.
     Return fit results for 1 iteration.
@@ -1324,8 +1428,9 @@ def do_fit_train_test_subset(iter_num, global_rois=None, MEANS=None, sdf=None, s
     #### TRAIN SET: Get trial data for selected cells and config types
     curr_roi_list = np.array([int(c) for c in curr_data.columns if c not in ['config', 'trial']])
     train_subset = curr_data[curr_data['config'].isin(train_configs)].copy()
-    #### Make sure train set has equal counts per config
-    train_subset = aggr.equal_counts_df(train_subset)
+    if balance_configs:
+        #### Make sure train set has equal counts per config
+        train_subset = aggr.equal_counts_df(train_subset)
 
     train_data = train_subset.drop('config', 1)#zdata = (data - data.mean()) / data.std()
 
@@ -1428,7 +1533,7 @@ def get_pchoose(predicted_labels, true_labels, class_a=0, class_b=106):
 
 def train_test_morph(iter_num, curr_data=None, sdf=None, verbose=False,
                     C_value=None, test_split=0.2, cv_nfolds=5, class_a=0, class_b=106, midp=53,
-                    do_shuffle=True):
+                    do_shuffle=True, balance_configs=True):
 
     #[gdf, MEANS, sdf, sample_size, cv] * n_times)
     '''
@@ -1455,8 +1560,9 @@ def train_test_morph(iter_num, curr_data=None, sdf=None, verbose=False,
     #### TRAIN SET: Get trial data for selected cells and config types
     curr_roi_list = [int(c) for c in curr_data.columns if c not in ['config', 'trial']]
     trainset = curr_data[curr_data['config'].isin(train_configs)].copy()
-    #### Make sure train set has equal counts per config
-    trainset = aggr.equal_counts_df(trainset)
+    if balance_configs:
+        #### Make sure train set has equal counts per config
+        trainset = aggr.equal_counts_df(trainset)
 
     train_data = trainset.drop('config', 1)#zdata = (data - data.mean()) / data.std()
     train_transform = '_'.join([str(c) for c in class_types]) #'anchor'
@@ -1486,6 +1592,8 @@ def train_test_morph(iter_num, curr_data=None, sdf=None, verbose=False,
         p_chooseB = sum([1 if p==class_b else 0 for p in predicted_labels[a_ixs]])/float(len(a_ixs))
         iterdict.update({'p_chooseB': p_chooseB, 'morphlevel': anchor, 'n_split': len(a_ixs)})
         tmpdf = pd.DataFrame(iterdict, index=[i])
+        for label, g in targets.groupby(['label']):
+            tmpdf['n_samples_%i' % label] = len(g['label']) 
         i += 1
         i_list.append(tmpdf)
     train_columns = tmpdf.columns.tolist()
@@ -1499,6 +1607,9 @@ def train_test_morph(iter_num, curr_data=None, sdf=None, verbose=False,
         tmpdf_shuffled['test_transform'] = train_transform
         tmpdf_shuffled['n_trials'] = len(targets)
         tmpdf_shuffled['novel'] = False
+        for label, g in targets.groupby(['label']):
+            tmpdf_shuffled['n_samples_%i' % label] = len(g['label'])
+ 
         i_list.append(tmpdf_shuffled) 
 
 
@@ -1552,6 +1663,7 @@ def train_test_morph(iter_num, curr_data=None, sdf=None, verbose=False,
      
         iterdict.update({'p_chooseB': p_chooseB, 'morphlevel': test_transform, 'n_split': len(predicted_labels)}) 
         testdf = pd.DataFrame(iterdict, index=[i])
+        testdf['n_samples_%i' % test_transform] = len(curr_test_labels) 
         i += 1
 
         #### Shuffle labels  - no shuffle, already testd above
@@ -1566,7 +1678,7 @@ def train_test_morph(iter_num, curr_data=None, sdf=None, verbose=False,
 
 def train_test_morph_single(iter_num, curr_data=None, sdf=None, verbose=False,
                     C_value=None, test_split=0.2, cv_nfolds=5, class_a=0, class_b=106, midp=53,
-                    do_shuffle=True):
+                    do_shuffle=True, balance_configs=True):
     '''
     Resample w/ replacement from pooled cells (across datasets). Assumes 'sdf' is same for all datasets.
     Return fit results for 1 iteration.
@@ -1592,8 +1704,9 @@ def train_test_morph_single(iter_num, curr_data=None, sdf=None, verbose=False,
         # Get trial data for selected cells and config types
         curr_roi_list = [int(c) for c in curr_data.columns if c not in ['config', 'trial']]
         trainset = curr_data[curr_data['config'].isin(train_configs)].copy()
-        #### Make sure train set has equal counts per config
-        trainset = aggr.equal_counts_df(trainset)
+        if balance_configs:
+            #### Make sure train set has equal counts per config
+            trainset = aggr.equal_counts_df(trainset)
 
         train_data = trainset.drop('config', 1)#zdata = (data - data.mean()) / data.std()
 
@@ -1619,6 +1732,9 @@ def train_test_morph_single(iter_num, curr_data=None, sdf=None, verbose=False,
                             '%s' % class_name: anchor, #'%s' % constant_transform: train_transform, 
                             'n_split': len(a_ixs)})
             tmpdf = pd.DataFrame(iterdict, index=[i])
+            for label, g in targets.groupby(['label']):
+                tmpdf['n_samples_%i' % label] = len(g['label'])
+     
             i += 1
             i_list.append(tmpdf)
         train_columns = tmpdf.columns.tolist()
@@ -1633,6 +1749,9 @@ def train_test_morph_single(iter_num, curr_data=None, sdf=None, verbose=False,
             #tmpdf_shuffled['%s' % constant_transform] = train_transform 
             tmpdf_shuffled['n_trials'] = len(targets) 
             tmpdf_shuffled['novel'] = False
+            for label, g in targets.groupby(['label']):
+                tmpdf_shuffled['n_samples_%i' % label] = len(g['label'])
+     
             i_list.append(tmpdf_shuffled) 
 
         #### TEST SET --------------------------------------------------------------------
@@ -1681,8 +1800,10 @@ def train_test_morph_single(iter_num, curr_data=None, sdf=None, verbose=False,
                              '%s' % class_name: curr_morph_test, #test_transform,
                              #'%s' % constant_transform: train_transform,
                             'n_split': len(predicted_labels)})
-                             
-            i_list.append(pd.DataFrame(iterdict, index=[i]))
+            testdf = pd.DataFrame(iterdict, index=[i])
+            testdf['n_samples_%i' % curr_morph_test] = len(curr_test_labels)
+    
+            i_list.append(testdf) #pd.DataFrame(iterdict, index=[i]))
             i+=1 
             
     iterdf = pd.concat(i_list, axis=0).reset_index(drop=True)
@@ -1697,7 +1818,8 @@ def train_test_morph_single(iter_num, curr_data=None, sdf=None, verbose=False,
 # ------
 
 def do_fit_train_test_morph(iter_num, global_rois=None, MEANS=None, sdf=None, sample_size=None,
-                               cv=True, C_value=None, test_size=0.2, cv_nfolds=5, class_a=0, class_b=106):
+                               cv=True, C_value=None, test_size=0.2, cv_nfolds=5, class_a=0, class_b=106,
+                            balance_configs=True):
     '''
     Resample w/ replacement from pooled cells (across datasets). Assumes 'sdf' is same for all datasets.
     Return fit results for 1 iteration.
@@ -1725,8 +1847,9 @@ def do_fit_train_test_morph(iter_num, global_rois=None, MEANS=None, sdf=None, sa
     # Get trial data for selected cells and config types
     curr_roi_list = [int(c) for c in curr_data.columns if c not in ['config', 'trial']]
     trainset = curr_data[curr_data['config'].isin(train_configs)].copy()
-    #### Make sure train set has equal counts per config
-    trainset = aggr.equal_counts_df(trainset)
+    if balance_configs:
+        #### Make sure train set has equal counts per config
+        trainset = aggr.equal_counts_df(trainset)
 
     train_data = trainset.drop('config', 1)#zdata = (data - data.mean()) / data.std()
 
@@ -1782,7 +1905,8 @@ def do_fit_train_test_morph(iter_num, global_rois=None, MEANS=None, sdf=None, sa
 
 
 def do_fit_train_single_test_morph(iter_num, global_rois=None, MEANS=None, sdf=None, sample_size=None,
-                               cv=True, C_value=None, test_size=0.2, cv_nfolds=5, class_a=0, class_b=106):
+                               cv=True, C_value=None, test_size=0.2, cv_nfolds=5, class_a=0, class_b=106,
+                        balance_configs=True):
     '''
     Resample w/ replacement from pooled cells (across datasets). Assumes 'sdf' is same for all datasets.
     Return fit results for 1 iteration.
@@ -1811,8 +1935,9 @@ def do_fit_train_single_test_morph(iter_num, global_rois=None, MEANS=None, sdf=N
         # Get trial data for selected cells and config types
         curr_roi_list = [int(c) for c in curr_data.columns if c not in ['config', 'trial']]
         trainset = curr_data[curr_data['config'].isin(train_configs)].copy()
-        #### Make sure train set has equal counts per config
-        trainset = aggr.equal_counts_df(trainset)
+        if balance_configs:
+            #### Make sure train set has equal counts per config
+            trainset = aggr.equal_counts_df(trainset)
 
         train_data = trainset.drop('config', 1)#zdata = (data - data.mean()) / data.std()
 
