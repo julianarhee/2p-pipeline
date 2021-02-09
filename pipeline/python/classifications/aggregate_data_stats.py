@@ -964,10 +964,14 @@ def get_source_data(experiment, traceid='traces001',
             return edata, cells, MEANS
 
 def zscore_neuraldf(neuraldf):
-    data = neuraldf.drop('config', 1) #sample_data[curr_roi_list].copy()
+    cols_drop = ['config', 'trial'] if 'trial' in neuraldf.columns else ['config']
+    data = neuraldf.drop(cols_drop, 1) #sample_data[curr_roi_list].copy()
     zdata = (data - np.nanmean(data)) / np.nanstd(data)
     zdf = pd.DataFrame(zdata, index=neuraldf.index, columns=data.columns)
     zdf['config'] = neuraldf['config']
+    if 'trial' in neuraldf.columns:
+        zdf['trial'] = neuraldf['trial']
+
     return zdf
 
 
@@ -1121,14 +1125,24 @@ def experiment_datakeys(experiment='blobs', has_gratings=False, has_rfs=False, s
 
 def neuraldf_dict_to_dataframe(NEURALDATA, response_type='response'):
     ndfs = []
-    for visual_area, vdict in NEURALDATA.items():
-        for datakey, neuraldf in vdict.items():
-            metainfo = {'visual_area': visual_area, 'datakey': datakey}
+    if isinstance(NEURALDATA[NEURALDATA.keys()[0]], dict):
+        for visual_area, vdict in NEURALDATA.items():
+            for datakey, neuraldf in vdict.items():
+                metainfo = {'visual_area': visual_area, 'datakey': datakey}
+                ndf = add_meta_to_df(neuraldf.copy(), metainfo)
+                ndf['trial'] = ndf.index.tolist()
+                melted = pd.melt(ndf, id_vars=['visual_area', 'datakey', 'config', 'trial'], 
+                                 var_name='cell', value_name=response_type)
+                ndfs.append(melted)
+    else:
+        for datakey, neuraldf in NEURALDATA.items():
+            metainfo = {'datakey': datakey}
             ndf = add_meta_to_df(neuraldf.copy(), metainfo)
             ndf['trial'] = ndf.index.tolist()
-            melted = pd.melt(ndf, id_vars=['visual_area', 'datakey', 'config', 'trial'], 
+            melted = pd.melt(ndf, id_vars=['datakey', 'config', 'trial'], 
                              var_name='cell', value_name=response_type)
             ndfs.append(melted)
+
     NDATA = pd.concat(ndfs, axis=0)
    
     return NDATA
