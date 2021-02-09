@@ -169,9 +169,6 @@ def decode_split_pupil(datakey, visual_area, neuraldf, pupildf, sdf=None,
 
     #### Get neural means
     print("... Stating decoding analysis")
-    neuraldf = aggr.zscore_neuraldf(neuraldf)
-    n_cells = int(neuraldf.shape[1]-1) 
-    print("... SPLIT_PUPIL | [%s] %s, n=%i cells" % (visual_area, datakey, n_cells))
 
     # ------ STIMULUS INFO -----------------------------------------
     if sdf is None:
@@ -180,9 +177,22 @@ def decode_split_pupil(datakey, visual_area, neuraldf, pupildf, sdf=None,
    
     #### Match trial numbers
     neuraldf, pupildf = dlcutils.match_trials_df(neuraldf, pupildf, equalize_conditions=True)
+    neuraldf = aggr.zscore_neuraldf(neuraldf)
+    n_cells = int(neuraldf.shape[1]-1) 
+    print("... SPLIT_PUPIL | [%s] %s, n=%i cells" % (visual_area, datakey, n_cells))
 
     # ------ PUPIL:  Split trials by quantiles ---------------------------------
-    pupil_low, pupil_high = dlcutils.split_pupil_range(pupildf, feature_name=feature_name, n_cuts=n_cuts)
+    if split_size:
+        assert 'size' in pupildf.columns, "Size info not included in pupildf."
+        low_=[]; high_=[];
+        for sz, sd in pupildf.groupby(['size']):
+            p_low, p_high = dlcutils.split_pupil_range(sd, feature_name=feature_name, n_cuts=n_cuts)
+            low_.append(p_low)
+            high_.append(p_high)
+        pupil_low = pd.concat(low_)
+        pupil_high = pd.concat(high_)
+    else:
+        pupil_low, pupil_high = dlcutils.split_pupil_range(pupildf, feature_name=feature_name, n_cuts=n_cuts)
     #assert pupil_low.shape==pupil_high.shape, \
         # "Unequal pupil trials: %s, %s" % (str(pupil_low.shape), str(pupil_high.shape))
     print("SPLIT PUPIL: %s (low), %s (high)" % (str(pupil_low.shape), str(pupil_high.shape)))
@@ -336,7 +346,7 @@ def decode_from_cell(datakey, rid, neuraldf, sdf, results_outfile='/tmp/roi.pkl'
     #if create_new:    
     print("... starting analysis ")
     # zscore full
-    #neuraldf = aggr.zscore_neuraldf(neuraldf)
+    neuraldf = aggr.zscore_neuraldf(neuraldf)
     # Decodinng -----------------------------------------------------
     start_t = time.time()
     iter_results = decutils.fit_svm_mp(neuraldf, sdf, C_value=C_value, 
@@ -1062,6 +1072,21 @@ def main(options):
     all_cells = all_cells[all_cells['visual_area'].isin(visual_areas)].copy() #, 'Ll'])]
     stack_neuraldf = analysis_type in ['by_ncells'] #match_distns==True
 
+    #### Get pupil responses
+    if 'pupil' in analysis_type:
+        print("~~~~~~~~~~~~~~~~Loading pupil dataframes (%s)~~~~~~~~~~~~~" % pupil_feature)
+        pupildata = dlcutils.get_aggregate_pupildfs(experiment=experiment, 
+                                    alignment_type=pupil_alignment, 
+                                    feature_name=pupil_feature, trial_epoch=pupil_epoch,
+                                    iti_pre=iti_pre, iti_post=iti_post, stim_dur=stim_dur,
+                                    in_rate=pupil_framerate, out_rate=pupil_framerate,
+                                    snapshot=pupil_snapshot, create_new=redo_pupil)
+
+        #### Remove trials with no pupildata
+        pupildata, MEANS = dlcutils.add_stimuli_to_pupildf(pupildata, MEANS, SDF, 
+                                                verbose=False, return_valid_only=True)
+
+
     # threshold, if relevant
     min_dff=0
     max_dff=1.0
@@ -1095,16 +1120,6 @@ def main(options):
     print("Final cell counts:")
     print(CELLS[['visual_area', 'datakey', 'cell']].drop_duplicates().groupby(['visual_area']).count())
 
-
-    #### Get pupil responses
-    if 'pupil' in analysis_type:
-        print("~~~~~~~~~~~~~~~~Loading pupil dataframes (%s)~~~~~~~~~~~~~" % pupil_feature)
-        pupildata = dlcutils.get_aggregate_pupildfs(experiment=experiment, 
-                                    alignment_type=pupil_alignment, 
-                                    feature_name=pupil_feature, trial_epoch=pupil_epoch,
-                                    iti_pre=iti_pre, iti_post=iti_post, stim_dur=stim_dur,
-                                    in_rate=pupil_framerate, out_rate=pupil_framerate,
-                                    snapshot=pupil_snapshot, create_new=redo_pupil)
 
     #### Setup output dirs  
     results_prefix = analysis_type #set_results_prefix(analysis_type=analysis_type)
