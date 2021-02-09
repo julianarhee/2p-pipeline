@@ -1206,9 +1206,10 @@ def match_trials(neuraldf, pupiltraces, labels_all):
     
     return neuraldf, pupiltraces
 
-def match_trials_df(neuraldf, pupildf, equalize_conditions=False):
+def match_neural_and_pupil_trials(neuraldf, pupildf, equalize_conditions=False):
     '''
     make sure neural data trials = pupil data trials
+    Former name:  match_trials_df
     '''
     from pipeline.python.classifications.aggregate_data_stats import equal_counts_df
     trials_with_pupil = list(pupildf['trial'].unique())
@@ -1258,6 +1259,7 @@ def split_pupil_range(pupildf, feature_name='pupil_area', n_cuts=3, return_bins=
     n_cuts (int)
         4: use quartiles (0.25,  0.5 ,  0.75)
         3: use H/M/L (0.33, 0.66)
+    Returns LOW, HIGH
     '''
 
     bins = np.linspace(0, 1, n_cuts+1)[1:-1]
@@ -1292,7 +1294,9 @@ def get_train_configs(sdf, class_name='morphlevel', class_a=0, class_b=106,
     
     return train_configs
    
-def add_stimuli_to_pupildf(pupildata, MEANS, SDF, verbose=False, return_valid_only=False):
+def add_stimuli_to_pupildf(pupildata, MEANS, SDF, verbose=False, return_valid_only=False,
+                            class_name='morphlevel', class_a=0, class_b=106, 
+                            train_transform_name=None, train_transform_value=None):
     '''
     pupildata (dict):  keys are datakeys, values are dataframe of pupil info (all trials)
     MEANS (dict):  keys are datakeys, cells not split by area here, just need the trial nums
@@ -1310,7 +1314,7 @@ def add_stimuli_to_pupildf(pupildata, MEANS, SDF, verbose=False, return_valid_on
         # Make sure pupil trials are same as neural trials:
         if sorted(ndata.index.tolist())!=sorted(pdata['trial'].unique()):
             print("ERROR: %s -- bad trial alignment? Neural trials != pupil trials." % datakey)
-            ndata, pdata = match_trials_df(ndata, pdata, equalize_conditions=False)
+            ndata, pdata = match_neural_and_pupil_trials(ndata, pdata, equalize_conditions=False)
             ntrials_dropped = ntrials_total - ndata.shape[0]
             bad_alignment.append((datakey, ntrials_dropped))        
         
@@ -1328,7 +1332,7 @@ def add_stimuli_to_pupildf(pupildata, MEANS, SDF, verbose=False, return_valid_on
         pdata['n_train_trials_dropped'] = n_train_trials - n_train_trials_incl
 
         # Remove neural trials that don't have valid pupil data
-        ndata, pdata = match_trials_df(ndata, pdata.dropna(), equalize_conditions=False)    
+        ndata, pdata = match_neural_and_pupil_trials(ndata, pdata.dropna(), equalize_conditions=False)    
         ntrials_dropped = ntrials_total - ndata.shape[0]
         
         # Add some meta info
