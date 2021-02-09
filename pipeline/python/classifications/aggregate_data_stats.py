@@ -982,25 +982,26 @@ def zscore_data(MEANS):
 
     return MEANS
 
-def equal_counts_df(neuraldf):
-    curr_counts = neuraldf['config'].value_counts()
+def equal_counts_df(neuraldf, equalize_by='config'):
+    curr_counts = neuraldf[equalize_by].value_counts()
     if len(curr_counts.unique())==1:
         return neuraldf #continue
         
     min_ntrials = curr_counts.min()
-    all_cfgs = neuraldf['config'].unique()
+    all_cfgs = neuraldf[equalize_by].unique()
 
     kept_trials=[]
     for cfg in all_cfgs:
-        curr_trials = neuraldf[neuraldf['config']==cfg].index.tolist()
+        curr_trials = neuraldf[neuraldf[equalize_by]==cfg].index.tolist()
         np.random.shuffle(curr_trials)
         kept_trials.extend(curr_trials[0:min_ntrials])
     kept_trials=np.array(kept_trials)
 
-    assert len(neuraldf.loc[kept_trials]['config'].value_counts().unique())==1, \
+    assert len(neuraldf.loc[kept_trials][equalize_by].value_counts().unique())==1, \
             "Bad resampling... Still >1 n_trials"
 
     return neuraldf.loc[kept_trials]
+
 
 
 
