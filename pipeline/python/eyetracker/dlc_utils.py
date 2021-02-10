@@ -1331,9 +1331,9 @@ def add_stimuli_to_pupildf(pupildata, MEANS, SDF, verbose=False, return_valid_on
         pdata['n_train_trials'] = n_train_trials
         pdata['n_train_trials_dropped'] = n_train_trials - n_train_trials_incl
 
-        # Remove neural trials that don't have valid pupil data
-        ndata, pdata = match_neural_and_pupil_trials(ndata, pdata.dropna(), equalize_conditions=False)    
-        ntrials_dropped = ntrials_total - ndata.shape[0]
+        # Remove neural trials that don't have valid pupil data 
+        ndata_d, pdata_d = match_neural_and_pupil_trials(ndata, pdata.dropna(), equalize_conditions=False)    
+        ntrials_dropped = ntrials_total - ndata_d.shape[0]
         
         # Add some meta info
         pdata['datakey'] = datakey
@@ -1346,10 +1346,10 @@ def add_stimuli_to_pupildf(pupildata, MEANS, SDF, verbose=False, return_valid_on
             print('... %s: Dropping %i of %i trials' % (datakey, ntrials_dropped, ntrials_total))
             
         if return_valid_only:
-            MEANS[datakey] = ndata
-            pupildata[datakey] = pdata
+            MEANS[datakey] = ndata_d
+            pupildata[datakey] = pdata_d
         
-    return pupildata, MEANS
+    return pupildata, MEANS, bad_alignment
 
 
 
