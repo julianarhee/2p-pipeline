@@ -114,9 +114,14 @@ def balance_samples_by_config(df1, df2, config_label='config', common_labels=Non
         config_subset = False
     else:
         config_subset = True
- 
+
+    # Get equal counts for specified labels 
     df1_eq = aggr.equal_counts_df(df1[df1[config_label].isin(common_labels)], equalize_by=config_label)
     df2_eq = aggr.equal_counts_df(df2[df2[config_label].isin(common_labels)], equalize_by=config_label) 
+    # Check that each partition has the same # of labels (i.e., if missing 1 label, will ahve diff #s)
+    #df1_labels = df1_eq[df1_eq[config_label].isin(common_labels)][config_label].unique()
+    #df2_labels = df2_eq[df2_eq[config_label].isin(common_labels)][config_label].unique()
+
  
     # Get min N reps per condition
     min_reps_per = min([df1_eq[config_label].value_counts()[0], df2_eq[config_label].value_counts()[0]])
