@@ -187,6 +187,7 @@ def decode_split_pupil(datakey, visual_area, neuraldf, pupildf, sdf=None,
     sdf['config'] = sdf.index.tolist()
     train_classes = [class_a, class_b]
     print("Class: %s, %s" % (class_name, str(train_classes)))
+    sdf['morph_size'] = ['%s_%s' % (m, s) for m, s in zip(sdf['morphlevel'].values, sdf['size'].values)]
     train_labels = sdf[sdf[class_name].isin(train_classes)][equalize_by].unique()
     common_labels = train_labels if not match_all_configs else None
 
