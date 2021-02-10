@@ -199,7 +199,7 @@ def decode_split_pupil(datakey, visual_area, neuraldf, pupildf, sdf=None,
     # neuraldf = aggr.zscore_neuraldf(neuraldf)
     n_cells = int(neuraldf.shape[1]-1) 
     print("... SPLIT_PUPIL | [%s] %s, n=%i cells" % (visual_area, datakey, n_cells))
-
+    
     # ------ PUPIL:  Split trials by quantiles ---------------------------------
     if equalize_conditions: # so far, only tested w size and matching all configs
         assert 'size' in pupildf.columns, "Size info not included in pupildf."
@@ -1313,7 +1313,12 @@ def main(options):
             neuraldf = aggr.get_neuraldf_for_cells_in_area(CELLS, MEANS, 
                                                        datakey=curr_datakey, visual_area=curr_visual_area)
             pupildf = pupildata[curr_datakey].copy()
-           
+            sdf = SDF[curr_datakey].copy()
+            if 'size' not in pupildf.columns:
+                pupildf['size'] = [sdf['size'][c] for c in pupildf['config']]
+            if 'morphlevel' not in pupildf.columns:
+                pupildf['morphlevel'] = [sdf['morphlevel'][c] for c in pupildf['config']]
+ 
             #multiple_configs = ['20190314_JC070_fov1']
             equalize_by = 'morph_size' if curr_datakey in diff_sdfs else 'config'
             if equalize_by=='morph_size':
