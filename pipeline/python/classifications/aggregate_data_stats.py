@@ -1126,13 +1126,18 @@ def experiment_datakeys(experiment='blobs', has_gratings=False, has_rfs=False, s
 
 def neuraldf_dict_to_dataframe(NEURALDATA, response_type='response'):
     ndfs = []
+
+    
     if isinstance(NEURALDATA[NEURALDATA.keys()[0]], dict):
         for visual_area, vdict in NEURALDATA.items():
             for datakey, neuraldf in vdict.items():
                 metainfo = {'visual_area': visual_area, 'datakey': datakey}
                 ndf = add_meta_to_df(neuraldf.copy(), metainfo)
                 ndf['trial'] = ndf.index.tolist()
-                melted = pd.melt(ndf, id_vars=['visual_area', 'datakey', 'config', 'trial'], 
+                id_vars = ['visual_area', 'datakey', 'config', 'trial']
+                if 'arousal' in neuraldf.columns:
+                    id_vars.append('arousal')
+                melted = pd.melt(ndf, id_vars=id_vars, 
                                  var_name='cell', value_name=response_type)
                 ndfs.append(melted)
     else:
@@ -1140,7 +1145,11 @@ def neuraldf_dict_to_dataframe(NEURALDATA, response_type='response'):
             metainfo = {'datakey': datakey}
             ndf = add_meta_to_df(neuraldf.copy(), metainfo)
             ndf['trial'] = ndf.index.tolist()
-            melted = pd.melt(ndf, id_vars=['datakey', 'config', 'trial'], 
+            id_vars = ['datakey', 'config', 'trial']
+            if 'arousal' in neuraldf.columns:
+                id_vars.append('arousal')
+
+            melted = pd.melt(ndf, id_vars=id_vars, 
                              var_name='cell', value_name=response_type)
             ndfs.append(melted)
 
