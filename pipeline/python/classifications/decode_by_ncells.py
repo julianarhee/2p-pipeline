@@ -1202,7 +1202,7 @@ def main(options):
         print("missing %i pupil dsets: %s" % (len(missing_pupil), str(missing_pupil)))
 
         #### Remove trials with no pupildata
-        pupildata, MEANS = dlcutils.add_stimuli_to_pupildf(pupildata, MEANS, SDF, verbose=False, 
+        pupildata, MEANS, bad_alignment = dlcutils.add_stimuli_to_pupildf(pupildata, MEANS, SDF, verbose=False, 
                                         return_valid_only=True)
     # threshold, if relevant
     min_dff=0
