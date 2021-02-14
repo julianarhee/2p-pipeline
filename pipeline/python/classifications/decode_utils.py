@@ -257,7 +257,7 @@ def initializer(terminating_):
 
 def pool_bootstrap(neuraldf, sdf, n_iterations=50, n_processes=1, 
                    C_value=None, cv_nfolds=5, test_split=0.2, 
-                   test_type=None, n_train_configs=4, verbose=False,
+                   test_type=None, n_train_configs=4, verbose=False, within_fov=True,
                    class_a=0, class_b=106, do_shuffle=True, balance_configs=True):   
     '''
     This function replaces fit_svm_mp() -- includes opts for generalization test.
@@ -312,8 +312,8 @@ def pool_bootstrap(neuraldf, sdf, n_iterations=50, n_processes=1,
 #                                n_train_configs=n_train_configs)
         else:
             func = partial(do_fit_within_fov, curr_data=neuraldf, sdf=sdf, verbose=verbose,
-                            C_value=C_value, balance_configs=balance_configs)
-        output = pool.map_async(func, range(n_iterations)).get(999999)
+                                C_value=C_value, balance_configs=balance_configs)
+        output = pool.map_async(func, range(n_iterations)).get() #999999)
         #results = [pool.apply_async(do_fit_within_fov, args=(i, neuraldf, sdf, vb, C)) \
         #            for i in range(n_iterations)]
         #output= [p.get(99999999) for p in results]
@@ -506,7 +506,7 @@ def get_ntrials_per_config(neuraldf, n_trials=10):
     return resampled_df
 
 
-def get_trials_for_N_cells(curr_ncells, gdf, MEANS):
+def get_trials_for_N_cells(curr_ncells, gdf, MEANS, train_configs=None):
     '''
     Randomly select N cells from global roi list (gdf), get cell's responses to all trials.
     
@@ -524,7 +524,11 @@ def get_trials_for_N_cells(curr_ncells, gdf, MEANS):
     curr_roidf = gdf[gdf['roi'].isin(curr_roi_list)].copy()
 
     # Make sure equal num trials per condition for all dsets
-    min_ntrials_by_config = min([MEANS[k]['config'].value_counts().min() for k in curr_roidf['datakey'].unique()])
+    if train_configs is not None:
+        min_ntrials_by_config = min([MEANS[k][MEANS[k]['config'].isin(train_configs)]['config'].value_counts().min() for k in curr_roidf['datakey'].unique()])
+        print("MIn N trials in configs: %i" % min_ntrials_by_config)
+    else:
+        min_ntrials_by_config = min([MEANS[k]['config'].value_counts().min() for k in curr_roidf['datakey'].unique()])
 
     # Get data samples for these cells
     d_list=[]; c_list=[];
@@ -566,7 +570,7 @@ def get_trials_for_N_cells(curr_ncells, gdf, MEANS):
     return df
 
 
-def get_trials_for_N_cells_split(curr_ncells, gdf, NEURALDATA):
+def get_trials_for_N_cells_split(curr_ncells, gdf, NEURALDATA, train_configs=None):
     '''
     Randomly select N cells from global roi list (gdf), get cell's responses to all trials.
     NEURALDATA (dict)
@@ -588,8 +592,14 @@ def get_trials_for_N_cells_split(curr_ncells, gdf, NEURALDATA):
     curr_roidf = gdf[gdf['roi'].isin(curr_roi_list)].copy() # N rows=N unique cells
     # len(curr_roidf['roi'].unique()), len(curr_roi_list), len(np.unique(curr_roi_list))
 
+
     # Make sure equal num trials per condition for all dsets
-    min_ntrials_per_cfg = min([NEURALDATA[visual_area][datakey]['config'].value_counts().min() \
+    if train_configs is not None:
+        min_ntrials_by_config = min([NEURALDATA[v][k][NEURALDATA[v][k]['config'].isin(train_configs)]['config'].value_counts().min() for (v, k), g in curr_roidf.groupby(['visual_area', 'datakey'])])
+
+        print("MIn N trials in configs: %i" % min_ntrials_by_config)
+    else:
+        min_ntrials_per_cfg = min([NEURALDATA[visual_area][datakey]['config'].value_counts().min() \
                             for (visual_area, datakey), g in \
                             curr_roidf.groupby(['visual_area', 'datakey'])])
 
@@ -625,7 +635,7 @@ def get_trials_for_N_cells_split(curr_ncells, gdf, NEURALDATA):
 
     return df
 
-def get_trials_for_N_cells_df(curr_ncells, gdf, NEURALDATA): 
+def get_trials_for_N_cells_df(curr_ncells, gdf, NEURALDATA, train_configs=None): 
     # Get current global RIDs
     ncells_t = gdf.shape[0]                      
     roi_ids = np.array(gdf['roi'].values.copy()) 
@@ -638,7 +648,13 @@ def get_trials_for_N_cells_df(curr_ncells, gdf, NEURALDATA):
     # Make sure equal num trials per condition for all dsets
     curr_dkeys = curr_roidf['datakey'].unique()
     currd = NEURALDATA[NEURALDATA['datakey'].isin(curr_dkeys)].copy()
-    min_ntrials_by_config = currd[['datakey', 'config', 'trial']].drop_duplicates().groupby(['datakey'])['config'].value_counts().min()
+
+    # Make sure equal num trials per condition for all dsets
+    if train_configs is not None:
+        min_ntrials_by_config = currd[currd['config'].isin(train_configs)][['datakey', 'config', 'trial']].drop_duplicates().groupby(['datakey'])['config'].value_counts().min()
+        print("MIn N trials in configs: %i" % min_ntrials_by_config)
+    else: 
+        min_ntrials_by_config = currd[['datakey', 'config', 'trial']].drop_duplicates().groupby(['datakey'])['config'].value_counts().min()
     #print(min_ntrials_by_config)
 
     d_list=[]
@@ -954,14 +970,17 @@ def do_fit_within_fov(iter_num, curr_data=None, sdf=None, verbose=False,
 
     return iter_df 
 
-def sample_neuraldata(sample_size, global_rois, MEANS):
+def sample_neuraldata(sample_size, global_rois, MEANS, train_configs=None):
     if isinstance(MEANS, dict):
         if isinstance(MEANS[MEANS.keys()[0]], dict): # df_is_split
-            curr_data = get_trials_for_N_cells_split(sample_size, global_rois, MEANS)
+            curr_data = get_trials_for_N_cells_split(sample_size, global_rois, 
+                                        MEANS, train_configs=train_configs)
         else:
-            curr_data = get_trials_for_N_cells(sample_size, global_rois, MEANS)
+            curr_data = get_trials_for_N_cells(sample_size, global_rois, 
+                                        MEANS, train_configs=train_configs)
     else:
-        curr_data = get_trials_for_N_cells_df(sample_size, global_rois, MEANS)
+        curr_data = get_trials_for_N_cells_df(sample_size, global_rois, 
+                                        MEANS, train_configs=train_configs)
 
     return curr_data
 
@@ -972,7 +991,7 @@ def sample_neuraldata(sample_size, global_rois, MEANS):
 
 def do_fit_sample_cells(iter_num, sample_size=1, global_rois=None, MEANS=None, sdf=None, 
            C_value=None, test_split=0.2, cv_nfolds=5, class_a=0, class_b=106, 
-           do_shuffle=True, verbose=False, balance_configs=True):
+           do_shuffle=True, verbose=False, balance_configs=True, train_configs=None):
     #[gdf, MEANS, sdf, sample_size, cv] * n_times)
     '''
     Resample w/ replacement from pooled cells (across datasets). Assumes 'sdf' is same for all datasets.
@@ -986,7 +1005,7 @@ def do_fit_sample_cells(iter_num, sample_size=1, global_rois=None, MEANS=None, s
     i_list=[]
     #### Get new sample set
     try:
-        curr_data = sample_neuraldata(sample_size, global_rois, MEANS)
+        curr_data = sample_neuraldata(sample_size, global_rois, MEANS, train_configs=train_configs)
     except Exception as e:
         traceback.print_exc()
         return None
@@ -1058,6 +1077,7 @@ def fit_shuffled(zdata, targets, C_value=None, test_split=0.2, cv_nfolds=5, rand
             p_chooseB = sum([1 if p==class_b else 0 for p in predicted_labels[a_ixs]])/float(len(a_ixs))
             iter_shuffled.update({'p_chooseB': p_chooseB, '%s' % class_name: anchor, 'n_split': len(a_ixs)})
             tmpdf_shuffled = pd.DataFrame(iter_shuffled, index=[i])
+            tmpdf_shuffled['n_samples'] = len(a_ixs)
             i+=1
             tmp_.append(tmpdf_shuffled)            
         iterdf = pd.concat(tmp_, axis=0).reset_index(drop=True)
@@ -1140,7 +1160,7 @@ def train_test_size_single(iter_num, curr_data=None, sdf=None, verbose=False,
             tmpdf_shuffled['n_trials'] = len(targets)
             tmpdf_shuffled['novel'] = False
             for label, g in targets.groupby(['label']):
-                tmpdf['n_samples_%i' % label] = len(g['label']) 
+                tmpdf_shuffled['n_samples_%i' % label] = len(g['label']) 
             i_list.append(tmpdf_shuffled) #iter_df) 
 
         #### Select generalization-test set
@@ -1256,6 +1276,9 @@ def train_test_size_subset(iter_num, curr_data=None, sdf=None, verbose=False,
             tmpdf_shuffled['test_transform'] = train_transform
             tmpdf_shuffled['n_trials'] = len(targets)
             tmpdf_shuffled['novel'] = False
+            for label, g in targets.groupby(['label']):
+                tmpdf_shuffled['n_samples_%i' % label] = len(g['label']) 
+     
             # combine
             i_list.append(tmpdf_shuffled)
 
@@ -1591,14 +1614,20 @@ def train_test_morph(iter_num, curr_data=None, sdf=None, verbose=False,
                      'condition': 'data', 'novel': False, 'n_trials': len(targets)})
     # Calculate P(choose B)
     #pchoose_dict = get_pchoose(predicted_labels, true_labels, class_a=class_a, class_b=class_b)
+    train_samples={}
+    for t in targets['label'].unique():
+        curr_ncounts = len(np.where(targets['label'].values==t)[0])
+        train_samples.update({'n_samples_%i' % t: curr_ncounts})
 
     for anchor in class_types:
         a_ixs = [i for i, v in enumerate(true_labels) if v==anchor] 
         p_chooseB = sum([1 if p==class_b else 0 for p in predicted_labels[a_ixs]])/float(len(a_ixs))
         iterdict.update({'p_chooseB': p_chooseB, 'morphlevel': anchor, 'n_split': len(a_ixs)})
         tmpdf = pd.DataFrame(iterdict, index=[i])
-        for label, g in targets.groupby(['label']):
-            tmpdf['n_samples_%i' % label] = len(g['label']) 
+        #for label, g in targets.groupby(['label']):
+        tmpdf['n_samples'] = len(a_ixs) 
+        for t, v in train_samples.items():
+            tmpdf[t] = v
         i += 1
         i_list.append(tmpdf)
     train_columns = tmpdf.columns.tolist()
@@ -1612,9 +1641,9 @@ def train_test_morph(iter_num, curr_data=None, sdf=None, verbose=False,
         tmpdf_shuffled['test_transform'] = train_transform
         tmpdf_shuffled['n_trials'] = len(targets)
         tmpdf_shuffled['novel'] = False
-        for label, g in targets.groupby(['label']):
-            tmpdf_shuffled['n_samples_%i' % label] = len(g['label'])
- 
+        for t, v in train_samples.items():
+            tmpdf_shuffled[t] = v
+
         i_list.append(tmpdf_shuffled) 
 
 
@@ -1668,7 +1697,10 @@ def train_test_morph(iter_num, curr_data=None, sdf=None, verbose=False,
      
         iterdict.update({'p_chooseB': p_chooseB, 'morphlevel': test_transform, 'n_split': len(predicted_labels)}) 
         testdf = pd.DataFrame(iterdict, index=[i])
-        testdf['n_samples_%i' % test_transform] = len(curr_test_labels) 
+        testdf['n_samples'] = len(curr_test_labels) 
+        for t, v in train_samples.items():
+            testdf[t] = v
+
         i += 1
 
         #### Shuffle labels  - no shuffle, already testd above
@@ -1730,6 +1762,11 @@ def train_test_morph_single(iter_num, curr_data=None, sdf=None, verbose=False,
         iterdict.update({'train_transform': train_transform, 'test_transform': train_transform, 
                          'condition': 'data', 'n_trials': len(true_labels), 'novel': False})
 
+        train_samples={}
+        for t in targets['label'].unique():
+            curr_ncounts = len(np.where(targets['label'].values==t)[0])
+            train_samples.update({'n_samples_%i' % t: curr_ncounts})
+
         for anchor in class_types:
             a_ixs = [i for i, v in enumerate(true_labels) if v==anchor] 
             p_chooseB = sum([1 if p==class_b else 0 for p in predicted_labels[a_ixs]])/float(len(a_ixs))
@@ -1737,9 +1774,11 @@ def train_test_morph_single(iter_num, curr_data=None, sdf=None, verbose=False,
                             '%s' % class_name: anchor, #'%s' % constant_transform: train_transform, 
                             'n_split': len(a_ixs)})
             tmpdf = pd.DataFrame(iterdict, index=[i])
-            for label, g in targets.groupby(['label']):
-                tmpdf['n_samples_%i' % label] = len(g['label'])
-     
+            tmpdf['n_samples'] = len(a_ixs)
+
+            for t, v in train_samples.items():
+                tmpdf[t] = v
+
             i += 1
             i_list.append(tmpdf)
         train_columns = tmpdf.columns.tolist()
@@ -1754,9 +1793,9 @@ def train_test_morph_single(iter_num, curr_data=None, sdf=None, verbose=False,
             #tmpdf_shuffled['%s' % constant_transform] = train_transform 
             tmpdf_shuffled['n_trials'] = len(targets) 
             tmpdf_shuffled['novel'] = False
-            for label, g in targets.groupby(['label']):
-                tmpdf_shuffled['n_samples_%i' % label] = len(g['label'])
-     
+            for t, v in train_samples.items():
+                tmpdf_shuffled[t] = v
+
             i_list.append(tmpdf_shuffled) 
 
         #### TEST SET --------------------------------------------------------------------
@@ -1806,8 +1845,10 @@ def train_test_morph_single(iter_num, curr_data=None, sdf=None, verbose=False,
                              #'%s' % constant_transform: train_transform,
                             'n_split': len(predicted_labels)})
             testdf = pd.DataFrame(iterdict, index=[i])
-            testdf['n_samples_%i' % curr_morph_test] = len(curr_test_labels)
-    
+            testdf['n_samples'] = len(curr_test_labels)
+            # add N training samples            
+            for t, v in train_samples.items():
+                testdf[t] = v
             i_list.append(testdf) #pd.DataFrame(iterdict, index=[i]))
             i+=1 
             
@@ -2009,6 +2050,38 @@ def do_fit_train_single_test_morph(iter_num, global_rois=None, MEANS=None, sdf=N
 # ======================================================================
 # Performance plotting 
 # ======================================================================
+def plot_individual_shuffle_distn(dk, va, traindf, metric='heldout_test_score'):
+
+    d_ = traindf[(traindf.visual_area==va) & (traindf.datakey==dk) ].copy()
+
+
+    if 'train_transform' in d_.columns and len(d_['train_transform'].unique())>1:
+        fig, axn = pl.subplots(1, 5, figsize=(10,4), sharex=True, sharey=True)
+
+        for ai, (transf, g) in enumerate(d_.groupby(['train_transform'])):
+            ax = axn[ai]
+            mean_score = g[g['condition']=='data'][metric].mean()
+            percentile = np.mean(mean_score < g[g['condition']=='shuffled'][metric])
+            ax.set_title('%s: \navg.%.2f (p=%.2f)' % (str(transf), mean_score, percentile), loc='left', fontsize=8)
+            sns.distplot(g[g['condition']=='data'][metric], color='m', ax=ax)
+            sns.distplot(g[g['condition']=='shuffled'][metric], color='k', ax=ax)
+            ax.set_xlabel('')
+        fig.text(0.5, 0.05, metric, ha='center', fontsize=12)
+        fig.text(0.05, 0.95, '%s (%s)' % (dk, va), fontsize=16)
+    else:
+        fig, ax = pl.subplots(1, 1, figsize=(5,4), sharex=True, sharey=True)
+
+        mean_score = d_[d_['condition']=='data'][metric].mean()
+        percentile = np.mean(mean_score < d_[d_['condition']=='shuffled'][metric])
+        ax.set_title('avg.%.2f (p=%.2f)' % ( mean_score, percentile), loc='left', fontsize=8)
+        sns.distplot(d_[d_['condition']=='data'][metric], color='m', ax=ax)
+        sns.distplot(d_[d_['condition']=='shuffled'][metric], color='k', ax=ax)
+        ax.set_xlabel('')
+        fig.text(0.5, 0.05, metric, ha='center', fontsize=12)
+        fig.text(0.05, 0.95, '%s (%s)' % (dk, va), fontsize=16)
+
+    pl.subplots_adjust(bottom=0.2, left=0.1, right=0.95, wspace=0.5, top=0.8)
+    return fig
 
 def plot_score_by_ncells(pooled, metric='heldout_test_score', area_colors=None,
         lw=2, ls='-', capsize=3, ax=None, dpi=150):
