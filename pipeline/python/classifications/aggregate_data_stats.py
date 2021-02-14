@@ -2154,6 +2154,29 @@ def plot_pairwise_by_axis(plotdf, curr_metric='abs_coef', c1='az', c2='el',
 
     return ax #fig
 
+def paired_ttests(comdf, curr_metric='avg_size', 
+                c1='rfs', c2='rfs10', compare_var='experiment',
+                visual_areas=['V1', 'Lm', 'Li']):
+    r_=[]
+    for ai, visual_area in enumerate(visual_areas):
+
+        plotdf = comdf[comdf['visual_area']==visual_area].copy()
+        a_vals = plotdf[plotdf[compare_var]==c1].sort_values(by='datakey')[curr_metric].values
+        b_vals = plotdf[plotdf[compare_var]==c2].sort_values(by='datakey')[curr_metric].values
+        #print(a_vals, b_vals)
+
+        tstat, pval = spstats.ttest_rel(np.array(a_vals), np.array(b_vals))
+     
+        print('%s: %.2f (p=%.2f)' % (visual_area, tstat, pval))
+        
+        res = pd.DataFrame({'visual_area': visual_area, 't_stat': tstat, 'p_val': pval}, 
+                        index=[ai])
+        r_.append(res)
+    
+    statdf = pd.concat(r_, axis=0)
+
+    return statdf
+
 
 def plot_paired(plotdf, aix=0, curr_metric='avg_size', ax=None,
                 c1='rfs', c2='rfs10', compare_var='experiment',
