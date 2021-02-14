@@ -305,7 +305,8 @@ def decode_split_pupil(datakey, visual_area, neuraldf, pupildf, sdf=None,
 
 def decode_by_ncells(n_cells, visual_area, global_rois, sdf, NEURALDATA, 
                     results_id='by_ncells', C_value=None, experiment='blobs',
-                    n_iterations=50, n_processes=2, class_a=0, class_b=106,
+                    n_iterations=50, n_processes=2, 
+                    class_name='morphlevel', class_a=0, class_b=106, match_all_configs=True,
                     do_shuffle=True, test_type=None, n_train_configs=4, 
                     verbose=False,
                     dst_dir='/n/coxfs01/julianarhee/aggregate-visual-areas/decoding/by_ncells'):
@@ -324,9 +325,18 @@ def decode_by_ncells(n_cells, visual_area, global_rois, sdf, NEURALDATA,
 
     i_list=[]
     # Get neuraldf for current trials
+    sdf_master = aggr.get_master_sdf()
+    class_types = [class_a, class_b]
+    if match_all_configs:
+        train_configs=None
+    else:
+        train_configs = sdf[sdf[class_name].isin(class_types)].index.tolist()
+        print("%i train configs" % len(train_configs))
+
     #### Get new sample set
     try:
-        neuraldf = decutils.sample_neuraldata(n_cells, global_rois, NEURALDATA)
+        neuraldf = decutils.sample_neuraldata(n_cells, global_rois, 
+                                    NEURALDATA, train_configs=train_configs)
     except Exception as e:
         traceback.print_exc()
         return None
@@ -340,7 +350,7 @@ def decode_by_ncells(n_cells, visual_area, global_rois, sdf, NEURALDATA,
     iter_results = decutils.pool_bootstrap(neuraldf, sdf, C_value=C_value, 
                             n_iterations=n_iterations, n_processes=n_processes, verbose=verbose,
                             class_a=class_a, class_b=class_b, do_shuffle=do_shuffle,
-                            balance_configs=True, within_fov=False,
+                            balance_configs=True, # within_fov=False,
                             test_type=test_type, n_train_configs=n_train_configs)  
     assert iter_results is not None, "NONE returned."
     end_t = time.time() - start_t
@@ -356,7 +366,7 @@ def decode_by_ncells(n_cells, visual_area, global_rois, sdf, NEURALDATA,
 
     # Save input data
     data_inputfile = os.path.join(curr_dst_dir, 'inputdata_%s_%s.pkl' % (results_id, n_cells))
-    inputdata = {'neuraldf': curr_data, 'sdf': sdf, 'n_cells': n_cells}
+    inputdata = {'neuraldf': neuraldf, 'sdf': sdf, 'n_cells': n_cells}
     with open(data_inputfile, 'wb') as f:
         pkl.dump(inputdata, f, protocol=pkl.HIGHEST_PROTOCOL)
 
@@ -571,6 +581,7 @@ def load_fov_results(animalid, session, fov, traceid='traces001',
                         test_type=test_type) 
     # Load FOV results
     iterdf = load_decode_within_fov(animalid, session, fov, traceid=traceid, results_id=results_id)
+       
     
     return iterdf, results_id
 
@@ -611,6 +622,11 @@ def load_decode_within_fov(animalid, session, fov, results_id='fov_results',
         if 'iteration' not in iter_df.columns:
             iter_df['iteration'] = iter_df.index.tolist()
         iter_df = iter_df.sort_values(by='iteration').reset_index(drop=True)
+        # Check if old or new
+        if 'n_samples_0' not in iter_df.columns:
+            print("Found old... deleting: %s" % results_outfile)
+            os.remove(results_outfile)
+            return None
  
     except Exception as e:
         #print("Unable to find file: %s" % results_outfile)
@@ -1126,7 +1142,7 @@ def main(options):
     pupil_framerate=20.
     pupil_quantiles=3.
     equalize_conditions=True
-    match_all_configs=False
+    match_all_configs=False #analysis_type=='by_ncells'
     # -------------------------------------------------
     # Alignment 
     iti_pre=1.
@@ -1178,7 +1194,7 @@ def main(options):
     # images_only=True if by_ncells, since need to concatenate trials 
     # TODO:  Fix so that we can train on anchors only and/or subset of configs
     zscore_first = False #analysis_type=='by_ncells'  
-    equalize_first = analysis_type != 'split_pupil' 
+    equalize_first = False #analysis_type != 'split_pupil' 
     _, all_cells, MEANS, SDF = aggr.get_source_data(experiment, 
                         equalize_now=equalize_first, zscore_now=zscore_first,
                         response_type=response_type, responsive_test=responsive_test, 
@@ -1225,18 +1241,19 @@ def main(options):
         return None
 
     if analysis_type=='by_ncells' and responsive_test=='ROC':
-        incl_ddict = {'Li': ['20190315_JC070_fov1', '20190322_JC073_fov1',
-                            '20190602_JC091_fov1', '20190609_JC099_fov1', '20190614_JC091_fov1',
-                            '20191018_JC113_fov1', '20191111_JC120_fov1'],
-                     'Lm': ['20190306_JC061_fov3', '20190322_JC073_fov1', '20190504_JC078_fov1', 
-                            '20190512_JC083_fov1', '20190517_JC083_fov1', '20190618_JC097_fov1'], 
-                     'V1': ['20190501_JC076_fov1', '20190504_JC078_fov1', '20190508_JC083_fov1', 
-                            '20190512_JC083_fov1', '20191006_JC110_fov1']}
-        tmpc = pd.concat([g for (v, d), g in CELLS.groupby(['visual_area', 'datakey']) if d in incl_ddict[v]])
+        pass_thr=0.10
+        pass_shuffle_outfile = os.path.join(aggregate_dir, 'decoding', 'by_fov', 
+                                            'pass_shuffle_test_thr-%.2f.json' % pass_thr)
+        print("***Loading dsets that pass shuffle test (thr=%.2f)" % pass_thr)
+        with open(pass_shuffle_outfile, 'r') as f:
+            pass_dsets = json.load(f)
+        tmpc = pd.concat([g for (v, d), g in CELLS.groupby(['visual_area', 'datakey']) \
+                            if [v, d] in pass_dsets])
         CELLS=tmpc.copy()
     print("------------------------------------")
     print("Final cell counts:")
-    print(CELLS[['visual_area', 'datakey', 'cell']].drop_duplicates().groupby(['visual_area']).count())
+    print(CELLS[['visual_area', 'datakey', 'cell']].drop_duplicates()\
+                .groupby(['visual_area']).count())
 
 
     #### Setup output dirs  
@@ -1350,6 +1367,7 @@ def main(options):
                 print("... deleting %i old files" % len(old_files))
                 for f in old_files:
                     os.remove(f)
+                todo_fnames = copy.copy(all_fnames)
             else:
                 todo_fnames = [fname for fname in all_fnames if \
                                     os.path.join(curr_dst_dir, fname) not in old_files]
@@ -1388,6 +1406,10 @@ def main(options):
         # ============================================================ 
         curr_visual_area = opts.visual_area
         curr_ncells = None if opts.ncells in ['None', None] else int(opts.ncells) 
+        
+        counts = CELLS[['visual_area', 'datakey', 'cell']].drop_duplicates().groupby(['visual_area']).count().reset_index()
+        cell_counts = dict((k, v) for (k, v) in zip(counts['visual_area'], counts['cell']))
+        print(cell_counts)
 
         # Save inputs
         inputs_file = os.path.join(dst_dir, 'cells_%s_%s.pkl' % (analysis_type, str(curr_visual_area)))
@@ -1409,8 +1431,9 @@ def main(options):
                 decode_by_ncells(curr_ncells, curr_visual_area, gdf, sdf, NEURALDATA, experiment=experiment,
                                 results_id=results_id, C_value=C_value,
                                 n_iterations=n_iterations, n_processes=n_processes, 
-                                class_a=class_a, class_b=class_b, do_shufle=do_shuffle,
-                                dst_dir=dst_dir, verbose=verbose)
+                                class_a=class_a, class_b=class_b, do_shuffle=do_shuffle,
+                                dst_dir=dst_dir, verbose=verbose, 
+                                match_all_configs=match_all_configs)
                 print("***** finished %s, ncells=%i *******" % (curr_visual_area, curr_ncells))
             else:
                 # ----------------------------------------------
@@ -1429,7 +1452,8 @@ def main(options):
                                     results_id=results_id, C_value=C_value,
                                     n_iterations=n_iterations, n_processes=n_processes, 
                                     class_a=class_a, class_b=class_b, do_shuffle=do_shuffle,
-                                    dst_dir=dst_dir, verbose=verbose)
+                                    dst_dir=dst_dir, verbose=verbose, 
+                                    match_all_configs=match_all_configs)
                 print("********* finished %s, (ncells looped: %s) **********" % (curr_visual_area, str(NCELLS)))
         else:
             # ----------------------------------------------
@@ -1462,7 +1486,7 @@ def main(options):
                                         results_id=results_id,
                                         class_a=class_a, class_b=class_b,
                                         dst_dir=dst_dir, create_new=create_new, 
-                                        verbose=verbose)
+                                        verbose=verbose, match_all_configs=match_all_configs)
                     print("********* finished **********")
             except Exception as e:
                 traceback.print_exc()
