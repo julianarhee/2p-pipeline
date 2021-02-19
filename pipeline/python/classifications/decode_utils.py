@@ -333,24 +333,71 @@ def pool_bootstrap(neuraldf, sdf, n_iterations=50, n_processes=1,
 
     return iter_df #output #results
 #
+
 def fit_svm_mp(neuraldf, sdf, n_iterations=50, n_processes=1, 
                    C_value=None, cv_nfolds=5, test_split=0.2, 
-                   test=None, single=False, n_train_configs=4, verbose=False,
-                   class_a=0, class_b=106, do_shuffle=True):   
+                   test_type=None, n_train_configs=4, verbose=False, within_fov=True,
+                   class_a=0, class_b=106, do_shuffle=True, balance_configs=True):   
     iter_df = None
  
     #### Define MP worker
     results = []
     terminating = mp.Event() 
-    def worker(n_iters, neuraldf, sdf, C_value, verbose, class_a, class_b, do_shuffle, out_q):
+    def worker(n_iters, neuraldf, sdf, C_value, verbose, class_a, class_b, do_shuffle, balance_configs, out_q):
         r_ = []        
         for ni in n_iters:
             curr_iter = do_fit_within_fov(ni, curr_data=neuraldf, sdf=sdf, 
                                         C_value=C_value, class_a=class_a, class_b=class_b, 
-                                        verbose=verbose, do_shuffle=do_shuffle)
+                                        verbose=verbose, do_shuffle=do_shuffle, balance_configs=balance_configs)
             r_.append(curr_iter)
         curr_iterdf = pd.concat(r_, axis=0)
         out_q.put(curr_iterdf) 
+
+    def worker_size_subset(n_iters, neuraldf, sdf, C_value, verbose, class_a, class_b, 
+                                do_shuffle, balance_configs, n_train_configs, out_q):
+        r_ = []        
+        for ni in n_iters: 
+            curr_iter = train_test_size_subset(ni, curr_data=neuraldf, sdf=sdf, 
+                                        C_value=C_value, class_a=class_a, class_b=class_b, 
+                                        verbose=verbose, do_shuffle=do_shuffle, balance_configs=balance_configs,
+                                        n_train_configs=n_train_configs)
+            r_.append(curr_iter)
+        curr_iterdf = pd.concat(r_, axis=0)
+        out_q.put(curr_iterdf)
+
+    def worker_size_single(n_iters, neuraldf, sdf, C_value, verbose, class_a, class_b, 
+                                do_shuffle, balance_configs, out_q):
+        r_ = []        
+        for ni in n_iters: 
+            curr_iter = train_test_size_single(ni, curr_data=neuraldf, sdf=sdf, 
+                                        C_value=C_value, class_a=class_a, class_b=class_b, 
+                                        verbose=verbose, do_shuffle=do_shuffle, balance_configs=balance_configs) 
+            r_.append(curr_iter)
+        curr_iterdf = pd.concat(r_, axis=0)
+        out_q.put(curr_iterdf)
+
+    def worker_morph_single(n_iters, neuraldf, sdf, C_value, verbose, class_a, class_b, 
+                                do_shuffle, balance_configs, out_q):
+        r_ = []        
+        for ni in n_iters: 
+            curr_iter = train_test_morph_single(ni, curr_data=neuraldf, sdf=sdf, 
+                                        C_value=C_value, class_a=class_a, class_b=class_b, 
+                                        verbose=verbose, do_shuffle=do_shuffle, balance_configs=balance_configs) 
+            r_.append(curr_iter)
+        curr_iterdf = pd.concat(r_, axis=0)
+        out_q.put(curr_iterdf)
+
+    def worker_morph(n_iters, neuraldf, sdf, C_value, verbose, class_a, class_b, 
+                                do_shuffle, balance_configs, out_q):
+        r_ = []        
+        for ni in n_iters: 
+            curr_iter = train_test_morph(ni, curr_data=neuraldf, sdf=sdf, 
+                                        C_value=C_value, class_a=class_a, class_b=class_b, 
+                                        verbose=verbose, do_shuffle=do_shuffle, balance_configs=balance_configs) 
+            r_.append(curr_iter)
+        curr_iterdf = pd.concat(r_, axis=0)
+        out_q.put(curr_iterdf)
+
 
     try:        
         # Each process gets "chunksize' filenames and a queue to put his out-dict into:
@@ -359,17 +406,41 @@ def fit_svm_mp(neuraldf, sdf, n_iterations=50, n_processes=1,
         chunksize = int(math.ceil(len(iter_list) / float(n_processes)))
         procs = []
         for i in range(n_processes):
-            p = mp.Process(target=worker,
+            if test_type=='size_subset':
+                p = mp.Process(target=worker_size_subset,
                            args=(iter_list[chunksize * i:chunksize * (i + 1)],
-                                          neuraldf, sdf, C_value, verbose, class_a, class_b,
-                                          do_shuffle, out_q))
+                                    neuraldf, sdf, C_value, verbose, class_a, class_b,
+                                    do_shuffle, balance_configs, n_train_configs, out_q))
+            elif test_type=='size_single':
+                p = mp.Process(target=worker_size_single,
+                           args=(iter_list[chunksize * i:chunksize * (i + 1)],
+                                    neuraldf, sdf, C_value, verbose, class_a, class_b,
+                                    do_shuffle, balance_configs, out_q))
+ 
+            elif test_type=='morph_single':
+                p = mp.Process(target=worker_morph_single,
+                           args=(iter_list[chunksize * i:chunksize * (i + 1)],
+                                    neuraldf, sdf, C_value, verbose, class_a, class_b,
+                                    do_shuffle, balance_configs, out_q)) 
+            elif test_type=='morph':
+                p = mp.Process(target=worker_morph,
+                           args=(iter_list[chunksize * i:chunksize * (i + 1)],
+                                    neuraldf, sdf, C_value, verbose, class_a, class_b,
+                                    do_shuffle, balance_configs, out_q)) 
+ 
+            else: 
+                p = mp.Process(target=worker,
+                           args=(iter_list[chunksize * i:chunksize * (i + 1)],
+                                    neuraldf, sdf, C_value, verbose, class_a, class_b,
+                                    do_shuffle, balance_configs, out_q))
+            print(p)
             procs.append(p)
             p.start() # start asynchronously
 
         # Collect all results into 1 results dict. We should know how many dicts to expect:
         results = []
         for i in range(n_processes):
-            results.append(out_q.get())
+            results.append(out_q.get(99999))
         # Wait for all worker processes to finish
         for p in procs:
             p.join() # will block until finished
@@ -1190,7 +1261,7 @@ def train_test_size_single(iter_num, curr_data=None, sdf=None, verbose=False,
             is_novel = train_transform!=test_transform
             iterdict.update({'heldout_test_score': curr_test_score, 'C': fit_C_value, 'randi': randi,
                              'train_transform': train_transform, 'test_transform': test_transform,
-                             'n_trials': len(predicted_labels), 'novel': is_novel}) 
+                             'n_trials': len(predicted_labels), 'novel': is_novel, 'condition': 'data'}) 
             testdf = pd.DataFrame(iterdict, index=[i])
             for label, g in test_targets.groupby(['label']):
                 testdf['n_samples_%i' % label] = len(g['label'])
@@ -1561,7 +1632,8 @@ def get_pchoose(predicted_labels, true_labels, class_a=0, class_b=106):
 
 def train_test_morph(iter_num, curr_data=None, sdf=None, verbose=False,
                     C_value=None, test_split=0.2, cv_nfolds=5, class_a=0, class_b=106, midp=53,
-                    do_shuffle=True, balance_configs=True):
+                    do_shuffle=True, balance_configs=True, 
+                    fit_psycho=True, P_model='weibull', par0=np.array([0.5, 0.5, 0.1]), nfits=20):
 
     #[gdf, MEANS, sdf, sample_size, cv] * n_times)
     '''
@@ -1710,12 +1782,32 @@ def train_test_morph(iter_num, curr_data=None, sdf=None, verbose=False,
     iterdf['iteration'] = [iter_num for _ in np.arange(0, len(iterdf))]
     iterdf['n_cells'] = curr_data.shape[1]-1
 
+    # fit curve?
+    if fit_psycho:
+        morphdf = iterdf[(iterdf.condition=='data') & (iterdf.morphlevel!=-1)]\
+                        .sort_values(by=['morphlevel']) 
+        data = morphdf[['morphlevel', 'n_samples', 'p_chooseB']].values.T
+        max_v = max([class_a, class_b])
+        data[0,:] /= float(max_v)
+        try:
+            par, L = decutils.mle_weibull(data, P_model=P_model, parstart=par0, nfits=nfits) 
+        except Exception as e:
+            # traceback.print_exc()
+            par = np.array([None for _ in np.arange(0, len(par0))])
+            L = None
+        iterdf['threshold'] = par[0]
+        iterdf['slope'] = par[1]
+        iterdf['lapse'] = par[2]
+        iterdf['likelihood'] = L
+        
     return iterdf
 
 
 def train_test_morph_single(iter_num, curr_data=None, sdf=None, verbose=False,
                     C_value=None, test_split=0.2, cv_nfolds=5, class_a=0, class_b=106, midp=53,
-                    do_shuffle=True, balance_configs=True):
+                    do_shuffle=True, balance_configs=True,
+                    fit_psycho=True, P_model='weibull', par0=np.array([0.5, 0.5, 0.1]), nfits=20):
+
     '''
     Resample w/ replacement from pooled cells (across datasets). Assumes 'sdf' is same for all datasets.
     Return fit results for 1 iteration.
@@ -1855,7 +1947,26 @@ def train_test_morph_single(iter_num, curr_data=None, sdf=None, verbose=False,
     iterdf = pd.concat(i_list, axis=0).reset_index(drop=True)
     iterdf['iteration'] = [iter_num for _ in np.arange(0, len(iterdf))]
     iterdf['n_cells'] = curr_data.shape[1]-1
-    
+   
+     # fit curve?
+    if fit_psycho:
+        morphdf = iterdf[(iterdf.condition=='data') & (iterdf.morphlevel!=-1)]\
+                        .sort_values(by=['morphlevel']) 
+        data = morphdf[['morphlevel', 'n_samples', 'p_chooseB']].values.T
+        max_v = max([class_a, class_b])
+        data[0,:] /= float(max_v)
+        try:
+            par, L = decutils.mle_weibull(data, P_model=P_model, parstart=par0, nfits=nfits) 
+        except Exception as e:
+            # traceback.print_exc()
+            par = np.array([None for _ in np.arange(0, len(par0))])
+            L = None
+        iterdf['threshold'] = par[0]
+        iterdf['slope'] = par[1]
+        iterdf['lapse'] = par[2]
+        iterdf['likelihood'] = L
+        
+
     return iterdf
 
 
@@ -2389,4 +2500,136 @@ def default_train_test_subset(results, sdf, metric='heldout_test_score', area_co
     return
 
 
-# 
+#  MISC fitting
+
+import functools
+import numpy as np
+import scipy.optimize
+from scipy.special import erf
+
+def neg_likelihood(pars, data, P_model='weibull', 
+                   parmin=np.array([.005, 0., 0.]), parmax=np.array([.5, 10., .25])):
+    """
+    From: https://github.com/cortex-lab/psychofit/blob/master/psychofit.py
+    Compare with scipy.optimize
+    
+    Negative likelihood of a psychometric function.
+    Args:
+        pars: Model parameters [threshold, slope, gamma], or if
+              using the 'erf_psycho_2gammas' model append a second gamma value.
+        data: 3 x n matrix where first row corresponds to stim levels,
+              the second to number of trials for each stim level (int),
+              the third to proportion correct / proportion rightward (float between 0 and 1)
+        P_model: The psychometric function. Possibilities include 'weibull'
+                 (DEFAULT), 'weibull50', 'erf_psycho' and 'erf_psycho_2gammas'
+        parmin: Minimum bound for parameters.  If None, some reasonable defaults are used
+        parmax: Maximum bound for parameters.  If None, some reasonable defaults are used
+    Returns:
+        l: The likelihood of the parameters.  The equation is:
+            - sum(nn.*(pp.*log10(P_model)+(1-pp).*log10(1-P_model)))
+            See the the appendix of Watson, A.B. (1979). Probability
+            summation over time. Vision Res 19, 515-522.
+    """
+    # Validate input
+    if isinstance(data, (list, tuple)):
+        data = np.array(data)
+    elif not isinstance(data, np.ndarray):
+        raise TypeError('data must be a list or numpy array')
+
+    if data.shape[0] == 3:
+        xx = data[0, :]
+        nn = data[1, :]
+        pp = data[2, :]
+    else:
+        raise ValueError('data must be m by 3 matrix')
+
+    # here is where you effectively put the constraints.
+    if (any(pars < parmin)) or (any(pars > parmax)):
+        l = 10000000
+        return l
+
+    dispatcher = {
+        'weibull': weibull,
+#         'weibull50': weibull50,
+#         'erf_psycho': erf_psycho,
+#         'erf_psycho_2gammas': erf_psycho_2gammas
+    }
+    try:
+        probs = dispatcher[P_model](pars, xx)
+    except KeyError:
+        raise ValueError('invalid model, options are "weibull", ' +
+                         '"weibull50", "erf_psycho" and "erf_psycho_2gammas"')
+
+    assert (max(probs) <= 1) or (min(probs) >= 0), 'At least one of the probabilities is not ' \
+                                                   'between 0 and 1'
+
+    probs[probs == 0] = np.finfo(float).eps
+    probs[probs == 1] = 1 - np.finfo(float).eps
+
+    l = - sum(nn * (pp * np.log(probs) + (1 - pp) * np.log(1 - probs)))
+    
+    return l
+
+def weibull(pars, xx):
+    """
+    Weibull function from 0 to 1, with lapse rate.
+    Args:
+        pars: Model parameters [alpha, beta, gamma].
+        xx: vector of stim levels.
+    Returns:
+        A vector of length xx
+    Raises:
+        ValueError: pars must be of length 3
+        TypeError: pars must be list-like or numpy array
+    """
+    # Validate input
+    if not isinstance(pars, (list, tuple, np.ndarray)):
+        raise TypeError('pars must be list-like or numpy array')
+
+    if len(pars) != 3:
+        raise ValueError('pars must be of length 3')
+
+    alpha, beta, gamma = pars
+    
+    return (1 - gamma) - (1 - 2*gamma) * np.exp(-((xx / alpha)**beta))
+
+
+def mle_weibull(data, P_model='weibull', parstart=None, parmin=None, parmax=None, nfits=5):
+    '''
+    From: https://github.com/cortex-lab/psychofit/blob/master/psychofit.py
+    Compare with scipy.optimize
+    '''
+    # Input validation
+    if isinstance(data, (list, tuple)):
+        data = np.array(data)
+    elif not isinstance(data, np.ndarray):
+        raise TypeError('data must be a list or numpy array')
+
+    if data.shape[0] != 3:
+        raise ValueError('data must be m by 3 matrix')
+
+    if parstart is None:
+        parstart = np.array([np.mean(data[0, :]), 0.5, 0.5])
+    if parmin is None:
+        parmin = np.array([np.min(data[0, :]), 0.0, 0.0])
+    if parmax is None:
+        parmax = np.array([np.max(data[0, :]), 10., .5])
+        
+    ii = np.isfinite(data[2, :])
+
+    likelihoods = np.zeros(nfits,)
+    pars = np.empty((nfits, parstart.size))
+    
+    f = functools.partial(neg_likelihood, data=data[:, ii],
+                          P_model=P_model, parmin=parmin, parmax=parmax)
+    for ifit in range(nfits):
+        pars[ifit, :] = scipy.optimize.fmin(f, parstart, disp=False)
+        parstart = parmin + np.random.rand(parmin.size) * (parmax-parmin)
+        likelihoods[ifit] = -neg_likelihood(pars[ifit, :], data[:, ii], P_model, parmin, parmax)
+
+    # the values to be output
+    L = likelihoods.max()
+    iBestFit = likelihoods.argmax()
+    
+    return pars[iBestFit, :], L
+
