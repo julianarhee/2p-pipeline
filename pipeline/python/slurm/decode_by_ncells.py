@@ -44,6 +44,11 @@ parser.add_argument('-S', '--sample-sizes', nargs='+', dest='sample_sizes', defa
 
 parser.add_argument('-T', '--test', action='store', dest='test_type', default=None, help='Test type, if generalization (options: size_single, size_subset, morph)')
 
+parser.add_argument('--shuffle-thr', action='store', dest='shuffle_thr', default=0.05, help='Thr for shuffle test (default=0.05)')
+parser.add_argument('--shuffle-drop', action='store_true', dest='shuffle_drop', default=False, help='Set to drop repeats for aggregated dsets)')
+
+
+
 
 args = parser.parse_args()
 
@@ -92,6 +97,9 @@ analysis_type = args.analysis_type
 c_value = None if args.c_value in ['None', None] else float(args.c_value)
 c_str = 'tune-C' if c_value is None else 'C-%.2f' % c_value
 trial_epoch = args.trial_epoch
+shuffle_thr = args.shuffle_thr
+shuffle_drop = args.shuffle_drop
+
 match_distns = args.match_distns
 threshold_snr = args.threshold_snr
 has_retino = args.has_retino
@@ -220,16 +228,29 @@ if analysis_type=='by_ncells':
 
 
                 else: 
-                    cmd = "sbatch --job-name={PROCID}.{ANALYSIS}.{MTAG} \
-                    -o '{LOGDIR}/{PROCID}.{ANALYSIS}.{MTAG}.out' \
-                    -e '{LOGDIR}/{PROCID}.{ANALYSIS}.{MTAG}.err' \
-            /n/coxfs01/2p-pipeline/repos/2p-pipeline/pipeline/python/slurm/decode_by_ncells.sbatch \
-            {EXP} {TRACEID} {RTEST} {OVERLAP} {ANALYSIS} {CVAL} {VAREA} {NCELLS} {DKEY} {EPOCH}".format(
-                        PROCID=piper, MTAG=mtag, LOGDIR=logdir,
-                        EXP=experiment, TRACEID=traceid, ANALYSIS=analysis_type,
-                        RTEST=responsive_test, OVERLAP=overlap_thr, 
-                        CVAL=c_value, VAREA=visual_area, NCELLS=ncells, DKEY=datakey, EPOCH=trial_epoch) 
-                #
+                    if shuffle_drop:
+                        cmd = "sbatch --job-name={PROCID}.{ANALYSIS}.{MTAG} \
+                        -o '{LOGDIR}/{PROCID}.{ANALYSIS}.{MTAG}.out' \
+                        -e '{LOGDIR}/{PROCID}.{ANALYSIS}.{MTAG}.err' \
+                /n/coxfs01/2p-pipeline/repos/2p-pipeline/pipeline/python/slurm/decode_by_ncells_thr_drop.sbatch \
+                {EXP} {TRACEID} {RTEST} {OVERLAP} {ANALYSIS} {CVAL} {VAREA} {NCELLS} {DKEY} {EPOCH} {TEST} {PASS}".format(
+                            PROCID=piper, MTAG=mtag, LOGDIR=logdir,
+                            EXP=experiment, TRACEID=traceid, ANALYSIS=analysis_type,
+                            RTEST=responsive_test, OVERLAP=overlap_thr, 
+                            CVAL=c_value, VAREA=visual_area, NCELLS=ncells, DKEY=datakey, 
+                            EPOCH=trial_epoch, TEST=test_type, PASS=shuffle_thr) 
+                    else: 
+                        cmd = "sbatch --job-name={PROCID}.{ANALYSIS}.{MTAG} \
+                        -o '{LOGDIR}/{PROCID}.{ANALYSIS}.{MTAG}.out' \
+                        -e '{LOGDIR}/{PROCID}.{ANALYSIS}.{MTAG}.err' \
+                /n/coxfs01/2p-pipeline/repos/2p-pipeline/pipeline/python/slurm/decode_by_ncells_thr.sbatch \
+                {EXP} {TRACEID} {RTEST} {OVERLAP} {ANALYSIS} {CVAL} {VAREA} {NCELLS} {DKEY} {EPOCH} {TEST} {PASS}".format(
+                            PROCID=piper, MTAG=mtag, LOGDIR=logdir,
+                            EXP=experiment, TRACEID=traceid, ANALYSIS=analysis_type,
+                            RTEST=responsive_test, OVERLAP=overlap_thr, 
+                            CVAL=c_value, VAREA=visual_area, NCELLS=ncells, DKEY=datakey, 
+                            EPOCH=trial_epoch, TEST=test_type, PASS=shuffle_thr) 
+                    #
             status, joboutput = commands.getstatusoutput(cmd)
             jobnum = joboutput.split(' ')[-1]
             jobids.append(jobnum)
@@ -251,10 +272,15 @@ elif analysis_type in ['by_fov', 'split_pupil']:
         fatal("no fovs found.")
     info("found %i [%s] datasets to process." % (len(dsets), experiment))
 
+    old_rats = ['JC061', 'JC067', 'JC070', 'JC073']
     for (visual_area, datakey), g in dsets.groupby(['visual_area', 'datakey']):
+        #if analysis_type=='split_pupil' and datakey.split('_')[1] not in old_rats:
+        #    info("--- skipping %s" % datakey)
+        #    continue
+
         mtag = '%s_%s_%s' % (datakey, visual_area, C_str) 
         if test_type is not None:
-            mtag = 'GEN_%s__%s' % (test_type, mtag)
+            mtag = 'GEN%s-%s-%s' % (test_type, responsive_test, mtag)
 
         if has_retino:
             cmd = "sbatch --job-name={procid}.{mtag}.{analysis} \
