@@ -120,7 +120,8 @@ def decode_from_fov(datakey, visual_area, neuraldf, sdf=None, #min_ncells=5,
 
     # Decodinng -----------------------------------------------------
     start_t = time.time()
-    iter_results = decutils.pool_bootstrap(neuraldf, sdf, C_value=C_value, 
+    #iter_results = decutils.pool_bootstrap(neuraldf, sdf, C_value=C_value, a
+    iter_results = decutils.fit_svm_mp(neuraldf, sdf, C_value=C_value, 
                                 n_iterations=n_iterations, n_processes=n_processes, verbose=verbose,
                                 class_a=class_a, class_b=class_b, do_shuffle=do_shuffle, 
                                 balance_configs=balance_configs,
@@ -335,6 +336,7 @@ def decode_by_ncells(n_cells, visual_area, global_rois, sdf, NEURALDATA,
 
     #### Get new sample set
     try:
+        print("... sampling data, n=%i cells" % n_cells)
         neuraldf = decutils.sample_neuraldata(n_cells, global_rois, 
                                     NEURALDATA, train_configs=train_configs)
     except Exception as e:
@@ -343,11 +345,12 @@ def decode_by_ncells(n_cells, visual_area, global_rois, sdf, NEURALDATA,
 
     neuraldf = aggr.zscore_neuraldf(neuraldf)
     n_cells = int(neuraldf.shape[1]-1) 
-    print("... BY_NCELLS | n=%i cells" % (n_cells))
+    print("... doing decode BY_NCELLS | n=%i cells" % (n_cells))
 
     # Fit.
     start_t = time.time()
-    iter_results = decutils.pool_bootstrap(neuraldf, sdf, C_value=C_value, 
+    #iter_results = decutils.pool_bootstrap(neuraldf, sdf, C_value=C_value, 
+    iter_results = decutils.fit_svm_mp(neuraldf, sdf, C_value=C_value, 
                             n_iterations=n_iterations, n_processes=n_processes, verbose=verbose,
                             class_a=class_a, class_b=class_b, do_shuffle=do_shuffle,
                             balance_configs=True, # within_fov=False,
@@ -627,6 +630,13 @@ def load_decode_within_fov(animalid, session, fov, results_id='fov_results',
             print("Found old... deleting: %s" % results_outfile)
             os.remove(results_outfile)
             return None
+        if ('morph_' in results_id) and ('morphlevel' not in iter_df.columns):
+            print("Found old... deleting: %s" % results_outfile)
+            os.remove(results_outfile)
+            return None
+        if iter_df['iteration'].max() < 90:
+            print("Found test... deleting (print i=%i" % iter_df['iteration'].max())
+            return None 
  
     except Exception as e:
         #print("Unable to find file: %s" % results_outfile)
@@ -792,15 +802,12 @@ def load_single_cells_pass(responsive_test='ROC', aggregate_dir='/n/coxfs01/juli
     return pass_single
 
 
-def get_cells_and_data(all_cells, MEANS, traceid='traces001', response_type='dff', stack_neuraldf=True,
+def get_cells_and_data(all_cells, MEANS, sdata=None, traceid='traces001', response_type='dff', stack_neuraldf=True,
                        overlap_thr=None, has_retino=False, threshold_snr=False, snr_thr=10, max_snr_thr=None,
                       remove_too_few=False, min_ncells=5, match_distns=False, threshold_dff=False):
     
     has_rfs = (overlap_thr is not None) and (has_retino is False) and (threshold_dff is False)
-    #### Get metadata for experiment type
-    dsets, keys_by_area = aggr.experiment_datakeys(experiment=experiment, experiment_only=False,
-                                    has_gratings=False, stim_filterby=None, has_rfs=has_rfs)
-    
+   
     #### Load RFs
     NEURALDATA=None; RFDATA=None;
     if has_rfs:
@@ -808,8 +815,13 @@ def get_cells_and_data(all_cells, MEANS, traceid='traces001', response_type='dff
         reliable_only=True
         rf_fit_desc = fitrf.get_fit_desc(response_type=response_type)
         reliable_str = 'reliable' if reliable_only else ''
+        #### Get metadata for experiment type
+        if sdata is None:
+            dsets, keys_by_area = aggr.experiment_datakeys(experiment=experiment, experiment_only=False,
+                                        has_gratings=False, stim_filterby=None, has_rfs=has_rfs)
+     
         # Get position info for RFs
-        rfdf = aggr.load_rfdf_and_pos(dsets, rf_filter_by=None, assign_cells=True,
+        rfdf = aggr.load_rfdf_and_pos(sdata, assigned_cells=all_cells, rf_filter_by=None, assign_cells=True,
                                     reliable_only=True, traceid=traceid)
         #rfdf_avg = aggr.get_rfdata(all_cells, rfdf, average_repeats=True)
 
@@ -887,7 +899,7 @@ def get_cells_and_data(all_cells, MEANS, traceid='traces001', response_type='dff
     return NEURALDATA, CELLS.reset_index(drop=True)
 
 
-def filter_cells_by_dff(all_cells, MEANS, traceid='traces001', response_type='dff', 
+def filter_cells_by_dff(all_cells, MEANS, sdata=None, traceid='traces001', response_type='dff', 
                        minv=0., maxv=1.0, aggregate_dir='/n/coxfs01/julianarhee/aggregate-visual-areas'):
    
     cells_fn = os.path.join(aggregate_dir, 'decoding', 'thr_dff_cells_m%.2f_M%.2f.pkl' % (minv, maxv))
@@ -898,7 +910,7 @@ def filter_cells_by_dff(all_cells, MEANS, traceid='traces001', response_type='df
             thr_cells = pkl.load(f)
 
     else:
-        ndata_df, cells_df = get_cells_and_data(all_cells, MEANS, traceid=traceid, response_type=response_type, 
+        ndata_df, cells_df = get_cells_and_data(all_cells, MEANS, sdata=sdata, traceid=traceid, response_type=response_type, 
                                     stack_neuraldf=True, overlap_thr=None, has_retino=False, threshold_snr=False) 
                                     
         meandf = ndata_df.groupby(['visual_area', 'datakey', 'cell', 'config']).mean().reset_index()
@@ -990,14 +1002,14 @@ def extract_options(options):
             default=100, help="N iterations (default: 100)")
 
     parser.add_option('-o', action='store', dest='overlap_thr', 
-            default=0.5, help="% overlap between RF and stimulus (default: 0.5)")
+            default=None, help="% overlap between RF and stimulus (default: None)")
     parser.add_option('--verbose', action='store_true', dest='verbose', 
             default=False, help="verbose printage")
     parser.add_option('--new', action='store_true', dest='create_new', 
             default=False, help="re-do decode")
 
     parser.add_option('-C','--cvalue', action='store', dest='C_value', 
-            default=1.0, help="tune for C (default: 1)")
+            default=None, help="tune for C (default: None, unes C)")
 
 
     choices_a = ('by_fov', 'split_pupil', 'by_ncells', 'single_cells')
@@ -1043,7 +1055,11 @@ def extract_options(options):
     parser.add_option('--ntrain', action='store', dest='n_train_configs', 
             default=4, help="N training sizes to use (default: 4, test 1)")
  
-
+    parser.add_option('--shuffle-thr', action='store', dest='shuffle_thr', 
+            default=0.05, help="Percentile greater than shuffle (default: 0.05)")
+    parser.add_option('--shuffle-drop', action='store_true', dest='shuffle_drop', 
+            default=False, help="Set to drop repeats")
+ 
 
 
     (options, args) = parser.parse_args(options)
@@ -1132,6 +1148,8 @@ def main(options):
     test_type = None if opts.test_type in ['None', None] else opts.test_type
     n_train_configs = int(opts.n_train_configs) 
     #train_test_single = opts.train_test_single
+    shuffle_thr = float(opts.shuffle_thr)
+    shuffle_drop = opts.shuffle_drop
 
     # Pupil -------------------------------------------
     pupil_feature='pupil_fraction'
@@ -1168,23 +1186,22 @@ def main(options):
     filter_str = 'filter_%s_%s' % (stim_filterby, g_str)
     data_id = '|'.join([traceid, filter_str, response_str])
     print(data_id)
-
+    
 
     #### Get metadata for experiment type
-    sdata = aggr.get_aggregate_info(traceid=traceid, fov_type=fov_type, state=state)
+    #sdata = aggr.get_aggregate_info(traceid=traceid, fov_type=fov_type, state=state)
     has_filter = 'retino' if has_retino else 'rfs'
-    dsets, keys_by_area = aggr.experiment_datakeys(experiment=experiment, experiment_only=False,
-                                      has_gratings=has_gratings, stim_filterby=stim_filterby, has_rfs=has_rfs)
+    #dsets, keys_by_area = aggr.experiment_datakeys(experiment=experiment, experiment_only=False,
+    #                                  has_gratings=has_gratings, stim_filterby=stim_filterby, has_rfs=has_rfs)
      
     #### Check stimulus configs
-    stim_datakeys = dsets['datakey'].unique()
+    # stim_datakeys = dsets['datakey'].unique()
 
     #### Source data
     visual_areas = ['V1', 'Lm', 'Li', 'Ll']
     curr_visual_area = None if opts.visual_area in ['None', None] else opts.visual_area
     curr_datakey = None if opts.datakey in ['None', None] else opts.datakey    
-
-    
+ 
     diff_sdfs = ['20190327_JC073_fov1', '20190314_JC070_fov1'] # 20190426_JC078 (LM, backlight)
     if curr_datakey in diff_sdfs:
         images_only=False #True
@@ -1195,7 +1212,8 @@ def main(options):
     # TODO:  Fix so that we can train on anchors only and/or subset of configs
     zscore_first = False #analysis_type=='by_ncells'  
     equalize_first = False #analysis_type != 'split_pupil' 
-    _, all_cells, MEANS, SDF = aggr.get_source_data(experiment, 
+
+    sdata, all_cells, MEANS, SDF = aggr.get_source_data(experiment, 
                         equalize_now=equalize_first, zscore_now=zscore_first,
                         response_type=response_type, responsive_test=responsive_test, 
                         responsive_thr=responsive_thr, trial_epoch=trial_epoch, 
@@ -1225,11 +1243,11 @@ def main(options):
     max_dff=1.0
     if threshold_dff:
         print("TMP: loading thresholded cells")
-        all_cells = filter_cells_by_dff(all_cells, MEANS, traceid=traceid, response_type=response_type,
+        all_cells = filter_cells_by_dff(all_cells, MEANS, sdata=sdata, traceid=traceid, response_type=response_type,
                        minv=min_dff, maxv=max_dff)
 
     # FINAL DATASET
-    NEURALDATA, CELLS = get_cells_and_data(all_cells, MEANS, traceid=traceid, response_type=response_type, 
+    NEURALDATA, CELLS = get_cells_and_data(all_cells, MEANS, sdata=sdata, traceid=traceid, response_type=response_type, 
                             stack_neuraldf=stack_neuraldf, overlap_thr=overlap_thr, has_retino=has_retino, 
                             threshold_snr=threshold_snr, snr_thr=snr_thr, max_snr_thr=max_snr_thr,
                             remove_too_few=remove_too_few, min_ncells=min_ncells, match_distns=match_distns)
@@ -1241,10 +1259,11 @@ def main(options):
         return None
 
     if analysis_type=='by_ncells' and responsive_test=='ROC':
-        pass_thr=0.10
+        #pass_thr=0.05
+        shuffle_str = '_drop' if shuffle_drop else ''
         pass_shuffle_outfile = os.path.join(aggregate_dir, 'decoding', 'by_fov', 
-                                            'pass_shuffle_test_thr-%.2f.json' % pass_thr)
-        print("***Loading dsets that pass shuffle test (thr=%.2f)" % pass_thr)
+                                    'pass_shuffle_test_thr-%.2f%s.json' % (shuffle_thr, shuffle_str))
+        print("***Loading dsets that pass shuffle test (thr=%.2f, drop=%s)" % (shuffle_thr, str(shuffle_drop)))
         with open(pass_shuffle_outfile, 'r') as f:
             pass_dsets = json.load(f)
         tmpc = pd.concat([g for (v, d), g in CELLS.groupby(['visual_area', 'datakey']) \
@@ -1390,7 +1409,7 @@ def main(options):
             print("Finished %s (%s). ID=%s" % (curr_datakey, curr_visual_area, results_id))
 
     elif analysis_type=='by_ncells':
-        data_info='%s%s-%s_%s_iter%i' % (match_str, response_type, responsive_test, overlap_str, n_iterations)
+        data_info='%s%s-%s_%s_iter%i_thr%.2f%s' % (match_str, response_type, responsive_test, overlap_str, n_iterations, shuffle_thr, shuffle_str)
 
         # Create aggregate output dir
         dst_dir = os.path.join(aggregate_dir, 'decoding', analysis_type, data_info)
