@@ -929,7 +929,7 @@ def get_source_data(experiment, traceid='traces001',
         MEANS = means0
  
    # Get dataset metainfo
-    sdata = get_aggregate_info(traceid=traceid, fov_type=fov_type, state=state)
+    sdata, rois = get_aggregate_info(traceid=traceid, fov_type=fov_type, state=state, return_cells=True)
     excluded_datakeys = ['20190327_JC073_fov1', '20190314_JC070_fov1'] if images_only else []
     print("SDF, images_only=%s (excluding dsetes: %s)" % (str(images_only), str(excluded_datakeys)))
     sdata = sdata[~sdata.isin(excluded_datakeys)]
@@ -937,7 +937,7 @@ def get_source_data(experiment, traceid='traces001',
     edata = sdata[sdata['experiment']==experiment].copy()
      
     # Get cell assignemnts (based on retinotopy/segment_retinotopy.py)
-    rois, missing_seg = seg.get_cells_by_area(edata, return_missing=True)
+    #rois, missing_seg = seg.get_cells_by_area(edata, return_missing=True) do this already in get_aggregate_info()
     cells = get_active_cells_in_current_datasets(rois, MEANS, verbose=False)
 
     # Assign global index
@@ -954,14 +954,14 @@ def get_source_data(experiment, traceid='traces001',
        
     if return_missing:
         if return_configs:
-            return edata, cells, MEANS, SDF, missing_seg
+            return sdata, cells, MEANS, SDF, missing_seg
         else:
-            return edata, cells, MEANS, missing_seg
+            return sdata, cells, MEANS, missing_seg
     else:
         if return_configs:
-            return edata, cells, MEANS, SDF
+            return sdata, cells, MEANS, SDF
         else:
-            return edata, cells, MEANS
+            return sdata, cells, MEANS
 
 def zscore_neuraldf(neuraldf):
     cols_drop = ['config', 'trial'] if 'trial' in neuraldf.columns else ['config']
@@ -1417,7 +1417,7 @@ def get_neuraldata_and_rfdata(assigned_cells, rfdf, MEANS,
     return NEURALDATA, RFDATA, updated_cells
 
 
-def load_rfdf_and_pos(dsets, response_type='dff', rf_filter_by=None, reliable_only=True,
+def load_rfdf_and_pos(sdata, assigned_cells=None, response_type='dff', rf_filter_by=None, reliable_only=True,
                         rf_fit_thr=0.05, traceid='traces001', assign_cells=True,
                         aggregate_dir='/n/coxfs01/2p-data'):
     '''
@@ -1435,12 +1435,13 @@ def load_rfdf_and_pos(dsets, response_type='dff', rf_filter_by=None, reliable_on
     reliable_str = 'reliable' if reliable_only else ''
     df_fpath =  os.path.join(aggr_rf_dir, 
                         'fits_and_coords_%s_%s.pkl' % (rf_filter_by, reliable_str))
-    rf_dsets = dsets[dsets['experiment'].isin(['rfs', 'rfs10'])].copy()
+    rf_dsets = sdata[sdata['experiment'].isin(['rfs', 'rfs10'])].copy()
     rfdf = rfutils.get_rf_positions(rf_dsets, df_fpath)
 
     # if assign
     if assign_cells:
-        assigned_cells, _ = seg.get_cells_by_area(rf_dsets, return_missing=True)
+        if (assigned_cells is None):
+            assigned_cells, _ = seg.get_cells_by_area(rf_dsets, return_missing=True)
         rfdf = get_rfdata(assigned_cells, rfdf, average_repeats=False)
 
 
@@ -2123,18 +2124,18 @@ def threshold_cells_by_snr(mean_snr, globalcells, snr_thr=10.0, max_snr_thr=None
 # ===============================================================
 from matplotlib.lines import Line2D
 
-def crop_legend_labels(ax, n_hues, bbox_to_anchor=(1.05, 1), loc='upper left', fontsize=12):
+def crop_legend_labels(ax, n_hues, bbox_to_anchor=(1.05, 1), loc='upper left', fontsize=12,title=''):
     # Get the handles and labels.
     leg_handles, leg_labels = ax.get_legend_handles_labels()
     # When creating the legend, only use the first two elements
-    leg = ax.legend(leg_handles[0:n_hues], leg_labels[0:n_hues], 
+    leg = ax.legend(leg_handles[0:n_hues], leg_labels[0:n_hues], title=title,
             bbox_to_anchor=(1.05, 1), fontsize=fontsize, loc=loc) # borderaxespad=0.)
     return leg
 
 
 def plot_pairwise_by_axis(plotdf, curr_metric='abs_coef', c1='az', c2='el', 
                           compare_var='cond', fontsize=10, fontcolor='k', fmt='%.2f', xytext=(0, 10),
-                          area_colors=None, legend=True, bbox_to_anchor=(1.5,1.1), ax=None):
+                          area_colors=None, legend=True, legend_fontsize=8, bbox_to_anchor=(1.5,1.1), ax=None):
     if ax is None:
         fig, ax = pl.subplots(figsize=(5,4), dpi=150)
         fig.patch.set_alpha(0)
@@ -2150,7 +2151,7 @@ def plot_pairwise_by_axis(plotdf, curr_metric='abs_coef', c1='az', c2='el',
         # Get counts of samples for legend
         legend_elements = get_counts_for_legend(plotdf, area_colors=area_colors, 
                                                 markersize=10, marker='_')
-        ax.legend(handles=legend_elements, bbox_to_anchor=bbox_to_anchor, fontsize=8)
+        ax.legend(handles=legend_elements, bbox_to_anchor=bbox_to_anchor, fontsize=legend_fontsize)
 
     return ax #fig
 
@@ -2662,7 +2663,7 @@ def get_aggregate_info_unassigned(traceid='traces001', fov_type='zoom2p0x', stat
 
 
 def get_aggregate_info(traceid='traces001', fov_type='zoom2p0x', state='awake',
-                        visual_areas=['V1', 'Lm', 'Li', 'Ll']):
+                        visual_areas=['V1', 'Lm', 'Li', 'Ll'], return_cells=False):
     from pipeline.python.retinotopy import segment_retinotopy as seg
     sdata = get_aggregate_info_unassigned(traceid=traceid, fov_type=fov_type, state=state,
                     visual_areas=visual_areas)
@@ -2682,7 +2683,10 @@ def get_aggregate_info(traceid='traces001', fov_type='zoom2p0x', state='awake',
     all_sdata = split_datakey(all_sdata)
     all_sdata['fovnum'] = [int(f.split('_')[0][3:]) for f in all_sdata['fov']]
 
-    return all_sdata
+    if return_cells:
+        return all_sdata, cells
+    else:
+        return all_sdata
 
 
 
