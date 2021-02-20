@@ -1784,22 +1784,25 @@ def train_test_morph(iter_num, curr_data=None, sdf=None, verbose=False,
 
     # fit curve?
     if fit_psycho:
+        iterdf['threshold']=None
+        iterdf['slope'] = None
+        iterdf['lapse'] = None
+        iterdf['likelihood'] = None
         morphdf = iterdf[(iterdf.condition=='data') & (iterdf.morphlevel!=-1)]\
-                        .sort_values(by=['morphlevel']) 
+                        .sort_values(by=['morphlevel'])  
         data = morphdf[['morphlevel', 'n_samples', 'p_chooseB']].values.T
         max_v = max([class_a, class_b])
         data[0,:] /= float(max_v)
         try:
-            par, L = decutils.mle_weibull(data, P_model=P_model, parstart=par0, nfits=nfits) 
+            par, L = mle_weibull(data, P_model=P_model, parstart=par0, nfits=nfits) 
+            iterdf['threshold'] = par[0]
+            iterdf['slope'] = par[1]
+            iterdf['lapse'] = par[2]
+            iterdf['likelihood'] = L 
         except Exception as e:
-            # traceback.print_exc()
-            par = np.array([None for _ in np.arange(0, len(par0))])
-            L = None
-        iterdf['threshold'] = par[0]
-        iterdf['slope'] = par[1]
-        iterdf['lapse'] = par[2]
-        iterdf['likelihood'] = L
-        
+            traceback.print_exc()
+            #continue
+       
     return iterdf
 
 
@@ -1950,23 +1953,26 @@ def train_test_morph_single(iter_num, curr_data=None, sdf=None, verbose=False,
    
      # fit curve?
     if fit_psycho:
+        iterdf['threshold']=None
+        iterdf['slope'] = None
+        iterdf['lapse'] = None
+        iterdf['likelihood'] = None
         morphdf = iterdf[(iterdf.condition=='data') & (iterdf.morphlevel!=-1)]\
                         .sort_values(by=['morphlevel']) 
-        data = morphdf[['morphlevel', 'n_samples', 'p_chooseB']].values.T
-        max_v = max([class_a, class_b])
-        data[0,:] /= float(max_v)
-        try:
-            par, L = decutils.mle_weibull(data, P_model=P_model, parstart=par0, nfits=nfits) 
-        except Exception as e:
-            # traceback.print_exc()
-            par = np.array([None for _ in np.arange(0, len(par0))])
-            L = None
-        iterdf['threshold'] = par[0]
-        iterdf['slope'] = par[1]
-        iterdf['lapse'] = par[2]
-        iterdf['likelihood'] = L
-        
-
+        for train_transform, mdf in morphdf.groupby(['train_transform']): 
+            data = mdf[['morphlevel', 'n_samples', 'p_chooseB']].values.T
+            max_v = max([class_a, class_b])
+            data[0,:] /= float(max_v)
+            try:
+                par, L = mle_weibull(data, P_model=P_model, parstart=par0, nfits=nfits) 
+                iterdf['threshold'].loc[mdf.index] = par[0]
+                iterdf['slope'].loc[mdf.index] = par[1]
+                iterdf['lapse'].loc[mdf.index] = par[2]
+                iterdf['likelihood'].loc[mdf.index] = L 
+            except Exception as e:
+                traceback.print_exc()
+                continue
+           
     return iterdf
 
 
