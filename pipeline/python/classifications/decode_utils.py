@@ -1124,7 +1124,7 @@ def do_fit_sample_cells(iter_num, sample_size=1, global_rois=None, MEANS=None, s
 
 
 def fit_shuffled(zdata, targets, C_value=None, test_split=0.2, cv_nfolds=5, randi=0, verbose=False,
-                    class_types=[0, 106], class_name='morph', do_pchoose=False):
+                    class_types=[0, 106], class_name='morph', do_pchoose=False, return_svc=False, i=0):
     '''
     Shuffle target labels, do fit_svm()
     '''
@@ -1133,7 +1133,6 @@ def fit_shuffled(zdata, targets, C_value=None, test_split=0.2, cv_nfolds=5, rand
     targets['label'] = labels_shuffled
 
     tmp_=[]
-    i=0
     if do_pchoose:
         class_a, class_b = class_types
         iter_shuffled, trained_svc, trained_scaler, (predicted_labels, true_labels) = fit_svm(
@@ -1146,9 +1145,8 @@ def fit_shuffled(zdata, targets, C_value=None, test_split=0.2, cv_nfolds=5, rand
         for anchor in class_types: #[class_a, class_b]:
             a_ixs = [i for i, v in enumerate(true_labels) if v==anchor] 
             p_chooseB = sum([1 if p==class_b else 0 for p in predicted_labels[a_ixs]])/float(len(a_ixs))
-            iter_shuffled.update({'p_chooseB': p_chooseB, '%s' % class_name: anchor, 'n_split': len(a_ixs)})
+            iter_shuffled.update({'p_chooseB': p_chooseB, '%s' % class_name: anchor, 'n_samples': len(a_ixs)})
             tmpdf_shuffled = pd.DataFrame(iter_shuffled, index=[i])
-            tmpdf_shuffled['n_samples'] = len(a_ixs)
             i+=1
             tmp_.append(tmpdf_shuffled)            
         iterdf = pd.concat(tmp_, axis=0).reset_index(drop=True)
@@ -1160,7 +1158,10 @@ def fit_shuffled(zdata, targets, C_value=None, test_split=0.2, cv_nfolds=5, rand
     iterdf['condition'] = 'shuffled'
     #print("shuffled")
 
-    return iterdf
+    if return_svc:
+        return iterdf, trained_svc, trained_scaler
+    else:
+        return iterdf
 
  
 # ------
@@ -1225,7 +1226,7 @@ def train_test_size_single(iter_num, curr_data=None, sdf=None, verbose=False,
         #### Shuffle labels
         if do_shuffle:
             tmpdf_shuffled = fit_shuffled(train_data, targets, C_value=C_value, verbose=verbose,
-                                    test_split=test_split, cv_nfolds=cv_nfolds, randi=randi)
+                                    test_split=test_split, cv_nfolds=cv_nfolds, randi=randi, i=i)
             tmpdf_shuffled['train_transform'] = train_transform
             tmpdf_shuffled['test_transform'] = train_transform
             tmpdf_shuffled['n_trials'] = len(targets)
@@ -1233,6 +1234,7 @@ def train_test_size_single(iter_num, curr_data=None, sdf=None, verbose=False,
             for label, g in targets.groupby(['label']):
                 tmpdf_shuffled['n_samples_%i' % label] = len(g['label']) 
             i_list.append(tmpdf_shuffled) #iter_df) 
+            i+=1
 
         #### Select generalization-test set
         test_configs = sdf[((sdf[class_name].isin(class_types))\
@@ -1264,10 +1266,8 @@ def train_test_size_single(iter_num, curr_data=None, sdf=None, verbose=False,
                              'n_trials': len(predicted_labels), 'novel': is_novel, 'condition': 'data'}) 
             testdf = pd.DataFrame(iterdict, index=[i])
             for label, g in test_targets.groupby(['label']):
-                testdf['n_samples_%i' % label] = len(g['label'])
-     
+                testdf['n_samples_%i' % label] = len(g['label']) 
             i += 1
-
             #### Shuffle labels  - no shuffle, already testd above
             i_list.append(testdf) 
 
@@ -1342,16 +1342,16 @@ def train_test_size_subset(iter_num, curr_data=None, sdf=None, verbose=False,
         #### Shuffle labels
         if do_shuffle:
             tmpdf_shuffled = fit_shuffled(train_data, targets, C_value=C_value, verbose=verbose,
-                                    test_split=test_split, cv_nfolds=cv_nfolds, randi=randi)
+                                    test_split=test_split, cv_nfolds=cv_nfolds, randi=randi, i=i)
             tmpdf_shuffled['train_transform'] = train_transform
             tmpdf_shuffled['test_transform'] = train_transform
             tmpdf_shuffled['n_trials'] = len(targets)
             tmpdf_shuffled['novel'] = False
             for label, g in targets.groupby(['label']):
-                tmpdf_shuffled['n_samples_%i' % label] = len(g['label']) 
-     
+                tmpdf_shuffled['n_samples_%i' % label] = len(g['label'])  
             # combine
             i_list.append(tmpdf_shuffled)
+            i+=1
 
         #### Select generalization-test set
         test_sizes = [t for t in sizes if t not in train_sizes]
@@ -1363,8 +1363,7 @@ def train_test_size_subset(iter_num, curr_data=None, sdf=None, verbose=False,
         test_targets = pd.DataFrame(test_subset['config'].copy(), columns=['config'])
         test_targets['label'] = [sdf['morphlevel'][cfg] for cfg in test_targets['config'].values]
         test_targets['group'] = [sdf['size'][cfg] for cfg in test_targets['config'].values]
-
-           
+ 
         #### Test SVM
         fit_C_value = iterdict['C']
         for test_transform, curr_test_group in test_targets.groupby(['group']):
@@ -1387,7 +1386,6 @@ def train_test_size_subset(iter_num, curr_data=None, sdf=None, verbose=False,
             for label, g in test_targets.groupby(['label']):
                 testdf['n_samples_%i' % label] = len(g['label']) 
             i += 1
-
             #### Shuffle labels  - no shuffle, already testd above
             i_list.append(testdf) 
     
@@ -1642,7 +1640,7 @@ def train_test_morph(iter_num, curr_data=None, sdf=None, verbose=False,
     test_transform:  intermediate morphs
 
     Note: 
-    If do_pchoose=True for fit_shuffled(), returns df updated with ['p_chooseB', 'morphlevel', n_split']. 
+    If do_pchoose=True for fit_shuffled(), returns df updated with ['p_chooseB', 'morphlevel', n_samples']. 
     '''   
     #### Select train/test configs for clf A vs B
     class_types = [class_a, class_b]
@@ -1694,31 +1692,30 @@ def train_test_morph(iter_num, curr_data=None, sdf=None, verbose=False,
     for anchor in class_types:
         a_ixs = [i for i, v in enumerate(true_labels) if v==anchor] 
         p_chooseB = sum([1 if p==class_b else 0 for p in predicted_labels[a_ixs]])/float(len(a_ixs))
-        iterdict.update({'p_chooseB': p_chooseB, 'morphlevel': anchor, 'n_split': len(a_ixs)})
+        iterdict.update({'p_chooseB': p_chooseB, 'morphlevel': anchor, 'n_samples': len(a_ixs)})
         tmpdf = pd.DataFrame(iterdict, index=[i])
         #for label, g in targets.groupby(['label']):
-        tmpdf['n_samples'] = len(a_ixs) 
         for t, v in train_samples.items():
             tmpdf[t] = v
-        i += 1
         i_list.append(tmpdf)
+        i += 1
     train_columns = tmpdf.columns.tolist()
  
     #### Shuffle labels
     if do_shuffle:
-        tmpdf_shuffled = fit_shuffled(train_data, targets, C_value=C_value, verbose=verbose,
-                                test_split=test_split, cv_nfolds=cv_nfolds, randi=randi, 
-                                do_pchoose=True, class_types=[class_a, class_b], class_name=class_name)
+        tmpdf_shuffled, shuffled_svc, shuffled_scaler = fit_shuffled(train_data, targets, C_value=C_value, 
+                                                    verbose=verbose, test_split=test_split, 
+                                                    cv_nfolds=cv_nfolds, randi=randi, do_pchoose=True, 
+                                                    class_types=[class_a, class_b], class_name=class_name,
+                                                    return_svc=True, i=i)
         tmpdf_shuffled['train_transform'] = train_transform
         tmpdf_shuffled['test_transform'] = train_transform
         tmpdf_shuffled['n_trials'] = len(targets)
         tmpdf_shuffled['novel'] = False
         for t, v in train_samples.items():
             tmpdf_shuffled[t] = v
-
         i_list.append(tmpdf_shuffled) 
-
-
+        i+=1
     #### TEST SET --------------------------------------------------------------------
     novel_class_types = [c for c in sdf[class_name].unique() if c not in class_types]
     test_configs = sdf[sdf[class_name].isin(novel_class_types)].index.tolist()
@@ -1732,52 +1729,61 @@ def train_test_morph(iter_num, curr_data=None, sdf=None, verbose=False,
        
     #### Test SVM
     fit_C_value = iterdict['C']
+    if do_shuffle:
+        fit_C_shuffled = float(tmpdf_shuffled['C'].unique())
+
     for test_transform, curr_test_group in test_targets.groupby(['label']): #(['group']):
         # print(test_transform, curr_test_group.shape)
         iterdict = dict((k, None) for k in train_columns) 
+        if do_shuffle:
+            shuffdict = dict((k, None) for k in train_columns)
         curr_test_labels = curr_test_group['label'].values
         curr_test_data = test_data.loc[curr_test_group.index].copy()
         curr_test_data = trained_scaler.transform(curr_test_data)
-        
-        # Ignore midp trials
-        if test_transform in [-1, midp]:
+       
+        # Calculate "score" 
+        if test_transform in [-1, midp]:         # Ignore midp trials
             split_trials = np.array([int(i) for i, v in enumerate(curr_test_labels) ])
             # rando assign values
             split_labels = [class_a if i<0.5 else class_b for i in np.random.rand(len(split_trials),)]
-            #[class_a for _ in np.arange(0, len(split_trials))]
         else:
             split_trials = np.array([int(i) for i, v in enumerate(curr_test_labels) if v!=midp])
             split_labels = [class_a if lvl < midp else class_b for lvl in curr_test_labels[split_trials]] 
-        #print(test_transform, split_labels)
-
         split_data = curr_test_data[split_trials, :]
         curr_test_score = trained_svc.score(split_data, split_labels) #(curr_test_data, curr_test_labels)
         iterdict.update({'heldout_test_score': curr_test_score, 'C': fit_C_value, 'randi': randi,
                          'train_transform': train_transform, 'test_transform': test_transform, 
                          'novel': True, 'n_trials': len(curr_test_labels), 'condition': 'data'}) 
- 
-        # predict
+
+        # predict p_chooseB
         predicted_labels = trained_svc.predict(curr_test_data)
         predicted_labels = np.array(predicted_labels)
-        p_chooseB = sum([1 if p==class_b else 0 for p in predicted_labels])/float(len(predicted_labels))
-
-        #### Calculate additional metrics (MI)
-        #mi_dict = get_mutual_info_metrics(split_labels, predicted_labels[split_trials])
-        #iterdict.update(mi_dict) 
-        #pchoose_dict = get_pchoose(predicted_labels[split_trials], split_labels, class_a=class_a, class_b=class_b)
-        #iterdict.update(pchoose_dict)
-     
-        iterdict.update({'p_chooseB': p_chooseB, 'morphlevel': test_transform, 'n_split': len(predicted_labels)}) 
+        p_chooseB = sum([1 if p==class_b else 0 for p in predicted_labels])/float(len(predicted_labels)) 
+        iterdict.update({'p_chooseB': p_chooseB, 'morphlevel': test_transform, 
+                         'n_samples': len(curr_test_labels)}) 
         testdf = pd.DataFrame(iterdict, index=[i])
-        testdf['n_samples'] = len(curr_test_labels) 
         for t, v in train_samples.items():
             testdf[t] = v
-
         i += 1
-
-        #### Shuffle labels  - no shuffle, already testd above
         i_list.append(testdf) 
 
+        # shuffled:  Calculate score
+        if do_shuffle:
+            curr_score_shuff = shuffled_svc.score(split_data, split_labels) 
+            shuffdict = iterdict.copy()
+            # shuffled:  predict p_chooseB
+            predicted_labels = shuffled_svc.predict(curr_test_data)
+            predicted_labels = np.array(predicted_labels)
+            p_chooseB = sum([1 if p==class_b else 0 for p in predicted_labels])/float(len(predicted_labels))
+            shuffdict.update({'heldout_test_score': curr_score_shuff, 'p_chooseB': p_chooseB,
+                              'condition': 'shuffled', 'C': fit_C_shuffled}) 
+            testdf_shuff = pd.DataFrame(shuffdict, index=[i])
+            for t, v in train_samples.items():
+                testdf_shuff[t] = v
+            i += 1
+            i_list.append(testdf_shuff) 
+
+    # Aggregate 
     iterdf = pd.concat(i_list, axis=0).reset_index(drop=True)
     iterdf['iteration'] = [iter_num for _ in np.arange(0, len(iterdf))]
     iterdf['n_cells'] = curr_data.shape[1]-1
@@ -1788,21 +1794,21 @@ def train_test_morph(iter_num, curr_data=None, sdf=None, verbose=False,
         iterdf['slope'] = None
         iterdf['lapse'] = None
         iterdf['likelihood'] = None
-        morphdf = iterdf[(iterdf.condition=='data') & (iterdf.morphlevel!=-1)]\
-                        .sort_values(by=['morphlevel'])  
-        data = morphdf[['morphlevel', 'n_samples', 'p_chooseB']].values.T
-        max_v = max([class_a, class_b])
-        data[0,:] /= float(max_v)
-        try:
-            par, L = mle_weibull(data, P_model=P_model, parstart=par0, nfits=nfits) 
-            iterdf['threshold'] = par[0]
-            iterdf['slope'] = par[1]
-            iterdf['lapse'] = par[2]
-            iterdf['likelihood'] = L 
-        except Exception as e:
-            traceback.print_exc()
-            #continue
-       
+        for dcond, mdf in iterdf.groupby(['condition']):
+            data = mdf[mdf.morphlevel!=-1].sort_values(by=['morphlevel'])\
+                            [['morphlevel', 'n_samples', 'p_chooseB']].values.T
+            max_v = max([class_a, class_b])
+            data[0,:] /= float(max_v)
+            try:
+                par, L = mle_weibull(data, P_model=P_model, parstart=par0, nfits=nfits) 
+                iterdf['threshold'].loc[mdf.index] = float(par[0])
+                iterdf['slope'].loc[mdf.index] = float(par[1])
+                iterdf['lapse'].loc[mdf.index] = float(par[2])
+                iterdf['likelihood'].loc[mdf.index] = float(L)
+            except Exception as e:
+                traceback.print_exc()
+                continue
+           
     return iterdf
 
 
@@ -1867,31 +1873,29 @@ def train_test_morph_single(iter_num, curr_data=None, sdf=None, verbose=False,
             p_chooseB = sum([1 if p==class_b else 0 for p in predicted_labels[a_ixs]])/float(len(a_ixs))
             iterdict.update({'p_chooseB': p_chooseB, 
                             '%s' % class_name: anchor, #'%s' % constant_transform: train_transform, 
-                            'n_split': len(a_ixs)})
+                            'n_samples': len(a_ixs)})
             tmpdf = pd.DataFrame(iterdict, index=[i])
-            tmpdf['n_samples'] = len(a_ixs)
-
             for t, v in train_samples.items():
                 tmpdf[t] = v
-
             i += 1
             i_list.append(tmpdf)
         train_columns = tmpdf.columns.tolist()
      
         #### Shuffle labels
         if do_shuffle:
-            tmpdf_shuffled = fit_shuffled(train_data, targets, C_value=C_value, verbose=verbose,
-                                    test_split=test_split, cv_nfolds=cv_nfolds, randi=randi, 
-                                    do_pchoose=True, class_types=class_types, class_name=class_name) 
+            tmpdf_shuffled, shuffled_svc, shuffled_scaler = fit_shuffled(train_data, targets, C_value=C_value, 
+                                                    verbose=verbose, test_split=test_split, 
+                                                    cv_nfolds=cv_nfolds, randi=randi, do_pchoose=True, 
+                                                    class_types=[class_a, class_b], class_name=class_name,
+                                                    return_svc=True, i=i) 
             tmpdf_shuffled['train_transform'] = train_transform
             tmpdf_shuffled['test_transform'] = train_transform
-            #tmpdf_shuffled['%s' % constant_transform] = train_transform 
             tmpdf_shuffled['n_trials'] = len(targets) 
             tmpdf_shuffled['novel'] = False
             for t, v in train_samples.items():
                 tmpdf_shuffled[t] = v
-
             i_list.append(tmpdf_shuffled) 
+            i+=1 
 
         #### TEST SET --------------------------------------------------------------------
         # Get data, specify configs
@@ -1908,22 +1912,25 @@ def train_test_morph_single(iter_num, curr_data=None, sdf=None, verbose=False,
         test_targets['group'] = [sdf['size'][cfg] for cfg in test_targets['config'].values]
 
         fit_C_value = iterdict['C']
+        if do_shuffle:
+            fit_C_shuffled = float(tmpdf_shuffled['C'].unique())
         #### Test SVM
         for curr_morph_test, curr_test_group in test_targets.groupby(['label']):
             iterdict = dict((k, None) for k in train_columns) 
+            if do_shuffle:
+                shuffdict = dict((k, None) for k in train_columns)
             curr_test_labels = curr_test_group['label'].values
             curr_test_data = test_data.loc[curr_test_group.index].copy()
             curr_test_data = trained_scaler.transform(curr_test_data)
 
-            # Ignore midp trials
-            if curr_morph_test in [-1, midp]:
+            # Calculate scores
+            if curr_morph_test in [-1, midp]:        # Ignore midp trials
                 split_trials = np.array([int(i) for i, v in enumerate(curr_test_labels) ])
                 # rando assign values
                 split_labels = [class_a if i<0.5 else class_b for i in np.random.rand(len(split_trials),)]
             else:
                 split_trials = np.array([int(i) for i, v in enumerate(curr_test_labels) if v!=midp])
                 split_labels = [class_a if lvl < midp else class_b for lvl in curr_test_labels[split_trials]] 
-
             split_data = curr_test_data[split_trials, :]
             curr_test_score = trained_svc.score(split_data, split_labels) #(curr_test_data, curr_test_labels)
             iterdict.update({'heldout_test_score': curr_test_score, 'C': fit_C_value, 'randi': randi,
@@ -1934,19 +1941,32 @@ def train_test_morph_single(iter_num, curr_data=None, sdf=None, verbose=False,
             predicted_labels = trained_svc.predict(curr_test_data)
             p_chooseB = sum([1 if p==class_b else 0 \
                                 for p in predicted_labels])/float(len(predicted_labels))
-
-            iterdict.update({'p_chooseB': p_chooseB, 
-                             '%s' % class_name: curr_morph_test, #test_transform,
-                             #'%s' % constant_transform: train_transform,
-                            'n_split': len(predicted_labels)})
+            iterdict.update({'p_chooseB': p_chooseB, '%s' % class_name: curr_morph_test, #test_transform,
+                            'n_samples': len(predicted_labels)})
             testdf = pd.DataFrame(iterdict, index=[i])
-            testdf['n_samples'] = len(curr_test_labels)
             # add N training samples            
             for t, v in train_samples.items():
                 testdf[t] = v
             i_list.append(testdf) #pd.DataFrame(iterdict, index=[i]))
             i+=1 
-            
+
+            # shuffled:  Calculate score
+            if do_shuffle:
+                curr_score_shuff = shuffled_svc.score(split_data, split_labels) 
+                shuffdict = iterdict.copy()
+                # shuffled:  predict p_chooseB
+                predicted_labels = shuffled_svc.predict(curr_test_data)
+                predicted_labels = np.array(predicted_labels)
+                p_chooseB = sum([1 if p==class_b else 0 for p in predicted_labels])/float(len(predicted_labels))
+                shuffdict.update({'heldout_test_score': curr_score_shuff, 'p_chooseB': p_chooseB,
+                                  'condition': 'shuffled', 'C': fit_C_shuffled}) 
+                testdf_shuff = pd.DataFrame(shuffdict, index=[i])
+                for t, v in train_samples.items():
+                    testdf_shuff[t] = v
+                i_list.append(testdf_shuff) 
+                i+=1
+
+    # Aggregate            
     iterdf = pd.concat(i_list, axis=0).reset_index(drop=True)
     iterdf['iteration'] = [iter_num for _ in np.arange(0, len(iterdf))]
     iterdf['n_cells'] = curr_data.shape[1]-1
@@ -1957,18 +1977,17 @@ def train_test_morph_single(iter_num, curr_data=None, sdf=None, verbose=False,
         iterdf['slope'] = None
         iterdf['lapse'] = None
         iterdf['likelihood'] = None
-        morphdf = iterdf[(iterdf.condition=='data') & (iterdf.morphlevel!=-1)]\
-                        .sort_values(by=['morphlevel']) 
-        for train_transform, mdf in morphdf.groupby(['train_transform']): 
-            data = mdf[['morphlevel', 'n_samples', 'p_chooseB']].values.T
+        for (dcond, train_transform), mdf in iterdf.groupby(['condition', 'train_transform']):
+            data = mdf[mdf.morphlevel!=-1].sort_values(by=['morphlevel'])\
+                            [['morphlevel', 'n_samples', 'p_chooseB']].values.T
             max_v = max([class_a, class_b])
             data[0,:] /= float(max_v)
             try:
                 par, L = mle_weibull(data, P_model=P_model, parstart=par0, nfits=nfits) 
-                iterdf['threshold'].loc[mdf.index] = par[0]
-                iterdf['slope'].loc[mdf.index] = par[1]
-                iterdf['lapse'].loc[mdf.index] = par[2]
-                iterdf['likelihood'].loc[mdf.index] = L 
+                iterdf['threshold'].loc[mdf.index] = float(par[0])
+                iterdf['slope'].loc[mdf.index] = float(par[1])
+                iterdf['lapse'].loc[mdf.index] = float(par[2])
+                iterdf['likelihood'].loc[mdf.index] = float(L)
             except Exception as e:
                 traceback.print_exc()
                 continue

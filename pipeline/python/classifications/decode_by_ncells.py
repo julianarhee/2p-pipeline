@@ -143,7 +143,13 @@ def decode_from_fov(datakey, visual_area, neuraldf, sdf=None, #min_ncells=5,
     with open(results_outfile, 'wb') as f:
         pkl.dump(iter_results, f, protocol=pkl.HIGHEST_PROTOCOL)
 
-    print(iter_results.groupby(['condition']).mean())   
+    if test_type is not None:
+        if 'morph' in test_type:
+            print(iter_results.groupby(['condition', 'morphlevel']).mean())   
+            print(iter_results.groupby(['condition', 'morphlevel']).count())   
+
+    else:
+        print(iter_results.groupby(['condition']).mean())   
     print("@@@@@@@@@ done. %s|%s  @@@@@@@@@@" % (visual_area, datakey))
     print(results_outfile) 
     
@@ -571,7 +577,7 @@ def check_old_naming(animalid, session, fov, experiment='blobs', traceid='traces
     return
 
 def load_fov_results(animalid, session, fov, traceid='traces001', 
-                    analysis_type='by_fov',
+                    analysis_type='by_fov', n_iterations=100,
                      visual_area=None, C_value=None, response_type='dff', 
                     responsive_test='nstds', trial_epoch='stimulus', 
                     overlap_thr=None, has_retino=False, threshold_dff=False,
@@ -583,13 +589,14 @@ def load_fov_results(animalid, session, fov, traceid='traces001',
                         overlap_thr=overlap_thr, has_retino=has_retino, threshold_dff=threshold_dff,
                         test_type=test_type) 
     # Load FOV results
-    iterdf = load_decode_within_fov(animalid, session, fov, traceid=traceid, results_id=results_id)
+    iterdf = load_decode_within_fov(animalid, session, fov, traceid=traceid, 
+                                        results_id=results_id, n_iterations=n_iterations)
        
     
     return iterdf, results_id
 
 def load_decode_within_fov(animalid, session, fov, results_id='fov_results',
-                            traceid='traces001', 
+                            traceid='traces001', n_iterations=100,
                             rootdir='/n/coxfs01/2p-data', verbose=False):
     iter_df=None
 
@@ -634,8 +641,8 @@ def load_decode_within_fov(animalid, session, fov, results_id='fov_results',
             print("Found old... deleting: %s" % results_outfile)
             os.remove(results_outfile)
             return None
-        if iter_df['iteration'].max() < 90:
-            print("Found test... deleting (print i=%i" % iter_df['iteration'].max())
+        if iter_df['iteration'].max() < (n_iterations-1):
+            print("Not enough iters (%i)... skipping (print i=%i" % (n_iterations, iter_df['iteration'].max()))
             return None 
  
     except Exception as e:
