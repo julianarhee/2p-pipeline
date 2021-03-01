@@ -64,7 +64,7 @@ from sklearn import svm
 
 def balance_pupil_split(pupildf, feature_name='pupil_fraction', n_cuts=3,
                         match_cond=True, match_cond_name='size', equalize_after_split=True, 
-                        equalize_by='config', common_labels=None, verbose=False):
+                        equalize_by='config', common_labels=None, verbose=False, shuffle_labels=False):
     '''
     Split pupildf (trials) by "low" and "high" states, with diff options for balancing samples.
     match_cond (bool): 
@@ -82,6 +82,15 @@ def balance_pupil_split(pupildf, feature_name='pupil_fraction', n_cuts=3,
         low_=[]; high_=[];
         for sz, sd in pupildf.groupby([match_cond_name]):
             p_low, p_high = dlcutils.split_pupil_range(sd, feature_name=feature_name, n_cuts=n_cuts)
+            # if shuffle, shuffle labels, then equalize conds
+            if shuffle_labels:
+                n_low = p_low.shape[0]
+                n_high = p_high.shape[0]
+                p_all = pd.concat([p_low, p_high], axis=0)
+                p_all_shuffled = p_all.sample(frac=1).reset_index(drop=True)
+                p_low = p_all_shuffled.sample(n=n_low)
+                unused_ixs = [i for i in p_all_shuffled['trial'].values if i not in p_low['trial'].values]
+                p_high = p_all_shuffled[p_all_shuffled['trial'].isin(unused_ixs)] #p_all_shuffled.sample(n=n_high)
             if equalize_after_split:
                 p_low_eq, p_high_eq = balance_samples_by_config(p_low, p_high, 
                                             config_label=equalize_by, common_labels=common_labels)
@@ -123,7 +132,7 @@ def balance_samples_by_config(df1, df2, config_label='config', common_labels=Non
     #df2_labels = df2_eq[df2_eq[config_label].isin(common_labels)][config_label].unique()
 
  
-    # Get min N reps per condition
+    # Get min N reps per condition (based on N reps per train condition)
     min_reps_per = min([df1_eq[config_label].value_counts()[0], df2_eq[config_label].value_counts()[0]])
     
     # Draw min_reps_per samples without replacement
