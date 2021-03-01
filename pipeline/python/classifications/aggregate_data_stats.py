@@ -519,7 +519,7 @@ def get_rf_datasets_drop(filter_by='drop_repeats', excluded_sessions=[], as_dict
 
 
 #def get_assigned_cells_with_rfs(rf_dsets):
-def select_best_fovs(counts_by_fov):
+def select_best_fovs(counts_by_fov, criterion='max', colname='cell'):
     # Cycle thru all dsets and drop repeats
     fovkeys = get_sorted_fovs()
     incl_dsets=[]
@@ -578,7 +578,8 @@ def select_best_fovs(counts_by_fov):
                     # Get df data for current "repeat" FOVs
                     which_fovs = g[g['datakey'].isin(curr_datakeys)]
                     # Find which has most cells
-                    max_loc = np.where(which_fovs['cell']==which_fovs['cell'].max())[0]
+                    max_loc = choose_best_fov(which_fovs, criterion=criterion, colname=colname)
+                    #max_loc = np.where(which_fovs['cell']==which_fovs['cell'].max())[0]
                     incl_dsets.append(which_fovs.iloc[max_loc])
                 else:
                     # THere are no repeats, so just format, then append df data
@@ -593,6 +594,15 @@ def select_best_fovs(counts_by_fov):
     
     return incl
 
+
+def choose_best_fov(which_fovs, criterion='max', colname='cell'):
+    if criterion=='max':
+        max_loc = np.where(which_fovs[colname]==which_fovs[colname].max())[0]
+    else: 
+        max_loc = np.where(which_fovs[colname]==which_fovs[colname].min())[0]
+
+    return max_loc
+
 def get_dsets_with_most_cells(allthedata): #assigned_cells):
     # Count how many cells fit total per site
     countby = ['visual_area', 'datakey', 'cell']
@@ -600,7 +610,7 @@ def get_dsets_with_most_cells(allthedata): #assigned_cells):
                         .groupby(['visual_area', 'datakey']).count().reset_index()
     counts_by_fov = split_datakey(counts_by_fov)
     
-    best_dfs = select_best_fovs(counts_by_fov)
+    best_dfs = select_best_fovs(counts_by_fov, criterion='max', colname='cell')
    
     return best_dfs 
     
@@ -1158,6 +1168,17 @@ def neuraldf_dict_to_dataframe(NEURALDATA, response_type='response'):
     return NDATA
 
 
+def stacked_neuraldf_to_unstacked(neuraldf):
+    l_ = [g[['response']].T.rename(columns=g['cell']) for (cg, trial), g in neuraldf.groupby(['config', 'trial'])]
+    trialnums = [trial for (cg, trial), g in neuraldf.groupby(['config', 'trial'])]
+    configvals = [cg for (cg, trial), g in neuraldf.groupby(['config', 'trial'])]
+
+    rdf = pd.concat(l_, axis=0)
+    rdf.index=trialnums
+    rdf['config'] = configvals
+    return rdf
+
+
 def neuraldf_dataframe_to_dict(NDATA):
     '''
     Takes full, stacked dataframe, converts to dict of dicts
@@ -1167,13 +1188,7 @@ def neuraldf_dataframe_to_dict(NDATA):
 
     for (visual_area, datakey), neuraldf in NDATA.groupby(['visual_area', 'datakey']):
 
-        l_ = [g[['response']].T.rename(columns=g['cell']) for (cg, trial), g in neuraldf.groupby(['config', 'trial'])]
-        trialnums = [trial for (cg, trial), g in neuraldf.groupby(['config', 'trial'])]
-        configvals = [cg for (cg, trial), g in neuraldf.groupby(['config', 'trial'])]
-
-        rdf = pd.concat(l_, axis=0)
-        rdf.index=trialnums
-        rdf['config'] = configvals
+        rdf = stacked_neuraldf_to_unstacked(neuraldf)
 
         NEURALDATA[visual_area][datakey] = rdf.sort_index()
 
@@ -2134,6 +2149,7 @@ def crop_legend_labels(ax, n_hues, bbox_to_anchor=(1.05, 1), loc='upper left', f
 
 
 def plot_pairwise_by_axis(plotdf, curr_metric='abs_coef', c1='az', c2='el', 
+                          c1_label=None, c2_label=None,
                           compare_var='cond', fontsize=10, fontcolor='k', fmt='%.2f', xytext=(0, 10),
                           area_colors=None, legend=True, legend_fontsize=8, bbox_to_anchor=(1.5,1.1), ax=None):
     if ax is None:
@@ -2144,8 +2160,13 @@ def plot_pairwise_by_axis(plotdf, curr_metric='abs_coef', c1='az', c2='el',
                                         c1=c1, c2=c2, compare_var=compare_var, area_colors=area_colors)
     plotdf.apply(annotateBars, ax=ax, axis=1, fontsize=fontsize, 
                     fontcolor=fontcolor, fmt=fmt, xytext=xytext) 
+
     # Set x labels
-    set_split_xlabels(ax, a_label=c1, b_label=c2)
+    if c1_label is None:
+        c1_label=c1
+    if c2_label is None:
+        c2_label=c2
+    set_split_xlabels(ax, a_label=c1_label, b_label=c2_label)
 
     if legend:
         # Get counts of samples for legend
