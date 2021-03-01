@@ -162,7 +162,7 @@ def decode_split_pupil(datakey, visual_area, neuraldf, pupildf, sdf=None,
                     do_shuffle=True, equalize_conditions=True, equalize_by='config', match_all_configs=True,
                     rootdir='/n/coxfs01/2p-data', verbose=False,
                     test_type=None, n_train_configs=4, 
-                    n_cuts=3, feature_name='pupil_fraction'):  
+                    n_cuts=3, feature_name='pupil_fraction', shuffle_labels=True):  
     '''
     Decode within FOV, split trials into high/low arousal states. 
     Repeat n_iterations (mulitproc)
@@ -201,9 +201,8 @@ def decode_split_pupil(datakey, visual_area, neuraldf, pupildf, sdf=None,
     #### Match trial numbers
     unique_ntrials_per = neuraldf['config'].value_counts().unique()
     print("... (%s) Equalizing reps per condition: %s" % (datakey, str(unique_ntrials_per)))
-
  
-    # neuraldf = aggr.zscore_neuraldf(neuraldf)
+    neuraldf = aggr.zscore_neuraldf(neuraldf)
     n_cells = int(neuraldf.shape[1]-1) 
     print("... SPLIT_PUPIL | [%s] %s, n=%i cells" % (visual_area, datakey, n_cells))
     
@@ -213,20 +212,26 @@ def decode_split_pupil(datakey, visual_area, neuraldf, pupildf, sdf=None,
         neuraldf, pupildf = dlcutils.match_neural_and_pupil_trials(neuraldf, pupildf, equalize_conditions=False)
         pupil_low, pupil_high = decutils.balance_pupil_split(pupildf, feature_name=feature_name, n_cuts=n_cuts, 
                                         match_cond=True, match_cond_name='size', equalize_after_split=True, 
-                                        equalize_by=equalize_by, common_labels=common_labels, verbose=True)
+                                        equalize_by=equalize_by, common_labels=common_labels, verbose=True,
+                                        shuffle_labels=False)
     else:
         # .. make sure pupil trial #s and neural trial #s match
         neuraldf, pupildf = dlcutils.match_neural_and_pupil_trials(neuraldf, pupildf, equalize_conditions=True)
         pupil_low, pupil_high = dlcutils.split_pupil_range(pupildf, feature_name=feature_name, n_cuts=n_cuts)
-    trainset_size_low = pupil_low[pupil_low[equalize_by].isin(common_labels)].shape[0] if not match_all_configs \
-                            else pupil_low.shape[0]
-    trainset_size_high = pupil_high[pupil_high[equalize_by].isin(common_labels)].shape[0] if not match_all_configs \
-                            else pupil_high.shape[0]
-    assert trainset_size_low==trainset_size_high, \
-            "Unequal pupil training trials: low=%i, high=%i" % (trainset_size_low, trainset_size_high) 
-    #print("SPLIT PUPIL: %s (low), %s (high)" % (str(pupil_low.shape), str(pupil_high.shape)))
+        if shuffle_labels:
+            pupil_low_shuffled=None
+            pupil_high_shuffled=None
 
-    # trial indices of low/high pupil 
+    # Make sure training set conditions are balanced 
+    train_sizes_low = pupil_low[pupil_low[equalize_by].isin(common_labels)].shape[0] \
+                                if not match_all_configs else pupil_low.shape[0]
+    train_sizes_high = pupil_high[pupil_high[equalize_by].isin(common_labels)].shape[0] \
+                                if not match_all_configs else pupil_high.shape[0]
+    assert train_sizes_low==train_sizes_high, \
+            "Unequal pupil training trials: low=%i, high=%i" % (train_sizes_low, train_sizes_high) 
+    #print("SPLIT PUPIL: %s (low), %s (high)" % (str(pupil_low.shape), str(pupil_high.shape)))
+    
+   # trial indices of low/high pupil 
     low_trial_ixs = pupil_low['trial'].unique()
     high_trial_ixs = pupil_high['trial'].unique()
     neuraldf_matched, pupildf_matched = dlcutils.match_neural_and_pupil_trials(neuraldf, pupildf, equalize_conditions=True)
@@ -234,19 +239,17 @@ def decode_split_pupil(datakey, visual_area, neuraldf, pupildf, sdf=None,
 
     # Decodinng -----------------------------------------------------
     start_t = time.time()
-    arousal_conds = ['all', 'low', 'high']
-    arousal_trial_ixs = [all_trial_ixs, low_trial_ixs, high_trial_ixs]
+    arousal_conds = ['all', 'low', 'high'] #, 'low_shuffle', 'high_shuffle']
+    arousal_trial_ixs = [all_trial_ixs, low_trial_ixs, high_trial_ixs] #, low_shuffle_ixs, high_shuffle_ixs]
     iter_list=[]
     for arousal_cond, curr_trial_ixs in zip(arousal_conds, arousal_trial_ixs):
         print(arousal_cond)
         # Get neuraldf for current trials
         curr_data = neuraldf.loc[curr_trial_ixs].copy()
-        # zscore among selected trials
-        curr_data = aggr.zscore_neuraldf(curr_data)
-
         # Fit.
         start_t = time.time()
-        cond_df = decutils.pool_bootstrap(curr_data, sdf, C_value=C_value, 
+        #cond_df = decutils.pool_bootstrap(curr_data, sdf, C_value=C_value, 
+        cond_df = decutils.fit_svm_mp(curr_data, sdf, C_value=C_value, 
                                 n_iterations=n_iterations, n_processes=n_processes, verbose=verbose,
                                 class_a=class_a, class_b=class_b, do_shuffle=do_shuffle, 
                                 balance_configs=(equalize_conditions==False),
@@ -259,6 +262,48 @@ def decode_split_pupil(datakey, visual_area, neuraldf, pupildf, sdf=None,
         cond_df['arousal'] = arousal_cond
         iter_list.append(cond_df)
  
+    # get shuffled
+    if shuffle_labels and equalize_conitions:
+        pupil_low_shuffled, pupil_high_shuffled = decutils.balance_pupil_split(pupildf, feature_name=feature_name,
+                                    n_cuts=n_cuts, 
+                                    match_cond=True, match_cond_name='size', equalize_after_split=True, 
+                                    equalize_by=equalize_by, common_labels=common_labels, verbose=True,
+                                    shuffle_labels=True)
+
+        train_sizes_low_shuffled = pupil_low_shuffled[pupil_low_shuffled[equalize_by].isin(common_labels)].shape[0] \
+                                    if not match_all_configs else pupil_low_shuffled.shape[0]
+        train_sizes_high_shuffled = pupil_high_shuffled[pupil_high_shuffled[equalize_by].isin(common_labels)].shape[0] \
+                                    if not match_all_configs else pupil_high_shuffled.shape[0]
+        assert train_sizes_low_shuffled==train_sizes_high_shuffled, \
+                "[SHUFFLED] Unequal pupil training trials: low=%i, high=%i" % (train_sizes_low_shuffled, train_sizes_high_shuffled) 
+ 
+        low_shuffle_ixs = pupil_low_shuffled['trial'].unique()
+        high_shuffle_ixs = pupil_high_shuffled['trial'].unique()
+
+        # Decodinng -----------------------------------------------------
+        start_t = time.time()
+        arousal_conds = ['low_shuffle', 'high_shuffle']
+        arousal_trial_ixs = [low_shuffle_ixs, high_shuffle_ixs]
+        #iter_list=[]
+        for arousal_cond, curr_trial_ixs in zip(arousal_conds, arousal_trial_ixs):
+            print(arousal_cond)
+            # Get neuraldf for current trials
+            curr_data = neuraldf.loc[curr_trial_ixs].copy()
+            # Fit.
+            start_t = time.time()
+            #cond_df = decutils.pool_bootstrap(curr_data, sdf, C_value=C_value, 
+            cond_df = decutils.fit_svm_mp(curr_data, sdf, C_value=C_value, 
+                                    n_iterations=n_iterations, n_processes=n_processes, verbose=verbose,
+                                    class_a=class_a, class_b=class_b, do_shuffle=do_shuffle, 
+                                    balance_configs=(equalize_conditions==False),
+                                    test_type=test_type, n_train_configs=n_train_configs)  
+            assert cond_df is not None, "NONE returned (%s, %s)" % (visual_area, datakey)
+            end_t = time.time() - start_t
+            print("--> Elapsed time: {0:.2f}sec".format(end_t))
+            cond_df['n_trials'] = len(curr_trial_ixs)
+            cond_df['arousal'] = arousal_cond
+            iter_list.append(cond_df)
+     
     print("%i items in split-pupil list" % len(iter_list))
     # DATA - concat 3 conds
     iter_results = pd.concat(iter_list, axis=0)
@@ -273,7 +318,9 @@ def decode_split_pupil(datakey, visual_area, neuraldf, pupildf, sdf=None,
     data_inputfile = os.path.join(curr_dst_dir, 'inputdata_%s.pkl' % results_id)
     inputdata = {'neuraldf': neuraldf, 'pupildf': pupildf, 'sdf': sdf, 
                 'feature_name': feature_name, 'n_cuts': n_cuts,
-                'low_ixs': low_trial_ixs, 'high_ixs': high_trial_ixs, 'equalize_conditions': equalize_conditions}
+                'low_ixs': low_trial_ixs, 'high_ixs': high_trial_ixs, 
+                #'low_ixs_shuffled': low_shuffle_ixs, 'high_ixs_shuffled': high_shuffle_ixs,
+                'equalize_conditions': equalize_conditions, 'matched_labels': common_labels}
     with open(data_inputfile, 'wb') as f:
         pkl.dump(inputdata, f, protocol=pkl.HIGHEST_PROTOCOL)
 
@@ -455,39 +502,21 @@ def single_cell_dst_dir(traceid_dir, results_id):
     return curr_dst_dir, save_prefix
  
      
-def decode_from_cell(datakey, rid, neuraldf, sdf, results_outfile='/tmp/roi.pkl', 
-                    do_shuffle=True, C_value=None, experiment='blobs',
-                    n_iterations=50, n_processes=2, results_id='single_cell',
-                    class_a=0, class_b=0, visual_area=None, verbose=False):
-    # tmp save
-   #results_id='%s_%s__%s-%s_%s__%s__%s' \
-    #                % (prefix, visual_area, response_type, responsive_test, overlap_str, trial_epoch, C_str)
+def decode_from_cell(datakey, rid, neuraldf, sdf, results_outfile='/tmp/roi.pkl', results_id='single_cell',
+                    C_value=None, experiment='blobs', n_iterations=100, n_processes=2, 
+                    class_a=0, class_b=0, visual_area=None, verbose=False, do_shuffle=True,
+                    balance_configs=True, test_type=None, n_train_configs=4):
 
- 
-    #print("SINGLE_CELLS | (rid=%i, %s)" % (rid, results_id))
-
-#    traceid_dir = get_traceid_dir_from_datakey(datakey, traceid=traceid) 
-#    curr_dst_dir, save_prefix = single_cell_dst_dir(traceid_dir, results_id)    
-#    results_outfile = os.path.join(curr_dst_dir, '%s__%03d.pkl' % (save_prefix, int(rid+1)))
-#
-#    if not os.path.exists(results_outfile):
-#        create_new=True
-#
-#    if create_new and os.path.exists(results_outfile):
-#        fname = os.path.split(results_outfile)[-1]
-#        print("... deleting old files: %s" % fname)
-#        os.remove(results_outfile)
-#   
-    #if create_new:    
-    print("... starting analysis ")
+    print("... starting analysis (rid=%i)" % rid)
     # zscore full
     neuraldf = aggr.zscore_neuraldf(neuraldf)
     # Decodinng -----------------------------------------------------
     start_t = time.time()
     iter_results = decutils.fit_svm_mp(neuraldf, sdf, C_value=C_value, 
-                                n_iterations=n_iterations, 
-                                n_processes=n_processes, verbose=verbose,
-                                class_a=class_a, class_b=class_b, do_shuffle=do_shuffle)
+                                n_iterations=n_iterations, n_processes=n_processes, verbose=verbose,
+                                class_a=class_a, class_b=class_b, do_shuffle=do_shuffle, 
+                                balance_configs=balance_configs,
+                                test_type=test_type, n_train_configs=n_train_configs) 
     end_t = time.time() - start_t
     print("--> Elapsed time: {0:.2f}sec".format(end_t))
  
@@ -496,9 +525,8 @@ def decode_from_cell(datakey, rid, neuraldf, sdf, results_outfile='/tmp/roi.pkl'
 
     with open(results_outfile, 'wb') as f:
         pkl.dump(iter_results, f, protocol=pkl.HIGHEST_PROTOCOL)
-
     print("... saved: %s" % os.path.split(results_outfile)[-1])
-    #print(iter_results.mean())
+    print(iter_results.groupby(['condition']).mean())
 
     print("Done!")
 
@@ -1387,7 +1415,7 @@ def main(options):
 
             all_rois = gdf['dset_roi'].unique()
             all_fnames = ['%s__%03d.pkl' % (save_prefix, int(rid+1)) for rid in all_rois]
-            old_files = glob.glob(os.path.join(curr_dst_dir, '%s__*.pkl' % save_prefix)) # fn) for fn in all_fnames]
+            old_files = glob.glob(os.path.join(curr_dst_dir, '%s__*.pkl' % save_prefix))
             #old_files = [os.path.join(curr_dst_dir, fn) for fn in all_fnames] 
             if create_new: # remove all old files
                 print("... deleting %i old files" % len(old_files))
