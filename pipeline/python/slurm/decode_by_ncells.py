@@ -278,12 +278,12 @@ elif analysis_type in ['by_fov', 'split_pupil']:
         #    info("--- skipping %s" % datakey)
         #    continue
 
-        mtag = '%s_%s_%s' % (datakey, visual_area, C_str) 
+        mtag = '%s_%s_%s' % (visual_area, datakey,C_str) 
         if test_type is not None:
             mtag = 'GEN%s-%s-%s' % (test_type, responsive_test, mtag)
 
         if has_retino:
-            cmd = "sbatch --job-name={procid}.{mtag}.{analysis} \
+            cmd = "sbatch --job-name={analysis}.{procid}.{mtag} \
                     -o '{logdir}/{procid}.{mtag}.{analysis}.out' \
                     -e '{logdir}/{procid}.{mtag}.{analysis}.err' \
             /n/coxfs01/2p-pipeline/repos/2p-pipeline/pipeline/python/slurm/decode_by_ncells_retino.sbatch \
@@ -320,7 +320,7 @@ elif analysis_type in ['by_fov', 'split_pupil']:
         info("[%s]: %s" % (jobnum, mtag))
 
 
-else:
+elif analysis_type=='single_cells':
     # -----------------------------------------------------------------
     # SINGLE CELLS 
     # -----------------------------------------------------------------
@@ -340,22 +340,29 @@ else:
         fatal("no fovs found.")
     info("found %i [%s] datasets to process." % (len(dsets), experiment))
     for (visual_area, datakey), g in dsets.groupby(['visual_area', 'datakey']):
-        mtag = '%s_%s_%s' % (datakey, visual_area, c_str) 
+        #mtag = '%s_%s_%s' % (datakey, visual_area, c_str) 
+        mtag = '%s_%s_%s' % (visual_area, datakey,C_str) 
+        if test_type is not None:
+            mtag = 'GEN%s-%s-%s' % (test_type, responsive_test, mtag)
+ 
         #
-        cmd = "sbatch --job-name={procid}.{mtag}.{analysis} \
+        cmd = "sbatch --job-name={procid}.{analysis}.{mtag} \
                 -o '{logdir}/{procid}.{mtag}.{analysis}.out' \
                 -e '{logdir}/{procid}.{mtag}.{analysis}.err' \
         /n/coxfs01/2p-pipeline/repos/2p-pipeline/pipeline/python/slurm/decode_single_cells.sbatch \
-        {exp} {traceid} {rtest} {overlap} {analysis} {cval} {varea} {ncells} {dkey} {epoch}".format(
+        {exp} {traceid} {rtest} {overlap} {analysis} {cval} {varea} {ncells} {dkey} {epoch} {test}".format(
             procid=piper, mtag=mtag, logdir=logdir,
             exp=experiment, traceid=traceid, analysis=analysis_type,
             rtest=responsive_test, overlap=overlap_thr, 
-            cval=c_value, varea=visual_area, ncells=ncells, dkey=datakey, epoch=trial_epoch) 
+            cval=c_value, varea=visual_area, ncells=ncells, dkey=datakey, epoch=trial_epoch, test=test_type) 
         #
         status, joboutput = commands.getstatusoutput(cmd)
         jobnum = joboutput.split(' ')[-1]
         jobids.append(jobnum)
         info("[%s]: %s" % (jobnum, mtag))
+
+else:
+    info("WARNING: UNKNOWN ANALYSIS_TYPE <%s> %" % str(analysis_type))
 
 info("****done!****")
 

@@ -263,6 +263,8 @@ def decode_split_pupil(datakey, visual_area, neuraldf, pupildf, sdf=None,
         iter_list.append(cond_df)
  
     # get shuffled
+    low_shuffle_ixs=None
+    high_shuffle_ixs=None 
     if shuffle_labels and equalize_conitions:
         pupil_low_shuffled, pupil_high_shuffled = decutils.balance_pupil_split(pupildf, feature_name=feature_name,
                                     n_cuts=n_cuts, 
@@ -319,7 +321,7 @@ def decode_split_pupil(datakey, visual_area, neuraldf, pupildf, sdf=None,
     inputdata = {'neuraldf': neuraldf, 'pupildf': pupildf, 'sdf': sdf, 
                 'feature_name': feature_name, 'n_cuts': n_cuts,
                 'low_ixs': low_trial_ixs, 'high_ixs': high_trial_ixs, 
-                #'low_ixs_shuffled': low_shuffle_ixs, 'high_ixs_shuffled': high_shuffle_ixs,
+                'low_ixs_shuffled': low_shuffle_ixs, 'high_ixs_shuffled': high_shuffle_ixs,
                 'equalize_conditions': equalize_conditions, 'matched_labels': common_labels}
     with open(data_inputfile, 'wb') as f:
         pkl.dump(inputdata, f, protocol=pkl.HIGHEST_PROTOCOL)
@@ -487,11 +489,24 @@ def get_traceid_dir_from_datakey(datakey, traceid='traces001', rootdir='/n/coxfs
     return traceid_dir
 
 def single_cell_dst_dir(traceid_dir, results_id):
-    analysis_flag, rparams, tepoch, C_str = results_id.split('__')
+    cp = results_id.split('__')
+    #analysis_flag, rparams, tepoch, C_str = results_id.split('__')
+    analysis_flag = cp[0]
+    rparams = cp[1]
+    tepoch = cp[2]
+    C_str = cp[3]
+    test_type=None
+    if len(cp) > 4:
+        test_type = cp[4]
+
     response_filter, rf_filter = rparams.split('_')
     response_type, response_test = response_filter.split('-')
-
-    curr_dst_dir = os.path.join(traceid_dir, 'decoding', 'single_cells', '%s_%s' % (response_type, tepoch))
+    
+    if test_type is not None: 
+        subdir = '%s_%s/%s' % (response_type, tepoch, test_type) 
+    else:
+        subdir = '%s_%s' % (response_type, tepoch)
+    curr_dst_dir = os.path.join(traceid_dir, 'decoding', 'single_cells', subdir)
     if not os.path.exists(curr_dst_dir):
         os.makedirs(curr_dst_dir)
  
@@ -505,7 +520,8 @@ def single_cell_dst_dir(traceid_dir, results_id):
 def decode_from_cell(datakey, rid, neuraldf, sdf, results_outfile='/tmp/roi.pkl', results_id='single_cell',
                     C_value=None, experiment='blobs', n_iterations=100, n_processes=2, 
                     class_a=0, class_b=0, visual_area=None, verbose=False, do_shuffle=True,
-                    balance_configs=True, test_type=None, n_train_configs=4):
+                    balance_configs=True, test_type=None, n_train_configs=4,
+                    n_cuts=3, feature_name='pupil_fraction', shuffle_labels=True):  
 
     print("... starting analysis (rid=%i)" % rid)
     # zscore full
@@ -1440,7 +1456,9 @@ def main(options):
                                 C_value=C_value, results_outfile=results_outfile,
                                 n_iterations=n_iterations, n_processes=n_processes, 
                                 results_id=results_id, visual_area=curr_visual_area,
-                                class_a=class_a, class_b=class_b, verbose=verbose, do_shuffle=do_shuffle)          
+                                class_a=class_a, class_b=class_b, verbose=verbose, 
+                                do_shuffle=do_shuffle, test_type=test_type, n_train_configs=n_train_configs)
+                                #n_cuts=pupil_quantiles, feature_name=pupil_feature)          
             print("Finished %s (%s). ID=%s" % (curr_datakey, curr_visual_area, results_id))
 
     elif analysis_type=='by_ncells':
