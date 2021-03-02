@@ -1167,6 +1167,13 @@ def neuraldf_dict_to_dataframe(NEURALDATA, response_type='response'):
    
     return NDATA
 
+def unstacked_neuraldf_to_stacked(ndf, response_type='response', id_vars = ['config', 'trial']):
+    ndf['trial'] = ndf.index.tolist()
+    melted = pd.melt(ndf, id_vars=id_vars, 
+                     var_name='cell', value_name=response_type)
+
+    return melted
+
 
 def stacked_neuraldf_to_unstacked(neuraldf):
     l_ = [g[['response']].T.rename(columns=g['cell']) for (cg, trial), g in neuraldf.groupby(['config', 'trial'])]
@@ -2139,12 +2146,12 @@ def threshold_cells_by_snr(mean_snr, globalcells, snr_thr=10.0, max_snr_thr=None
 # ===============================================================
 from matplotlib.lines import Line2D
 
-def crop_legend_labels(ax, n_hues, bbox_to_anchor=(1.05, 1), loc='upper left', fontsize=12,title=''):
+def crop_legend_labels(ax, n_hues, bbox_to_anchor=(1.05, 1), loc='upper left', fontsize=12,title='', n_cols=1):
     # Get the handles and labels.
     leg_handles, leg_labels = ax.get_legend_handles_labels()
     # When creating the legend, only use the first two elements
     leg = ax.legend(leg_handles[0:n_hues], leg_labels[0:n_hues], title=title,
-            bbox_to_anchor=(1.05, 1), fontsize=fontsize, loc=loc) # borderaxespad=0.)
+            bbox_to_anchor=bbox_to_anchor, fontsize=fontsize, loc=loc, ncol=n_cols)
     return leg
 
 
