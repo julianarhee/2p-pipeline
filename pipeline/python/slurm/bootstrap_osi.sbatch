@@ -5,7 +5,7 @@
 #SBATCH -p shared # run on cox gpu to use correct env 
 #SBATCH -n 8 # one core
 #SBATCH -N 1 # on one node
-#SBATCH -t 0-010:00 # Running time of 3 hours
+#SBATCH -t 0-24:00 # Running time of 3 hours
 #SBATCH --mem 32764 #70656 # Memory request of 70 GB (set to 98304 if exceed lim)
 #SBATCH -o osi_%A_%a.out # Standard output
 #SBATCH -e osi_%A_%a.err # Standard error
@@ -35,7 +35,7 @@ echo "session: ${SESSION}"
 echo "fov: ${FOV}"
 
 #
-python /n/coxfs01/2p-pipeline/repos/2p-pipeline/pipeline/python/classifications/bootstrap_osi.py -t $TRACEID -R $RTEST -n 8 --new -i $ANIMALID -S $SESSION -A $FOV -b 1000 -k 20 -d dff -G 0.6 -f 10. -c 1 --new --plots -t traces001
+python /n/coxfs01/2p-pipeline/repos/2p-pipeline/pipeline/python/classifications/bootstrap_osi.py -t $TRACEID -R $RTEST -n 8 -i $ANIMALID -S $SESSION -A $FOV -b 1000 -k 20 -d dff -G 0.5 -f 10. -c 1 --new --plots
  
 #{EXP} {TRACEID} {RTEST} {OVERLAP} {ANALYSIS} {CVAL} {VAREA} {NCELLS} {DKEY}".format(
 
