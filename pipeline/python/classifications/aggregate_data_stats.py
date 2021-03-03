@@ -1175,14 +1175,21 @@ def unstacked_neuraldf_to_stacked(ndf, response_type='response', id_vars = ['con
     return melted
 
 
-def stacked_neuraldf_to_unstacked(neuraldf):
-    l_ = [g[['response']].T.rename(columns=g['cell']) for (cg, trial), g in neuraldf.groupby(['config', 'trial'])]
-    trialnums = [trial for (cg, trial), g in neuraldf.groupby(['config', 'trial'])]
-    configvals = [cg for (cg, trial), g in neuraldf.groupby(['config', 'trial'])]
+def stacked_neuraldf_to_unstacked(ndf): #neuraldf):
+#    l_ = [g[['response']].T.rename(columns=g['cell']) for (cg, trial), g in neuraldf.groupby(['config', 'trial'])]
+#    trialnums = [trial for (cg, trial), g in neuraldf.groupby(['config', 'trial'])]
+#    configvals = [cg for (cg, trial), g in neuraldf.groupby(['config', 'trial'])]
+#
+#    rdf = pd.concat(l_, axis=0)
+#    rdf.index=trialnums
+#    rdf['config'] = configvals
+    other_cols = [k for k in ndf.columns if k not in ['cell', 'response']]
+    n2 = ndf.pivot_table(columns=['cell'], index=other_cols)
 
-    rdf = pd.concat(l_, axis=0)
-    rdf.index=trialnums
-    rdf['config'] = configvals
+    rdf = pd.DataFrame(data=n2.values, columns=n2.columns.get_level_values('cell'), 
+                 index=n2.index.get_level_values('trial'))
+    rdf['config'] = n2.index.get_level_values('config')
+    
     return rdf
 
 
