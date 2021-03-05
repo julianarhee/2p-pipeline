@@ -2358,12 +2358,17 @@ def do_mannwhitney(mdf, metric='I_rs', multi_comp_test='holm'):
     mpairs = list(itertools.combinations(visual_areas, 2))
 
     pvalues = []
+    stats = []
+    nsamples = []
     for mp in mpairs:
         d1 = mdf[mdf['visual_area']==mp[0]][metric]
         d2 = mdf[mdf['visual_area']==mp[1]][metric]
 
         # compare samples
         stat, p = spstats.mannwhitneyu(d1, d2)
+        n1=len(d1)
+        n2=len(d2)
+
         # interpret
         alpha = 0.05
         if p > alpha:
@@ -2373,19 +2378,53 @@ def do_mannwhitney(mdf, metric='I_rs', multi_comp_test='holm'):
         # print('[%s] Statistics=%.3f, p=%.3f, %s' % (str(mp), stat, p, interp_str))
 
         pvalues.append(p)
+        stats.append(stat)
+        nsamples.append((n1, n2))
 
     reject, pvals_corrected, _, _ = sm.stats.multitest.multipletests(pvalues, 
                                                                      alpha=0.05, 
                                                                      method=multi_comp_test)
-    results = []
-    for mp, rej, pv in zip(mpairs, reject, pvals_corrected):
-        results.append((mp, rej, pv))
-        print('[%s] p=%.3f (%s), reject H0=%s' % (str(mp), pv, multi_comp_test, rej))
+#    r_=[]
+#    for mp, rej, pv, st, ns in zip(mpairs, reject, pvals_corrected, stats, nsamples):
+#        print('[%s] p=%.3f (%s), reject H0=%s' % (str(mp), pv, multi_comp_test, rej))
+#        r_.append(pd.Series({'d1': mp[0], 'd2': mp[1], 'n1': ns[0], 'n2': ns[1],
+#                             'reject': rej, 'p_val': pv, 'U_val': st}))
+#    results = pd.concat(r_, axis=1).T.reset_index(drop=True)
+    results = pd.DataFrame({'d1': [mp[0] for mp in mpairs],
+                            'd2': [mp[1] for mp in mpairs],
+                            'reject': reject,
+                            'p_val': pvals_corrected,
+                            'U_val': stats,
+                            'n1': [ns[0] for ns in nsamples],
+                            'n2': [ns[1] for ns in nsamples]})
+    print(results)
 
     return results
 
-
 def annotate_stats_areas(statresults, ax, lw=1, color='k', 
+                        y_loc=None, offset=0.1, 
+                         visual_areas=['V1', 'Lm', 'Li']):
+   
+    if y_loc is None:
+        y_loc = round(ax.get_ylim()[-1], 1)*1.2
+        offset = y_loc*offset #0.1
+
+    for ci in statresults[statresults['reject']].index.tolist():
+    #np.arange(0, statresults[statresults['reject']].shape[0]):
+        v1, v2, pv, uv = statresults.iloc[ci][['d1', 'd2', 'p_val', 'U_val']].values
+        x1 = visual_areas.index(v1)
+        x2 = visual_areas.index(v2)
+        y1 = y_loc+(ci*offset)
+        y2 = y1
+        ax.plot([x1,x1, x2, x2], [y1, y2, y2, y1], linewidth=lw, color=color)
+        ctrx = x1 + (x2-x1)/2. 
+        star_str = '**' if pv<0.01 else '*'
+        ax.text(ctrx, y1+(offset/8.), star_str)
+
+    return ax
+
+
+def annotate_stats_areas_fromlist(statresults, ax, lw=1, color='k', 
                         y_loc=None, offset=0.1, 
                          visual_areas=['V1', 'Lm', 'Li']):
    
