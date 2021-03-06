@@ -62,6 +62,29 @@ from sklearn.model_selection import GridSearchCV
 from sklearn.metrics import classification_report
 from sklearn import svm
 
+
+def shuffle_pupil_labels(pupil_low, pupil_high):
+    '''
+    Shuffle pupil labels (assumes only 'low' and 'high'), but preserves # trials per config
+    '''
+    lo_=[]
+    hi_=[]
+    for cfg, low_g in pupil_low.groupby(['config']):
+        high_g = pupil_high[pupil_high.config==cfg].copy()
+        n_low = low_g.shape[0]
+        n_high = high_g.shape[0]
+        p_all = pd.concat([low_g, high_g], axis=0)
+        p_shuffled = p_all.sample(frac=1).reset_index(drop=True)
+        lo_shuff = p_shuffled.iloc[0:n_low]
+        hi_shuff = p_shuffled.iloc[0:n_high]
+        lo_.append(lo_shuff)
+        hi_.append(hi_shuff)
+    pupil_low_shuffled = pd.concat(lo_, axis=0).reset_index()
+    pupil_high_shuffled = pd.concat(hi_, axis=0).reset_index()
+    
+    return pupil_low_shuffled, pupil_high_shuffled
+
+
 def balance_pupil_split(pupildf, feature_name='pupil_fraction', n_cuts=3,
                         match_cond=True, match_cond_name='size', equalize_after_split=True, 
                         equalize_by='config', common_labels=None, verbose=False, shuffle_labels=False):
