@@ -26,7 +26,7 @@ from pipeline.python.paradigm import align_acquisition_events as acq
 #from pipeline.python.traces.utils import get_frame_info
 from pipeline.python.utils import label_figure, get_frame_info
 from pipeline.python import utils as util
-
+#from pipeline.python.classifications.aggregate_data_stats import get_aggregate_info
 
 def extract_options(options):
 
@@ -51,6 +51,8 @@ def extract_options(options):
                           default='FOV1_zoom2p0x', help="acquisition folder (ex: 'FOV1_zoom3x') [default: FOV1]")
     parser.add_option('-R', '--run', dest='run', default='', action='store', help="run name")
     parser.add_option('-t', '--traceid', dest='traceid', default='traces001', action='store', help="e.g., traces001")
+    parser.add_option('-V', '--visual-area', dest='visual_area', default=None, action='store', help="only plot cells assigned to specified visual area")
+
 
     # Set specific session/run for current animal:
     parser.add_option('-d', '--datatype', action='store', dest='datatype',
@@ -239,6 +241,7 @@ def make_clean_psths(options):
     filetype = optsE.filetype
     filter_noise = optsE.filter_noise
     trace_type = optsE.datatype
+    visual_area = optsE.visual_area
 
     responsive_test = optsE.responsive_test
     responsive_thr = float(optsE.responsive_thr)
@@ -463,16 +466,30 @@ def make_clean_psths(options):
     # =====================================================================================
     # Plot
     # =====================================================================================
+    if visual_area is not None:
+        from pipeline.python.classifications.aggregate_data_stats import get_aggregate_info
+        sdata, rois = get_aggregate_info(traceid=traceid, return_cells=True)
+        fovnum = int(fov.split('_')[0][3:])
+        datakey = '%s_%s_fov%i' % (session, animalid, fovnum)
+        curr_rois = rois[(rois.visual_area==visual_area) & (rois.datakey==datakey)]['cell'].unique()
+        ncells_t = xdata.shape[-1]
+        print("%i of %i cells are in assigned area (%s)" % (len(curr_rois), ncells_t, visual_area))
+    else:
+        curr_rois= np.arange(0, xdata.shape[-1])
 
     if plot_responsive:
         from pipeline.python.classifications.experiment_classes import get_responsive_cells
-        roi_list, ncells_t = get_responsive_cells(animalid, session, fov, run=run, traceid=traceid,
+        roi_resp, ncells_t = get_responsive_cells(animalid, session, fov, run=run, traceid=traceid,
                              response_type=trace_type, create_new=False, n_processes=1,
                              responsive_test=responsive_test, responsive_thr=responsive_thr)
+        roi_list = [r for r in curr_rois if r in roi_resp]
         print("**** plotting %i of %i responsive (%s, thr=%.2f)" % (len(roi_list), ncells_t, responsive_test, responsive_thr))
         psth_dir = '%s_%s' % (psth_dir, responsive_test)
     else: 
         roi_list = np.arange(0, xdata.shape[-1])
+
+    if visual_area is not None:
+        psth_dir = '%s_%s' % (psth_dir, visual_area)
 
     if not os.path.exists(psth_dir):
         os.makedirs(psth_dir)
