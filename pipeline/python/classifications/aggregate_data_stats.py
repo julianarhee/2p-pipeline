@@ -1574,7 +1574,7 @@ def aggr_gratings_fits(assigned_cells, traceid='traces001', response_type='dff',
         meandf = rmetrics.copy()
         metainfo = {'visual_area': visual_area, 'animalid': animalid, 
                     'session': session, 'fov': fov, 'datakey': datakey}
-        meandf = putils.add_meta_to_df(meandf, metainfo)
+        meandf = add_meta_to_df(meandf, metainfo)
         g_.append(meandf)
         i += 1
     gdata = pd.concat(g_, axis=0)
@@ -2661,6 +2661,37 @@ def load_traces(animalid, session, fovnum, curr_exp, traceid='traces001',
     return traces, labels, sdf
 
 
+def load_corrected_dff_traces(animalid, session, fov, experiment='blobs', traceid='traces001',
+                              return_traces=True, epoch='stimulus', metric='mean', return_labels=False,
+                              rootdir='/n/coxfs01/2p-data'):
+    print('... calculating F0 for df/f')
+    # Load corrected
+    soma_fpath = glob.glob(os.path.join(rootdir, animalid, session, fov,
+                                    '*%s_static' % (experiment), 'traces', '%s*' % traceid,
+                                    'data_arrays', 'np_subtracted.npz'))[0]
+    dset = np.load(soma_fpath)
+    Fc = pd.DataFrame(dset['data']) # np_subtracted:  Np-corrected trace, with baseline subtracted
+
+    # Load raw (pre-neuropil subtraction)
+    raw = np.load(soma_fpath.replace('np_subtracted', 'raw'))
+    F0_raw = pd.DataFrame(raw['f0'])
+
+    # Calculate df/f
+    dff = Fc.divide(F0_raw) # dff 
+
+    if return_traces:
+        if return_labels:
+            labels = pd.DataFrame(data=dset['labels_data'],columns=dset['labels_columns'])
+            return dff, labels
+        else:
+            return dff
+    else:
+        labels = pd.DataFrame(data=dset['labels_data'],columns=dset['labels_columns'])
+        dfmat = traces_to_trials(dff, labels, epoch=epoch, metric=metric)
+        return dfmat 
+
+
+
 def traces_to_trials(traces, labels, epoch='stimulus', metric='mean', n_on=None):
     '''
     Returns dataframe w/ columns = roi ids, rows = mean response to stim ON per trial
@@ -2910,20 +2941,37 @@ def get_neuraldf(animalid, session, fovnum, experiment, traceid='traces001',
     
     if create_new:
         # Load traces
-        trace_type = 'df' if response_type=='zscore' else response_type
-        traces, labels, sdf = load_traces(animalid, session, fovnum, 
-                                          experiment, traceid=traceid, 
-                                          response_type=trace_type,
-                                          responsive_test=responsive_test, 
-                                          responsive_thr=responsive_thr, 
-                                          n_stds=n_stds,
-                                          redo_stats=redo_stats, 
-                                          n_processes=n_processes)
-        if traces is None:
-            return None
-        # Calculate mean trial metric
-        metric = 'zscore' if response_type=='zscore' else 'mean'
-        mean_responses = traces_to_trials(traces, labels, epoch=epoch, metric=response_type)
+        if response_type=='dff0':
+            meanr = load_corrected_dff_traces(animalid, session, 'FOV%i_zoom2p0x' % fovnum, 
+                                    experiment=experiment, traceid=traceid,
+                                  return_traces=False, epoch=epoch, metric='mean') 
+            tmp_desc_base = create_dataframe_name(traceid=traceid, 
+                                            response_type='dff', 
+                                            responsive_test=responsive_test,
+                                            responsive_thr=responsive_thr,
+                                            epoch=epoch) 
+            tmp_fpath = os.path.join(statdir, '%s.pkl' % tmp_desc_base)
+            with open(tmp_fpath, 'rb') as f:
+                tmpd = pkl.load(f)
+            cols = tmpd.columns.tolist()
+            mean_responses = meanr[cols]
+            print("min:", mean_responses.min().min())
+
+        else:
+            trace_type = 'df' if response_type=='zscore' else response_type
+            traces, labels, sdf = load_traces(animalid, session, fovnum, 
+                                              experiment, traceid=traceid, 
+                                              response_type=trace_type,
+                                              responsive_test=responsive_test, 
+                                              responsive_thr=responsive_thr, 
+                                              n_stds=n_stds,
+                                              redo_stats=redo_stats, 
+                                              n_processes=n_processes)
+            if traces is None:
+                return None
+            # Calculate mean trial metric
+            metric = 'zscore' if response_type=='zscore' else 'mean'
+            mean_responses = traces_to_trials(traces, labels, epoch=epoch, metric=response_type)
 
         # save
         with open(ndf_fpath, 'wb') as f:
