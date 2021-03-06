@@ -265,13 +265,8 @@ def decode_split_pupil(datakey, visual_area, neuraldf, pupildf, sdf=None,
     # get shuffled
     low_shuffle_ixs=None
     high_shuffle_ixs=None 
-    if shuffle_labels and equalize_conitions:
-        pupil_low_shuffled, pupil_high_shuffled = decutils.balance_pupil_split(pupildf, feature_name=feature_name,
-                                    n_cuts=n_cuts, 
-                                    match_cond=True, match_cond_name='size', equalize_after_split=True, 
-                                    equalize_by=equalize_by, common_labels=common_labels, verbose=True,
-                                    shuffle_labels=True)
-
+    if shuffle_labels and equalize_conditions:
+        pupil_low_shuffled, pupil_high_shuffled = decutils.shuffle_pupil_labels(pupil_low, pupil_high) 
         train_sizes_low_shuffled = pupil_low_shuffled[pupil_low_shuffled[equalize_by].isin(common_labels)].shape[0] \
                                     if not match_all_configs else pupil_low_shuffled.shape[0]
         train_sizes_high_shuffled = pupil_high_shuffled[pupil_high_shuffled[equalize_by].isin(common_labels)].shape[0] \
@@ -1109,7 +1104,7 @@ def extract_options(options):
     parser.add_option('--shuffle-thr', action='store', dest='shuffle_thr', 
             default=0.05, help="Percentile greater than shuffle (default: 0.05)")
     parser.add_option('--shuffle-drop', action='store_true', dest='shuffle_drop', 
-            default=False, help="Set to drop repeats")
+            default=False, help="Set to do shuffle-thresholding + drop repeats")
  
 
 
@@ -1309,11 +1304,13 @@ def main(options):
         print("***NO DATA. ABORTING***")
         return None
 
-    if analysis_type=='by_ncells' and responsive_test=='ROC':
+    shuffle_str=''
+    if analysis_type=='by_ncells' and responsive_test=='ROC' and overlap_thr is None:
         #pass_thr=0.05
-        shuffle_str = '_drop' if shuffle_drop else ''
+        print("(no RFs). Using BY_FOV shuffle test to filter")
+        shuffle_str = '_thr-%.2f_drop' if shuffle_drop else ''
         pass_shuffle_outfile = os.path.join(aggregate_dir, 'decoding', 'by_fov', 
-                                    'pass_shuffle_test_thr-%.2f%s.json' % (shuffle_thr, shuffle_str))
+                                    'pass_shuffle_test%s.json' % (shuffle_str))
         print("***Loading dsets that pass shuffle test (thr=%.2f, drop=%s)" % (shuffle_thr, str(shuffle_drop)))
         with open(pass_shuffle_outfile, 'r') as f:
             pass_dsets = json.load(f)
@@ -1462,7 +1459,7 @@ def main(options):
             print("Finished %s (%s). ID=%s" % (curr_datakey, curr_visual_area, results_id))
 
     elif analysis_type=='by_ncells':
-        data_info='%s%s-%s_%s_iter%i_thr%.2f%s' % (match_str, response_type, responsive_test, overlap_str, n_iterations, shuffle_thr, shuffle_str)
+        data_info='%s%s-%s_%s_iter%i%s' % (match_str, response_type, responsive_test, overlap_str, n_iterations, shuffle_str)
 
         # Create aggregate output dir
         dst_dir = os.path.join(aggregate_dir, 'decoding', analysis_type, data_info)
