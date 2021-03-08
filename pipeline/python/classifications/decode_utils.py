@@ -76,7 +76,7 @@ def shuffle_pupil_labels(pupil_low, pupil_high):
         p_all = pd.concat([low_g, high_g], axis=0)
         p_shuffled = p_all.sample(frac=1).reset_index(drop=True)
         lo_shuff = p_shuffled.iloc[0:n_low]
-        hi_shuff = p_shuffled.iloc[0:n_high]
+        hi_shuff = p_shuffled.iloc[n_low:]
         lo_.append(lo_shuff)
         hi_.append(hi_shuff)
     pupil_low_shuffled = pd.concat(lo_, axis=0).reset_index()
@@ -273,6 +273,25 @@ def group_iters_by_fov(iterdf, metric='heldout_test_score'):
     return percentiles 
 
 
+def get_training_results(iterdf, test_type=None, train_classes=[0, 106], drop_arousal=True):
+
+    if 'train_transform' in iterdf.columns:
+        print("transforms are split")
+        if 'morph' in test_type:
+            traindf = iterdf[(iterdf.train_transform==iterdf.test_transform) 
+                        & (iterdf.morphlevel.isin(train_classes))]\
+                        .drop(['morphlevel', 'p_chooseB'], axis=1).drop_duplicates()
+        else:
+            traindf = iterdf[(iterdf.train_transform==iterdf.test_transform) 
+                        & (iterdf.novel==False)].drop_duplicates()
+    else:
+        print("reg")
+        traindf = iterdf.copy()
+
+    if drop_arousal:
+        traindf = traindf[(traindf.arousal=='all')].drop_duplicates()
+    
+    return traindf
 
 
 # ======================================================================
@@ -609,134 +628,134 @@ def get_ntrials_per_config(neuraldf, n_trials=10):
     return resampled_df
 
 
-def get_trials_for_N_cells(curr_ncells, gdf, MEANS, train_configs=None):
-    '''
-    Randomly select N cells from global roi list (gdf), get cell's responses to all trials.
-    
-    gdf = dataframe (subset of global_rois dataframe), contains 
-    - all rois for a given visual area
-    - corresponding within-datakey roi IDs
-    '''
-    # Get current global RIDs
-    ncells_t = gdf.shape[0]                      
-    roi_ids = np.array(gdf['roi'].values.copy()) 
+#def get_trials_for_N_cells(curr_ncells, gdf, MEANS, train_configs=None):
+#    '''
+#    Randomly select N cells from global roi list (gdf), get cell's responses to all trials.
+#    
+#    gdf = dataframe (subset of global_rois dataframe), contains 
+#    - all rois for a given visual area
+#    - corresponding within-datakey roi IDs
+#    '''
+#    # Get current global RIDs
+#    ncells_t = gdf.shape[0]                      
+#    roi_ids = np.array(gdf['roi'].values.copy()) 
+#
+#    # Random sample w/ replacement
+#    rand_ixs = np.array([random.randint(0, ncells_t-1) for _ in np.arange(0, curr_ncells)])
+#    curr_roi_list = roi_ids[rand_ixs]
+#    curr_roidf = gdf[gdf['roi'].isin(curr_roi_list)].copy()
+#
+#    # Make sure equal num trials per condition for all dsets
+#    if train_configs is not None:
+#        min_ntrials_by_config = min([MEANS[k][MEANS[k]['config'].isin(train_configs)]['config'].value_counts().min() for k in curr_roidf['datakey'].unique()])
+#        print("MIn N trials in configs: %i" % min_ntrials_by_config)
+#    else:
+#        min_ntrials_by_config = min([MEANS[k]['config'].value_counts().min() for k in curr_roidf['datakey'].unique()])
+#
+#    # Get data samples for these cells
+#    d_list=[]; c_list=[];
+#    for datakey, dkey_rois in curr_roidf.groupby(['datakey']):
+#        # Get subset of trials per cond to match min N trials
+#        tmpd_list=[]
+#        for cfg, trialmat in MEANS[datakey].groupby(['config']):
+#            # Get indices of trials in current dataset
+#            trial_ixs = trialmat.index.tolist() 
+#            # Shuffle them to get random order
+#            np.random.shuffle(trial_ixs)                
+#            # Select min_ntrials randomly
+#            curr_cfg_trials = trialmat.loc[trial_ixs[0:min_ntrials_by_config]].copy() 
+#            # Add current trials of current config to list
+#            tmpd_list.append(curr_cfg_trials)        
+#        tmpd = pd.concat(tmpd_list, axis=0) 
+#
+#        # For each RID sample belonging to current dataset, get RID order
+#        sampled_cells = pd.concat([dkey_rois[dkey_rois['roi']==globalid][['roi', 'dset_roi']]                                          for globalid in curr_roi_list])
+#        sampled_dset_rois = sampled_cells['dset_roi'].values
+#        sampled_global_rois = sampled_cells['roi'].values
+#
+#        # Get trial responses (some columns are repeats)
+#        curr_roidata = tmpd[sampled_dset_rois].copy().reset_index(drop=True)
+#        assert len(sampled_global_rois)==curr_roidata.shape[1], "Incorrect column grabbing" 
+#        curr_roidata.columns = sampled_global_rois # Rename ROI columns to global-rois
+#        config_list = tmpd['config'].reset_index(drop=True)  # Get configs on selected trials
+#        d_list.append(curr_roidata)
+#        c_list.append(config_list)
+#    curr_neuraldf = pd.concat(d_list, axis=1).reset_index(drop=True)
+#
+#    cfg_df = pd.concat(c_list, axis=1)
+#    cfg_df = cfg_df.T.drop_duplicates().T
+#    assert cfg_df.shape[0]==curr_neuraldf.shape[0], "Bad trials"
+#
+#    assert curr_configdf.shape[1]==1, "Bad configs: %s" % str(curr_roidf['datakey'].unique())
+#    df = pd.concat([curr_neuraldf, cfg_df], axis=1)
+#
+#    return df
+#
 
-    # Random sample w/ replacement
-    rand_ixs = np.array([random.randint(0, ncells_t-1) for _ in np.arange(0, curr_ncells)])
-    curr_roi_list = roi_ids[rand_ixs]
-    curr_roidf = gdf[gdf['roi'].isin(curr_roi_list)].copy()
-
-    # Make sure equal num trials per condition for all dsets
-    if train_configs is not None:
-        min_ntrials_by_config = min([MEANS[k][MEANS[k]['config'].isin(train_configs)]['config'].value_counts().min() for k in curr_roidf['datakey'].unique()])
-        print("MIn N trials in configs: %i" % min_ntrials_by_config)
-    else:
-        min_ntrials_by_config = min([MEANS[k]['config'].value_counts().min() for k in curr_roidf['datakey'].unique()])
-
-    # Get data samples for these cells
-    d_list=[]; c_list=[];
-    for datakey, dkey_rois in curr_roidf.groupby(['datakey']):
-        # Get subset of trials per cond to match min N trials
-        tmpd_list=[]
-        for cfg, trialmat in MEANS[datakey].groupby(['config']):
-            # Get indices of trials in current dataset
-            trial_ixs = trialmat.index.tolist() 
-            # Shuffle them to get random order
-            np.random.shuffle(trial_ixs)                
-            # Select min_ntrials randomly
-            curr_cfg_trials = trialmat.loc[trial_ixs[0:min_ntrials_by_config]].copy() 
-            # Add current trials of current config to list
-            tmpd_list.append(curr_cfg_trials)        
-        tmpd = pd.concat(tmpd_list, axis=0) 
-
-        # For each RID sample belonging to current dataset, get RID order
-        sampled_cells = pd.concat([dkey_rois[dkey_rois['roi']==globalid][['roi', 'dset_roi']]                                          for globalid in curr_roi_list])
-        sampled_dset_rois = sampled_cells['dset_roi'].values
-        sampled_global_rois = sampled_cells['roi'].values
-
-        # Get trial responses (some columns are repeats)
-        curr_roidata = tmpd[sampled_dset_rois].copy().reset_index(drop=True)
-        assert len(sampled_global_rois)==curr_roidata.shape[1], "Incorrect column grabbing" 
-        curr_roidata.columns = sampled_global_rois # Rename ROI columns to global-rois
-        config_list = tmpd['config'].reset_index(drop=True)  # Get configs on selected trials
-        d_list.append(curr_roidata)
-        c_list.append(config_list)
-    curr_neuraldf = pd.concat(d_list, axis=1).reset_index(drop=True)
-
-    cfg_df = pd.concat(c_list, axis=1)
-    cfg_df = cfg_df.T.drop_duplicates().T
-    assert cfg_df.shape[0]==curr_neuraldf.shape[0], "Bad trials"
-
-    assert curr_configdf.shape[1]==1, "Bad configs: %s" % str(curr_roidf['datakey'].unique())
-    df = pd.concat([curr_neuraldf, cfg_df], axis=1)
-
-    return df
-
-
-def get_trials_for_N_cells_split(curr_ncells, gdf, NEURALDATA, train_configs=None):
-    '''
-    Randomly select N cells from global roi list (gdf), get cell's responses to all trials.
-    NEURALDATA (dict)
-        keys : visual areas
-        vals : same as MEANS() -- i.e., dict, k=datakey, v=neuraldf
- 
-    gdf = dataframe (subset of global_rois dataframe), contains 
-    - all rois for a given visual area
-    - corresponding within-datakey roi IDs
-    '''
-    # Get current global RIDs
-    ncells_t = gdf.shape[0]
-    roi_ids = np.array(gdf['roi'].values.copy())
-    len(roi_ids)
-
-    # Random sample w/ replacement
-    rand_ixs = np.array([random.randint(0, ncells_t-1) for _ in np.arange(0, curr_ncells)])
-    curr_roi_list = roi_ids[rand_ixs] # can have repeats 
-    curr_roidf = gdf[gdf['roi'].isin(curr_roi_list)].copy() # N rows=N unique cells
-    # len(curr_roidf['roi'].unique()), len(curr_roi_list), len(np.unique(curr_roi_list))
-
-
-    # Make sure equal num trials per condition for all dsets
-    if train_configs is not None:
-        min_ntrials_by_config = min([NEURALDATA[v][k][NEURALDATA[v][k]['config'].isin(train_configs)]['config'].value_counts().min() for (v, k), g in curr_roidf.groupby(['visual_area', 'datakey'])])
-
-        print("MIn N trials in configs: %i" % min_ntrials_by_config)
-    else:
-        min_ntrials_per_cfg = min([NEURALDATA[visual_area][datakey]['config'].value_counts().min() \
-                            for (visual_area, datakey), g in \
-                            curr_roidf.groupby(['visual_area', 'datakey'])])
-
-    # Get data samples for these cells
-    d_list=[]; c_list=[];
-    for (varea, dkey), dkey_rois in curr_roidf.groupby(['visual_area', 'datakey']):
-            
-        neuraldf = NEURALDATA[varea][dkey].copy()
-        resampled_df = get_ntrials_per_config(neuraldf, n_trials=min_ntrials_per_cfg)
-        #resampled_df.sort_index(inplace=True) # resort by trial index
-        
-        # For each RID sample belonging to current dataset, get RID order
-        sampled_cells = pd.concat([dkey_rois[dkey_rois['roi']==globalid][['roi', 'dset_roi']] 
-                                   for globalid in curr_roi_list])
-        # sampled_cells['roi'].value_counts()
-        sampled_dset_rois = sampled_cells['dset_roi'].values
-        sampled_global_rois = sampled_cells['roi'].values
-
-        # Get trial responses (some columns are repeats)
-        curr_roidata = resampled_df[sampled_dset_rois].copy().reset_index(drop=True)
-        assert len(sampled_global_rois)==curr_roidata.shape[1], "Incorrect column grabbing"
-        curr_roidata.columns = sampled_global_rois # Rename ROI columns to global-rois
-        config_list = resampled_df['config'].reset_index(drop=True)  # Get configs on selected trials
-        d_list.append(curr_roidata)
-        c_list.append(config_list)
-
-    curr_neuraldf = pd.concat(d_list, axis=1).reset_index(drop=True)
-    curr_configdf = pd.concat(c_list, axis=1).T.drop_duplicates().T
-
-    assert curr_configdf.shape[0]==curr_neuraldf.shape[0], "Bad trials"
-    assert cfg_df.shape[1]==1, "Bad configs: %s" % str(curr_roidf['datakey'].unique()) #cfg_df
-    df = pd.concat([curr_neuraldf, curr_configdf], axis=1)
-
-    return df
+#def get_trials_for_N_cells_split(curr_ncells, gdf, NEURALDATA, train_configs=None):
+#    '''
+#    Randomly select N cells from global roi list (gdf), get cell's responses to all trials.
+#    NEURALDATA (dict)
+#        keys : visual areas
+#        vals : same as MEANS() -- i.e., dict, k=datakey, v=neuraldf
+# 
+#    gdf = dataframe (subset of global_rois dataframe), contains 
+#    - all rois for a given visual area
+#    - corresponding within-datakey roi IDs
+#    '''
+#    # Get current global RIDs
+#    ncells_t = gdf.shape[0]
+#    roi_ids = np.array(gdf['roi'].values.copy())
+#    len(roi_ids)
+#
+#    # Random sample w/ replacement
+#    rand_ixs = np.array([random.randint(0, ncells_t-1) for _ in np.arange(0, curr_ncells)])
+#    curr_roi_list = roi_ids[rand_ixs] # can have repeats 
+#    curr_roidf = gdf[gdf['roi'].isin(curr_roi_list)].copy() # N rows=N unique cells
+#    # len(curr_roidf['roi'].unique()), len(curr_roi_list), len(np.unique(curr_roi_list))
+#
+#
+#    # Make sure equal num trials per condition for all dsets
+#    if train_configs is not None:
+#        min_ntrials_by_config = min([NEURALDATA[v][k][NEURALDATA[v][k]['config'].isin(train_configs)]['config'].value_counts().min() for (v, k), g in curr_roidf.groupby(['visual_area', 'datakey'])])
+#
+#        print("MIn N trials in configs: %i" % min_ntrials_by_config)
+#    else:
+#        min_ntrials_per_cfg = min([NEURALDATA[visual_area][datakey]['config'].value_counts().min() \
+#                            for (visual_area, datakey), g in \
+#                            curr_roidf.groupby(['visual_area', 'datakey'])])
+#
+#    # Get data samples for these cells
+#    d_list=[]; c_list=[];
+#    for (varea, dkey), dkey_rois in curr_roidf.groupby(['visual_area', 'datakey']):
+#            
+#        neuraldf = NEURALDATA[varea][dkey].copy()
+#        resampled_df = get_ntrials_per_config(neuraldf, n_trials=min_ntrials_per_cfg)
+#        #resampled_df.sort_index(inplace=True) # resort by trial index
+#        
+#        # For each RID sample belonging to current dataset, get RID order
+#        sampled_cells = pd.concat([dkey_rois[dkey_rois['roi']==globalid][['roi', 'dset_roi']] 
+#                                   for globalid in curr_roi_list])
+#        # sampled_cells['roi'].value_counts()
+#        sampled_dset_rois = sampled_cells['dset_roi'].values
+#        sampled_global_rois = sampled_cells['roi'].values
+#
+#        # Get trial responses (some columns are repeats)
+#        curr_roidata = resampled_df[sampled_dset_rois].copy().reset_index(drop=True)
+#        assert len(sampled_global_rois)==curr_roidata.shape[1], "Incorrect column grabbing"
+#        curr_roidata.columns = sampled_global_rois # Rename ROI columns to global-rois
+#        config_list = resampled_df['config'].reset_index(drop=True)  # Get configs on selected trials
+#        d_list.append(curr_roidata)
+#        c_list.append(config_list)
+#
+#    curr_neuraldf = pd.concat(d_list, axis=1).reset_index(drop=True)
+#    curr_configdf = pd.concat(c_list, axis=1).T.drop_duplicates().T
+#
+#    assert curr_configdf.shape[0]==curr_neuraldf.shape[0], "Bad trials"
+#    assert cfg_df.shape[1]==1, "Bad configs: %s" % str(curr_roidf['datakey'].unique()) #cfg_df
+#    df = pd.concat([curr_neuraldf, curr_configdf], axis=1)
+#
+#    return df
 
 def get_trials_for_N_cells_df(curr_ncells, gdf, NEURALDATA, train_configs=None): 
     # Get current global RIDs
@@ -744,9 +763,10 @@ def get_trials_for_N_cells_df(curr_ncells, gdf, NEURALDATA, train_configs=None):
     roi_ids = np.array(gdf['roi'].values.copy()) 
 
     # Random sample w/ replacement
-    rand_ixs = np.array([random.randint(0, ncells_t-1) for _ in np.arange(0, curr_ncells)])
-    curr_roi_list = roi_ids[rand_ixs]
-    curr_roidf = gdf[gdf['roi'].isin(curr_roi_list)].copy()
+    #rand_ixs = np.array([random.randint(0, ncells_t-1) for _ in np.arange(0, curr_ncells)])
+    #curr_roi_list = roi_ids[rand_ixs]
+    #curr_roidf = gdf[gdf['roi'].isin(curr_roi_list)].copy()
+    curr_roidf = gdf.sample(n=curr_ncells, replace=False)
 
     # Make sure equal num trials per condition for all dsets
     curr_dkeys = curr_roidf['datakey'].unique()
@@ -1074,15 +1094,19 @@ def do_fit_within_fov(iter_num, curr_data=None, sdf=None, verbose=False,
     return iter_df 
 
 def sample_neuraldata(sample_size, global_rois, MEANS, train_configs=None):
+#    if isinstance(MEANS, dict):
+#        if isinstance(MEANS[MEANS.keys()[0]], dict): # df_is_split
+#            curr_data = get_trials_for_N_cells_split(sample_size, global_rois, 
+#                                        MEANS, train_configs=train_configs)
+#        else:
+#            curr_data = get_trials_for_N_cells(sample_size, global_rois, 
+#                                        MEANS, train_configs=train_configs)
+#    else:
+#   
     if isinstance(MEANS, dict):
-        if isinstance(MEANS[MEANS.keys()[0]], dict): # df_is_split
-            curr_data = get_trials_for_N_cells_split(sample_size, global_rois, 
-                                        MEANS, train_configs=train_configs)
-        else:
-            curr_data = get_trials_for_N_cells(sample_size, global_rois, 
-                                        MEANS, train_configs=train_configs)
-    else:
-        curr_data = get_trials_for_N_cells_df(sample_size, global_rois, 
+        MEANS = aggr.neuraldf_dict_to_dataframe(MEANS)
+
+    curr_data = get_trials_for_N_cells_df(sample_size, global_rois, 
                                         MEANS, train_configs=train_configs)
 
     return curr_data
@@ -2218,7 +2242,7 @@ def do_fit_train_single_test_morph(iter_num, global_rois=None, MEANS=None, sdf=N
 # ======================================================================
 # Performance plotting 
 # ======================================================================
-def plot_individual_shuffle_distn(dk, va, traindf, metric='heldout_test_score'):
+def plot_individual_shuffle_distn(dk, va, traindf, metric='heldout_test_score', ax=None):
 
     d_ = traindf[(traindf.visual_area==va) & (traindf.datakey==dk) ].copy()
 
@@ -2236,20 +2260,26 @@ def plot_individual_shuffle_distn(dk, va, traindf, metric='heldout_test_score'):
             ax.set_xlabel('')
         fig.text(0.5, 0.05, metric, ha='center', fontsize=12)
         fig.text(0.05, 0.95, '%s (%s)' % (dk, va), fontsize=16)
-    else:
-        fig, ax = pl.subplots(1, 1, figsize=(5,4), sharex=True, sharey=True)
-
+        return fig
+    else:       
+        is_fig=False
+        if ax is None:
+            fig, ax = pl.subplots(1, 1, figsize=(5,4), sharex=True, sharey=True)
+            is_fig=True
         mean_score = d_[d_['condition']=='data'][metric].mean()
         percentile = np.mean(mean_score < d_[d_['condition']=='shuffled'][metric])
         ax.set_title('avg.%.2f (p=%.2f)' % ( mean_score, percentile), loc='left', fontsize=8)
         sns.distplot(d_[d_['condition']=='data'][metric], color='m', ax=ax)
         sns.distplot(d_[d_['condition']=='shuffled'][metric], color='k', ax=ax)
         ax.set_xlabel('')
-        fig.text(0.5, 0.05, metric, ha='center', fontsize=12)
-        fig.text(0.05, 0.95, '%s (%s)' % (dk, va), fontsize=16)
-
-    pl.subplots_adjust(bottom=0.2, left=0.1, right=0.95, wspace=0.5, top=0.8)
-    return fig
+        if is_fig:
+            fig.text(0.5, 0.05, metric, ha='center', fontsize=12)
+            fig.text(0.05, 0.95, '%s (%s)' % (dk, va), fontsize=16)
+            pl.subplots_adjust(bottom=0.2, left=0.1, right=0.95, wspace=0.5, top=0.8)
+        else:
+            ax.set_title(dk, loc='left')
+        return ax
+    
 
 def plot_score_by_ncells(pooled, metric='heldout_test_score', area_colors=None,
         lw=2, ls='-', capsize=3, ax=None, dpi=150):
