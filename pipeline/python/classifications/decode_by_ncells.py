@@ -163,6 +163,93 @@ def decode_split_pupil(datakey, visual_area, neuraldf, pupildf, sdf=None,
                     rootdir='/n/coxfs01/2p-data', verbose=False,
                     test_type=None, n_train_configs=4, 
                     n_cuts=3, feature_name='pupil_fraction', shuffle_labels=True):  
+
+    '''
+    Decode within FOV, split trials into high/low arousal states. 
+    Repeat n_iterations (mulitproc)
+    equalize_conditions (bool)
+        Split pupil quantiles within config type (equalize_by)
+    equalize_by (str)
+        For all values of <equalize_by>, get equal trial nums
+    match_all_configs (bool)
+        ALL condition values have equal nums (set False to only match for TRAIN configs)
+    '''
+    # tmp save
+    session, animalid, fovnum = putils.split_datakey_str(datakey)
+    traceid_dir = glob.glob(os.path.join(rootdir, animalid, session, 'FOV%i_zoom2p0x' % fovnum,
+                            'combined_%s_static' % experiment, 'traces', '%s*' % traceid))[0]
+    curr_dst_dir = os.path.join(traceid_dir, 'decoding')
+    if not os.path.exists(curr_dst_dir):
+        os.makedirs(curr_dst_dir)
+        print("... saving tmp results to:\n  %s" % curr_dst_dir)
+    results_outfile = os.path.join(curr_dst_dir, '%s.pkl' % results_id)
+
+    #### Get neural means
+    print("... Stating decoding analysis")
+
+    # ------ STIMULUS INFO -----------------------------------------
+    if sdf is None:
+        obj = util.Objects(animalid, session, 'FOV%i_zoom2p0x' %  fovnum, traceid=traceid)
+        sdf = obj.get_stimuli()
+
+    sdf['config'] = sdf.index.tolist()
+    train_classes = [class_a, class_b]
+    print("Class: %s, %s" % (class_name, str(train_classes)))
+    sdf['morph_size'] = ['%s_%s' % (m, s) for m, s in zip(sdf['morphlevel'].values, sdf['size'].values)]
+ 
+    #### Match trial numbers
+    unique_ntrials_per = neuraldf['config'].value_counts().unique()
+    print("... (%s) Equalizing reps per condition: %s" % (datakey, str(unique_ntrials_per)))
+ 
+    neuraldf = aggr.zscore_neuraldf(neuraldf)
+    n_cells = int(neuraldf.shape[1]-1) 
+    print("... SPLIT_PUPIL | [%s] %s, n=%i cells" % (visual_area, datakey, n_cells))
+ 
+    iter_results, input_trials = decutils.iterate_split_pupil(neuraldf, pupildf, sdf, 
+                        n_iterations=n_iterations, n_processes=n_processes, 
+                        C_value=C_value, cv_nfolds=cv_nfolds, test_split=test_split, 
+                        test_type=test_type, n_train_configs=n_train_configs, verbose=verbose, within_fov=True,
+                        class_name=class_name, class_a=class_a, class_b=class_b, do_shuffle=do_shuffle,
+                        feature_name=feature_name, n_cuts=n_cuts, 
+                        equalize_by=equalize_by, match_all_configs=match_all_configs)
+ 
+    # DATA - concat 3 conds
+    iter_results['visual_area'] = visual_area
+    iter_results['datakey'] = datakey
+    iter_results['n_cells'] = n_cells
+
+    with open(results_outfile, 'wb') as f:
+        pkl.dump(iter_results, f, protocol=pkl.HIGHEST_PROTOCOL)
+
+    # Save input data
+    data_inputfile = os.path.join(curr_dst_dir, 'inputdata_%s.pkl' % results_id)
+    inputdata = {'neuraldf': neuraldf, 'pupildf': pupildf, 'sdf': sdf, 
+                'feature_name': feature_name, 'n_cuts': n_cuts,
+                'input_trials': input_trials,
+#                'low_ixs': low_trial_ixs, 'high_ixs': high_trial_ixs, 
+#                'low_ixs_shuffled': low_shuffle_ixs, 'high_ixs_shuffled': high_shuffle_ixs,
+                'equalize_conditions': equalize_conditions, 'match_all_configs': match_all_configs}
+    with open(data_inputfile, 'wb') as f:
+        pkl.dump(inputdata, f, protocol=pkl.HIGHEST_PROTOCOL)
+
+    if test_type is None:
+        print(iter_results.groupby(['condition', 'arousal']).mean())   
+    else:
+        print(iter_results.groupby(['condition', 'arousal', 'novel']).mean())   
+
+    print("@@@@@@@@@ done. %s|%s  @@@@@@@@@@" % (visual_area, datakey))
+    print(results_outfile) 
+ 
+    return 
+
+
+def decode_split_pupil_orig(datakey, visual_area, neuraldf, pupildf, sdf=None,
+                    results_id='split_pupil', C_value=None, experiment='blobs',
+                    n_iterations=50, n_processes=2, class_name='morphlevel', class_a=0, class_b=0, 
+                    do_shuffle=True, equalize_conditions=True, equalize_by='config', match_all_configs=True,
+                    rootdir='/n/coxfs01/2p-data', verbose=False,
+                    test_type=None, n_train_configs=4, 
+                    n_cuts=3, feature_name='pupil_fraction', shuffle_labels=True):  
     '''
     Decode within FOV, split trials into high/low arousal states. 
     Repeat n_iterations (mulitproc)
