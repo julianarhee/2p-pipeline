@@ -328,7 +328,7 @@ def get_pupil_df(pupil_r, trial_epoch='pre', new_stim_on=20., nframes_on=20.):
 def get_aggregate_pupildfs(experiment='blobs', feature_name='pupil_area', 
                            trial_epoch='pre', alignment_type='stimulus', 
                            in_rate=20., out_rate=20., iti_pre=1., iti_post=1., stim_dur=1.,
-                           snapshot=391800, 
+                           snapshot=391800,  traceid='traces001',
                            aggregate_dir='/n/coxfs01/julianarhee/aggregate-visual-areas', 
                            create_new=False, return_missing=False):
     '''
