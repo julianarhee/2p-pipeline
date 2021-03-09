@@ -1134,19 +1134,20 @@ def experiment_datakeys(experiment='blobs', has_gratings=False, has_rfs=False, s
 
     return emeta, exp_dict #expmeta
 
-def neuraldf_dict_to_dataframe(NEURALDATA, response_type='response'):
+def neuraldf_dict_to_dataframe(NEURALDATA, response_type='response', add_cols=[]):
     ndfs = []
+    id_vars = ['datakey', 'config', 'trial']
+    id_vars.extend(add_cols)
 
-    
     if isinstance(NEURALDATA[NEURALDATA.keys()[0]], dict):
+        id_vars.append('visual_area')
         for visual_area, vdict in NEURALDATA.items():
             for datakey, neuraldf in vdict.items():
                 metainfo = {'visual_area': visual_area, 'datakey': datakey}
                 ndf = add_meta_to_df(neuraldf.copy(), metainfo)
                 ndf['trial'] = ndf.index.tolist()
-                id_vars = ['visual_area', 'datakey', 'config', 'trial']
-                if 'arousal' in neuraldf.columns:
-                    id_vars.append('arousal')
+                #if 'arousal' in neuraldf.columns:
+                #    id_vars.append('arousal')
                 melted = pd.melt(ndf, id_vars=id_vars, 
                                  var_name='cell', value_name=response_type)
                 ndfs.append(melted)
@@ -1155,9 +1156,8 @@ def neuraldf_dict_to_dataframe(NEURALDATA, response_type='response'):
             metainfo = {'datakey': datakey}
             ndf = add_meta_to_df(neuraldf.copy(), metainfo)
             ndf['trial'] = ndf.index.tolist()
-            id_vars = ['datakey', 'config', 'trial']
-            if 'arousal' in neuraldf.columns:
-                id_vars.append('arousal')
+            #if 'arousal' in neuraldf.columns:
+            #    id_vars.append('arousal')
 
             melted = pd.melt(ndf, id_vars=id_vars, 
                              var_name='cell', value_name=response_type)
@@ -2190,7 +2190,30 @@ def plot_pairwise_by_axis(plotdf, curr_metric='abs_coef', c1='az', c2='el',
 
     return ax #fig
 
-def paired_ttests(comdf, curr_metric='avg_size', 
+def add_statsdf_to_plot(statsdf, ax, bbox=[0.2, -0.7, 0.8, 0.4], colwidth=0.25, loc='bottom'):
+
+    cell_text = []
+    for row in range(len(statsdf)):
+        cell_text.append(statsdf.iloc[row])
+
+    ax.table(cellText=cell_text, colWidths = [colwidth]*len(statsdf.columns),
+             colLabels=statsdf.columns, loc=loc, bbox=bbox)
+
+def paired_ttest_from_df(plotdf, metric='avg_size', c1='rfs', c2='rfs10', compare_var='experiment',
+                            round_to=None):
+    a_vals = plotdf[plotdf[compare_var]==c1].sort_values(by='datakey')[metric].values
+    b_vals = plotdf[plotdf[compare_var]==c2].sort_values(by='datakey')[metric].values
+    #print(a_vals, b_vals)
+
+    tstat, pval = spstats.ttest_rel(np.array(a_vals), np.array(b_vals))
+ 
+    #print('%s: %.2f (p=%.2f)' % (visual_area, tstat, pval))
+    if round_to is not None:
+        tstat = round(tstat, round_to)
+        pval = round(pval, round_to)    
+    return {'t_stat': tstat, 'p_val': pval}
+
+def paired_ttests(comdf, curr_metric='avg_size',  round_to=None,
                 c1='rfs', c2='rfs10', compare_var='experiment',
                 visual_areas=['V1', 'Lm', 'Li']):
     r_=[]
@@ -2204,7 +2227,9 @@ def paired_ttests(comdf, curr_metric='avg_size',
         tstat, pval = spstats.ttest_rel(np.array(a_vals), np.array(b_vals))
      
         print('%s: %.2f (p=%.2f)' % (visual_area, tstat, pval))
-        
+        if round_to is not None:
+            tstat = round(tstat, round_to)
+            pval = round(pval, round_to)    
         res = pd.DataFrame({'visual_area': visual_area, 't_stat': tstat, 'p_val': pval}, 
                         index=[ai])
         r_.append(res)
