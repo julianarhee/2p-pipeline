@@ -178,12 +178,12 @@ def plot_psth_grid(meandfs, plot_params, trace_type='trace_type', palette='color
                        stim_start_tsec=0, stim_end_tsec=1):
     
     p = sns.FacetGrid(meandfs, col=plot_params['cols'], row=plot_params['rows'], hue=plot_params['hue'],\
-                      sharex=True, sharey=True, palette=palette)
+                      sharex=True, sharey=True, palette=palette, gridspec_kws={'wspace': 0.6, 'hspace': 0.6})
 
 
     if len(meandfs[plot_params['rows']].unique()) == 1:
-        p.fig.set_figheight(3)
-        p.fig.set_figwidth(10)
+        p.fig.set_figheight(4)
+        p.fig.set_figwidth(8)
     else:
         p.fig.set_figheight(12)
         p.fig.set_figwidth(18)
@@ -196,7 +196,7 @@ def plot_psth_grid(meandfs, plot_params, trace_type='trace_type', palette='color
         p = p.map(pl.fill_between, "tsec", "fill_minus", "fill_plus", alpha=0.5)
         p = (p.map(pl.plot, "tsec", trace_type, lw=1, alpha=1).add_legend())
 
-    p = p.set_titles(col_template="{col_name}", size=12)   
+    p = p.set_titles(col_template="{col_name}", size=8)   
     p.map(add_stimulus_bar, 'ntrials',  start_val=stim_start_tsec, end_val=stim_end_tsec, color='k', alpha=0.1)
     if plot_params['hue'] is not None:
         p.map(add_text, 'ntrials', plot_params['hue'])
