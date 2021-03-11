@@ -44,9 +44,10 @@ parser.add_argument('-S', '--sample-sizes', nargs='+', dest='sample_sizes', defa
 
 parser.add_argument('-T', '--test', action='store', dest='test_type', default=None, help='Test type, if generalization (options: size_single, size_subset, morph)')
 
-parser.add_argument('--shuffle-thr', action='store', dest='shuffle_thr', default=0.05, help='Thr for shuffle test (default=0.05)')
-parser.add_argument('--shuffle-drop', action='store_true', dest='shuffle_drop', default=False, help='Set to drop repeats for aggregated dsets)')
+parser.add_argument('--shuffle-thr', action='store', dest='shuffle_thr', default=None, help='Thr for shuffle test (default=dont do shuffle test per fov first, Note: relevant for by_ncells)')
+parser.add_argument('--drop-repeats', action='store_true', dest='drop_repeats', default=False, help='Set to drop repeats for aggregated dsets)')
 
+parser.add_argument('-N', '--niter', action='store', dest='n_iterations', default=100, help='N iterations for bootstrap (default=100)')
 
 
 
@@ -97,8 +98,8 @@ analysis_type = args.analysis_type
 c_value = None if args.c_value in ['None', None] else float(args.c_value)
 c_str = 'tune-C' if c_value is None else 'C-%.2f' % c_value
 trial_epoch = args.trial_epoch
-shuffle_thr = args.shuffle_thr
-shuffle_drop = args.shuffle_drop
+shuffle_thr = None if args.shuffle_thr in ['None', None] else float(args.shuffle_thr)
+drop_repeats = args.drop_repeats 
 
 match_distns = args.match_distns
 threshold_snr = args.threshold_snr
@@ -107,6 +108,7 @@ threshold_dff = args.threshold_dff
 
 test_type = args.test_type
 sample_sizes = [int(i) for i in args.sample_sizes]
+n_iterations = int(args.n_iterations)
 
 # Create a (hopefully) unique prefix for the names of all jobs in this 
 # particular run of the pipeline. This makes sure that runs can be
@@ -162,6 +164,17 @@ def load_metadata(experiment, responsive_test='nstds', responsive_thr=10.,
  
     return sdata_exp
 
+
+def get_cells(experiment, overlap_thr=None, traceid='traces001', responsive_test='ROC', responsive_thr=0.05, 
+            trial_epoch='stimulus', response_type='dff', images_only=True):
+    from pipeline.python.classifications import aggregate_data_stats as aggr
+
+    ND, CELLS = aggr.get_final_data(experiment, overlap_thr=overlap_thr, traceid=traceid, 
+                        responsive_test=responsive_test, responsive_thr=responsive_thr, 
+                        response_type=response_type, drop_repeats=drop_repeats, trial_epoch=trial_epoch,
+                        images_only=images_only)
+    return CELLS
+
 ################################################################################
 #                               run the pipeline                               #
 ################################################################################
@@ -174,7 +187,16 @@ if analysis_type=='by_ncells':
     # -----------------------------------------------------------------
     datakey=None
     if len(sample_sizes)==0:
-        sample_sizes = [1, 4, 16, 32, 64, 128, 256] #[2**i for i in np.arange(0, 9)]  
+        size_range = [1, 4, 16, 32, 64, 128, 256] #[2**i for i in np.arange(0, 9)]  
+        # Get min N cells
+        CELLS = get_cells(experiment, overlap_thr=overlap_thr, traceid=traceid, responsive_test=responsive_test, 
+                    trial_epoch=trial_epoch, images_only=True)
+        cell_counts = dict(CELLS.groupby(['visual_area'])['cell'].count())
+        min_ncells = min(cell_counts.values)
+
+        sample_sizes = [i for i in size_range if i <= min_ncells]
+        if max(sample_sizes) < min_ncells:
+            sample_sizes.append(min_ncells)
     visual_areas = ['V1', 'Lm', 'Li'] if visual_area is None else [visual_area]
     info("Testing %i areas: %s" % (len(visual_areas), str(visual_areas)))
     info("Testing %i sample size: %s" % (len(sample_sizes), str(sample_sizes)))
@@ -228,28 +250,28 @@ if analysis_type=='by_ncells':
 
 
                 else: 
-                    if shuffle_drop:
+                    if drop_repeats:
                         cmd = "sbatch --job-name={PROCID}.{ANALYSIS}.{MTAG} \
                         -o '{LOGDIR}/{PROCID}.{ANALYSIS}.{MTAG}.out' \
                         -e '{LOGDIR}/{PROCID}.{ANALYSIS}.{MTAG}.err' \
-                /n/coxfs01/2p-pipeline/repos/2p-pipeline/pipeline/python/slurm/decode_by_ncells_thr_drop.sbatch \
-                {EXP} {TRACEID} {RTEST} {OVERLAP} {ANALYSIS} {CVAL} {VAREA} {NCELLS} {DKEY} {EPOCH} {TEST} {PASS}".format(
+                /n/coxfs01/2p-pipeline/repos/2p-pipeline/pipeline/python/slurm/decode_by_ncells_drop.sbatch \
+                {EXP} {TRACEID} {RTEST} {OVERLAP} {ANALYSIS} {CVAL} {VAREA} {NCELLS} {DKEY} {EPOCH} {TEST} {PASS} {NITER}".format(
                             PROCID=piper, MTAG=mtag, LOGDIR=logdir,
                             EXP=experiment, TRACEID=traceid, ANALYSIS=analysis_type,
                             RTEST=responsive_test, OVERLAP=overlap_thr, 
                             CVAL=c_value, VAREA=visual_area, NCELLS=ncells, DKEY=datakey, 
-                            EPOCH=trial_epoch, TEST=test_type, PASS=shuffle_thr) 
+                            EPOCH=trial_epoch, TEST=test_type, PASS=shuffle_thr, NITER=n_iterations) 
                     else: 
                         cmd = "sbatch --job-name={PROCID}.{ANALYSIS}.{MTAG} \
                         -o '{LOGDIR}/{PROCID}.{ANALYSIS}.{MTAG}.out' \
                         -e '{LOGDIR}/{PROCID}.{ANALYSIS}.{MTAG}.err' \
-                /n/coxfs01/2p-pipeline/repos/2p-pipeline/pipeline/python/slurm/decode_by_ncells_thr.sbatch \
-                {EXP} {TRACEID} {RTEST} {OVERLAP} {ANALYSIS} {CVAL} {VAREA} {NCELLS} {DKEY} {EPOCH} {TEST} {PASS}".format(
+                /n/coxfs01/2p-pipeline/repos/2p-pipeline/pipeline/python/slurm/decode_by_ncells.sbatch \
+                {EXP} {TRACEID} {RTEST} {OVERLAP} {ANALYSIS} {CVAL} {VAREA} {NCELLS} {DKEY} {EPOCH} {TEST} {PASS} {NITER}".format(
                             PROCID=piper, MTAG=mtag, LOGDIR=logdir,
                             EXP=experiment, TRACEID=traceid, ANALYSIS=analysis_type,
                             RTEST=responsive_test, OVERLAP=overlap_thr, 
                             CVAL=c_value, VAREA=visual_area, NCELLS=ncells, DKEY=datakey, 
-                            EPOCH=trial_epoch, TEST=test_type, PASS=shuffle_thr) 
+                            EPOCH=trial_epoch, TEST=test_type, PASS=shuffle_thr, NITER=n_iterations) 
                     #
             status, joboutput = commands.getstatusoutput(cmd)
             jobnum = joboutput.split(' ')[-1]
@@ -308,11 +330,13 @@ elif analysis_type in ['by_fov', 'split_pupil']:
                     -o '{logdir}/{procid}.{mtag}.{analysis}.out' \
                     -e '{logdir}/{procid}.{mtag}.{analysis}.err' \
             /n/coxfs01/2p-pipeline/repos/2p-pipeline/pipeline/python/slurm/decode_by_ncells.sbatch \
-            {exp} {traceid} {rtest} {overlap} {analysis} {cval} {varea} {ncells} {dkey} {epoch} {test}".format(
-                procid=piper, mtag=mtag, logdir=logdir,
-                exp=experiment, traceid=traceid, analysis=analysis_type,
-                rtest=responsive_test, overlap=overlap_thr, 
-                cval=c_value, varea=visual_area, ncells=ncells, dkey=datakey, epoch=trial_epoch, test=test_type) 
+            {exp} {traceid} {rtest} {overlap} {analysis} {cval} {varea} {ncells} {dkey} {epoch} {test} {shuffthr} {niter}"\
+                .format(procid=piper, mtag=mtag, logdir=logdir,
+                        exp=experiment, traceid=traceid, analysis=analysis_type,
+                        rtest=responsive_test, overlap=overlap_thr, 
+                        cval=c_value, varea=visual_area, ncells=ncells, dkey=datakey, epoch=trial_epoch, 
+                        test=test_type, shuffthr=shuffle_thr, niter=n_iterations) 
+
         #
         status, joboutput = commands.getstatusoutput(cmd)
         jobnum = joboutput.split(' ')[-1]

@@ -137,17 +137,12 @@ def decode_from_fov(datakey, visual_area, neuraldf, sdf=None, #min_ncells=5,
     iter_results['datakey'] = datakey
 
     # Save all iterations
-    #iter_results = pd.concat(iter_list, axis=0) 
-    #metainfo = {'visual_area': visual_area, 'datakey': datakey,'n_cells': n_cells}
-    #iter_results = putils.add_meta_to_df(iter_results, metainfo)
     with open(results_outfile, 'wb') as f:
         pkl.dump(iter_results, f, protocol=pkl.HIGHEST_PROTOCOL)
 
     if test_type is not None:
-        if 'morph' in test_type:
-            print(iter_results.groupby(['condition', 'morphlevel']).mean())   
-            print(iter_results.groupby(['condition', 'morphlevel']).count())   
-
+        print(iter_results.groupby(['condition', 'train_transform']).mean())   
+        print(iter_results.groupby(['condition', 'train_transform']).count())   
     else:
         print(iter_results.groupby(['condition']).mean())   
     print("@@@@@@@@@ done. %s|%s  @@@@@@@@@@" % (visual_area, datakey))
@@ -414,34 +409,72 @@ def decode_split_pupil_orig(datakey, visual_area, neuraldf, pupildf, sdf=None,
  
     return 
 
-#def do_fit_within_fov(iter_num, curr_data=None, sdf=None, verbose=False,
-#                    C_value=None, test_split=0.2, cv_nfolds=5, class_a=0, class_b=106,
-#                    do_shuffle=True, balance_configs=True):
-#
+##
+def decode_by_ncells(n_cells, visual_area, CELLS, NEURALDATA, sdf=None, 
+                    results_id='by_ncells', C_value=None, experiment='blobs',
+                    n_iterations=50, n_processes=2, 
+                    class_name='morphlevel', class_a=0, class_b=106, match_all_configs=True,
+                    do_shuffle=True, test_type=None, n_train_configs=4, 
+                    verbose=False,
+                    dst_dir='/n/coxfs01/julianarhee/aggregate-visual-areas/decoding/by_ncells'):
+    '''
+    Create psuedo-population by sampling n_cells from global_rois.
+    Do decoding analysis
 
-#def do_fit_sample_cells(iter_num, sample_size=1, global_rois=None, MEANS=None, sdf=None, 
-#           C_value=None, test_split=0.2, cv_nfolds=5, class_a=0, class_b=106, 
-#           do_shuffle=True, verbose=False, balance_configs=True):
-#    #[gdf, MEANS, sdf, sample_size, cv] * n_times)
-#    '''
-#    Resample w/ replacement from pooled cells (across datasets). Assumes 'sdf' is same for all datasets.
-#    Do n_iterations, return mean/sem/std over iterations as dict of results.
-#    Classes (class_a, class_b) should be the actual labels of the target (i.e., value of morph level)
-#
-#    do_shuffle (bool):   Calls 'fit_svm' twice, once on true data, once on shuffled labels
-#   
-#    sample_size (int):  sample size 
-#    '''   
-#    i_list=[]
-#    #### Get new sample set
-#    try:
-#        curr_data = sample_neuraldata(sample_size, global_rois, MEANS)
-#    except Exception as e:
-#        traceback.print_exc()
-#        return None
-#
+    '''
 
-def decode_by_ncells(n_cells, visual_area, global_rois, sdf, NEURALDATA, 
+    #### Set output dir and file
+    curr_dst_dir = os.path.join(dst_dir, 'files')
+    if not os.path.exists(curr_dst_dir):
+        os.makedirs(curr_dst_dir)
+        print("... saving tmp results to:\n  %s" % curr_dst_dir)
+    results_outfile = os.path.join(curr_dst_dir, '%s_%i.pkl' % (results_id, n_cells))
+ 
+    #### Get neural means
+    print("... Stating decoding analysis")
+
+    # ------ STIMULUS INFO -----------------------------------------
+    if sdf is None:
+        sdf = aggr.get_master_sdf(images_only=True)
+    sdf['config'] = sdf.index.tolist()
+    train_classes = [class_a, class_b]
+    # print("Class: %s, %s" % (class_name, str(train_classes)))
+    sdf['morph_size'] = ['%s_%s' % (m, s) for m, s in zip(sdf['morphlevel'].values, sdf['size'].values)]
+    try: 
+        iter_results = decutils.iterate_by_ncells(n_cells, NEURALDATA, CELLS, sdf=sdf, 
+                        n_iterations=n_iterations, n_processes=n_processes, 
+                        C_value=C_value, cv_nfolds=cv_nfolds, test_split=test_split, 
+                        test_type=test_type, n_train_configs=n_train_configs, verbose=verbose, within_fov=True,
+                        class_name=class_name, class_a=class_a, class_b=class_b, do_shuffle=do_shuffle, 
+                        match_all_configs=True)
+                        #feature_name=feature_name, n_cuts=n_cuts, 
+                        #equalize_by=equalize_by, match_all_configs=match_all_configs)
+    except Exception as e:
+        traceback.print_exc()
+        return None
+ 
+    # DATA - concat 3 conds
+    iter_results['visual_area'] = visual_area
+    iter_results['datakey'] = 'aggregate'
+    iter_results['n_cells'] = n_cells
+
+    with open(results_outfile, 'wb') as f:
+        pkl.dump(iter_results, f, protocol=pkl.HIGHEST_PROTOCOL)
+
+    if test_type is None:
+        print(iter_results.groupby(['condition', 'n_cells']).mean())   
+    else:
+        print(iter_results.groupby(['condition', 'n_cells', 'train_transform']).mean())   
+
+    print("@@@@@@@@@ done. %s (n=%i cells) @@@@@@@@@@" % (visual_area,n_cells))
+    print(results_outfile) 
+ 
+    return 
+
+
+
+##
+def decode_by_ncells_x(n_cells, visual_area, global_rois, NEURALDATA, sdf=None,
                     results_id='by_ncells', C_value=None, experiment='blobs',
                     n_iterations=50, n_processes=2, 
                     class_name='morphlevel', class_a=0, class_b=106, match_all_configs=True,
@@ -462,8 +495,12 @@ def decode_by_ncells(n_cells, visual_area, global_rois, sdf, NEURALDATA,
     results_outfile = os.path.join(curr_dst_dir, '%s_%i.pkl' % (results_id, n_cells))
 
     i_list=[]
+
     # Get neuraldf for current trials
-    sdf_master = aggr.get_master_sdf()
+    if sdf is None:
+        sdf = aggr.get_master_sdf()
+    else:
+        sdf_master = sdf.copy() #aggr.get_master_sdf()
     class_types = [class_a, class_b]
     if match_all_configs:
         train_configs=None
@@ -934,105 +971,106 @@ def load_single_cells_pass(responsive_test='ROC', aggregate_dir='/n/coxfs01/juli
 
     return pass_single
 
+# Ported to aggregate_data_stats.py
+#def get_cells_and_data(all_cells, MEANS, sdata=None, experiment='blobs', traceid='traces001', 
+#                    response_type='dff', stack_neuraldf=True,
+#                       overlap_thr=None, has_retino=False, threshold_snr=False, snr_thr=10, max_snr_thr=None,
+#                      remove_too_few=False, min_ncells=5, match_distns=False, threshold_dff=False):
+#    
+#    has_rfs = (overlap_thr is not None) and (has_retino is False) and (threshold_dff is False)
+#   
+#    #### Load RFs
+#    NEURALDATA=None; RFDATA=None;
+#    if has_rfs:
+#        print("~~~~~~~~~~~~~~~~Loading RFs~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~")
+#        reliable_only=True
+#        rf_fit_desc = fitrf.get_fit_desc(response_type=response_type)
+#        reliable_str = 'reliable' if reliable_only else ''
+#        #### Get metadata for experiment type
+#        if sdata is None:
+#            dsets, keys_by_area = aggr.experiment_datakeys(experiment=experiment, experiment_only=False,
+#                                        has_gratings=False, stim_filterby=None, has_rfs=has_rfs)
+#     
+#        # Get position info for RFs
+#        rfdf = aggr.load_rfdf_and_pos(sdata, assigned_cells=all_cells, rf_filter_by=None, assign_cells=True,
+#                                    reliable_only=True, traceid=traceid)
+#        #rfdf_avg = aggr.get_rfdata(all_cells, rfdf, average_repeats=True)
+#
+#        # RF dataframes
+#        NEURALDATA, RFDATA, assigned_cells = aggr.get_neuraldata_and_rfdata(all_cells, rfdf, MEANS,
+#                                                stack=stack_neuraldf)
+#    elif has_retino:
+#        print("~~~~~~~~~~~~~~~~Loading Retinotopy Bar ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~")
+#        retino_mag_thr=0.01
+#        retino_pass_criterion='all'
+#        retino_cells = aggr.aggregate_responsive_retino(all_cells, traceid=traceid,
+#                                        mag_thr=retino_mag_thr, pass_criterion=retino_pass_criterion,
+#                                        verbose=False, create_new=True)
+#        NEURALDATA = aggr.get_neuraldata(retino_cells, MEANS, stack=stack_neuraldf) #True)
+#        assigned_cells = aggr.cells_in_experiment_df(retino_cells, NEURALDATA)
+#    else:
+#        print("~~~~~~~~~~~~~~~~No Receptive Fields~~~~~~~~~~~~~~~~~~~~~~~~~")
+#        NEURALDATA = aggr.get_neuraldata(all_cells, MEANS, stack=stack_neuraldf)
+#        assigned_cells = aggr.cells_in_experiment_df(all_cells, NEURALDATA)
+#
+#    if match_distns:
+#        print("~~~~~~~~~~~~~~~~Matching max %s distNs~~~~~~~~~~~~~~~~~~~~~" % response_type)
+#        NEURALDATA, assigned_cells = aggr.match_neuraldata_distn(NEURALDATA, src='Li')
+#        if has_rfs:
+#            RFDATA = aggr.select_dataframe_subset(assigned_cells, RFDATA)
+#
+#    if NEURALDATA is None: # or RFDATA is None:
+#        print("There is no data. Aborting.")
+#        return None, None
+#
+#    if has_rfs:
+#        print("~~~~~~~~~~~~~~~~Calculating overlaps (thr=%.2f)~~~~~~~~~~~~~" % overlap_thr)
+#        # Calculate overlap with stimulus
+#        stim_overlaps = rfutils.calculate_overlaps(RFDATA, experiment=experiment)
+#        # Filter cells
+#        globalcells, cell_counts = aggr.get_pooled_cells(stim_overlaps, assigned_cells=assigned_cells,
+#                                            remove_too_few=remove_too_few, 
+#                                            overlap_thr=0 if overlap_thr is None else overlap_thr,
+#                                            min_ncells=min_ncells)
+#        #print(globalcells.head())
+#    else:
+#        globalcells, cell_counts = aggr.global_cells(assigned_cells,
+#                                            remove_too_few=remove_too_few,
+#                                            min_ncells=min_ncells, return_counts=True)
+#    if globalcells is None:
+#        print("NO CELLS. Exiting.")
+#        return None
+#
+#    print("@@@@@@@@ cell counts @@@@@@@@@@@")
+#    print(cell_counts)
+#
+#    # TMP TMP
+#    if threshold_snr:
+#        #snr_thr=10.0
+#        #max_snr_thr=None #15.0 #None #15.0 #None
+#        #match_str='snrlim_' if max_snr_thr is not None else 'snr_'
+#        print("~~~~~~~~~~~~~~~~SNR (thr=%.2f)~~~~~~~~~~~~~" % snr_thr)
+#        mean_snr = aggr.get_mean_snr(experiment=experiment, traceid=traceid, responsive_test=responsive_test,
+#                                        responsive_thr=responsive_thr, trial_epoch=trial_epoch)
+#        CELLS = aggr.threshold_cells_by_snr(mean_snr, globalcells, snr_thr=snr_thr, max_snr_thr=max_snr_thr)
+#        if has_rfs:
+#            NEURALDATA, RFDATA, CELLS = aggr.get_neuraldata_and_rfdata(CELLS, rfdf, MEANS,
+#                                                stack=stack_neuraldf)
+#        else:
+#            NEURALDATA = aggr.get_neuraldata(CELLS, MEANS, stack=stack_neuraldf, verbose=False)
+#    else:
+#        #### Get final cells dataframe
+#        CELLS = globalcells.copy()
+#        CELLS['cell'] = globalcells['dset_roi']
+#
+#    print("------------------------------------")
+#    #print("Final cell counts:")
+#    #CELLS[['visual_area', 'datakey', 'cell']].drop_duplicates().groupby(['visual_area']).count()
+#
+#    return NEURALDATA, CELLS.reset_index(drop=True)
+#
 
-def get_cells_and_data(all_cells, MEANS, sdata=None, traceid='traces001', response_type='dff', stack_neuraldf=True,
-                       overlap_thr=None, has_retino=False, threshold_snr=False, snr_thr=10, max_snr_thr=None,
-                      remove_too_few=False, min_ncells=5, match_distns=False, threshold_dff=False):
-    
-    has_rfs = (overlap_thr is not None) and (has_retino is False) and (threshold_dff is False)
-   
-    #### Load RFs
-    NEURALDATA=None; RFDATA=None;
-    if has_rfs:
-        print("~~~~~~~~~~~~~~~~Loading RFs~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~")
-        reliable_only=True
-        rf_fit_desc = fitrf.get_fit_desc(response_type=response_type)
-        reliable_str = 'reliable' if reliable_only else ''
-        #### Get metadata for experiment type
-        if sdata is None:
-            dsets, keys_by_area = aggr.experiment_datakeys(experiment=experiment, experiment_only=False,
-                                        has_gratings=False, stim_filterby=None, has_rfs=has_rfs)
-     
-        # Get position info for RFs
-        rfdf = aggr.load_rfdf_and_pos(sdata, assigned_cells=all_cells, rf_filter_by=None, assign_cells=True,
-                                    reliable_only=True, traceid=traceid)
-        #rfdf_avg = aggr.get_rfdata(all_cells, rfdf, average_repeats=True)
-
-        # RF dataframes
-        NEURALDATA, RFDATA, assigned_cells = aggr.get_neuraldata_and_rfdata(all_cells, rfdf, MEANS,
-                                                stack=stack_neuraldf)
-    elif has_retino:
-        print("~~~~~~~~~~~~~~~~Loading Retinotopy Bar ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~")
-        retino_mag_thr=0.01
-        retino_pass_criterion='all'
-        retino_cells = aggr.aggregate_responsive_retino(all_cells, traceid=traceid,
-                                        mag_thr=retino_mag_thr, pass_criterion=retino_pass_criterion,
-                                        verbose=False, create_new=True)
-        NEURALDATA = aggr.get_neuraldata(retino_cells, MEANS, stack=stack_neuraldf) #True)
-        assigned_cells = aggr.cells_in_experiment_df(retino_cells, NEURALDATA)
-    else:
-        print("~~~~~~~~~~~~~~~~No Receptive Fields~~~~~~~~~~~~~~~~~~~~~~~~~")
-        NEURALDATA = aggr.get_neuraldata(all_cells, MEANS, stack=stack_neuraldf)
-        assigned_cells = aggr.cells_in_experiment_df(all_cells, NEURALDATA)
-
-    if match_distns:
-        print("~~~~~~~~~~~~~~~~Matching max %s distNs~~~~~~~~~~~~~~~~~~~~~" % response_type)
-        NEURALDATA, assigned_cells = aggr.match_neuraldata_distn(NEURALDATA, src='Li')
-        if has_rfs:
-            RFDATA = aggr.select_dataframe_subset(assigned_cells, RFDATA)
-
-    if NEURALDATA is None: # or RFDATA is None:
-        print("There is no data. Aborting.")
-        return None, None
-
-    if has_rfs:
-        print("~~~~~~~~~~~~~~~~Calculating overlaps (thr=%.2f)~~~~~~~~~~~~~" % overlap_thr)
-        # Calculate overlap with stimulus
-        stim_overlaps = rfutils.calculate_overlaps(RFDATA, experiment=experiment)
-        # Filter cells
-        globalcells, cell_counts = aggr.get_pooled_cells(stim_overlaps, assigned_cells=assigned_cells,
-                                            remove_too_few=remove_too_few, 
-                                            overlap_thr=0 if overlap_thr is None else overlap_thr,
-                                            min_ncells=min_ncells)
-        #print(globalcells.head())
-    else:
-        globalcells, cell_counts = aggr.global_cells(assigned_cells,
-                                            remove_too_few=remove_too_few,
-                                            min_ncells=min_ncells, return_counts=True)
-    if globalcells is None:
-        print("NO CELLS. Exiting.")
-        return None
-
-    print("@@@@@@@@ cell counts @@@@@@@@@@@")
-    print(cell_counts)
-
-    # TMP TMP
-    if threshold_snr:
-        #snr_thr=10.0
-        #max_snr_thr=None #15.0 #None #15.0 #None
-        #match_str='snrlim_' if max_snr_thr is not None else 'snr_'
-        print("~~~~~~~~~~~~~~~~SNR (thr=%.2f)~~~~~~~~~~~~~" % snr_thr)
-        mean_snr = aggr.get_mean_snr(experiment=experiment, traceid=traceid, responsive_test=responsive_test,
-                                        responsive_thr=responsive_thr, trial_epoch=trial_epoch)
-        CELLS = aggr.threshold_cells_by_snr(mean_snr, globalcells, snr_thr=snr_thr, max_snr_thr=max_snr_thr)
-        if has_rfs:
-            NEURALDATA, RFDATA, CELLS = aggr.get_neuraldata_and_rfdata(CELLS, rfdf, MEANS,
-                                                stack=stack_neuraldf)
-        else:
-            NEURALDATA = aggr.get_neuraldata(CELLS, MEANS, stack=stack_neuraldf, verbose=False)
-    else:
-        #### Get final cells dataframe
-        CELLS = globalcells.copy()
-        CELLS['cell'] = globalcells['dset_roi']
-
-    print("------------------------------------")
-    #print("Final cell counts:")
-    #CELLS[['visual_area', 'datakey', 'cell']].drop_duplicates().groupby(['visual_area']).count()
-
-    return NEURALDATA, CELLS.reset_index(drop=True)
-
-
-def filter_cells_by_dff(all_cells, MEANS, sdata=None, traceid='traces001', response_type='dff', 
+def filter_cells_by_dff(all_cells, MEANS, sdata=None, experiment='blobs', traceid='traces001', response_type='dff', 
                        minv=0., maxv=1.0, aggregate_dir='/n/coxfs01/julianarhee/aggregate-visual-areas'):
    
     cells_fn = os.path.join(aggregate_dir, 'decoding', 'thr_dff_cells_m%.2f_M%.2f.pkl' % (minv, maxv))
@@ -1043,7 +1081,8 @@ def filter_cells_by_dff(all_cells, MEANS, sdata=None, traceid='traces001', respo
             thr_cells = pkl.load(f)
 
     else:
-        ndata_df, cells_df = get_cells_and_data(all_cells, MEANS, sdata=sdata, traceid=traceid, response_type=response_type, 
+        ndata_df, cells_df = aggr.get_cells_and_data(all_cells, MEANS, sdata=sdata, traceid=traceid, 
+                                    response_type=response_type, experiment=experiment, 
                                     stack_neuraldf=True, overlap_thr=None, has_retino=False, threshold_snr=False) 
                                     
         meandf = ndata_df.groupby(['visual_area', 'datakey', 'cell', 'config']).mean().reset_index()
@@ -1189,9 +1228,9 @@ def extract_options(options):
             default=4, help="N training sizes to use (default: 4, test 1)")
  
     parser.add_option('--shuffle-thr', action='store', dest='shuffle_thr', 
-            default=0.05, help="Percentile greater than shuffle (default: 0.05)")
-    parser.add_option('--shuffle-drop', action='store_true', dest='shuffle_drop', 
-            default=False, help="Set to do shuffle-thresholding + drop repeats")
+            default=None, help="Percentile greater than shuffle for filtering FOVs (default: Don't filter FOVs by shuffle test, None)")
+    parser.add_option('--unique', action='store_true', dest='drop_repeats', 
+            default=False, help="Drop repeats (Note: really only relevant for analysis_type=by_ncells)")
  
 
 
@@ -1245,9 +1284,7 @@ def main(options):
     min_ncells = 5 #10 if remove_too_few else 0
     overlap_thr = None if opts.overlap_thr in ['None', None] else float(opts.overlap_thr)
     has_retino = opts.has_retino
-
     has_rfs = (overlap_thr is not None) and (has_retino is False)
-
     threshold_dff = opts.threshold_dff
 
     if threshold_dff:
@@ -1281,8 +1318,8 @@ def main(options):
     test_type = None if opts.test_type in ['None', None] else opts.test_type
     n_train_configs = int(opts.n_train_configs) 
     #train_test_single = opts.train_test_single
-    shuffle_thr = float(opts.shuffle_thr)
-    shuffle_drop = opts.shuffle_drop
+    shuffle_thr = None if opts.shuffle_thr in ['None', None] else float(opts.shuffle_thr)
+    drop_repeats = opts.drop_repeats
 
     # Pupil -------------------------------------------
     pupil_feature='pupil_fraction'
@@ -1336,7 +1373,7 @@ def main(options):
     curr_datakey = None if opts.datakey in ['None', None] else opts.datakey    
  
     diff_sdfs = ['20190327_JC073_fov1', '20190314_JC070_fov1'] # 20190426_JC078 (LM, backlight)
-    if curr_datakey in diff_sdfs:
+    if curr_datakey is not None and curr_datakey in diff_sdfs:
         images_only=False #True
     else:
         images_only = analysis_type=='by_ncells'
@@ -1380,7 +1417,8 @@ def main(options):
                        minv=min_dff, maxv=max_dff)
 
     # FINAL DATASET
-    NEURALDATA, CELLS = get_cells_and_data(all_cells, MEANS, sdata=sdata, traceid=traceid, response_type=response_type, 
+    NEURALDATA, CELLS = aggr.get_cells_and_data(all_cells, MEANS, sdata=sdata, experiment=experiment,
+                            traceid=traceid, response_type=response_type, 
                             stack_neuraldf=stack_neuraldf, overlap_thr=overlap_thr, has_retino=has_retino, 
                             threshold_snr=threshold_snr, snr_thr=snr_thr, max_snr_thr=max_snr_thr,
                             remove_too_few=remove_too_few, min_ncells=min_ncells, match_distns=match_distns)
@@ -1392,24 +1430,32 @@ def main(options):
         return None
 
     shuffle_str=''
-    if analysis_type=='by_ncells' and responsive_test=='ROC' and overlap_thr is None:
+    if analysis_type=='by_ncells' and responsive_test=='ROC' and (shuffle_thr is not None):
         #pass_thr=0.05
-        print("(no RFs). Using BY_FOV shuffle test to filter")
-        shuffle_str = '_thr-%.2f_drop' if shuffle_drop else ''
+        print("***Loading dsets that pass shuffle test (thr=%.2f, drop=%s)" % (shuffle_thr, str(drop_repeats)))
+        print(".... Using BY_FOV shuffle test to filter")
+        shuffle_str = '_thr-%.2f' % shuffle_thr
         pass_shuffle_outfile = os.path.join(aggregate_dir, 'decoding', 'by_fov', 
                                     'pass_shuffle_test%s.json' % (shuffle_str))
-        print("***Loading dsets that pass shuffle test (thr=%.2f, drop=%s)" % (shuffle_thr, str(shuffle_drop)))
         with open(pass_shuffle_outfile, 'r') as f:
             pass_dsets = json.load(f)
         tmpc = pd.concat([g for (v, d), g in CELLS.groupby(['visual_area', 'datakey']) \
                             if [v, d] in pass_dsets])
         CELLS=tmpc.copy()
+
     print("------------------------------------")
     print("Final cell counts:")
     print(CELLS[['visual_area', 'datakey', 'cell']].drop_duplicates()\
                 .groupby(['visual_area']).count())
 
-
+    if analysis_type=='by_ncells' and drop_repeats:
+        # drop repeats
+        print("~~~ dropping repeats ~~~")
+        print(CELLS[['visual_area','datakey']].drop_duplicates()['visual_area'].value_counts())
+        CELLS = aggr.unique_cell_df(CELLS, criterion='max', colname='cell')
+        print(CELLS[['visual_area','datakey']].drop_duplicates()['visual_area'].value_counts())
+        print(CELLS[['visual_area','datakey', 'cell']].drop_duplicates()['visual_area'].value_counts())
+        #print(CELLS[CELLS.visual_area=='Li'])
     #### Setup output dirs  
     results_prefix = analysis_type #set_results_prefix(analysis_type=analysis_type)
     if threshold_dff:
@@ -1546,6 +1592,8 @@ def main(options):
             print("Finished %s (%s). ID=%s" % (curr_datakey, curr_visual_area, results_id))
 
     elif analysis_type=='by_ncells':
+        sdf = aggr.get_master_sdf(images_only=True)
+
         data_info='%s%s-%s_%s_iter%i%s' % (match_str, response_type, responsive_test, overlap_str, n_iterations, shuffle_str)
 
         # Create aggregate output dir
@@ -1578,18 +1626,23 @@ def main(options):
                             response_type=response_type, responsive_test=responsive_test,
                             overlap_thr=overlap_thr, trial_epoch=trial_epoch, threshold_dff=threshold_dff,
                             test_type=test_type)
-
+            print("~~~~~~~~~~~~~~~~ RESULTS ID ~~~~~~~~~~~~~~~~~~~~~")
+            print(results_id)
+            print('~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~')
+     
+ 
             if curr_ncells is not None:
                 # ----------------------------------------------
                 # Do decode w CURR_NCELLS, CURR_VISUAL_AREA
                 # ----------------------------------------------
                 print("**** %s (n=%i cells)****" % (curr_visual_area, curr_ncells))
-                decode_by_ncells(curr_ncells, curr_visual_area, gdf, sdf, NEURALDATA, experiment=experiment,
+                decode_by_ncells(curr_ncells, curr_visual_area, gdf, NEURALDATA, sdf=sdf, experiment=experiment,
                                 results_id=results_id, C_value=C_value,
                                 n_iterations=n_iterations, n_processes=n_processes, 
-                                class_a=class_a, class_b=class_b, do_shuffle=do_shuffle,
+                                class_a=class_a, class_b=class_b, 
                                 dst_dir=dst_dir, verbose=verbose, 
-                                match_all_configs=match_all_configs)
+                                match_all_configs=match_all_configs,
+                                do_shuffle=do_shuffle, test_type=test_type, n_train_configs=n_train_configs) 
                 print("***** finished %s, ncells=%i *******" % (curr_visual_area, curr_ncells))
             else:
                 # ----------------------------------------------
@@ -1604,7 +1657,7 @@ def main(options):
                 for curr_ncells in NCELLS:
                     print("**** %s (n=%i cells)****" % (curr_visual_area, curr_ncells))
 
-                    decode_by_ncells(curr_ncells, curr_visual_area, gdf, sdf, NEURALDATA, 
+                    decode_by_ncells(curr_ncells, curr_visual_area, gdf, NEURALDATA, sdf=sdf,
                                     results_id=results_id, C_value=C_value,
                                     n_iterations=n_iterations, n_processes=n_processes, 
                                     class_a=class_a, class_b=class_b, do_shuffle=do_shuffle,
@@ -1632,11 +1685,15 @@ def main(options):
                                         overlap_thr=overlap_thr, has_retino=has_retino,
                                         trial_epoch=trial_epoch, threshold_dff=threshold_dff,
                                         test_type=test_type) 
-                        
+            
+                    print("~~~~~~~~~~~~~~~~ RESULTS ID ~~~~~~~~~~~~~~~~~~~~~")
+                    print(results_id)
+                    print('~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~')
+
                     for curr_ncells in NCELLS:
                         print("**** %s (n=%i cells)****" % (curr_visual_area, curr_ncells))
 
-                        decode_by_ncells(curr_ncells, curr_visual_area, gdf, sdf, NEURALDATA, 
+                        decode_by_ncells(curr_ncells, curr_visual_area, gdf, NEURALDATA, sdf=sdf,
                                         C_value=C_value,
                                         n_iterations=n_iterations, n_processes=n_processes, 
                                         results_id=results_id,

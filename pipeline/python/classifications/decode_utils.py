@@ -276,7 +276,8 @@ def group_iters_by_fov(iterdf, metric='heldout_test_score'):
 
 
 def get_training_results(iterdf, test_type=None, train_classes=[0, 106], drop_arousal=True):
-
+    if 'arousal' not in iterdf.columns:
+        drop_arousal=False
     if 'train_transform' in iterdf.columns:
         print("transforms are split")
         if 'morph' in test_type:
@@ -387,6 +388,86 @@ def pool_bootstrap(neuraldf, sdf, n_iterations=50, n_processes=1,
     return iter_df #output #results
 #
 
+def iterate_by_ncells(n_cells, NEURALDATA, CELLS, sdf, n_iterations=100, n_processes=1, 
+                        C_value=None, cv_nfolds=5, test_split=0.2, 
+                        test_type=None, n_train_configs=4, verbose=False, within_fov=False,
+                        class_name='morphlevel', class_a=0, class_b=106, do_shuffle=True, balance_configs=True,
+                        feature_name='pupil_fraction', n_cuts=3, equalize_by='config', match_all_configs=True,
+                        with_replacement=False):   
+    #from pipeline.python.eyetracker import dlc_utils as dlcutils
+    iterdf = None 
+
+    # Select how to filter trial-matching
+    train_labels = sdf[sdf[class_name].isin([class_a, class_b])][equalize_by].unique()
+    common_labels = None if match_all_configs else train_labels
+
+    #### Define MP worker
+    results = []
+    terminating = mp.Event() 
+    def worker(out_q, n_iters, n_cells, NEURALDATA, CELLS, sdf, common_labels, test_type,
+                    C_value=None, verbose=False, class_a=0, class_b=106):
+        r_ = []        
+        i_=[]
+        for ni in n_iters:
+            randi = random.randint(1, 10000)
+            #### Get new sample set
+            print("... sampling data, n=%i cells" % n_cells)
+            neuraldf = sample_neuraldata(n_cells, CELLS, NEURALDATA, with_replacement=with_replacement,
+                                                    train_configs=common_labels, randi=randi)
+            neuraldf = aggr.zscore_neuraldf(neuraldf)
+            n_cells = int(neuraldf.shape[1]-1) 
+            #print("... doing decode BY_NCELLS | n=%i cells" % (n_cells))
+
+            # Decoding -----------------------------------------------------
+            # Fit.
+            start_t = time.time()
+            i_df = select_test(ni, neuraldf, sdf, 
+                                    C_value=C_value, class_a=class_a, class_b=class_b, 
+                                    verbose=verbose, do_shuffle=True, balance_configs=True,
+                                    test_type=test_type, n_train_configs=n_train_configs)  
+            end_t = time.time() - start_t
+            print("--> Elapsed time: {0:.2f}sec".format(end_t))
+            #i_df['n_trials'] = neuraldf.shape[0]
+            i_df['randi'] = randi
+            i_.append(i_df)
+        curr_iterdf = pd.concat(i_, axis=0)
+        out_q.put(curr_iterdf) 
+    try:        
+        # Each process gets "chunksize' filenames and a queue to put his out-dict into:
+        iter_list = np.arange(0, n_iterations) #gdf.groups.keys()
+        out_q = mp.Queue()
+        chunksize = int(math.ceil(len(iter_list) / float(n_processes)))
+        procs = []
+        for i in range(n_processes):
+            p = mp.Process(target=worker,
+                           args=(out_q, iter_list[chunksize * i:chunksize * (i + 1)],
+                                    n_cells, NEURALDATA, CELLS, sdf, common_labels, test_type))
+            procs.append(p)
+            p.start() # start asynchronously
+        # Collect all results into 1 results dict. We should know how many dicts to expect:
+        results = []
+        for i in range(n_processes):
+            results.append(out_q.get(99999))
+        # Wait for all worker processes to finish
+        for p in procs:
+            p.join() # will block until finished
+    except KeyboardInterrupt:
+        terminating.set()
+        print("***Terminating!")
+    except Exception as e:
+        traceback.print_exc()
+    finally:
+        for p in procs:
+            p.join()
+
+    if len(results)>0:
+        iterdf = pd.concat(results, axis=0)
+
+    return iterdf
+
+
+
+
 def select_test(ni, neuraldf, sdf, C_value=None, cv_nfolds=5, test_split=0.2, 
                    test_type=None, n_train_configs=4, verbose=False, within_fov=True,
                    class_a=0, class_b=106, do_shuffle=True, balance_configs=True):   
@@ -469,12 +550,19 @@ def iterate_split_pupil(neuraldf, pupildf, sdf, n_iterations=100, n_processes=1,
                         test_type=None, n_train_configs=4, verbose=False, within_fov=True,
                         class_name='morphlevel', class_a=0, class_b=106, do_shuffle=True, balance_configs=True,
                         feature_name='pupil_fraction', n_cuts=3, equalize_by='config', match_all_configs=True):   
+    '''
+    Run classifier analysis for all arousal conditions, resample and repeat for n_iterations.
+    match_all_configs: False to only match trial #s for TRAIN conditions
+    Returns:
+        inptudf (input data selected for each iteration): TODO, just use random_state
+        iterdf (results from bootstrapped decoding analysis)
+    '''
     #from pipeline.python.eyetracker import dlc_utils as dlcutils
     iterdf = None 
 
     # Select how to filter trial-matching
     train_labels = sdf[sdf[class_name].isin([class_a, class_b])][equalize_by].unique()
-    common_labels = train_labels if not match_all_configs else None
+    common_labels = None if match_all_configs else train_labels 
 
     #### Define MP worker
     results = []
@@ -815,7 +903,7 @@ def get_ntrials_per_config(neuraldf, n_trials=10):
 
     return resampled_df
 
-def get_trials_for_N_cells_df(curr_ncells, gdf, NEURALDATA, with_replacement=False, train_configs=None): 
+def get_trials_for_N_cells_df(curr_ncells, gdf, NEURALDATA, with_replacement=False, train_configs=None, randi=None): 
     # Get current global RIDs
     ncells_t = gdf.shape[0]                      
     roi_ids = np.array(gdf['roi'].values.copy()) 
@@ -826,7 +914,7 @@ def get_trials_for_N_cells_df(curr_ncells, gdf, NEURALDATA, with_replacement=Fal
         curr_roi_list = roi_ids[rand_ixs]
         curr_roidf = gdf[gdf['roi'].isin(curr_roi_list)].copy()
     else:
-        curr_roidf = gdf.sample(n=curr_ncells, replace=False)
+        curr_roidf = gdf.sample(n=curr_ncells, replace=False, random_state=randi)
 
     # Make sure equal num trials per condition for all dsets
     curr_dkeys = curr_roidf['datakey'].unique()
@@ -835,16 +923,16 @@ def get_trials_for_N_cells_df(curr_ncells, gdf, NEURALDATA, with_replacement=Fal
     # Make sure equal num trials per condition for all dsets
     if train_configs is not None:
         min_ntrials_by_config = currd[currd['config'].isin(train_configs)][['datakey', 'config', 'trial']].drop_duplicates().groupby(['datakey'])['config'].value_counts().min()
-        print("MIn N trials in configs: %i" % min_ntrials_by_config)
+        #print("MIn N trials in configs: %i" % min_ntrials_by_config)
     else: 
         min_ntrials_by_config = currd[['datakey', 'config', 'trial']].drop_duplicates().groupby(['datakey'])['config'].value_counts().min()
-    #print(min_ntrials_by_config)
+    print("Min samples per config: %i" % min_ntrials_by_config)
 
     d_list=[]
     for datakey, dkey_rois in curr_roidf.groupby(['datakey']):
         assert datakey in currd['datakey'].unique(), "ERROR: %s not found" % datakey
         # Get current trials, make equal to min_ntrials_by_config
-        tmpd = pd.concat([trialmat.sample(n=min_ntrials_by_config) 
+        tmpd = pd.concat([trialmat.sample(n=min_ntrials_by_config, random_state=randi) 
                          for (rid, cfg), trialmat in currd[currd['datakey']==datakey].groupby(['cell', 'config'])], axis=0)
         tmpd['cell'] = tmpd['cell'].astype(float)
 
@@ -872,6 +960,7 @@ def get_trials_for_N_cells_df(curr_ncells, gdf, NEURALDATA, with_replacement=Fal
 
     assert cfg_df.shape[0]==curr_neuraldf.shape[0], "Bad trials"
     if len(cfg_df.shape) > 1:
+        print("Requested configs: %s" % 'all' if train_configs is None else str(train_configs)) 
         cfg_df = cfg_df.loc[:,~cfg_df.T.duplicated(keep='first')]
         assert cfg_df.shape[1]==1, "Bad configs: %s" % str(curr_roidf['datakey'].unique()) #cfg_df
 
@@ -1158,7 +1247,7 @@ def do_fit_within_fov(iter_num, curr_data=None, sdf=None, verbose=False,
 
     return iter_df 
 
-def sample_neuraldata(sample_size, global_rois, MEANS, train_configs=None):
+def sample_neuraldata(sample_size, global_rois, MEANS, with_replacement=False, train_configs=None, randi=None):
 #    if isinstance(MEANS, dict):
 #        if isinstance(MEANS[MEANS.keys()[0]], dict): # df_is_split
 #            curr_data = get_trials_for_N_cells_split(sample_size, global_rois, 
@@ -1171,8 +1260,8 @@ def sample_neuraldata(sample_size, global_rois, MEANS, train_configs=None):
     if isinstance(MEANS, dict):
         MEANS = aggr.neuraldf_dict_to_dataframe(MEANS)
 
-    curr_data = get_trials_for_N_cells_df(sample_size, global_rois, 
-                                        MEANS, train_configs=train_configs)
+    curr_data = get_trials_for_N_cells_df(sample_size, global_rois, MEANS, 
+                        train_configs=train_configs, with_replacement=with_replacement, randi=randi)
 
     return curr_data
 
