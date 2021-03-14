@@ -1389,7 +1389,7 @@ def main(options):
                         responsive_thr=responsive_thr, trial_epoch=trial_epoch, 
                         visual_area=None, # if match_distns else curr_visual_area,
                         datakey=None, # if match_distns else curr_datakey,
-                        check_configs=True, return_configs=True, return_missing=False,
+                        rename_configs=True, return_configs=True, return_missing=False,
                         images_only=images_only) #analysis_type=='by_ncells')
     all_cells = all_cells[all_cells['visual_area'].isin(visual_areas)].copy() #, 'Ll'])]
     stack_neuraldf = analysis_type in ['by_ncells'] #match_distns==True

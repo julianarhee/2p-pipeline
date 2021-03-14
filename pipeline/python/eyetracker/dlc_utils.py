@@ -328,7 +328,7 @@ def get_pupil_df(pupil_r, trial_epoch='pre', new_stim_on=20., nframes_on=20.):
 def get_aggregate_pupildfs(experiment='blobs', feature_name='pupil_area', 
                            trial_epoch='pre', alignment_type='stimulus', 
                            in_rate=20., out_rate=20., iti_pre=1., iti_post=1., stim_dur=1.,
-                           snapshot=391800,  traceid='traces001',
+                           snapshot=391800,  traceid='traces001', 
                            aggregate_dir='/n/coxfs01/julianarhee/aggregate-visual-areas', 
                            create_new=False, return_missing=False):
     '''
@@ -362,6 +362,7 @@ def get_aggregate_pupildfs(experiment='blobs', feature_name='pupil_area',
         with open(pupildf_fpath, 'wb') as f:
             pkl.dump(pupildata, f, protocol=pkl.HIGHEST_PROTOCOL)
         print("---> Saved aggr dataframes: %s" % pupildf_fpath)
+   
     
     if return_missing:
         return pupildata, missing_dsets
@@ -1296,7 +1297,7 @@ def get_train_configs(sdf, class_name='morphlevel', class_a=0, class_b=106,
    
 def add_stimuli_to_pupildf(pupildata, MEANS, SDF, verbose=False, return_valid_only=False,
                             class_name='morphlevel', class_a=0, class_b=106, 
-                            train_transform_name=None, train_transform_value=None):
+                            train_transform_name=None, train_transform_value=None, experiment='blobs', traceid='traces001'):
     '''
     pupildata (dict):  keys are datakeys, values are dataframe of pupil info (all trials)
     MEANS (dict):  keys are datakeys, cells not split by area here, just need the trial nums
@@ -1304,12 +1305,18 @@ def add_stimuli_to_pupildf(pupildata, MEANS, SDF, verbose=False, return_valid_on
     
     # If no match, might be some incorrect alignment 
     '''
+    stim_datakeys = pupildata.keys()
+    _, renamed_configs = aggr.check_sdfs(stim_datakeys, experiment=experiment, 
+                                    traceid=traceid, images_only=True, rename=True, return_incorrect=True)
+             
+ 
     bad_alignment=[]
     
     for datakey, pdata0 in pupildata.items():
         pdata = pdata0.copy()
         if datakey not in MEANS.keys():
-            print("Missing <%s> from MEANS dict. Skipping." % datakey)
+            print("Missing <%s> from MEANS dict. Skipping (dropping from pupil dict)." % datakey)
+            pupildata.pop(datakey, None)
             continue
         ndata = MEANS[datakey].copy()
         ntrials_total, ncols = ndata.shape
@@ -1321,7 +1328,14 @@ def add_stimuli_to_pupildf(pupildata, MEANS, SDF, verbose=False, return_valid_on
             ndata, pdata = match_neural_and_pupil_trials(ndata, pdata, equalize_conditions=False)
             ntrials_dropped = ntrials_total - ndata.shape[0]
             bad_alignment.append((datakey, ntrials_dropped))        
-        
+            #continue
+
+        # check config labels
+#        if datakey in renamed_configs.keys():
+#            print("Checking config labels: %s" % datakey)
+#            cfg_lut = renamed_configs[datakey].copy()
+#            pdata = aggr.rename_neuraldf_configs(pdata, cfg_lut)
+#          
         # Addd config info to pupildata
         if 'trial' not in ndata.columns:
             ndata['trial'] = ndata.index.tolist()
@@ -1335,12 +1349,16 @@ def add_stimuli_to_pupildf(pupildata, MEANS, SDF, verbose=False, return_valid_on
         pdata['n_train_trials'] = n_train_trials
         pdata['n_train_trials_dropped'] = n_train_trials - n_train_trials_incl
 
-        # Add some meta info
-        pdata['datakey'] = datakey
-        pdata['size'] = [sdf['size'][c] for c in pdata['config']]
-        pdata['morphlevel'] = [sdf['morphlevel'][c] for c in pdata['config']]
-        pdata['n_trials_total'] = ntrials_total
- 
+        try:
+            # Add some meta info
+            pdata['datakey'] = datakey
+            pdata['size'] = [sdf['size'][c] for c in pdata['config']]
+            pdata['morphlevel'] = [sdf['morphlevel'][c] for c in pdata['config']]
+            pdata['n_trials_total'] = ntrials_total
+        except Exception as e:
+            print("**********error in: %s ************" % datakey)
+            traceback.print_exc()
+            print(sdf) 
         # Remove neural trials that don't have valid pupil data 
         ndata_match, pdata_match = match_neural_and_pupil_trials(ndata, pdata.dropna(), equalize_conditions=False)  
         ntrials_dropped = ntrials_total - ndata_match.shape[0]

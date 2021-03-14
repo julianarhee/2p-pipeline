@@ -754,7 +754,7 @@ def get_responsive_all_experiments(sdata, response_type='dff', traceid='traces00
                                                 responsive_test=responsive_test, 
                                                 responsive_thr=responsive_thr, 
                                                 trial_epoch=trial_epoch,
-                                                return_missing=True, check_configs=True)
+                                                return_missing=True, rename_configs=True)
 
         if visual_areas is None:
             visual_areas = tmpcells['visual_area'].unique()
@@ -855,15 +855,15 @@ def get_active_cells_in_current_datasets(rois, MEANS, verbose=False):
 
 def load_aggregate_data(experiment, traceid='traces001', response_type='dff', epoch='stimulus', 
                        responsive_test='ROC', responsive_thr=0.05, n_stds=0.0,
-                        check_configs=True, equalize_now=False, zscore_now=False,
+                        rename_configs=True, equalize_now=False, zscore_now=False,
                         return_configs=False, images_only=False, 
                         diff_configs = ['20190327_JC073_fov1', '20190314_JC070_fov1'], # 20190426_JC078 (LM, backlight)
                         aggregate_dir='/n/coxfs01/julianarhee/aggregate-visual-areas'):
     '''
     Return dict of neural dataframes (keys are datakeys).
 
-    check_configs (bool) : Get each dataset's stim configs (sdf), and rename matching configs to match master.
-    Note, check_configs *only* tested with experiment=blobs.
+    rename_configs (bool) : Get each dataset's stim configs (sdf), and rename matching configs to match master.
+    Note, rename_configs *only* tested with experiment=blobs. (Prev. called check_configs).
 
     equalize_now (bool) : Random sample trials per config so that same # trials/config.
     zscore_now (bool) : Zscore neurons' responses.
@@ -880,17 +880,17 @@ def load_aggregate_data(experiment, traceid='traces001', response_type='dff', ep
     print("...loading: %s" % data_outfile)
 
     #### Fix config labels 
-    if check_configs or return_configs:
+    if rename_configs or return_configs:
         SDF, renamed_configs = check_sdfs(MEANS.keys(), traceid=traceid, 
                                           images_only=images_only, return_incorrect=True)
-        if check_configs:
+        if rename_configs:
             sdf_master = get_master_sdf(images_only=images_only)
-            for k, renamed_c in renamed_configs.items():
-                if k in diff_configs:
-                    print("(skipping %s)" % k)
-                    continue
+            for k, cfg_lut in renamed_configs.items():
+                #if k in diff_configs:
+                #    print("(skipping %s)" % k)
+                #    continue
                 #print("... updating %s" % k)
-                updated_cfgs = [renamed_c[cfg] for cfg in MEANS[k]['config']]
+                updated_cfgs = [cfg_lut[cfg] for cfg in MEANS[k]['config']]
                 MEANS[k]['config'] = updated_cfgs
 
     if images_only: #Update MEANS dict
@@ -1040,7 +1040,7 @@ def get_final_data(experiment='blobs', overlap_thr=None, traceid='traces001',
                             response_type=response_type, responsive_test=responsive_test,
                             responsive_thr=responsive_thr, trial_epoch=trial_epoch, 
                             visual_area=None, datakey=None,
-                            check_configs=True, return_configs=True, return_missing=False,
+                            rename_configs=True, return_configs=True, return_missing=False,
                             images_only=images_only)
     all_cells = all_cells[all_cells['visual_area'].isin(visual_areas)]
     print("EXP:", experiment)
@@ -1062,8 +1062,8 @@ def get_source_data(experiment, traceid='traces001',
                     responsive_test='nstds', responsive_thr=10., response_type='dff',
                     trial_epoch='stimulus', fov_type='zoom2p0x', state='awake', 
                     verbose=False, visual_area=None, datakey=None, return_configs=False,
-                    images_only=False,
-                    return_missing=False, check_configs=True, equalize_now=False,zscore_now=False): 
+                    images_only=False, rename_configs=True,
+                    return_missing=False, equalize_now=False,zscore_now=False): 
     '''
     Returns metainfo, cell dataframe, and dict of neuraldfs for all 
     responsive cells in assigned visual areas.
@@ -1071,6 +1071,7 @@ def get_source_data(experiment, traceid='traces001',
     Loads dict of neuraldfs.
     Gets all assigned cells for each datakey.
     Returns all responsive cells assigned to visual area.
+    NOTE:  rename_configs (prev. called check_configs)
     '''
     from pipeline.python.retinotopy import segment_retinotopy as seg
 
@@ -1078,7 +1079,7 @@ def get_source_data(experiment, traceid='traces001',
     means0 = load_aggregate_data(experiment, 
                 responsive_test=responsive_test, responsive_thr=responsive_thr, 
                 response_type=response_type, epoch=trial_epoch,
-                check_configs=check_configs, equalize_now=equalize_now, zscore_now=zscore_now,
+                rename_configs=rename_configs, equalize_now=equalize_now, zscore_now=zscore_now,
                 return_configs=return_configs, images_only=images_only)
     if return_configs:
         MEANS, SDF = means0
@@ -1174,7 +1175,7 @@ def get_master_sdf(images_only=False):
 
 
 def check_sdfs(stim_datakeys, experiment='blobs', traceid='traces001', images_only=False, 
-                rename=True, return_incorrect=False, diff_configs=['20190314_JC070_fov1'] ):
+                rename=True, return_incorrect=False, diff_configs=['20190314_JC070_fov1', '20190327_JC073_fov1'] ):
 
     '''
     Checks config names and reutrn master dict of all stimconfig dataframes
@@ -2224,7 +2225,7 @@ def get_snr_data(RCELLS, experiment='blobs', traceid='traces001', responsive_tes
                             outfile=outfile)
 
     if rename_configs:
-        SNR, _ = rename_neuraldf_configs(SNR, experiment=experiment, traceid=traceid)
+        SNR, _ = rename_aggr_neuraldf_configs(SNR, experiment=experiment, traceid=traceid)
 #         stim_datakeys=NEURALDATA['datakey'].unique()
 #         SDF, renamed_configs = aggr.check_sdfs(stim_datakeys, experiment='blobs', 
 #                                 traceid=traceid, images_only=True, rename=True, return_incorrect=True)
@@ -2244,7 +2245,7 @@ def get_snr_data(RCELLS, experiment='blobs', traceid='traces001', responsive_tes
         
     return SNR
 
-def rename_neuraldf_configs(NEURALDATA, experiment='blobs', traceid='traces001'):
+def rename_aggr_neuraldf_configs(NEURALDATA, experiment='blobs', traceid='traces001'):
 
     stim_datakeys = NEURALDATA['datakey'].unique()
 
@@ -2252,10 +2253,22 @@ def rename_neuraldf_configs(NEURALDATA, experiment='blobs', traceid='traces001')
                             traceid=traceid, images_only=True, rename=True, return_incorrect=True)
     
     for k, curr_lut in renamed_configs.items():
-        new_cfgs = [curr_lut[c] for c in NEURALDATA[NEURALDATA['datakey']==k]['config']]
-        NEURALDATA.loc[NEURALDATA['datakey']==k, 'config'] = new_cfgs
+        ndata = NEURALDATA[NEURALDATA['datakey']==k]
+        ndata = rename_neuraldf_configs(ndata, curr_lut)
+        NEURALDATA.loc[ndata.index]['config'] = ndata['config']
+
+        #new_cfgs = [curr_lut[c] for c in NEURALDATA[NEURALDATA['datakey']==k]['config']]
+        #NEURALDATA.loc[NEURALDATA['datakey']==k, 'config'] = new_cfgs
 
     return NEURALDATA, SDF
+
+
+def rename_neuraldf_configs(ndata, cfg_lut):
+    new_cfgs = [cfg_lut[c] for c in ndata['config']]
+    ndata['config'] = new_cfgs
+    
+    return ndata
+
 
 def get_mean_snr(experiment='blobs', traceid='traces001', responsive_test='nstds', 
                  responsive_thr=10.0, trial_epoch='stimulus',
