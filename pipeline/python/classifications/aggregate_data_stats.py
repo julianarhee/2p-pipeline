@@ -856,7 +856,8 @@ def get_active_cells_in_current_datasets(rois, MEANS, verbose=False):
 def load_aggregate_data(experiment, traceid='traces001', response_type='dff', epoch='stimulus', 
                        responsive_test='ROC', responsive_thr=0.05, n_stds=0.0,
                         check_configs=True, equalize_now=False, zscore_now=False,
-                        return_configs=False, images_only=False, diff_configs=['20190314_JC070_fov1'],
+                        return_configs=False, images_only=False, 
+                        diff_configs = ['20190327_JC073_fov1', '20190314_JC070_fov1'], # 20190426_JC078 (LM, backlight)
                         aggregate_dir='/n/coxfs01/julianarhee/aggregate-visual-areas'):
     '''
     Return dict of neural dataframes (keys are datakeys).
@@ -1029,8 +1030,10 @@ def get_cells_and_data(all_cells, MEANS, experiment='blobs', sdata=None, traceid
 
 
 
-def get_final_data(experiment, overlap_thr=None, traceid='traces001', responsive_test='ROC', responsive_thr=0.05, 
+def get_final_data(experiment='blobs', overlap_thr=None, traceid='traces001', 
+            responsive_test='ROC', responsive_thr=0.05, 
             trial_epoch='stimulus', response_type='dff', images_only=True, drop_repeats=False):
+
     visual_areas=['V1', 'Lm', 'Li'] #, 'Ll']
     sdata, all_cells, MEANS, SDF = get_source_data(experiment,
                             equalize_now=False, zscore_now=False,
@@ -1040,12 +1043,13 @@ def get_final_data(experiment, overlap_thr=None, traceid='traces001', responsive
                             check_configs=True, return_configs=True, return_missing=False,
                             images_only=images_only)
     all_cells = all_cells[all_cells['visual_area'].isin(visual_areas)]
-
-    NDATA, CELLS = get_cells_and_data(all_cells, MEANS, sdata, traceid=traceid, response_type=response_type, 
+    print("EXP:", experiment)
+    NDATA, CELLS = get_cells_and_data(all_cells, MEANS, sdata=sdata, experiment=experiment, traceid=traceid, 
+                                response_type=response_type, 
                                 stack_neuraldf=True, overlap_thr=overlap_thr)
 
     if drop_repeats:
-        CELLS = aggr.unique_cell_df(CELLS)
+        CELLS = unique_cell_df(CELLS)
         final_dsets = [(v, k) for (v, k), g in CELLS.groupby(['visual_area', 'datakey']) ]
         ND = pd.concat([g for (v, k), g in NDATA.groupby(['visual_area', 'datakey']) \
                     if (v, k) in final_dsets])
@@ -2297,12 +2301,14 @@ def threshold_cells_by_snr(mean_snr, globalcells, snr_thr=10.0, max_snr_thr=None
 # ===============================================================
 from matplotlib.lines import Line2D
 
-def crop_legend_labels(ax, n_hues, bbox_to_anchor=(1.05, 1), loc='upper left', fontsize=12,title='', n_cols=1):
+def crop_legend_labels(ax, n_hues, bbox_to_anchor=(1.05, 1), loc='upper left', fontsize=12,
+                        title='', n_cols=1, markerscale=1):
     # Get the handles and labels.
     leg_handles, leg_labels = ax.get_legend_handles_labels()
     # When creating the legend, only use the first two elements
     leg = ax.legend(leg_handles[0:n_hues], leg_labels[0:n_hues], title=title,
-            bbox_to_anchor=bbox_to_anchor, fontsize=fontsize, loc=loc, ncol=n_cols)
+            bbox_to_anchor=bbox_to_anchor, fontsize=fontsize, loc=loc, ncol=n_cols, 
+            markerscale=markerscale)
     return leg
 
 
