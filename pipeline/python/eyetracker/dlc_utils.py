@@ -1308,6 +1308,9 @@ def add_stimuli_to_pupildf(pupildata, MEANS, SDF, verbose=False, return_valid_on
     
     for datakey, pdata0 in pupildata.items():
         pdata = pdata0.copy()
+        if datakey not in MEANS.keys():
+            print("Missing <%s> from MEANS dict. Skipping." % datakey)
+            continue
         ndata = MEANS[datakey].copy()
         ntrials_total, ncols = ndata.shape
         sdf = SDF[datakey].copy()
