@@ -1373,10 +1373,10 @@ def main(options):
     curr_datakey = None if opts.datakey in ['None', None] else opts.datakey    
  
     diff_sdfs = ['20190327_JC073_fov1', '20190314_JC070_fov1'] # 20190426_JC078 (LM, backlight)
-    if curr_datakey is not None and curr_datakey in diff_sdfs:
-        images_only=False #True
-    else:
-        images_only = analysis_type=='by_ncells'
+    #if curr_datakey is not None and curr_datakey in diff_sdfs:
+    #    images_only=False #True
+    #else:
+    images_only = analysis_type=='by_ncells'
     # Notes:
     # images_only=True if by_ncells, since need to concatenate trials 
     # TODO:  Fix so that we can train on anchors only and/or subset of configs
@@ -1393,6 +1393,7 @@ def main(options):
                         images_only=images_only) #analysis_type=='by_ncells')
     all_cells = all_cells[all_cells['visual_area'].isin(visual_areas)].copy() #, 'Ll'])]
     stack_neuraldf = analysis_type in ['by_ncells'] #match_distns==True
+    #print(SDF['20190327_JC073_fov1'].head())
 
     #### Get pupil responses
     if 'pupil' in analysis_type:
@@ -1408,6 +1409,10 @@ def main(options):
         #### Remove trials with no pupildata
         pupildata, MEANS, bad_alignment = dlcutils.add_stimuli_to_pupildf(pupildata, MEANS, SDF, verbose=False, 
                                         return_valid_only=True)
+        for (k, n_off) in bad_alignment:
+            print("... removing: %s" % k)
+            pupildata.pop(k, None)
+
     # threshold, if relevant
     min_dff=0
     max_dff=1.0
@@ -1481,7 +1486,7 @@ def main(options):
 
     if curr_datakey is not None:
         sdf = SDF[curr_datakey].copy()
-        print(sdf.head())
+        print("Curr dset <%s> SDF:" % (curr_datakey), sdf.head())
     else:
         images_only=analysis_type=='by_ncells'
         sdf_master = aggr.get_master_sdf(images_only=images_only)

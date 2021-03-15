@@ -1358,7 +1358,7 @@ def add_stimuli_to_pupildf(pupildata, MEANS, SDF, verbose=False, return_valid_on
         except Exception as e:
             print("**********error in: %s ************" % datakey)
             traceback.print_exc()
-            print(sdf) 
+            print(sdf.head()) 
         # Remove neural trials that don't have valid pupil data 
         ndata_match, pdata_match = match_neural_and_pupil_trials(ndata, pdata.dropna(), equalize_conditions=False)  
         ntrials_dropped = ntrials_total - ndata_match.shape[0]
