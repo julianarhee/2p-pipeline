@@ -567,12 +567,13 @@ def iterate_split_pupil(neuraldf, pupildf, sdf, n_iterations=100, n_processes=1,
     #### Define MP worker
     results = []
     terminating = mp.Event() 
-    def worker(out_q, data_q, n_iters, neuraldf, pupildf, sdf, equalize_by, common_labels, 
+    def worker(out_q, n_iters, neuraldf, pupildf, sdf, equalize_by, common_labels, 
                     C_value=None, verbose=False, 
                     class_a=0, class_b=106, do_shuffle=True, feature_name='pupil_fraction', n_cuts=3):
         r_ = []        
         i_=[]
         for ni in n_iters:
+            #randi = random.randint(1, 10000)
             ndf_matched, pdf_matched = dlcutils.match_neural_and_pupil_trials(neuraldf, pupildf, 
                                             equalize_conditions=True)
             p_low, p_high = split_and_match_arousal_trials(neuraldf, pupildf, sdf, 
@@ -589,8 +590,8 @@ def iterate_split_pupil(neuraldf, pupildf, sdf, n_iterations=100, n_processes=1,
 
             # Decodinng -----------------------------------------------------
             start_t = time.time()
-            arousal_conds = ['all', 'low', 'high', 'low_shuffle', 'high_shuffle']
-            arousal_trial_ixs = [all_trial_ixs, low_trial_ixs, high_trial_ixs, low_shuff_ixs, high_shuff_ixs]
+            arousal_conds = ['low', 'high', 'low_shuffle', 'high_shuffle']
+            arousal_trial_ixs = [low_trial_ixs, high_trial_ixs, low_shuff_ixs, high_shuff_ixs]
             iter_list=[]
             trial_list=[]
             for arousal_cond, curr_trial_ixs in zip(arousal_conds, arousal_trial_ixs):
@@ -622,18 +623,19 @@ def iterate_split_pupil(neuraldf, pupildf, sdf, n_iterations=100, n_processes=1,
         curr_iterdf = pd.concat(r_, axis=0)
         inputdf = pd.concat(i_, axis=0)
 
-        out_q.put(curr_iterdf) 
-        data_q.put(inputdf)
+        #out_q.put(curr_iterdf) 
+        #data_q.put(inputdf)
+        out_q.put((curr_iterdf, inputdf))
     try:        
         # Each process gets "chunksize' filenames and a queue to put his out-dict into:
         iter_list = np.arange(0, n_iterations) #gdf.groups.keys()
         out_q = mp.Queue()
-        data_q = mp.Queue()
+        #data_q = mp.Queue()
         chunksize = int(math.ceil(len(iter_list) / float(n_processes)))
         procs = []
         for i in range(n_processes):
             p = mp.Process(target=worker,
-                           args=(out_q, data_q, iter_list[chunksize * i:chunksize * (i + 1)],
+                           args=(out_q, iter_list[chunksize * i:chunksize * (i + 1)],
                                     neuraldf, pupildf, sdf, equalize_by, common_labels))
             procs.append(p)
             p.start() # start asynchronously
@@ -641,8 +643,11 @@ def iterate_split_pupil(neuraldf, pupildf, sdf, n_iterations=100, n_processes=1,
         results = []
         inputs = []
         for i in range(n_processes):
-            results.append(out_q.get(99999))
-            inputs.append(data_q.get(99999))
+            res = out_q.get()
+            results.append(res[0])
+            inputs.append(res[1])
+            #results.append(out_q.get(99999))
+            #inputs.append(data_q.get(99999))
         # Wait for all worker processes to finish
         for p in procs:
             p.join() # will block until finished
