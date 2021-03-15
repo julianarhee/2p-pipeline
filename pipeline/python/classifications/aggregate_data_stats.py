@@ -929,8 +929,8 @@ def equal_counts_per_condition(MEANS):
 
 
 def get_cells_and_data(all_cells, MEANS, experiment='blobs', sdata=None, traceid='traces001', response_type='dff', 
-                        stack_neuraldf=True, overlap_thr=None, has_retino=False, threshold_snr=False, 
-                        snr_thr=10, max_snr_thr=None,
+                        stack_neuraldf=True, overlap_thr=None, return_rfs=False,
+                        has_retino=False, threshold_snr=False, snr_thr=10, max_snr_thr=None, 
                       remove_too_few=False, min_ncells=5, match_distns=False, threshold_dff=False):
 
     from pipeline.python.retinotopy import fit_2d_rfs as fitrf 
@@ -1026,7 +1026,10 @@ def get_cells_and_data(all_cells, MEANS, experiment='blobs', sdata=None, traceid
     #print("Final cell counts:")
     #CELLS[['visual_area', 'datakey', 'cell']].drop_duplicates().groupby(['visual_area']).count()
 
-    return NEURALDATA, CELLS.reset_index(drop=True)
+    if return_rfs is True:
+        return NEURALDATA, RFDATA, CELLS.reset_index(drop=True)
+    else: 
+        return NEURALDATA, CELLS.reset_index(drop=True)
 
 
 
@@ -1074,6 +1077,7 @@ def get_source_data(experiment, traceid='traces001',
     NOTE:  rename_configs (prev. called check_configs)
     '''
     from pipeline.python.retinotopy import segment_retinotopy as seg
+    responsive_thr = 10.0 if responsive_test=='nstds' else 0.05
 
     #### Get neural responses 
     means0 = load_aggregate_data(experiment, 
@@ -1141,25 +1145,34 @@ def zscore_data(MEANS):
 
     return MEANS
 
-def equal_counts_df(neuraldf, equalize_by='config'):
+def equal_counts_df(neuraldf, equalize_by='config'): #, randi=None):
     curr_counts = neuraldf[equalize_by].value_counts()
     if len(curr_counts.unique())==1:
         return neuraldf #continue
         
     min_ntrials = curr_counts.min()
     all_cfgs = neuraldf[equalize_by].unique()
+    drop_trial_col=False
+    if 'trial' not in neuraldf.columns:
+        neuraldf['trial'] = neuraldf.index.tolist()
+        drop_trial_col = True
 
-    kept_trials=[]
-    for cfg in all_cfgs:
-        curr_trials = neuraldf[neuraldf[equalize_by]==cfg].index.tolist()
-        np.random.shuffle(curr_trials)
-        kept_trials.extend(curr_trials[0:min_ntrials])
-    kept_trials=np.array(kept_trials)
-
-    assert len(neuraldf.loc[kept_trials][equalize_by].value_counts().unique())==1, \
+    #kept_trials=[]
+    #for cfg in all_cfgs:
+        #curr_trials = neuraldf[neuraldf[equalize_by]==cfg].index.tolist()
+        #np.random.shuffle(curr_trials)
+        #kept_trials.extend(curr_trials[0:min_ntrials])
+    #kept_trials=np.array(kept_trials)
+    kept_trials = neuraldf[['config', 'trial']].drop_duplicates().groupby(['config'])\
+        .apply(lambda x: x.sample(n=min_ntrials, replace=False, random_state=None))['trial'].values
+    
+    subdf = neuraldf[neuraldf.trial.isin(kept_trials)]
+    assert len(subdf[equalize_by].value_counts().unique())==1, \
             "Bad resampling... Still >1 n_trials"
-
-    return neuraldf.loc[kept_trials]
+    if drop_trial_col:
+        subdf = subdf.drop('trial', axis=1)
+ 
+    return subdf #neuraldf.loc[kept_trials]
 
 
 
@@ -1207,7 +1220,7 @@ def check_sdfs(stim_datakeys, experiment='blobs', traceid='traces001', images_on
             print("*Warning* <%s> More than 1 pos? x: %s, y: %s" \
                     % (datakey, str(sdf['xpos'].unique()), str(sdf['ypos'].unique())))
  
-        if experiment=='blobs' and (sdf.shape[0]!=sdf_master.shape[0]):
+        if experiment=='blobs': # and (sdf.shape[0]!=sdf_master.shape[0]):
             #print("%s: diff keys" % datakey)
 #            if sdf.shape[0]==45:
 #                # missing morphlevels, likely lum controls
@@ -1226,7 +1239,7 @@ def check_sdfs(stim_datakeys, experiment='blobs', traceid='traces001', images_on
                 #    continue
                 updated_keys.update({old_ix: new_ix})
        
-            if rename and (datakey not in diff_configs): 
+            if rename: # and (datakey not in diff_configs): 
                 sdf = sdf.rename(index=updated_keys)
 
             # Save renamed key 
@@ -1406,6 +1419,20 @@ def get_neuraldata(assigned_cells, MEANS, stack=False, verbose=False):
 
 
 # -------- RFs -----------------------------------------------------------
+def get_rfdata_from_neuraldata(NEURALDATA, sdata, assigned_cells, average_repeats=True, traceid='traces001'):
+    # Get position info for RFs
+    rfdf0 = load_rfdf_and_pos(sdata, assigned_cells=assigned_cells, rf_filter_by=None, assign_cells=True,
+                                reliable_only=True, traceid=traceid)
+
+
+    rfdf = get_rfdata(assigned_cells, rfdf0, visual_area=None, datakey=None, average_repeats=average_repeats)
+    cell_list = [(v, k, c) for (v, k, c), g in NEURALDATA.groupby(['visual_area', 'datakey', 'cell'])]
+
+    RFDATA = pd.concat([g for (v, k, c), g in rfdf.groupby(['visual_area', 'datakey', 'cell']) \
+                if (v, k, c) in cell_list])
+
+    return RFDATA
+
 
 def get_rfdata(assigned_cells, rfdf, verbose=False, visual_area=None, datakey=None, average_repeats=True):
     '''
