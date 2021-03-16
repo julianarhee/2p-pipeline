@@ -293,7 +293,7 @@ def get_training_results(iterdf, test_type=None, train_classes=[0, 106], drop_ar
 
     if drop_arousal:
         traindf = traindf[(traindf.arousal=='all')].drop_duplicates()
-    
+        #traindf.groupby( 
     return traindf
 
 
@@ -914,16 +914,18 @@ def get_trials_for_N_cells_df(curr_ncells, gdf, NEURALDATA, with_replacement=Fal
     roi_ids = np.array(gdf['roi'].values.copy()) 
 
     # Random sample w/ replacement
-    if with_replacement:
-        rand_ixs = np.array([random.randint(0, ncells_t-1) for _ in np.arange(0, curr_ncells)])
-        curr_roi_list = roi_ids[rand_ixs]
-        curr_roidf = gdf[gdf['roi'].isin(curr_roi_list)].copy()
-    else:
-        curr_roidf = gdf.sample(n=curr_ncells, replace=False, random_state=randi)
+#    if with_replacement:
+#        rand_ixs = np.array([random.randint(0, ncells_t-1) for _ in np.arange(0, curr_ncells)])
+#        curr_roi_list = roi_ids[rand_ixs]
+#        curr_roidf = gdf[gdf['roi'].isin(curr_roi_list)].copy()
+#    else:
+    curr_roidf = gdf.sample(n=curr_ncells, replace=with_replacement, random_state=randi)
+    curr_roi_list = curr_roidf['roi'].values
 
     # Make sure equal num trials per condition for all dsets
     curr_dkeys = curr_roidf['datakey'].unique()
     currd = NEURALDATA[NEURALDATA['datakey'].isin(curr_dkeys)].copy()
+    currd['cell'] = currd['cell'].astype(float)
 
     # Make sure equal num trials per condition for all dsets
     if train_configs is not None:
@@ -937,18 +939,18 @@ def get_trials_for_N_cells_df(curr_ncells, gdf, NEURALDATA, with_replacement=Fal
     for datakey, dkey_rois in curr_roidf.groupby(['datakey']):
         assert datakey in currd['datakey'].unique(), "ERROR: %s not found" % datakey
         # Get current trials, make equal to min_ntrials_by_config
-        tmpd = pd.concat([trialmat.sample(n=min_ntrials_by_config, random_state=randi) 
+        tmpd = pd.concat([trialmat.sample(n=min_ntrials_by_config, random_state=None) 
                          for (rid, cfg), trialmat in currd[currd['datakey']==datakey].groupby(['cell', 'config'])], axis=0)
         tmpd['cell'] = tmpd['cell'].astype(float)
 
         # For each RID sample belonging to current dataset, get RID order
-        if with_replacement:
-            sampled_cells = pd.concat([dkey_rois[dkey_rois['roi']==globalid][['roi', 'dset_roi']] 
+        #if with_replacement:
+        sampled_cells = pd.concat([dkey_rois[dkey_rois['roi']==globalid][['roi', 'dset_roi']] 
                                    for globalid in curr_roi_list])
-        else:
-            sampled_cells = dkey_rois[dkey_rois['roi'].isin(curr_roidf['roi'])][['roi', 'dset_roi']]
-            curr_roi_list = curr_roidf['roi'].values
-
+#        else:
+#            sampled_cells = dkey_rois[dkey_rois['roi'].isin(curr_roidf['roi'])][['roi', 'dset_roi']]
+#            curr_roi_list = curr_roidf['roi'].values
+#
         sampled_dset_rois = sampled_cells['dset_roi'].values
         sampled_global_rois = sampled_cells['roi'].values
         cell_lut = dict((k, v) for k, v in zip(sampled_dset_rois, sampled_global_rois))
