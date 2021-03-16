@@ -415,7 +415,7 @@ def decode_by_ncells(n_cells, visual_area, CELLS, NEURALDATA, sdf=None,
                     n_iterations=50, n_processes=2, 
                     class_name='morphlevel', class_a=0, class_b=106, match_all_configs=True,
                     do_shuffle=True, test_type=None, n_train_configs=4, 
-                    verbose=False,
+                    verbose=False, with_replacement=False,
                     dst_dir='/n/coxfs01/julianarhee/aggregate-visual-areas/decoding/by_ncells'):
     '''
     Create psuedo-population by sampling n_cells from global_rois.
@@ -441,12 +441,12 @@ def decode_by_ncells(n_cells, visual_area, CELLS, NEURALDATA, sdf=None,
     # print("Class: %s, %s" % (class_name, str(train_classes)))
     sdf['morph_size'] = ['%s_%s' % (m, s) for m, s in zip(sdf['morphlevel'].values, sdf['size'].values)]
     try: 
-        iter_results = decutils.iterate_by_ncells(n_cells, NEURALDATA, CELLS, sdf=sdf, 
+        iter_results = decutils.iterate_by_ncells(n_cells, NEURALDATA[NEURALDATA.visual_area==visual_area], CELLS, sdf=sdf, 
                         n_iterations=n_iterations, n_processes=n_processes, 
                         C_value=C_value, cv_nfolds=cv_nfolds, test_split=test_split, 
                         test_type=test_type, n_train_configs=n_train_configs, verbose=verbose, within_fov=True,
                         class_name=class_name, class_a=class_a, class_b=class_b, do_shuffle=do_shuffle, 
-                        match_all_configs=True)
+                        match_all_configs=True, with_replacement=with_replacement)
                         #feature_name=feature_name, n_cuts=n_cuts, 
                         #equalize_by=equalize_by, match_all_configs=match_all_configs)
     except Exception as e:
@@ -1597,6 +1597,8 @@ def main(options):
             print("Finished %s (%s). ID=%s" % (curr_datakey, curr_visual_area, results_id))
 
     elif analysis_type=='by_ncells':
+        with_replacement=False
+
         sdf = aggr.get_master_sdf(images_only=True)
 
         data_info='%s%s-%s_%s_iter%i%s' % (match_str, response_type, responsive_test, overlap_str, n_iterations, shuffle_str)
@@ -1644,9 +1646,8 @@ def main(options):
                 decode_by_ncells(curr_ncells, curr_visual_area, gdf, NEURALDATA, sdf=sdf, experiment=experiment,
                                 results_id=results_id, C_value=C_value,
                                 n_iterations=n_iterations, n_processes=n_processes, 
-                                class_a=class_a, class_b=class_b, 
-                                dst_dir=dst_dir, verbose=verbose, 
-                                match_all_configs=match_all_configs,
+                                class_a=class_a, class_b=class_b, dst_dir=dst_dir, verbose=verbose, 
+                                match_all_configs=match_all_configs, with_replacement=with_replacement,
                                 do_shuffle=do_shuffle, test_type=test_type, n_train_configs=n_train_configs) 
                 print("***** finished %s, ncells=%i *******" % (curr_visual_area, curr_ncells))
             else:
@@ -1667,7 +1668,7 @@ def main(options):
                                     n_iterations=n_iterations, n_processes=n_processes, 
                                     class_a=class_a, class_b=class_b, do_shuffle=do_shuffle,
                                     dst_dir=dst_dir, verbose=verbose, 
-                                    match_all_configs=match_all_configs)
+                                    match_all_configs=match_all_configs, with_replacement=with_replacement)
                 print("********* finished %s, (ncells looped: %s) **********" % (curr_visual_area, str(NCELLS)))
         else:
             # ----------------------------------------------
@@ -1704,7 +1705,8 @@ def main(options):
                                         results_id=results_id,
                                         class_a=class_a, class_b=class_b,
                                         dst_dir=dst_dir, create_new=create_new, 
-                                        verbose=verbose, match_all_configs=match_all_configs)
+                                        verbose=verbose, match_all_configs=match_all_configs, 
+                                        with_replacement=with_replacement)
                     print("********* finished **********")
             except Exception as e:
                 traceback.print_exc()
