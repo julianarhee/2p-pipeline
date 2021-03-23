@@ -32,7 +32,7 @@ from sklearn.utils import shuffle
 from pipeline.python.classifications import test_responsivity as resp
 from pipeline.python.utils import label_figure, natural_keys
 
-def get_hits_and_fas(resp_stim, resp_bas):
+def get_hits_and_fas(resp_stim, resp_bas, n_crit=50):
 
     # Get N configurations    
     #curr_cfg_ixs = np.arange(0, len(resp_stim))
@@ -44,7 +44,7 @@ def get_hits_and_fas(resp_stim, resp_bas):
     # Set criterion (range between min/max response)
     min_val = min(list(itertools.chain(*resp_stim))) #resp_stim.min()
     max_val = max(list(itertools.chain(*resp_stim))) #[r.max() for r in resp_stim]) #resp_stim.max() 
-    crit_vals = np.linspace(min_val, max_val)
+    crit_vals = np.linspace(min_val, max_val, n_crit)
    
     # For each crit level, calculate p > crit (out of N trials)   
     #p_hits = np.empty((n_conditions, len(crit_vals)))
