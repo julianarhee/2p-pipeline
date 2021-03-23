@@ -1294,24 +1294,54 @@ def get_train_configs(sdf, class_name='morphlevel', class_a=0, class_b=106,
     # train_trials = sorted(ndata[ndata['config'].isin(train_configs)]['trial'].unique())
     
     return train_configs
-   
-def add_stimuli_to_pupildf(pupildata, MEANS, SDF, verbose=False, return_valid_only=False,
+
+
+def add_configs_to_pupildf(ndata, pdata, sdf):
+    '''
+    Assign config to each trial in pupildf    
+    # If no match, might be some incorrect alignment 
+    '''
+    ntrials_total, ncols = ndata.shape
+    ntrials_no_pupil = pdata.dropna().shape[0]
+    # Make sure pupil trials are same as neural trials:
+    ntrials_misaligned=0
+    if sorted(ndata.index.tolist())!=sorted(pdata['trial'].unique()):
+        ndata, pdata = match_neural_and_pupil_trials(ndata, pdata, equalize_conditions=False)
+        ntrials_misaligned = ntrials_total - ndata.shape[0]
+      
+    # Addd config info to pupildata
+    if 'trial' not in ndata.columns:
+        ndata['trial'] = ndata.index.tolist()
+    pdata['config'] = [ndata[ndata['trial']==t]['config'].unique()[0] for t in pdata['trial']]
+    pdata['n_trials_total'] = ntrials_total
+    pdata['n_trials_nodata'] = ntrials_total - ntrials_no_pupil
+    pdata['n_trials_misaligned'] = ntrials_misaligned 
+
+    # Add some meta info
+    pdata['size'] = [sdf['size'][c] for c in pdata['config']]
+    pdata['morphlevel'] = [sdf['morphlevel'][c] for c in pdata['config']]
+
+    pdata = pdata.drop(['frame', 'frame_int', 'frame_ix'], axis=1)
+    return ndata, pdata
+
+
+def get_valid_neuraldata_and_pupildata(pupildata, MEANS, SDF, verbose=False, return_valid_only=True,
                             class_name='morphlevel', class_a=0, class_b=106, 
-                            train_transform_name=None, train_transform_value=None, experiment='blobs', traceid='traces001'):
+                            train_transform_name=None, train_transform_value=None, 
+                            experiment='blobs', traceid='traces001'):
     '''
     pupildata (dict):  keys are datakeys, values are dataframe of pupil info (all trials)
     MEANS (dict):  keys are datakeys, cells not split by area here, just need the trial nums
     SDF (dict): stim config dfs for each datakey
     
     # If no match, might be some incorrect alignment 
+    # formerly:  add_stimuli_to_pupildf()
+
     '''
     stim_datakeys = pupildata.keys()
     _, renamed_configs = aggr.check_sdfs(stim_datakeys, experiment=experiment, 
-                                    traceid=traceid, images_only=True, rename=True, return_incorrect=True)
-             
- 
-    bad_alignment=[]
-    
+                                    traceid=traceid, images_only=True, rename=True, return_incorrect=True) 
+    bad_alignment=[] 
     for datakey, pdata0 in pupildata.items():
         pdata = pdata0.copy()
         if datakey not in MEANS.keys():
@@ -1321,25 +1351,15 @@ def add_stimuli_to_pupildf(pupildata, MEANS, SDF, verbose=False, return_valid_on
         ndata = MEANS[datakey].copy()
         ntrials_total, ncols = ndata.shape
         sdf = SDF[datakey].copy()
-        
-        # Make sure pupil trials are same as neural trials:
-        if sorted(ndata.index.tolist())!=sorted(pdata['trial'].unique()):
-            print("ERROR: %s -- bad trial alignment? Neural trials != pupil trials." % datakey)
-            ndata, pdata = match_neural_and_pupil_trials(ndata, pdata, equalize_conditions=False)
-            ntrials_dropped = ntrials_total - ndata.shape[0]
-            bad_alignment.append((datakey, ntrials_dropped))        
-            #continue
 
-        # check config labels
-#        if datakey in renamed_configs.keys():
-#            print("Checking config labels: %s" % datakey)
-#            cfg_lut = renamed_configs[datakey].copy()
-#            pdata = aggr.rename_neuraldf_configs(pdata, cfg_lut)
-#          
-        # Addd config info to pupildata
-        if 'trial' not in ndata.columns:
-            ndata['trial'] = ndata.index.tolist()
-        pdata['config'] = [ndata[ndata['trial']==t]['config'].unique()[0] for t in pdata['trial']]
+        # Add configs
+        ndata, pdata = add_configs_to_pupildf(ndata, pdata, sdf)
+        n_bad = float(pdata['n_trials_misaligned'].unique())
+        if n_bad > 0:
+            print("Warning: %i misaligned trials (%s)" % (n_bad, datakey))
+            bad_alignment.append((datakey, n_bad))
+
+        # Count train configs
         train_configs = get_train_configs(sdf, class_name=class_name, class_a=class_a, class_b=class_b,
                                     train_transform_name=train_transform_name, 
                                     train_transform_value=train_transform_value)
@@ -1349,23 +1369,14 @@ def add_stimuli_to_pupildf(pupildata, MEANS, SDF, verbose=False, return_valid_on
         pdata['n_train_trials'] = n_train_trials
         pdata['n_train_trials_dropped'] = n_train_trials - n_train_trials_incl
 
-        try:
-            # Add some meta info
-            pdata['datakey'] = datakey
-            pdata['size'] = [sdf['size'][c] for c in pdata['config']]
-            pdata['morphlevel'] = [sdf['morphlevel'][c] for c in pdata['config']]
-            pdata['n_trials_total'] = ntrials_total
-        except Exception as e:
-            print("**********error in: %s ************" % datakey)
-            traceback.print_exc()
-            print(sdf.head()) 
         # Remove neural trials that don't have valid pupil data 
         ndata_match, pdata_match = match_neural_and_pupil_trials(ndata, pdata.dropna(), equalize_conditions=False)  
         ntrials_dropped = ntrials_total - ndata_match.shape[0]
         
         # Add some meta info
         pdata['n_trials_dropped'] = ntrials_dropped
-        
+        pdata['datakey'] = datakey
+       
         if verbose and (ntrials_total != ndata.shape[0]):
             print('... %s: Dropping %i of %i trials' % (datakey, ntrials_dropped, ntrials_total))
             
@@ -1380,11 +1391,6 @@ def add_stimuli_to_pupildf(pupildata, MEANS, SDF, verbose=False, return_valid_on
         pupildata[datakey] = pupil_
         
     return pupildata, MEANS, bad_alignment
-
-
-
-
-
 
 
 # ===================================================================
