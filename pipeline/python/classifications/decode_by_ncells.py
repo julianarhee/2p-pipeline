@@ -103,8 +103,10 @@ def decode_from_fov(datakey, visual_area, neuraldf, sdf=None, #min_ncells=5,
     if not os.path.exists(curr_dst_dir):
         os.makedirs(curr_dst_dir)
         print("... saving tmp results to:\n  %s" % curr_dst_dir)
-
     results_outfile = os.path.join(curr_dst_dir, '%s.pkl' % results_id)
+    # remove old file
+    if os.path.exists(results_outfile):
+        os.remove(results_outfile)
 
     #### Get neural means
     print("... Starting decoding analysis")
@@ -153,6 +155,7 @@ def decode_from_fov(datakey, visual_area, neuraldf, sdf=None, #min_ncells=5,
 
 def decode_split_pupil(datakey, visual_area, neuraldf, pupildf, sdf=None,
                     results_id='split_pupil', C_value=None, experiment='blobs',
+                    cv_nfolds=5, test_split=0.2, 
                     n_iterations=50, n_processes=2, class_name='morphlevel', class_a=0, class_b=0, 
                     do_shuffle=True, equalize_conditions=True, equalize_by='config', match_all_configs=True,
                     rootdir='/n/coxfs01/2p-data', verbose=False,
@@ -178,6 +181,9 @@ def decode_split_pupil(datakey, visual_area, neuraldf, pupildf, sdf=None,
         os.makedirs(curr_dst_dir)
         print("... saving tmp results to:\n  %s" % curr_dst_dir)
     results_outfile = os.path.join(curr_dst_dir, '%s.pkl' % results_id)
+    # remove old file
+    if os.path.exists(results_outfile):
+        os.remove(results_outfile)
 
     #### Get neural means
     print("... Stating decoding analysis")
@@ -207,7 +213,11 @@ def decode_split_pupil(datakey, visual_area, neuraldf, pupildf, sdf=None,
                         class_name=class_name, class_a=class_a, class_b=class_b, do_shuffle=do_shuffle,
                         feature_name=feature_name, n_cuts=n_cuts, 
                         equalize_by=equalize_by, match_all_configs=match_all_configs)
- 
+    if iter_results is None:
+        print("NONE returned -- %s, %s" % (visual_area, datakey))
+        return None
+    #assert iter_results is not None, "NONE returned -- %s, %s" % (visual_area, datakey)
+
     # DATA - concat 3 conds
     iter_results['visual_area'] = visual_area
     iter_results['datakey'] = datakey
@@ -429,7 +439,10 @@ def decode_by_ncells(n_cells, visual_area, CELLS, NEURALDATA, sdf=None,
         os.makedirs(curr_dst_dir)
         print("... saving tmp results to:\n  %s" % curr_dst_dir)
     results_outfile = os.path.join(curr_dst_dir, '%s_%i.pkl' % (results_id, n_cells))
- 
+    # remove old file
+    if os.path.exists(results_outfile):
+        os.remove(results_outfile)
+
     #### Get neural means
     print("... Stating decoding analysis")
 
@@ -1181,7 +1194,10 @@ def extract_options(options):
             default=False, help="re-do decode")
 
     parser.add_option('-C','--cvalue', action='store', dest='C_value', 
-            default=None, help="tune for C (default: None, unes C)")
+            default=None, help="tune for C (default: None, tunes C)")
+    parser.add_option('--folds', action='store', dest='cv_nfolds', 
+            default=5, help="N folds for CV tuning C (default: 5")
+
 
 
     choices_a = ('by_fov', 'split_pupil', 'by_ncells', 'single_cells')
@@ -1272,7 +1288,7 @@ def main(options):
 
     # CV ----------------------------------------------
     test_split=0.2
-    cv_nfolds=5
+    cv_nfolds= int(opts.cv_nfolds) #5
  
     C_value = None if opts.C_value in ['None', None] else float(opts.C_value)
     do_cv = C_value in ['None', None]
@@ -1407,8 +1423,10 @@ def main(options):
         print("missing %i pupil dsets: %s" % (len(missing_pupil), str(missing_pupil)))
 
         #### Remove trials with no pupildata
-        pupildata, MEANS, bad_alignment = dlcutils.add_stimuli_to_pupildf(pupildata, MEANS, SDF, verbose=False, 
-                                        return_valid_only=True)
+        pupildata, MEANS, bad_alignment = dlcutils.get_valid_neuraldata_and_pupildata(pupildata, MEANS, SDF, 
+                                                                           verbose=False, return_valid_only=True)
+
+        print(bad_alignment)
         for (k, n_off) in bad_alignment:
             print("... removing: %s" % k)
             pupildata.pop(k, None)
@@ -1548,6 +1566,7 @@ def main(options):
 
             decode_split_pupil(curr_datakey, curr_visual_area, neuraldf, pupildf, sdf=sdf,
                             n_iterations=n_iterations, n_processes=n_processes, results_id=results_id, 
+                            cv_nfolds=cv_nfolds, test_split=test_split,
                             C_value=C_value, class_a=class_a, class_b=class_b, do_shuffle=do_shuffle,
                             rootdir=rootdir, verbose=verbose, 
                             equalize_conditions=equalize_conditions, equalize_by=equalize_by, 
@@ -1597,7 +1616,8 @@ def main(options):
             print("Finished %s (%s). ID=%s" % (curr_datakey, curr_visual_area, results_id))
 
     elif analysis_type=='by_ncells':
-        with_replacement=False
+
+        with_replacement=True
 
         sdf = aggr.get_master_sdf(images_only=True)
 
