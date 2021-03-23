@@ -2357,14 +2357,15 @@ def plot_pairwise_by_axis(plotdf, curr_metric='abs_coef', c1='az', c2='el',
                           compare_var='cond', fontsize=10, fontcolor='k', 
                             fmt='%.2f', xytext=(0, 10),
                           area_colors=None, legend=True, legend_fontsize=8, 
-                            bbox_to_anchor=(1.5,1.1), loc='center', ax=None, return_stats=False):
+                            bbox_to_anchor=(1.5,1.1), loc='center', ax=None, 
+                        return_stats=False, ttest=True):
     if ax is None:
         fig, ax = pl.subplots(figsize=(5,4), dpi=150)
         fig.patch.set_alpha(0)
         ax.patch.set_alpha(0)
     ax, statdf = pairwise_compare_single_metric(plotdf, curr_metric=curr_metric, ax=ax,
                                         c1=c1, c2=c2, compare_var=compare_var, 
-                                        area_colors=area_colors, return_stats=True)
+                                        area_colors=area_colors, return_stats=True, ttest=ttest)
     plotdf.apply(annotateBars, ax=ax, axis=1, fontsize=fontsize, 
                     fontcolor=fontcolor, fmt=fmt, xytext=xytext) 
 
@@ -2397,13 +2398,15 @@ def add_statsdf_to_plot(statsdf, ax, bbox=[0.2, -0.7, 0.8, 0.4], colwidth=0.25, 
              colLabels=statsdf.columns, loc=loc, bbox=bbox)
 
 def paired_ttest_from_df(plotdf, metric='avg_size', c1='rfs', c2='rfs10', compare_var='experiment',
-                            round_to=None, return_vals=False):
+                            round_to=None, return_vals=False, ttest=True):
     a_vals = plotdf[plotdf[compare_var]==c1].sort_values(by='datakey')[metric].values
     b_vals = plotdf[plotdf[compare_var]==c2].sort_values(by='datakey')[metric].values
     #print(a_vals, b_vals)
+    if ttest:
+        tstat, pval = spstats.ttest_rel(np.array(a_vals), np.array(b_vals))
+    else:
+        tstat, pval = spstats.wilcoxon(np.array(a_vals), np.array(b_vals))
 
-    tstat, pval = spstats.ttest_rel(np.array(a_vals), np.array(b_vals))
- 
     #print('%s: %.2f (p=%.2f)' % (visual_area, tstat, pval))
     if round_to is not None:
         tstat = round(tstat, round_to)
@@ -2417,7 +2420,7 @@ def paired_ttest_from_df(plotdf, metric='avg_size', c1='rfs', c2='rfs10', compar
         return pdict
 
 def paired_ttests(comdf, curr_metric='avg_size',  round_to=None,
-                c1='rfs', c2='rfs10', compare_var='experiment',
+                c1='rfs', c2='rfs10', compare_var='experiment', ttest=True,
                 visual_areas=['V1', 'Lm', 'Li']):
     r_=[]
     for ai, visual_area in enumerate(visual_areas):
@@ -2437,7 +2440,7 @@ def paired_ttests(comdf, curr_metric='avg_size',  round_to=None,
 #                        index=[ai])
 
         pdict = paired_ttest_from_df(plotdf, c1=c1, c2=c2, metric=curr_metric, 
-                        compare_var=compare_var, round_to=round_to, return_vals=False)
+                        compare_var=compare_var, round_to=round_to, return_vals=False, ttest=ttest)
         pdict.update({'visual_area': visual_area})
         res = pd.DataFrame(pdict, index=[ai])
         r_.append(res)
@@ -2450,7 +2453,7 @@ def paired_ttests(comdf, curr_metric='avg_size',  round_to=None,
 def plot_paired(plotdf, aix=0, curr_metric='avg_size', ax=None,
                 c1='rfs', c2='rfs10', compare_var='experiment',
                 marker='o', offset=0.25, color='k', label=None, lw=0.5, alpha=1, 
-                return_vals=False, return_stats=True, round_to=3):
+                return_vals=False, return_stats=True, round_to=3, ttest=True):
 
     if ax is None:
         fig, ax = pl.subplots()
@@ -2458,7 +2461,7 @@ def plot_paired(plotdf, aix=0, curr_metric='avg_size', ax=None,
 #    a_vals = plotdf[plotdf[compare_var]==c1].sort_values(by='datakey')[curr_metric].values
 #    b_vals = plotdf[plotdf[compare_var]==c2].sort_values(by='datakey')[curr_metric].values
     pdict, a_vals, b_vals = paired_ttest_from_df(plotdf, metric=curr_metric, c1=c1, c2=c2,
-                                compare_var=compare_var, round_to=round_to, return_vals=True)
+                                compare_var=compare_var, round_to=round_to, return_vals=True, ttest=ttest)
 
     by_exp = [(a, e) for a, e in zip(a_vals, b_vals)]
     for pi, p in enumerate(by_exp):
@@ -2479,7 +2482,7 @@ def plot_paired(plotdf, aix=0, curr_metric='avg_size', ax=None,
 def pairwise_compare_single_metric(comdf, curr_metric='avg_size', 
                                     c1='rfs', c2='rfs10', compare_var='experiment',
                                     ax=None, marker='o', visual_areas=['V1', 'Lm', 'Li'],
-                                    area_colors=None, return_stats=False, round_to=3):
+                                    area_colors=None, return_stats=False, round_to=3, ttest=True):
     assert 'datakey' in comdf.columns, "Need a sorter, 'datakey' not found."
 
     if area_colors is None:
@@ -2502,7 +2505,7 @@ def pairwise_compare_single_metric(comdf, curr_metric='avg_size',
         ax, pdict = plot_paired(plotdf, aix=aix, curr_metric=curr_metric, ax=ax,
                         c1=c1, c2=c2, compare_var=compare_var, offset=offset,
                         marker=marker, color=area_colors[visual_area], lw=0.5, 
-                        return_stats=True, round_to=round_to)
+                        return_stats=True, round_to=round_to, ttest=ttest)
         pdict.update({'visual_area': visual_area})
         res = pd.DataFrame(pdict, index=[ai])
         r_.append(res)
