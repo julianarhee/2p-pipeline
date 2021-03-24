@@ -2579,7 +2579,8 @@ def neg_likelihood(pars, data, P_model='weibull',
 
     dispatcher = {
         'weibull': weibull,
-#         'weibull50': weibull50,
+        'weibull50': weibull50,
+        'weibull_wh': weibull_wh
 #         'erf_psycho': erf_psycho,
 #         'erf_psycho_2gammas': erf_psycho_2gammas
     }
@@ -2601,6 +2602,8 @@ def neg_likelihood(pars, data, P_model='weibull',
 
 def weibull(pars, xx):
     """
+    From: https://github.com/cortex-lab/psychofit/blob/master/psychofit.py
+
     Weibull function from 0 to 1, with lapse rate.
     Args:
         pars: Model parameters [alpha, beta, gamma].
@@ -2621,6 +2624,33 @@ def weibull(pars, xx):
     alpha, beta, gamma = pars
     
     return (1 - gamma) - (1 - 2*gamma) * np.exp(-((xx / alpha)**beta))
+
+def weibull50(pars, xx):
+    """
+    From: https://github.com/cortex-lab/psychofit/blob/master/psychofit.py
+
+    Weibull function from 0.5 to 1, with lapse rate.
+    Args:
+        pars: Model parameters [alpha, beta, gamma].
+        xx: vector of stim levels.
+    Returns:
+        A vector of length xx
+    Raises:
+        ValueError: pars must be of length 3
+        TypeError: pars must be list-like or numpy array
+    Information:
+        2000-04 MC wrote it
+        2018-08 MW ported to Python
+    """
+    # Validate input
+    if not isinstance(pars, (list, tuple, np.ndarray)):
+        raise TypeError('pars must be list-like or numpy array')
+
+    if len(pars) != 3:
+        raise ValueError('pars must be of length 3')
+
+    alpha, beta, gamma = pars
+    return (1 - gamma) - (.5 - gamma) * np.exp(-((xx / alpha) ** beta))
 
 
 def mle_weibull(data, P_model='weibull', parstart=None, parmin=None, parmax=None, nfits=5):
@@ -2661,4 +2691,39 @@ def mle_weibull(data, P_model='weibull', parstart=None, parmin=None, parmax=None
     iBestFit = likelihoods.argmax()
     
     return pars[iBestFit, :], L
+
+
+def weibull_wh(pars, xx):
+    """
+    Weibull function from 0.5 to 1, with lapse rate.
+    Britten et al., 1993; Wichmann & Hill.
+    alpha: threshold
+    beta:  slope
+    lm:  lambda, ceiling
+    gamma: floor (min=0.5)
+
+    Args:
+        pars: Model parameters [alpha, beta, lambda, gamma].
+        xx: vector of stim levels.
+    Returns:
+        A vector of length xx
+    Raises:
+        ValueError: pars must be of length 3
+        TypeError: pars must be list-like or numpy array
+    Information:
+    """
+    # Validate input
+    if not isinstance(pars, (list, tuple, np.ndarray)):
+        raise TypeError('pars must be list-like or numpy array')
+
+    if len(pars) != 3:
+        raise ValueError('pars must be of length 3')
+
+    alpha, beta, lm = pars
+    #alpha, beta, lm, gamma = pars
+    #return gamma + (lm-gamma)*(1-np.exp(-1*((xx/alpha)**beta)))
+    #return gamma + (lm-gamma)*(1-np.exp(-1*((xx/alpha)**beta)))
+    return lm - (lm-0.5)*np.exp(-((xx/alpha)**beta))
+
+
 
