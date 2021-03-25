@@ -305,7 +305,7 @@ def get_cells_by_area(sdata, excluded_datasets=[], return_missing=False, verbose
 
     excluded_datasets = ['20190602_JC080_fov1', '20190605_JC090_fov1',
                          '20191003_JC111_fov1', 
-                         '20191104_JC117_fov1', '20191104_JC117_fov2', '20191105_JC117_fov1',
+                         '20191104_JC117_fov1', '20191104_JC117_fov2', #'20191105_JC117_fov1',
                          '20191108_JC113_fov1', '20191004_JC110_fov3',
                          '20191008_JC091_fov'] 
     missing_segmentation=[]
