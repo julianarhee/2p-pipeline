@@ -6,6 +6,9 @@ Created on Sat Mar 27 19:56:49 2021
 @author: julianarhee
 """
 import sys
+import traceback
+import math
+import multiprocessing as mp
 import os
 import optparse
 import psignifit as ps
@@ -21,6 +24,384 @@ import importlib
 import scipy as sp
 import itertools
 
+
+# #########################
+def decode_analysis_id(visual_area=None, prefix='split_pupil', 
+                       response_type='dff', responsive_test='ROC',
+                       overlap_str='noRF', trial_epoch='plushalf', C_str='tuneC'):
+    
+    results_id = '%s_%s__%s-%s_%s__%s__%s' \
+            % (prefix, visual_area, response_type, responsive_test, overlap_str, trial_epoch, C_str)
+
+    return results_id
+
+def add_morph_info(ndf, sdf, morph_lut, a_morphs, b_morphs, midp=53):
+    # add stimulus info
+    morphlevels = sdf['morphlevel'].unique()
+    max_morph = max(morphlevels)
+
+    assert midp in  morphlevels, "... Unknown midpoint in morphs: %s" % str(morphlevels)
+        
+    ndf['size'] = [sdf['size'][c] for c in ndf['config']]
+    ndf['morphlevel'] = [sdf['morphlevel'][c] for c in ndf['config']]
+    ndf = ndf[(ndf['morphlevel']!=-1)].copy()
+
+    morph_lut, a_morphs, b_morphs = get_morph_levels(levels=morphlevels, midp=midp)
+    # update neuraldata
+    ndf['morphstep'] = [morph_lut[m] for m in ndf['morphlevel']]
+    ndf['morph_ix'] = [m/float(max_morph) for m in ndf['morphlevel']]
+
+    ndf['object'] = None
+    ndf.loc[ndf.morphlevel.isin(a_morphs), 'object'] = 'A'
+    ndf.loc[ndf.morphlevel.isin(b_morphs), 'object'] = 'B'
+    ndf.loc[ndf.morphlevel==midp, 'object'] = 'M'
+
+    return ndf
+
+
+# SPLIT_PUPIL (Calculate AUCs across iterations).
+# -----------------------------------------------------------
+class WorkerStop(Exception):
+    pass
+
+def auc_split_pupil_worker(out_q, iternums, ndf, trialdf, param, allow_negative):
+
+    i_list = []
+    for ni in iternums:
+        curr_trials = trialdf[trialdf['iteration']==ni]
+        for (arousal_label, shuffle_cond), a_df in curr_trials.groupby(['arousal', 'true_labels']):
+            print(ni, arousal_label, shuffle_cond)
+            try:
+                curr_auc = ndf[ndf['trial'].isin(a_df['trial'].values)].groupby('cell')\
+                            .apply(get_auc_AB, param=param, allow_negative=allow_negative)\
+                            .reset_index().drop('level_1', axis=1)
+                curr_auc['arousal'] = arousal_label
+                curr_auc['iteration'] = ni
+                curr_auc['true_labels'] = shuffle_cond
+                curr_auc['n_chooseB'] = curr_auc['AUC']*curr_auc['n_trials']
+                i_list.append(curr_auc)
+            except Exception as e:
+                out_q.put(None)
+                raise WorkerStop("error!")
+                
+        curr_iterdf = pd.concat(i_list, axis=0)
+
+    out_q.put(curr_iterdf)
+    
+def iterate_auc_split_pupil(ndf, trialdf, n_iterations=100, param='morphlevel', 
+                            allow_negative=True, n_processes=1):
+    iterdf=None
+   
+    procs=[] 
+    results = []
+    terminating = mp.Event()
+    try:
+        iter_list = np.arange(0, n_iterations)
+        out_q = mp.Queue()
+        chunksize = int(math.ceil(len(iter_list) / float(n_processes)))
+
+        procs = []
+        for i in range(n_processes):
+            p = mp.Process(target=auc_split_pupil_worker, 
+                           args=(out_q, iter_list[chunksize * i:chunksize * (i + 1)],
+                                 ndf, trialdf, param, allow_negative))
+            p.start()
+        results=[]
+        for i in range(n_processes):
+            res = out_q.get(99999)
+            results.append(res)
+        for p in procs:
+            p.join()
+    except WorkerStop:
+        print("No results (terminating)")
+        terminating.set()
+    except KeyboardInterrupt:
+        terminating.set()
+    except Exception as e:
+        traceback.print_exc()
+    finally:
+        for p in procs:
+            p.join()
+            print('%s.exitcode = %s' % (p.name, p.exitcode))
+
+    res_ = [i for i in results if i is not None]
+    if len(res_)>0:
+        iterdf = pd.concat(res_,axis=0)
+
+    return iterdf
+
+
+def split_pupil_calculate_auc(va, dk, ndf, sdf, trialdf, decode_id='results_id', 
+                    param='morphlevel', n_processes=1, allow_negative=True,
+                     n_iterations=None):
+    traceid_dir = get_tracedir_from_datakey(dk)
+    
+    # Setup output file
+    results_outfile = os.path.join(traceid_dir, 'neurometric', 'aucs', '%s.pkl' % (decode_id))
+    if os.path.exists(results_outfile):
+        os.remove(outfile)
+    
+    # Get source trials
+    decoding_outfile = os.path.join(traceid_dir, 'decoding', 'inputdata_%s.pkl' % decode_id)
+    assert os.path.exists(decoding_outfile),\
+            "(%s, %s) No split_pupil results: %s" % (dk, va, decode_id)
+
+    with open(decoding_outfile, 'rb') as f:
+        indata = pkl.load(f, encoding='latin1')
+    trialdf = indata['input_trials']
+    if n_iterations is None:
+        n_iterations = trialdf['iteration'].max()+1
+    print("~~~~~~~~~~ N iterations=%i" % n_iterations)
+    
+    iterdf = iterate_auc_split_pupil(ndf, trialdf, n_iterations=n_iterations, 
+                    param=param, n_processes=n_processes, allow_negative=allow_negative)
+    
+    if iterdf is None:
+        print("None returned -- %s, %s" % (va, dk))
+        return None
+    
+    iterdf['visual_area'] = va
+    iterdf['datakey'] = dk
+    # save
+    with open(results_outfile, 'wb') as f:
+        pkl.dump(iterdf, f, protocol=pkl.HIGHEST_PROTOCOL)
+ 
+    print("============ done. %s|%s ============" % (va, dk))  
+    print(iterdf.groupby(['true_labels', 'arousal']).mean())
+
+    print(results_outfile)
+    
+    return
+
+
+def do_split_pupil_auc(curr_visual_area, curr_datakey, param='morphlevel', 
+                    sigmoid='gauss', fit_experiment='2AFC', 
+                    max_auc=0.70, fit_new=False, create_auc=False, 
+                    traceid='traces001', responsive_test='ROC', responsive_thr=0.05,
+                    experiment='blobs',
+                    src_response_type='dff', overlap_thr=None, trial_epoch='plushalf',
+                    n_processes=1, allow_negative=True, n_iterations=None):
+
+    # Load source data
+    DATA, SDF, selective_df = get_data(traceid=traceid, 
+                    responsive_test=responsive_test, responsive_thr=responsive_thr)
+    assert curr_visual_area in DATA['visual_area'].unique(), \
+            "Visual area <%s> not in DATA." % curr_visual_area
+    assert curr_datakey in DATA['datakey'].unique(), \
+            "Datakey <%s> not in DATA" % curr_datakey
+
+    sdf = SDF[curr_datakey].copy()
+    ndf = DATA[(DATA.visual_area==curr_visual_area) & (DATA.datakey==curr_datakey)].copy()
+
+    morph_lut, a_morphs, b_morphs = get_morph_levels() 
+    ndf = add_morph_info(ndf, sdf, morph_lut, a_morphs, b_morphs)
+       
+    overlap_str = 'noRF' if overlap_thr is None else 'overlap%.2f' % overlap_thr
+ 
+    curr_decode_id = decode_analysis_id(visual_area=curr_visual_area, responsive_test=responsive_test,
+                       response_type=src_response_type, overlap_str=overlap_str, trial_epoch=trial_epoch)
+
+    print("Loading SPLIT_PUPIL results w ID: %s" % curr_decode_id)
+    
+    # Set output dir
+    traceid_dir = get_tracedir_from_datakey(curr_datakey)
+    dst_dir = os.path.join(traceid_dir, 'neurometric', 'aucs')
+    if not os.path.exists(dst_dir):
+        os.makedirs(dst_dir)
+
+    decoding_outfile = os.path.join(traceid_dir, 'decoding', 'inputdata_%s.pkl' % curr_decode_id)
+    assert os.path.exists(decoding_outfile),\
+            "(%s, %s) No split_pupil results: %s" % (curr_datakey, curr_visual_area, curr_decode_id)
+
+    with open(decoding_outfile, 'rb') as f:
+        indata = pkl.load(f, encoding='latin1')
+    trialdf = indata['input_trials']
+
+    split_pupil_calculate_auc(curr_visual_area, curr_datakey, ndf, sdf, 
+            trialdf, decode_id=curr_decode_id, param=param, n_processes=n_processes, 
+            allow_negative=allow_negative, n_iterations=n_iterations)
+
+    print("@@@@@@yaaa done!!@@@@@@@@@@")
+
+    return
+
+
+
+# SPLIT_PUPIL (Fit curves across iterations).
+# -----------------------------------------------------------
+
+def split_pupil_fit_curves(curr_visual_area, curr_datakey, auc_fov, 
+                            param='morphlevel', sigmoid='gauss', fit_experiment='2AFC',
+                            allow_negative=True, fit_new=False, 
+                            traceid='traces001', experiment='blobs'):
+    fitopts = dict()
+    fitopts['expType'] = fit_experiment
+    fitopts['threshPC'] = 0.5 
+
+    # Set output dir
+    traceid_dir = get_tracedir_from_datakey(curr_datakey, 
+                    traceid=traceid, experiment=experiment)
+    curr_dst_dir = os.path.join(traceid_dir, 'neurometric', 'fits', 'split_arousal')
+    if not os.path.exists(curr_dst_dir):
+        os.makedirs(curr_dst_dir)
+    print("Saving ROI results to:\n   %s" % curr_dst_dir)
+
+    # Cells that pass performance criterion
+    if fit_new:
+        old_fns = glob.glob(os.path.join(curr_dst_dir, '*_rid*.pkl'))
+        print("~~~~ deleting %i old files ~~~~~" % len(old_fns))
+        for o_ in old_fns:
+            os.remove(o_)
+
+    ncells = len(auc_fov['cell'].unique())
+    for ri, (rid, auc_r) in enumerate(auc_fov.groupby(['cell'])):
+        if ri%10==0:
+            print("... fitting %i of %i cells" % (int(ri+1), ncells))
+        
+        #print(auc_r['Eff'].unique())
+        #Eff = int(auc_r['Eff'].unique())
+        #sigmoid_ = 'neg_%s' % sigmoid if (Eff==0 and allow_negative) else sigmoid
+        #fitopts['sigmoidName'] = sigmoid_
+
+        fn = '%s_rid%03d.pkl' % (sigmoid, rid)
+        outfile = os.path.join(curr_dst_dir, fn)
+        if os.path.exists(outfile):
+            continue
+
+        results={}
+        for sz, auc_sz in auc_r.groupby(['size']):
+
+            fitparams = auc_sz.groupby(['arousal', 'true_labels'], as_index=False)\
+                        .apply(group_fit_psignifit, fitopts, allow_negative=allow_negative)
+            results[sz] = fitparams
+
+        with open(outfile, 'wb') as f:
+            pkl.dump(results, f, protocol=2)
+        print("... saved: %s" % fn)
+
+    print("DONE!")
+    
+    return None
+
+
+def group_fit_psignifit(auc_, opts, ni=0, sig='gauss', 
+                    param='morphlevel', allow_negative=True):
+    '''
+    auc_ is curve for 1 cell, 1 size (and 1 arousal state, 1 shuffle cond)
+    '''
+    param_names = ['threshold', 'width', 'lambda', 'gamma', 'eta']
+    at_pc = 0.75 if opts['expType']=='2AFC' else 0.5
+
+    if allow_negative:
+        opts['sigmoidName'] = 'neg_%s' % sig if int(auc_['Eff'].unique())==0 else sig
+        # print(opts['sigmoidName'])
+
+    data_ = data_matrix_from_auc(auc_, param=param, normalize=False)        
+    res_ = ps.psignifit(data_, opts)
+    try:
+        thr = ps.getThreshold(res_, at_pc)[0] # Value at which function reaches at_pc correct
+        slp = ps.getSlope(res_, ps.getThreshold(res_, at_pc)[0]) # Slope at given stimulus level
+    except Exception as e:
+        thr=None
+        slp=None
+        
+    df_ = pd.DataFrame(res_['Fit'], index=param_names, columns=[ni]).T        
+    df_['slope'] = slp
+    df_['thr'] = thr
+    
+    add_cols= ['visual_area', 'datakey', 'cell', 'size', 'Eff']
+    if  'arousal' in auc_.columns:
+        add_cols.extend([ 'arousal', 'true_labels'])
+    
+    add_ = auc_[add_cols].drop_duplicates()
+    add_.index = df_.index
+    df_[add_cols] = add_
+
+    return df_
+
+
+
+#def split_pupil_fit_curves(va, dk, ndf, sdf, trialdf, decode_id='results_id', 
+#                    param='morphlevel', n_processes=1, allow_negative=True,
+#                     n_iterations=None):
+#       
+#    if n_iterations is None:
+#        n_iterations = auc_fov['iteration'].max()+1
+#    print("~~~~~~~~~~ N iterations=%i" % n_iterations)
+#    
+#    iterdf = iterate_auc_split_pupil(ndf, trialdf, n_iterations=n_iterations, 
+#                    param=param, n_processes=n_processes, allow_negative=allow_negative)
+#    
+#    if iterdf is None:
+#        print("None returned -- %s, %s" % (va, dk))
+#        return None
+#    
+#    iterdf['visual_area'] = va
+#    iterdf['datakey'] = dk
+#    # save
+#    with open(results_outfile, 'wb') as f:
+#        pkl.dump(iterdf, f, protocol=pkl.HIGHEST_PROTOCOL)
+# 
+#    print("============ done. %s|%s ============" % (va, dk))  
+#    print(iterdf.groupby(['true_labels', 'arousal']).mean())
+#
+#    print(results_outfile)
+#    
+#    return
+#
+
+def do_split_pupil_fits(curr_visual_area, curr_datakey, param='morphlevel', 
+                    sigmoid='gauss', fit_experiment='2AFC', 
+                    max_auc=0.70, fit_new=False, 
+                    traceid='traces001', responsive_test='ROC', responsive_thr=0.05,
+                    experiment='blobs', src_response_type='dff', 
+                    overlap_thr=None, trial_epoch='plushalf',
+                    n_processes=1, allow_negative=True, n_iterations=None):
+
+    # Get split_arousal AUCs (auc per iter, size, arousal state, shuffle cond)      
+    overlap_str = 'noRF' if overlap_thr is None else 'overlap%.2f' % overlap_thr 
+    curr_decode_id = decode_analysis_id(visual_area=curr_visual_area, 
+                        responsive_test=responsive_test, response_type=src_response_type,
+                        overlap_str=overlap_str, trial_epoch=trial_epoch)
+    print("Loading SPLIT_PUPIL results w ID: %s" % curr_decode_id)
+    
+    # Set output dir
+    traceid_dir = get_tracedir_from_datakey(curr_datakey, 
+                    traceid=traceid, experiment=experiment)
+    curr_dst_dir = os.path.join(traceid_dir, 'neurometric', 'fits', 'split_arousal')
+    if not os.path.exists(curr_dst_dir):
+        os.makedirs(curr_dst_dir)
+    print("Saving ROI results to:\n   %s" % curr_dst_dir)
+
+    # Get input aucs
+    auc_outfile = os.path.join(traceid_dir, 'neurometric', 'aucs', '%s.pkl' % curr_decode_id)
+    assert os.path.exists(auc_outfile),\
+        "(%s, %s) No split_pupil AUC: %s" % (curr_datakey, curr_visual_area, curr_decode_id)
+
+    with open(auc_outfile, 'rb') as f:
+        auc_fov_iters = pkl.load(f, encoding='latin1')
+ 
+    group_cols = ['visual_area', 'datakey', 'cell', 'arousal', 'true_labels', 'morphlevel', 'size']
+
+    auc_fov = auc_fov_iters.groupby(group_cols).mean().reset_index()
+    pass_cells = auc_fov[auc_fov['AUC']>=max_auc]['cell'].unique() 
+    print("%i of %i cells pass (crit>=%.2f)" \
+            % (len(pass_cells), len(auc_fov['cell'].unique()), max_auc))
+
+    split_pupil_fit_curves(curr_visual_area, curr_datakey, 
+                        auc_fov[auc_fov['cell'].isin(pass_cells)], 
+                        param=param, sigmoid=sigmoid, fit_experiment=fit_experiment,
+                        allow_negative=allow_negative, fit_new=fit_new)
+
+    print("@@@@@@yaaa done!!@@@@@@@@@@")
+
+    return
+
+
+
+
+
+# ####################3
 
 def split_datakey_str(s):
     session, animalid, fovn = s.split('_')
@@ -47,12 +428,12 @@ def load_source_dataframes(traceid='traces001',
                 aggregate_dir = '/n/coxfs01/julianarhee/aggregate-visual-areas'):
     D = None
     stats_dir = os.path.join(aggregate_dir, 'data-stats')
+    src_data_dir = os.path.join(stats_dir, 'tmp_data')
 
-    src_data_dir = os.path.join(aggregate_dir, 'data_stats', 'tmp_data')
-
-    fbasename = 'neuraldata_%s_corrected_%s-thr-%.2f_*.pkl' \
+    fbasename = 'neuraldata_%s_corrected_%s-thr-%.2f' \
                 % (traceid, responsive_test, responsive_thr)
-    dfns = glob.glob(os.path.join(src_data_dir, '%s' % fbasename))
+    dfns = glob.glob(os.path.join(src_data_dir, '%s_*.pkl' % fbasename))
+    print(fbasename)
     print(dfns)
 
     src_datafile = os.path.join(src_data_dir, dfns[0])
@@ -241,7 +622,7 @@ def calculate_auc(p_hits, p_fas, resp_cfgs1, reverse_eff=False, Eff=None):
     return aucs
 
 
-def get_auc_AB(rdf, param='morphlevel', n_crit=50, include_ref=True, reverse_eff=False,
+def get_auc_AB(rdf, param='morphlevel', n_crit=50, include_ref=True, allow_negative=True,
                   class_a=0, class_b=106, return_probs=False):
     '''
     Calculate AUCs for A vs. B at each size. 
@@ -257,7 +638,7 @@ def get_auc_AB(rdf, param='morphlevel', n_crit=50, include_ref=True, reverse_eff
     p_hits, p_fas, resp_cfgs, counts = split_signal_distns(rdf, param=param, n_crit=n_crit, 
                                                         include_ref=include_ref, Eff=Eff)
         
-    aucs =  calculate_auc(p_hits, p_fas, resp_cfgs, reverse_eff=reverse_eff, Eff=Eff)
+    aucs =  calculate_auc(p_hits, p_fas, resp_cfgs, reverse_eff=not(allow_negative), Eff=Eff)
     aucs['n_trials'] = counts
     aucs['Eff'] = Eff
     
@@ -317,7 +698,7 @@ def data_matrix_from_auc(auc_, param='morphlevel', normalize=False):
 
 def aggregate_AUC(DATA, SDF, param='morphlevel', midp=53, reverse_eff=False,
                   selective_only=False, selective_df=None, create_new=False):
-    tmp_res = '/n/coxfs01/julianarhee/aggregate-visual-areas/data_stats/tmp_data/AUC.pkl'
+    tmp_res = '/n/coxfs01/julianarhee/aggregate-visual-areas/data-stats/tmp_data/AUC.pkl'
     if not create_new:
         try:
             with open(tmp_res, 'rb') as f:
@@ -362,14 +743,6 @@ def create_auc_dataframe(DATA, SDF, param='morphlevel', midp=53):
     a_=[]
     DATA['cell'] = DATA['cell'].astype(int)
     for (va, dk), nd in DATA.groupby(['visual_area', 'datakey']):
-
-        # get selective cells
-#         if selective_only:
-#             seldf = selective_df[(selective_df.visual_area==va) & (selective_df.datakey==dk)].copy()
-#             sel_cells = seldf['cell'].unique().astype(int)
-#         else:
-        sel_cells = nd['cell'].unique().astype(int)
-
         # add stimulus info
         sdf = SDF[dk].copy()
         morphlevels = sdf['morphlevel'].unique()
@@ -377,11 +750,11 @@ def create_auc_dataframe(DATA, SDF, param='morphlevel', midp=53):
 
         sizes = list(sdf['size'].unique())
         if midp not in morphlevels:
-            print("... (%s, %s) Unknown midpoint in morphs: %s" % (dk, va, str(morphlevels)))
+            print("... (%s, %s) Unknown midp in morphs: %s" % (dk, va, str(morphlevels)))
             continue
         nd['size'] = [sdf['size'][c] for c in nd['config']]
         nd['morphlevel'] = [sdf['morphlevel'][c] for c in nd['config']]
-        ndf = nd[(nd['cell'].isin(sel_cells)) & (nd['morphlevel']!=-1)].copy()
+        ndf = nd[(nd['morphlevel']!=-1)].copy()
 
         morph_lut, a_morphs, b_morphs = get_morph_levels(levels=morphlevels, midp=midp)
         # update neuraldata
@@ -423,7 +796,80 @@ def do_neurometric(curr_visual_area, curr_datakey, param='morphlevel',
                             traceid=traceid, experiment=experiment)
     return
 
-
+#
+#def fit_neurometric_curves(curr_visual_area, curr_datakey, DATA, SDF, 
+#                            param='morphlevel', sigmoid='gauss', fit_experiment='2AFC',
+#                            allow_negative=True,
+#                            max_auc=0.7, fit_new=False, create_auc=False,
+#                            traceid='traces001', experiment='blobs'):
+#    fitopts = dict()
+#    fitopts['expType'] = fit_experiment
+#    fitopts['threshPC'] = 0.5 
+#
+#    # Load AUC
+#    AUC = aggregate_AUC(DATA,SDF, param=param, midp=53,reverse_eff=False,
+#                        selective_only=False, selective_df=None, create_new=create_auc)
+#
+#    currAUC = AUC[(AUC.visual_area==curr_visual_area) 
+#                & (AUC.datakey==curr_datakey)].copy()
+#
+#    # Set output dir
+#    traceid_dir = get_tracedir_from_datakey(curr_datakey, 
+#                    traceid=traceid, experiment=experiment)
+#    curr_dst_dir = os.path.join(traceid_dir, 'neurometric', 'fits')
+#    if not os.path.exists(curr_dst_dir):
+#        os.makedirs(curr_dst_dir)
+#    print("Saving ROI results to:\n   %s" % curr_dst_dir)
+#
+#    # Cells that pass performance criterion
+#    pass_cells = currAUC[currAUC['AUC']>=max_auc]['cell'].unique()
+#
+#    print("%i of %i cells pass crit (%.2f)" \
+#        % (len(pass_cells), len(currAUC['cell'].unique()), max_auc))
+#    pass_auc = currAUC[currAUC['cell'].isin(pass_cells)].copy()
+#    if len(pass_cells)==0:
+#        print("****[%s, %s] no cells." % (va, dk))
+#        return 
+#
+#    if create_auc or fit_new:
+#        old_fns = glob.glob(os.path.join(curr_dst_dir, '*_rid*.pkl'))
+#        print("~~~~ deleting %i old files ~~~~~" % len(old_fns))
+#        for o_ in old_fns:
+#            os.remove(o_)
+#
+#    for ri, (rid, auc_r) in enumerate(pass_auc.groupby(['cell'])):
+#        if ri%10==0:
+#            print("... fitting %i of %i cells" % (int(ri+1), len(pass_cells)))
+#
+#        Eff = int(auc_r['Eff'].unique())
+#        sigmoid_ = 'neg_%s' % sigmoid if (Eff==0 and allow_negative) else sigmoid
+#        fitopts['sigmoidName'] = sigmoid_
+#
+#        fn = '%s_rid%03d.pkl' % (sigmoid_, rid)
+#        outfile = os.path.join(curr_dst_dir, fn)
+#        if os.path.exists(outfile):
+#            continue
+#
+#        results={}
+#        for sz, auc_sz in auc_r.groupby(['size']):
+#            # format data
+#            data = data_matrix_from_auc(auc_sz, param=param)
+#
+#            # fit
+#            res = ps.psignifit(data, fitopts)
+#            results[sz] = res
+#
+#        fn = '%s_rid%03d.pkl' % (sigmoid_, rid)
+#        outfile = os.path.join(curr_dst_dir, fn)
+#
+#        with open(outfile, 'wb') as f:
+#            pkl.dump(results, f, protocol=2)
+#        print("... saved: %s" % fn)
+#
+#    print("DONE!")
+#    return None
+#
+#
 def fit_neurometric_curves(curr_visual_area, curr_datakey, DATA, SDF, 
                             param='morphlevel', sigmoid='gauss', fit_experiment='2AFC',
                             allow_negative=True,
@@ -437,10 +883,12 @@ def fit_neurometric_curves(curr_visual_area, curr_datakey, DATA, SDF,
     AUC = aggregate_AUC(DATA,SDF, param=param, midp=53,reverse_eff=False,
                         selective_only=False, selective_df=None, create_new=create_auc)
 
-    currAUC = AUC[(AUC.visual_area==curr_visual_area) & (AUC.datakey==curr_datakey)].copy()
+    currAUC = AUC[(AUC.visual_area==curr_visual_area) 
+                & (AUC.datakey==curr_datakey)].copy()
 
     # Set output dir
-    traceid_dir = get_tracedir_from_datakey(curr_datakey, traceid=traceid, experiment=experiment)
+    traceid_dir = get_tracedir_from_datakey(curr_datakey, 
+                    traceid=traceid, experiment=experiment)
     curr_dst_dir = os.path.join(traceid_dir, 'neurometric', 'fits')
     if not os.path.exists(curr_dst_dir):
         os.makedirs(curr_dst_dir)
@@ -449,7 +897,8 @@ def fit_neurometric_curves(curr_visual_area, curr_datakey, DATA, SDF,
     # Cells that pass performance criterion
     pass_cells = currAUC[currAUC['AUC']>=max_auc]['cell'].unique()
 
-    print("%i of %i cells pass crit (%.2f)" % (len(pass_cells), len(currAUC['cell'].unique()), max_auc))
+    print("%i of %i cells pass crit (%.2f)" \
+        % (len(pass_cells), len(currAUC['cell'].unique()), max_auc))
     pass_auc = currAUC[currAUC['cell'].isin(pass_cells)].copy()
     if len(pass_cells)==0:
         print("****[%s, %s] no cells." % (va, dk))
@@ -463,7 +912,7 @@ def fit_neurometric_curves(curr_visual_area, curr_datakey, DATA, SDF,
 
     for ri, (rid, auc_r) in enumerate(pass_auc.groupby(['cell'])):
         if ri%10==0:
-            print("... fitting %i of %i cells (%s)" % (int(ri+1), len(pass_cells), sigmoid))
+            print("... fitting %i of %i cells" % (int(ri+1), len(pass_cells)))
 
         Eff = int(auc_r['Eff'].unique())
         sigmoid_ = 'neg_%s' % sigmoid if (Eff==0 and allow_negative) else sigmoid
@@ -478,7 +927,6 @@ def fit_neurometric_curves(curr_visual_area, curr_datakey, DATA, SDF,
         for sz, auc_sz in auc_r.groupby(['size']):
             # format data
             data = data_matrix_from_auc(auc_sz, param=param)
-
             # fit
             res = ps.psignifit(data, fitopts)
             results[sz] = res
@@ -491,7 +939,10 @@ def fit_neurometric_curves(curr_visual_area, curr_datakey, DATA, SDF,
         print("... saved: %s" % fn)
 
     print("DONE!")
+    
     return None
+
+
 
 def extract_options(options):
     parser = optparse.OptionParser()
@@ -505,8 +956,8 @@ def extract_options(options):
                       help="experiment name (e.g,. gratings, rfs, rfs10, or blobs)") 
 
     choices_e = ('stimulus', 'firsthalf', 'plushalf', 'baseline')
-    default_e = 'stimulus'
-    parser.add_option('-e', '--epoch', action='store', dest='epoch', 
+    default_e = 'plushalf'
+    parser.add_option('-e', '--epoch', action='store', dest='trial_epoch', 
             default=default_e, type='choice', choices=choices_e,
             help="Trial epoch to average, choices: %s. (default: %s" % (choices_e, default_e))
 
@@ -547,13 +998,20 @@ def extract_options(options):
                       default=True, help='Set flag to fit all to same func (default: allows neg sigmoid fits)')
 
 
-
-
     parser.add_option('-V', '--visual-area', action='store', dest='curr_visual_area',
                       default=None, help='Visual area to fit (default: None)')
     parser.add_option('-k', '--datakey', action='store', dest='curr_datakey',
                       default=None, help='Datakey to fit (default: None)')
 
+    parser.add_option('-o', '--overlap-thr', action='store', dest='overlap_thr',
+                      default=None, help='[SPLIT_PUPIL]: Overlap thr (default: None)')
+    parser.add_option('--pupil-resp-type', action='store', dest='split_pupil_response_type',
+                      default='dff', help='[SPLIT_PUPIL]: Response type (default: dff)')
+    
+    parser.add_option('--pupil-auc', action='store_true', dest='run_auc_split_pupil',
+                      default=False, help='Run AUC for all pupil split conditions')
+    parser.add_option('--pupil', action='store_true', dest='split_pupil',
+                      default=False, help='Fit curves from averaged AUC curves (over split_pupil iterations)')
 
 
 
@@ -595,12 +1053,40 @@ def main(options):
     sigmoid = opts.sigmoid
     fit_experiment = opts.fit_experiment
     allow_negative = opts.allow_negative
- 
-    do_neurometric(curr_visual_area, curr_datakey, param=param, sigmoid=sigmoid, 
-                    fit_experiment=fit_experiment, allow_negative=allow_negative,
-                    max_auc=max_auc, fit_new=fit_new, create_auc=create_auc,
-                    traceid=traceid, responsive_test=responsive_test, responsive_thr=responsive_thr,
-                    experiment=experiment)
+
+    run_auc_split_pupil = opts.run_auc_split_pupil
+    trial_epoch = opts.trial_epoch
+    overlap_thr = opts.overlap_thr
+    src_response_type = opts.split_pupil_response_type
+    n_processes = int(opts.n_processes)
+    n_iterations = 100
+    split_pupil = opts.split_pupil
+
+    if run_auc_split_pupil:
+        do_split_pupil_auc(curr_visual_area, curr_datakey, param=param, sigmoid=sigmoid, 
+                        fit_experiment=fit_experiment, allow_negative=allow_negative,
+                        max_auc=max_auc, fit_new=fit_new, create_auc=create_auc,
+                        traceid=traceid, experiment=experiment,
+                        responsive_test=responsive_test, responsive_thr=responsive_thr,
+                        src_response_type=src_response_type, 
+                        overlap_thr=overlap_thr, trial_epoch=trial_epoch, 
+                        n_processes=n_processes, n_iterations=n_iterations)
+    else:
+        if split_pupil:
+            do_split_pupil_fits(curr_visual_area, curr_datakey, param=param,sigmoid=sigmoid, 
+                        fit_experiment=fit_experiment, allow_negative=allow_negative,
+                        max_auc=max_auc, fit_new=fit_new, 
+                        traceid=traceid, experiment=experiment,
+                        responsive_test=responsive_test, responsive_thr=responsive_thr,
+                        src_response_type=src_response_type, 
+                        overlap_thr=overlap_thr, trial_epoch=trial_epoch)
+        else:
+            do_neurometric(curr_visual_area, curr_datakey, param=param, sigmoid=sigmoid, 
+                        fit_experiment=fit_experiment, allow_negative=allow_negative,
+                        max_auc=max_auc, fit_new=fit_new, create_auc=create_auc,
+                        traceid=traceid, experiment=experiment,
+                        responsive_test=responsive_test, responsive_thr=responsive_thr)
+
 
     print('.done.')
 

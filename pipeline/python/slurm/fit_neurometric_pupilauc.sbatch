@@ -3,7 +3,7 @@
 #
 #SBATCH -J neurometric # A single job name for the array
 #SBATCH -p shared # run on cox gpu to use correct env 
-#SBATCH -n 1 # one core
+#SBATCH -n 4 # one core
 #SBATCH -N 1 # on one node
 #SBATCH -t 0-00:30 # Running time of 3 hours
 #SBATCH --mem 8192 #70656 # Memory request of 70 GB (set to 98304 if exceed lim)
@@ -37,9 +37,9 @@ echo "dkey: ${DKEY}"
 #
 if [ $NEGSIG == "False" ]; then
 
-    python /n/coxfs01/2p-pipeline/repos/2p-pipeline/pipeline/python/classifications/neurometric_fits.py -E $EXP -t $TRACEID -R $RTEST -V $VAREA -k $DKEY -p $PARAM -s $SIGMOID --reverse
+    python /n/coxfs01/2p-pipeline/repos/2p-pipeline/pipeline/python/classifications/neurometric_fits.py -E $EXP -t $TRACEID -R $RTEST -V $VAREA -k $DKEY -p $PARAM -s $SIGMOID --reverse --pupil-auc -n 8
 
 else
-    python /n/coxfs01/2p-pipeline/repos/2p-pipeline/pipeline/python/classifications/neurometric_fits.py -E $EXP -t $TRACEID -R $RTEST -V $VAREA -k $DKEY -p $PARAM -s $SIGMOID
+    python /n/coxfs01/2p-pipeline/repos/2p-pipeline/pipeline/python/classifications/neurometric_fits.py -E $EXP -t $TRACEID -R $RTEST -V $VAREA -k $DKEY -p $PARAM -s $SIGMOID --pupil-auc -n 8
 
 fi
