@@ -62,10 +62,14 @@ def add_morph_info(ndf, sdf, morph_lut, a_morphs, b_morphs, midp=53):
 # SPLIT_PUPIL (Calculate AUCs across iterations).
 # -----------------------------------------------------------
 class WorkerStop(Exception):
+    traceback.print_exc() 
     pass
 
 def auc_split_pupil_worker(out_q, iternums, ndf, trialdf, param, allow_negative):
-
+    '''
+    trialdf: All iterations of trial indices selected for various pupil states
+    ndf: data for all cells in current FOV (group by)
+    '''
     i_list = []
     for ni in iternums:
         curr_trials = trialdf[trialdf['iteration']==ni]
@@ -84,8 +88,7 @@ def auc_split_pupil_worker(out_q, iternums, ndf, trialdf, param, allow_negative)
                 out_q.put(None)
                 raise WorkerStop("error!")
                 
-        curr_iterdf = pd.concat(i_list, axis=0)
-
+    curr_iterdf = pd.concat(i_list, axis=0)
     out_q.put(curr_iterdf)
     
 def iterate_auc_split_pupil(ndf, trialdf, n_iterations=100, param='morphlevel', 
@@ -137,25 +140,13 @@ def split_pupil_calculate_auc(va, dk, ndf, sdf, trialdf, decode_id='results_id',
     traceid_dir = get_tracedir_from_datakey(dk)
     
     # Setup output file
-    results_outfile = os.path.join(traceid_dir, 'neurometric', 'aucs', '%s.pkl' % (decode_id))
+    results_outfile = os.path.join(traceid_dir, 'neurometric', 'split_pupil', 'AUC_%s.pkl' % (decode_id))
     if os.path.exists(results_outfile):
-        os.remove(outfile)
+        os.remove(results_outfile)
     
-    # Get source trials
-    decoding_outfile = os.path.join(traceid_dir, 'decoding', 'inputdata_%s.pkl' % decode_id)
-    assert os.path.exists(decoding_outfile),\
-            "(%s, %s) No split_pupil results: %s" % (dk, va, decode_id)
-
-    with open(decoding_outfile, 'rb') as f:
-        indata = pkl.load(f, encoding='latin1')
-    trialdf = indata['input_trials']
-    if n_iterations is None:
-        n_iterations = trialdf['iteration'].max()+1
-    print("~~~~~~~~~~ N iterations=%i" % n_iterations)
-    
+    # Do iterations 
     iterdf = iterate_auc_split_pupil(ndf, trialdf, n_iterations=n_iterations, 
-                    param=param, n_processes=n_processes, allow_negative=allow_negative)
-    
+                    param=param, n_processes=n_processes, allow_negative=allow_negative) 
     if iterdf is None:
         print("None returned -- %s, %s" % (va, dk))
         return None
@@ -198,14 +189,15 @@ def do_split_pupil_auc(curr_visual_area, curr_datakey, param='morphlevel',
        
     overlap_str = 'noRF' if overlap_thr is None else 'overlap%.2f' % overlap_thr
  
-    curr_decode_id = decode_analysis_id(visual_area=curr_visual_area, responsive_test=responsive_test,
-                       response_type=src_response_type, overlap_str=overlap_str, trial_epoch=trial_epoch)
+    curr_decode_id = decode_analysis_id(visual_area=curr_visual_area, 
+                        responsive_test=responsive_test, response_type=src_response_type, 
+                        overlap_str=overlap_str, trial_epoch=trial_epoch)
 
     print("Loading SPLIT_PUPIL results w ID: %s" % curr_decode_id)
     
     # Set output dir
     traceid_dir = get_tracedir_from_datakey(curr_datakey)
-    dst_dir = os.path.join(traceid_dir, 'neurometric', 'aucs')
+    dst_dir = os.path.join(traceid_dir, 'neurometric', 'split_pupil')
     if not os.path.exists(dst_dir):
         os.makedirs(dst_dir)
 
@@ -217,6 +209,10 @@ def do_split_pupil_auc(curr_visual_area, curr_datakey, param='morphlevel',
         indata = pkl.load(f, encoding='latin1')
     trialdf = indata['input_trials']
 
+    if n_iterations is None:
+        n_iterations = trialdf['iteration'].max()+1
+    print("~~~~~~~~~~ N iterations=%i" % n_iterations)
+ 
     split_pupil_calculate_auc(curr_visual_area, curr_datakey, ndf, sdf, 
             trialdf, decode_id=curr_decode_id, param=param, n_processes=n_processes, 
             allow_negative=allow_negative, n_iterations=n_iterations)
@@ -228,9 +224,168 @@ def do_split_pupil_auc(curr_visual_area, curr_datakey, param='morphlevel',
 
 
 # SPLIT_PUPIL (Fit curves across iterations).
-# -----------------------------------------------------------
+# -----------------------------------------------------------s
+def fit_iter_pupil_worker(out_q, iternums, auc_fov_iters, opts, sigmoid, param, allow_negative):
+    '''
+    auc_fov_iters:  df, loaded from traceid dir per fov
+    For each iteration, has AUCs calculated for sie, arousal, shuffle cond.
+    '''
+    curr_iterdf=None
+    i_list = []
+#    try:
+    for (ni, ri) in iternums:
+        curr_trials = auc_fov_iters[(auc_fov_iters['iteration']==ni) 
+                                  & (auc_fov_iters['cell']==ri)]
+        #for (sz, a_cond, s_cond), a_df in curr_trials.groupby(['size', 'arousal', 'true_labels']):
+        print(ni, ri) #a_cond, s_cond)
+        try:
+            curr_fiter = curr_trials.groupby(['size', 'arousal', 'true_labels'], as_index=False)\
+                        .apply(group_fit_psignifit, opts, ni=ni, 
+                        sigmoid=sigmoid, param=param, allow_negative=allow_negative)
+            curr_fiter['iteration'] = ni
+            #curr_fiter['true_labels'] = s_cond
+            #curr_fiter['arousal'] = a_cond 
+            #curr_fiter['size']= sz
+            curr_fiter['cell']= ri
+            i_list.append(curr_fiter)
+        except Exception as e:
+            out_q.put(None)
+            raise WorkerStop("error!")
 
-def split_pupil_fit_curves(curr_visual_area, curr_datakey, auc_fov, 
+    curr_iterdf = pd.concat(i_list, axis=0)
+    out_q.put(curr_iterdf)
+ 
+def xfit_split_pupil_worker(out_q, iternums, auc_fov_iters, opts, sigmoid, param, allow_negative):
+    '''
+    auc_fov_iters:  df, loaded from traceid dir per fov
+    For each iteration, has AUCs calculated for sie, arousal, shuffle cond.
+    '''
+    curr_iterdf=None
+    i_list = []
+#    try:
+    for ni in iternums:
+        curr_trials = auc_fov_iters[auc_fov_iters['iteration']==ni]
+        for (sz, a_cond, s_cond), a_df in curr_trials.groupby(['size', 'arousal', 'true_labels']):
+            print(ni, a_cond, s_cond)
+            try:
+                curr_fiter = a_df.groupby(['cell'], as_index=False)\
+                            .apply(group_fit_psignifit, opts, ni=ni, 
+                            sigmoid=sigmoid, param=param, allow_negative=allow_negative)
+                curr_fiter['arousal'] = a_cond 
+                curr_fiter['iteration'] = ni
+                curr_fiter['true_labels'] = s_cond
+                curr_fiter['size']= sz
+                i_list.append(curr_fiter)
+            except Exception as e:
+                out_q.put(None)
+                raise WorkerStop("error!")
+
+    curr_iterdf = pd.concat(i_list, axis=0)
+    out_q.put(curr_iterdf)
+ 
+#                
+##            curr_fiter = curr_trials.groupby(['cell', 'size', 'arousal', 'true_labels'], as_index=False)\
+##                .apply(group_fit_psignifit, opts, ni=ni, sigmoid=sigmoid, param=param, allow_negative=allow_negative)
+##            curr_fiter['iteration'] = ni
+##            i_list.append(curr_fiter)
+#        curr_iterdf = pd.concat(i_list, axis=0)
+#        out_q.put(curr_iterdf)
+#
+#    except Exception as e:
+#        traceback.print_exc()
+#        out_q.put(None)
+#        raise WorkerStop("error!") 
+#        return 
+#    #curr_iterdf = pd.concat(i_list, axis=0)
+#    #out_q.put(curr_iterdf)
+#
+
+def iterate_fit_split_pupil(auc_fov_iters, n_iterations=100, n_processes=1,
+                            fitopts={}, sigmoid='gauss', param='morphlevel', allow_negative=True):
+    iterdf=None 
+    procs=[] 
+    results = []
+    terminating = mp.Event()
+    try:
+        #iter_list = np.arange(0, n_iterations)
+        iter_nums = np.arange(0, n_iterations)
+        cell_nums = auc_fov_iters['cell'].unique()
+        iter_list = list(itertools.product(*[iter_nums, cell_nums]))
+        out_q = mp.Queue()
+        chunksize = int(math.ceil(len(iter_list) / float(n_processes)))
+        for i in range(n_processes):
+            p = mp.Process(target=fit_iter_pupil_worker, 
+                           args=(out_q, iter_list[chunksize * i:chunksize * (i + 1)],
+                                 auc_fov_iters, fitopts, sigmoid, param, allow_negative))
+            p.start()
+        for i in range(n_processes):
+            res = out_q.get(99999)
+            results.append(res)
+        for p in procs:
+            p.join()
+    except WorkerStop:
+        print("No results (terminating)")
+        terminating.set()
+    except KeyboardInterrupt:
+        terminating.set()
+    except Exception as e:
+        traceback.print_exc()
+    finally:
+        for p in procs:
+            p.join()
+            print('%s.exitcode = %s' % (p.name, p.exitcode))
+
+    res_ = [i for i in results if i is not None]
+    if len(res_)>0:
+        iterdf = pd.concat(res_,axis=0)
+
+    return iterdf
+
+
+def split_pupil_fit_curve(va, dk, auc_fov_iters, n_processes=1, 
+                     n_iterations=None, decode_id='resultsid',
+                    fit_experiment='2AFC', sigmoid='gauss', param='morphlevel', 
+                    allow_negative=True):
+
+    fitopts = dict()
+    fitopts['expType'] = fit_experiment
+    fitopts['threshPC'] = 0.5 
+    fitopts['sigmoidName'] = sigmoid 
+
+    traceid_dir = get_tracedir_from_datakey(dk)
+    
+    # Setup output file
+    results_outfile = os.path.join(traceid_dir, 'neurometric', 'split_pupil', 'FIT_%s.pkl' % (decode_id))
+    if os.path.exists(results_outfile):
+        os.remove(outfile)
+    if n_iterations is None:
+        n_iterations = auc_fov_iters['iteration'].max()+1 
+   
+    print("~~~~~~~~N iterations: %i (n_proc=%i)" % (n_iterations, n_processes)) 
+    # Do iterations 
+    iterdf = iterate_fit_split_pupil(auc_fov_iters, fitopts=fitopts, 
+                    sigmoid=sigmoid, param=param, allow_negative=allow_negative, 
+                    n_processes=n_processes, n_iterations=n_iterations) 
+    if iterdf is None:
+        print("None returned -- %s, %s" % (va, dk))
+        return None
+    
+    iterdf['visual_area'] = va
+    iterdf['datakey'] = dk
+    # save
+    with open(results_outfile, 'wb') as f:
+        pkl.dump(iterdf, f, protocol=pkl.HIGHEST_PROTOCOL)
+ 
+    print("============ done. %s|%s ============" % (va, dk))  
+    print(iterdf.groupby(['true_labels', 'arousal']).mean())
+
+    print(results_outfile)
+    
+    return
+
+
+ 
+def split_pupil_fit_curve_meanAUC(curr_visual_area, curr_datakey, auc_fov, 
                             param='morphlevel', sigmoid='gauss', fit_experiment='2AFC',
                             allow_negative=True, fit_new=False, 
                             traceid='traces001', experiment='blobs'):
@@ -241,42 +396,29 @@ def split_pupil_fit_curves(curr_visual_area, curr_datakey, auc_fov,
     # Set output dir
     traceid_dir = get_tracedir_from_datakey(curr_datakey, 
                     traceid=traceid, experiment=experiment)
-    curr_dst_dir = os.path.join(traceid_dir, 'neurometric', 'fits', 'split_arousal')
+    curr_dst_dir = os.path.join(traceid_dir, 'neurometric', 'split_pupil', 'fits')
     if not os.path.exists(curr_dst_dir):
         os.makedirs(curr_dst_dir)
     print("Saving ROI results to:\n   %s" % curr_dst_dir)
 
-    # Cells that pass performance criterion
     if fit_new:
-        old_fns = glob.glob(os.path.join(curr_dst_dir, '*_rid*.pkl'))
-        print("~~~~ deleting %i old files ~~~~~" % len(old_fns))
-        for o_ in old_fns:
-            os.remove(o_)
-
+        old_fns = glob.glob(os.path.join(curr_dst_dir, 'meanAUC_*%s_rid*.pkl' %sigmoid))
+        print("Removing %i old files" % len(old_fns))
+        for f in old_fns:
+            os.remove(f)
+     
     ncells = len(auc_fov['cell'].unique())
     for ri, (rid, auc_r) in enumerate(auc_fov.groupby(['cell'])):
         if ri%10==0:
             print("... fitting %i of %i cells" % (int(ri+1), ncells))
         
-        #print(auc_r['Eff'].unique())
-        #Eff = int(auc_r['Eff'].unique())
-        #sigmoid_ = 'neg_%s' % sigmoid if (Eff==0 and allow_negative) else sigmoid
-        #fitopts['sigmoidName'] = sigmoid_
-
-        fn = '%s_rid%03d.pkl' % (sigmoid, rid)
+        fn = 'meanAUC_%s_rid%03d.pkl' % (sigmoid, rid)
         outfile = os.path.join(curr_dst_dir, fn)
-        if os.path.exists(outfile):
-            continue
-
-        results={}
-        for sz, auc_sz in auc_r.groupby(['size']):
-
-            fitparams = auc_sz.groupby(['arousal', 'true_labels'], as_index=False)\
-                        .apply(group_fit_psignifit, fitopts, allow_negative=allow_negative)
-            results[sz] = fitparams
-
+        fitparams = auc_r.groupby(['size', 'arousal', 'true_labels'], as_index=False)\
+                        .apply(group_fit_psignifit, fitopts, \
+                                param=param, ni=rid, allow_negative=allow_negative)
         with open(outfile, 'wb') as f:
-            pkl.dump(results, f, protocol=2)
+            pkl.dump(fitparams, f, protocol=2)
         print("... saved: %s" % fn)
 
     print("DONE!")
@@ -284,7 +426,108 @@ def split_pupil_fit_curves(curr_visual_area, curr_datakey, auc_fov,
     return None
 
 
-def group_fit_psignifit(auc_, opts, ni=0, sig='gauss', 
+def split_pupil_fit_curve_meanAUC0(curr_visual_area, curr_datakey, auc_fov, 
+                            param='morphlevel', sigmoid='gauss', fit_experiment='2AFC',
+                            allow_negative=True, fit_new=False, 
+                            traceid='traces001', experiment='blobs', n_processes=1):
+    fitopts = dict()
+    fitopts['expType'] = fit_experiment
+    fitopts['threshPC'] = 0.5 
+
+    # Set output dir
+    traceid_dir = get_tracedir_from_datakey(curr_datakey, 
+                    traceid=traceid, experiment=experiment)
+    curr_dst_dir = os.path.join(traceid_dir, 'neurometric', 'split_pupil', 'fits')
+    if not os.path.exists(curr_dst_dir):
+        os.makedirs(curr_dst_dir)
+    print("Saving ROI results to:\n   %s" % curr_dst_dir)
+    all_cells = auc_fov['cell'].unique()
+
+    if fit_new:
+        old_fns = glob.glob(os.path.join(curr_dst_dir, 'meanAUC_*%s_rid*.pkl' %sigmoid))
+        print("Removing %i old files" % len(old_fns))
+        for f in old_fns:
+            os.remove(f)
+        cells_to_run = all_cells
+    else:
+        old_fns = [os.path.split(fn)[-1] for fn in \
+                glob.glob(os.path.join(curr_dst_dir, 'meanAUC_%s_rid*.pkl' %sigmoid))]
+        cells_to_run = [rid for rid in all_cells if \
+                'meanAUC_%s_rid%03d.pkl' % (sigmoid, rid) not in old_fns]
+
+    print("... fitting %i of %i cells" % (len(cells_to_run), len(all_cells))) #ncells) 
+
+    iterdf=None 
+    procs=[] 
+    results = []
+    terminating = mp.Event()
+    try:
+        out_q = mp.Queue()
+        iter_list =cells_to_run
+        chunksize = int(math.ceil(len(iter_list) / float(n_processes)))
+        for i in range(n_processes):
+            p = mp.Process(target=split_pupil_worker, 
+                    args=(out_q, iter_list[chunksize * i:chunksize * (i + 1)],
+                auc_fov, curr_dst_dir, fitopts, sigmoid, param, allow_negative))
+            p.start()
+        for i in range(n_processes):
+            res = out_q.get(99999)
+            results.append(res)
+        for p in procs:
+            p.join()
+    except WorkerStop:
+        print("No results (terminating)")
+        terminating.set()
+    except KeyboardInterrupt:
+        terminating.set()
+    except Exception as e:
+        traceback.print_exc()
+    finally:
+        for p in procs:
+            p.join()
+            print('%s.exitcode = %s' % (p.name, p.exitcode))
+
+    res_ = [i for i in results if i is not None]
+    if len(res_)>0:
+        iterdf = pd.concat(res_,axis=0)
+    
+    print(iterdf.shape)
+   
+    return iterdf 
+
+
+
+def split_pupil_worker(out_q, roi_list, auc_fov, curr_dst_dir, 
+                        fitopts, sigmoid, param, allow_negative):
+    '''
+    auc_fov_iters:  df, loaded from traceid dir per fov
+    For each iteration, has AUCs calculated for sie, arousal, shuffle cond.
+    '''
+    curr_iterdf=None
+    i_list = []
+#    try:
+    for ri, (rid, auc_r) in enumerate(auc_fov[auc_fov['cell'].isin(roi_list)].groupby(['cell'])):
+        try:
+            print(ri, rid)
+            fn = 'meanAUC_%s_rid%03d.pkl' % (sigmoid, rid)
+            outfile = os.path.join(curr_dst_dir, fn)
+            fitparams = auc_r.groupby(['Eff', 'size', 'arousal', 'true_labels'], as_index=False)\
+                            .apply(group_fit_psignifit, fitopts, \
+                                    ni=rid, param=param, sigmoid=sigmoid, 
+                                    allow_negative=allow_negative)
+            with open(outfile, 'wb') as f:
+                pkl.dump(fitparams, f, protocol=2)
+            i_list.append(fitparams)
+ 
+        except Exception as e:
+            out_q.put(None)
+            raise WorkerStop("error!")
+   
+    fitd = pd.concat(i_list) 
+    out_q.put(fitd)
+           
+
+def group_fit_psignifit(auc_, opts, ni=0, sigmoid='gauss', 
                     param='morphlevel', allow_negative=True):
     '''
     auc_ is curve for 1 cell, 1 size (and 1 arousal state, 1 shuffle cond)
@@ -293,7 +536,13 @@ def group_fit_psignifit(auc_, opts, ni=0, sig='gauss',
     at_pc = 0.75 if opts['expType']=='2AFC' else 0.5
 
     if allow_negative:
-        opts['sigmoidName'] = 'neg_%s' % sig if int(auc_['Eff'].unique())==0 else sig
+        try:
+            eff = int(auc_['Eff'].unique())
+        except Exception as e:
+            print(auc_['Eff'].unique())
+            return None
+
+        opts['sigmoidName'] = 'neg_%s' % sigmoid if int(auc_['Eff'].unique())<53 else sigmoid
         # print(opts['sigmoidName'])
 
     data_ = data_matrix_from_auc(auc_, param=param, normalize=False)        
@@ -320,43 +569,13 @@ def group_fit_psignifit(auc_, opts, ni=0, sig='gauss',
     return df_
 
 
-
-#def split_pupil_fit_curves(va, dk, ndf, sdf, trialdf, decode_id='results_id', 
-#                    param='morphlevel', n_processes=1, allow_negative=True,
-#                     n_iterations=None):
-#       
-#    if n_iterations is None:
-#        n_iterations = auc_fov['iteration'].max()+1
-#    print("~~~~~~~~~~ N iterations=%i" % n_iterations)
-#    
-#    iterdf = iterate_auc_split_pupil(ndf, trialdf, n_iterations=n_iterations, 
-#                    param=param, n_processes=n_processes, allow_negative=allow_negative)
-#    
-#    if iterdf is None:
-#        print("None returned -- %s, %s" % (va, dk))
-#        return None
-#    
-#    iterdf['visual_area'] = va
-#    iterdf['datakey'] = dk
-#    # save
-#    with open(results_outfile, 'wb') as f:
-#        pkl.dump(iterdf, f, protocol=pkl.HIGHEST_PROTOCOL)
-# 
-#    print("============ done. %s|%s ============" % (va, dk))  
-#    print(iterdf.groupby(['true_labels', 'arousal']).mean())
-#
-#    print(results_outfile)
-#    
-#    return
-#
-
 def do_split_pupil_fits(curr_visual_area, curr_datakey, param='morphlevel', 
                     sigmoid='gauss', fit_experiment='2AFC', 
-                    max_auc=0.70, fit_new=False, 
+                    max_auc=0.70, fit_new=False, by_iter=True,allow_negative=True,
                     traceid='traces001', responsive_test='ROC', responsive_thr=0.05,
                     experiment='blobs', src_response_type='dff', 
                     overlap_thr=None, trial_epoch='plushalf',
-                    n_processes=1, allow_negative=True, n_iterations=None):
+                    n_processes=1,  n_iterations=100):
 
     # Get split_arousal AUCs (auc per iter, size, arousal state, shuffle cond)      
     overlap_str = 'noRF' if overlap_thr is None else 'overlap%.2f' % overlap_thr 
@@ -368,32 +587,55 @@ def do_split_pupil_fits(curr_visual_area, curr_datakey, param='morphlevel',
     # Set output dir
     traceid_dir = get_tracedir_from_datakey(curr_datakey, 
                     traceid=traceid, experiment=experiment)
-    curr_dst_dir = os.path.join(traceid_dir, 'neurometric', 'fits', 'split_arousal')
+    curr_dst_dir = os.path.join(traceid_dir, 'neurometric', 'split_pupil')
     if not os.path.exists(curr_dst_dir):
         os.makedirs(curr_dst_dir)
     print("Saving ROI results to:\n   %s" % curr_dst_dir)
 
     # Get input aucs
-    auc_outfile = os.path.join(traceid_dir, 'neurometric', 'aucs', '%s.pkl' % curr_decode_id)
+    auc_outfile = os.path.join(curr_dst_dir, 'AUC_%s.pkl' % curr_decode_id)
     assert os.path.exists(auc_outfile),\
-        "(%s, %s) No split_pupil AUC: %s" % (curr_datakey, curr_visual_area, curr_decode_id)
+        "(%s, %s) No file for: AUC_%s" % (curr_datakey, curr_visual_area, curr_decode_id)
 
     with open(auc_outfile, 'rb') as f:
         auc_fov_iters = pkl.load(f, encoding='latin1')
- 
-    group_cols = ['visual_area', 'datakey', 'cell', 'arousal', 'true_labels', 'morphlevel', 'size']
 
+    # mean AUC over iters 
+    group_cols = ['visual_area', 'datakey', 'cell', 'arousal', 'true_labels', 'morphlevel', 'size', 'Eff']
     auc_fov = auc_fov_iters.groupby(group_cols).mean().reset_index()
+    # Save mean
+    meanauc_outfile = os.path.join(os.path.split(auc_outfile)[0], 'mean_aucs.pkl')
+    with open(meanauc_outfile, 'wb') as f:
+        pkl.dump(auc_fov, f, protocol=2)
+
     pass_cells = auc_fov[auc_fov['AUC']>=max_auc]['cell'].unique() 
+
+#    if by_iter:
+#        pass_cells = auc_fov[auc_fov['AUC']>=max_auc]['cell'].unique() 
+#    else:
+#        pass_cells = [r for r, g in auc_fov[auc_fov['AUC']>=max_auc].groupby(['cell']) if len(g['Eff'].unique())==1]
+#
     print("%i of %i cells pass (crit>=%.2f)" \
             % (len(pass_cells), len(auc_fov['cell'].unique()), max_auc))
 
-    split_pupil_fit_curves(curr_visual_area, curr_datakey, 
-                        auc_fov[auc_fov['cell'].isin(pass_cells)], 
-                        param=param, sigmoid=sigmoid, fit_experiment=fit_experiment,
-                        allow_negative=allow_negative, fit_new=fit_new)
 
-    print("@@@@@@yaaa done!!@@@@@@@@@@")
+    if by_iter:
+        split_pupil_fit_curve(curr_visual_area, curr_datakey, 
+                            auc_fov_iters[auc_fov_iters['cell'].isin(pass_cells)], 
+                             decode_id=curr_decode_id,
+                            param=param, sigmoid=sigmoid, fit_experiment=fit_experiment,
+                            allow_negative=allow_negative, 
+                            n_iterations=n_iterations, n_processes=n_processes)
+
+       
+    else:
+        split_pupil_fit_curve_meanAUC0(curr_visual_area, curr_datakey, 
+                            auc_fov[auc_fov['cell'].isin(pass_cells)], 
+                            param=param, sigmoid=sigmoid, fit_experiment=fit_experiment,
+                            allow_negative=allow_negative, fit_new=fit_new,
+                            n_processes=n_processes)
+
+        print("@@@@@@yaaa done!!@@@@@@@@@@")
 
     return
 
@@ -984,6 +1226,9 @@ def extract_options(options):
     
     parser.add_option('-n', '--nproc', action='store', dest='n_processes', 
                       default=1)
+    parser.add_option('-N', '--niter', action='store', dest='n_iterations', 
+                      default=100)
+
 
 
     parser.add_option('-p', '--param', action='store', dest='param',
@@ -1012,6 +1257,9 @@ def extract_options(options):
                       default=False, help='Run AUC for all pupil split conditions')
     parser.add_option('--pupil', action='store_true', dest='split_pupil',
                       default=False, help='Fit curves from averaged AUC curves (over split_pupil iterations)')
+
+    parser.add_option('--iter', action='store_true', dest='by_iter',
+                      default=False, help='Fit curves to each iter (over split_pupil iterations)')
 
 
 
@@ -1059,8 +1307,9 @@ def main(options):
     overlap_thr = opts.overlap_thr
     src_response_type = opts.split_pupil_response_type
     n_processes = int(opts.n_processes)
-    n_iterations = 100
+    n_iterations = None if opts.n_iterations in [None, 'None'] else int(opts.n_iterations)
     split_pupil = opts.split_pupil
+    by_iter = opts.by_iter
 
     if run_auc_split_pupil:
         do_split_pupil_auc(curr_visual_area, curr_datakey, param=param, sigmoid=sigmoid, 
@@ -1075,11 +1324,12 @@ def main(options):
         if split_pupil:
             do_split_pupil_fits(curr_visual_area, curr_datakey, param=param,sigmoid=sigmoid, 
                         fit_experiment=fit_experiment, allow_negative=allow_negative,
-                        max_auc=max_auc, fit_new=fit_new, 
+                        max_auc=max_auc, fit_new=fit_new, by_iter=by_iter,  
                         traceid=traceid, experiment=experiment,
                         responsive_test=responsive_test, responsive_thr=responsive_thr,
                         src_response_type=src_response_type, 
-                        overlap_thr=overlap_thr, trial_epoch=trial_epoch)
+                        overlap_thr=overlap_thr, trial_epoch=trial_epoch,
+                        n_processes=n_processes, n_iterations=n_iterations)
         else:
             do_neurometric(curr_visual_area, curr_datakey, param=param, sigmoid=sigmoid, 
                         fit_experiment=fit_experiment, allow_negative=allow_negative,

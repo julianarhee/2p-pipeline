@@ -33,6 +33,10 @@ parser.add_argument('--reverse', dest='allow_negative', action='store_false', de
 
 parser.add_argument('--pupil-auc', dest='do_pupilauc', action='store_true', default=False, help='Set flag to run AUC calculation across all pupil iterations)')
 
+parser.add_argument('--pupil', dest='split_pupil', action='store_true', default=False, help='Set flag to fit curves from averaged AUC from split_pupil iters')
+
+parser.add_argument('--iter', dest='by_iter', action='store_true', default=False, help='Set flag to fit curves to each ITER, from split_pupil iters')
+
 
 parser.add_argument('-v', '--area', dest='visual_area', action='store', default=None, help='Visual area to process (default, all)')
 parser.add_argument('-k', '--datakeys', nargs='*', dest='included_datakeys', action='append', help='Use like: -k DKEY DKEY DKEY')
@@ -70,6 +74,9 @@ sigmoid = args.sigmoid
 param = args.param
 allow_negative = args.allow_negative
 do_pupilauc = args.do_pupilauc
+split_pupil = args.split_pupil
+by_iter = args.by_iter
+
 
 # Create a (hopefully) unique prefix for the names of all jobs in this 
 # particular run of the pipeline. This makes sure that runs can be
@@ -78,7 +85,9 @@ piper = uuid.uuid4()
 piper = str(piper)[0:4]
 
 # Set LOGS
-logdir = 'LOG_%s_%s' % (str(visual_area), responsive_test) 
+a_type = 'AUC' if do_pupilauc else 'FIT'
+
+logdir = 'LOG_%s_%s_%s' % (a_type, str(visual_area), responsive_test) 
 if not os.path.exists(logdir):
     os.mkdir(logdir)
 
@@ -147,7 +156,32 @@ for (visual_area, datakey), g in dsets.groupby(['visual_area', 'datakey']):
             rtest=responsive_test, varea=visual_area, dkey=datakey, 
             param=param, sigmoid=sigmoid, allow_neg=allow_negative) 
     #
-
+    elif split_pupil:
+        if by_iter:
+            mtag = 'psigni-iterpupil-%s-%s_%s_%s' \
+                        % (sigmoid, param, visual_area, datakey) 
+            cmd = "sbatch --job-name={procid}.{mtag} \
+                    -o '{logdir}/{procid}.{mtag}.{rtest}.out' \
+                    -e '{logdir}/{procid}.{mtag}.{rtest}.err' \
+            /n/coxfs01/2p-pipeline/repos/2p-pipeline/pipeline/python/slurm/fit_neurometric_iterpupil.sbatch \
+            {exp} {traceid} {rtest} {varea} {dkey} {param} {sigmoid} {allow_neg}"\
+                .format(procid=piper, mtag=mtag, logdir=logdir,
+                exp=experiment, traceid=traceid, 
+                rtest=responsive_test, varea=visual_area, dkey=datakey, 
+                param=param, sigmoid=sigmoid, allow_neg=allow_negative) 
+        else: 
+            mtag = 'psigni-splitpupil-%s-%s_%s_%s' \
+                        % (sigmoid, param, visual_area, datakey) 
+            cmd = "sbatch --job-name={procid}.{mtag} \
+                    -o '{logdir}/{procid}.{mtag}.{rtest}.out' \
+                    -e '{logdir}/{procid}.{mtag}.{rtest}.err' \
+            /n/coxfs01/2p-pipeline/repos/2p-pipeline/pipeline/python/slurm/fit_neurometric_splitpupil.sbatch \
+            {exp} {traceid} {rtest} {varea} {dkey} {param} {sigmoid} {allow_neg}"\
+                .format(procid=piper, mtag=mtag, logdir=logdir,
+                exp=experiment, traceid=traceid, 
+                rtest=responsive_test, varea=visual_area, dkey=datakey, 
+                param=param, sigmoid=sigmoid, allow_neg=allow_negative) 
+     
     else:
 
         mtag = 'psigni-%s-%s_%s_%s' \
