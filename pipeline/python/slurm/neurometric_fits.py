@@ -149,7 +149,7 @@ for (visual_area, datakey), g in dsets.groupby(['visual_area', 'datakey']):
         cmd = "sbatch --job-name={procid}.{mtag} \
                 -o '{logdir}/{procid}.{mtag}.{rtest}.out' \
                 -e '{logdir}/{procid}.{mtag}.{rtest}.err' \
-        /n/coxfs01/2p-pipeline/repos/2p-pipeline/pipeline/python/slurm/fit_neurometric_pupilauc.sbatch \
+        /n/coxfs01/2p-pipeline/repos/2p-pipeline/pipeline/python/slurm/neurometric_pupilauc.sbatch \
         {exp} {traceid} {rtest} {varea} {dkey} {param} {sigmoid} {allow_neg}"\
             .format(procid=piper, mtag=mtag, logdir=logdir,
             exp=experiment, traceid=traceid, 
@@ -163,7 +163,7 @@ for (visual_area, datakey), g in dsets.groupby(['visual_area', 'datakey']):
             cmd = "sbatch --job-name={procid}.{mtag} \
                     -o '{logdir}/{procid}.{mtag}.{rtest}.out' \
                     -e '{logdir}/{procid}.{mtag}.{rtest}.err' \
-            /n/coxfs01/2p-pipeline/repos/2p-pipeline/pipeline/python/slurm/fit_neurometric_iterpupil.sbatch \
+            /n/coxfs01/2p-pipeline/repos/2p-pipeline/pipeline/python/slurm/neurometric_iterpupil.sbatch \
             {exp} {traceid} {rtest} {varea} {dkey} {param} {sigmoid} {allow_neg}"\
                 .format(procid=piper, mtag=mtag, logdir=logdir,
                 exp=experiment, traceid=traceid, 
@@ -175,7 +175,7 @@ for (visual_area, datakey), g in dsets.groupby(['visual_area', 'datakey']):
             cmd = "sbatch --job-name={procid}.{mtag} \
                     -o '{logdir}/{procid}.{mtag}.{rtest}.out' \
                     -e '{logdir}/{procid}.{mtag}.{rtest}.err' \
-            /n/coxfs01/2p-pipeline/repos/2p-pipeline/pipeline/python/slurm/fit_neurometric_splitpupil.sbatch \
+            /n/coxfs01/2p-pipeline/repos/2p-pipeline/pipeline/python/slurm/neurometric_splitpupil.sbatch \
             {exp} {traceid} {rtest} {varea} {dkey} {param} {sigmoid} {allow_neg}"\
                 .format(procid=piper, mtag=mtag, logdir=logdir,
                 exp=experiment, traceid=traceid, 
@@ -189,7 +189,7 @@ for (visual_area, datakey), g in dsets.groupby(['visual_area', 'datakey']):
         cmd = "sbatch --job-name={procid}.{mtag} \
                 -o '{logdir}/{procid}.{mtag}.{rtest}.out' \
                 -e '{logdir}/{procid}.{mtag}.{rtest}.err' \
-        /n/coxfs01/2p-pipeline/repos/2p-pipeline/pipeline/python/slurm/fit_neurometric.sbatch \
+        /n/coxfs01/2p-pipeline/repos/2p-pipeline/pipeline/python/slurm/neurometric_fits.sbatch \
         {exp} {traceid} {rtest} {varea} {dkey} {param} {sigmoid} {allow_neg}"\
             .format(procid=piper, mtag=mtag, logdir=logdir,
             exp=experiment, traceid=traceid, 
