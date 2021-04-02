@@ -24,6 +24,10 @@ from scipy import ndimage
 from scipy.interpolate import griddata
 
 
+def get_rid_from_str(s, ndec=3):
+    #print(re.findall(r"rid\d{%s}" % ndec, s)[0][3:])
+    return int(re.findall(r"rid\d{%s}" % ndec, s)[0][3:])
+
 def split_datakey(df):
     df['animalid'] = [s.split('_')[1] for s in df['datakey']]
     df['fov'] = ['FOV%i_zoom2p0x' % int(s.split('_')[2][3:]) for s in df['datakey']]

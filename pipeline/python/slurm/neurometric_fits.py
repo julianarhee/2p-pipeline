@@ -109,7 +109,7 @@ sys.stdout = open('%s/INFO_%s.txt' % (logdir, piper), 'w')
 def load_metadata(experiment, visual_area=None, visual_areas=['V1', 'Lm', 'Li'],
                 aggregate_dir='/n/coxfs01/julianarhee/aggregate-visual-areas'):
 
-    sdata_fpath = os.path.join(aggregate_dir, 'dataset_info.pkl')
+    sdata_fpath = os.path.join(aggregate_dir, 'dataset_info_assigned.pkl')
     with open(sdata_fpath, 'rb') as f:
         sdata = pkl.load(f, encoding='latin1')
 

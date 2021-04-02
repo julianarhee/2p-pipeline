@@ -37,7 +37,7 @@ echo "dkey: ${DKEY}"
 #
 if [ $NEGSIG == "False" ]; then
 
-    python /n/coxfs01/2p-pipeline/repos/2p-pipeline/pipeline/python/classifications/neurometric_fits.py -E $EXP -t $TRACEID -R $RTEST -V $VAREA -k $DKEY -p $PARAM -s $SIGMOID --reverse --pupil -n 8 
+    python /n/coxfs01/2p-pipeline/repos/2p-pipeline/pipeline/python/classifications/neurometric_fits.py -E $EXP -t $TRACEID -R $RTEST -V $VAREA -k $DKEY -p $PARAM -s $SIGMOID --reverse --pupil -n 8 --new
 
 else
     python /n/coxfs01/2p-pipeline/repos/2p-pipeline/pipeline/python/classifications/neurometric_fits.py -E $EXP -t $TRACEID -R $RTEST -V $VAREA -k $DKEY -p $PARAM -s $SIGMOID --pupil -n 8 --new
