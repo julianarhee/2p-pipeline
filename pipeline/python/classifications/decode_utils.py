@@ -409,7 +409,7 @@ def iterate_by_ncells(n_cells, NEURALDATA, CELLS, sdf, n_iterations=100, n_proce
     results = []
     terminating = mp.Event() 
     def worker(out_q, n_iters, n_cells, NEURALDATA, CELLS, sdf, common_labels, test_type,
-                    C_value=None, verbose=False, class_a=0, class_b=106):
+                    C_value=None, verbose=False, class_a=0, class_b=106, cv_nfolds=5, test_split=0.2):
         r_ = []        
         i_=[]
         for ni in n_iters:
@@ -427,7 +427,7 @@ def iterate_by_ncells(n_cells, NEURALDATA, CELLS, sdf, n_iterations=100, n_proce
             start_t = time.time()
             i_df = select_test(ni, neuraldf, sdf, 
                                     C_value=C_value, class_a=class_a, class_b=class_b, 
-                                cv_nfolds=cv_nfolds, test_split=test_split, 
+                                    cv_nfolds=cv_nfolds, test_split=test_split, 
                                     verbose=verbose, do_shuffle=True, balance_configs=True,
                                     test_type=test_type, n_train_configs=n_train_configs)  
             if i_df is None:
@@ -435,7 +435,6 @@ def iterate_by_ncells(n_cells, NEURALDATA, CELLS, sdf, n_iterations=100, n_proce
                 raise ValueError("No results for current iter")
             end_t = time.time() - start_t
             print("--> Elapsed time: {0:.2f}sec".format(end_t))
-            #i_df['n_trials'] = neuraldf.shape[0]
             i_df['randi'] = randi
             i_.append(i_df)
         curr_iterdf = pd.concat(i_, axis=0)
@@ -707,8 +706,73 @@ def iterate_split_pupil(neuraldf, pupildf, sdf, n_iterations=100, n_processes=1,
 
     return iterdf, inputsdf #results
 
-
 def fit_svm_mp(neuraldf, sdf, n_iterations=50, n_processes=1, 
+                   C_value=None, cv_nfolds=5, test_split=0.2, 
+                   test_type=None, n_train_configs=4, verbose=False, within_fov=True,
+                   class_a=0, class_b=106, do_shuffle=True, balance_configs=True):   
+    iter_df = None
+    #neuraldf = aggr.zscore_neuraldf(neuraldf)
+    #### Define MP worker
+    results = []
+    terminating = mp.Event() 
+    def worker(out_q, n_iters, neuraldf, sdf, test_type, C_value, verbose, 
+                class_a, class_b, cv_nfold, test_split, do_shuffle, balance_configs, n_train_configs):
+        i_ = []        
+        for ni in n_iters:
+            n_cells = int(neuraldf.shape[1]-1) 
+            # Decoding -----------------------------------------------------
+            # Fit.
+            start_t = time.time()
+            i_df = select_test(ni, neuraldf, sdf, test_type=test_type,
+                                    C_value=C_value, class_a=class_a, class_b=class_b, 
+                                    cv_nfolds=cv_nfolds, test_split=test_split, 
+                                    verbose=verbose, do_shuffle=do_shuffle, balance_configs=balance_configs,
+                                    n_train_configs=n_train_configs)  
+            if i_df is None:
+                out_q.put(None)
+                raise ValueError("No results for current iter")
+            end_t = time.time() - start_t
+            print("--> Elapsed time: {0:.2f}sec".format(end_t))
+            #i_df['n_trials'] = neuraldf.shape[0]
+            i_.append(i_df)
+        curr_iterdf = pd.concat(i_, axis=0)
+        out_q.put(curr_iterdf)  
+    try:        
+        # Each process gets "chunksize' filenames and a queue to put his out-dict into:
+        iter_list = np.arange(0, n_iterations) #gdf.groups.keys()
+        out_q = mp.Queue()
+        chunksize = int(math.ceil(len(iter_list) / float(n_processes)))
+        procs = []
+        for i in range(n_processes):
+            p = mp.Process(target=worker, args=(out_q, iter_list[chunksize * i:chunksize * (i + 1)],
+                                neuraldf, sdf, test_type, C_value, verbose, class_a, class_b,
+                                cv_nfolds, test_split, do_shuffle, balance_configs, n_train_configs))
+            procs.append(p)
+            p.start() # start asynchronously
+        # Collect all results into 1 results dict. We should know how many dicts to expect:
+        results = []
+        for i in range(n_processes):
+            results.append(out_q.get(99999))
+        # Wait for all worker processes to finish
+        for p in procs:
+            p.join() # will block until finished
+    except KeyboardInterrupt:
+        terminating.set()
+        print("***Terminating!")
+    except Exception as e:
+        traceback.print_exc()
+        terminating.set()
+    finally:
+        for p in procs:
+            p.join()
+
+    if len(results)>0:
+        iterdf = pd.concat(results, axis=0)
+
+    return iterdf
+
+
+def fit_svm_mp0(neuraldf, sdf, n_iterations=50, n_processes=1, 
                    C_value=None, cv_nfolds=5, test_split=0.2, 
                    test_type=None, n_train_configs=4, verbose=False, within_fov=True,
                    class_a=0, class_b=106, do_shuffle=True, balance_configs=True):   
@@ -720,6 +784,7 @@ def fit_svm_mp(neuraldf, sdf, n_iterations=50, n_processes=1,
     def worker(n_iters, neuraldf, sdf, C_value, verbose, class_a, class_b, do_shuffle, balance_configs, out_q):
         r_ = []        
         for ni in n_iters:
+
             curr_iter = do_fit_within_fov(ni, curr_data=neuraldf, sdf=sdf, 
                                         C_value=C_value, class_a=class_a, class_b=class_b,  
                                         verbose=verbose, do_shuffle=do_shuffle, balance_configs=balance_configs)
@@ -840,59 +905,59 @@ def fit_svm_mp(neuraldf, sdf, n_iterations=50, n_processes=1,
     return iter_df #results
 
 
-def by_ncells_fit_svm_mp(ncells, celldf, NEURALDATA, sdf, 
-                           n_iterations=50, n_processes=1, 
-                           C_value=None, cv_nfolds=5, test_split=0.2, 
-                           test=None, single=False, n_train_configs=4, verbose=False,
-                           class_a=0, class_b=106):   
-    iter_df = None
-    #### Define multiprocessing worker
-    results = []
-    terminating = mp.Event()    
-    def worker(n_iters, ncells, celldf, sdf, NEURALDATA, C_value, class_a, class_b, out_q):
-        r_ = []        
-        for ni in n_iters:
-            curr_iter = do_fit_sample_cells(ni, sample_ize=sample_size, global_rois=celldf, sdf=sdf,
-                                        MEANS=NEURALDATA, do_shuffle=True, 
-                                        C_value=C_value, class_a=class_a, class_b=class_b)
-            r_.append(curr_iter)
-        curr_iterdf = pd.concat(r_, axis=0)
-        out_q.put(curr_iterdf)
-        
-    try:        
-        # Each process gets "chunksize' filenames and a queue to put his out-dict into:
-        iter_list = np.arange(0, n_iterations) #gdf.groups.keys()
-        out_q = mp.Queue()
-        chunksize = int(math.ceil(len(iter_list) / float(n_processes)))
-        procs = []
-        for i in range(n_processes):
-            p = mp.Process(target=worker,
-                           args=(iter_list[chunksize * i:chunksize * (i + 1)],
-                                 ncells, celldf, sdf, NEURALDATA, C_value,
-                                 class_a, class_b, out_q))
-            procs.append(p)
-            p.start()
-
-        # Collect all results into single results dict. We should know how many dicts to expect:
-        results = []
-        for i in range(n_processes):
-            results.append(out_q.get(99999))
-        # Wait for all worker processes to finish
-        for p in procs:
-            p.join()
-    except KeyboardInterrupt:
-        terminating.set()
-        print("***Terminating!")
-    except Exception as e:
-        traceback.print_exc()
-    finally:
-        for p in procs:
-            p.join()
-
-    if len(results)>0:
-        iter_df = pd.concat(results, axis=0)
- 
-    return iter_df #results
+#def by_ncells_fit_svm_mp(ncells, celldf, NEURALDATA, sdf, 
+#                           n_iterations=50, n_processes=1, 
+#                           C_value=None, cv_nfolds=5, test_split=0.2, 
+#                           test=None, single=False, n_train_configs=4, verbose=False,
+#                           class_a=0, class_b=106):   
+#    iter_df = None
+#    #### Define multiprocessing worker
+#    results = []
+#    terminating = mp.Event()    
+#    def worker(n_iters, ncells, celldf, sdf, NEURALDATA, C_value, class_a, class_b, out_q):
+#        r_ = []        
+#        for ni in n_iters:
+#            curr_iter = do_fit_sample_cells(ni, sample_ize=sample_size, global_rois=celldf, sdf=sdf,
+#                                        MEANS=NEURALDATA, do_shuffle=True, 
+#                                        C_value=C_value, class_a=class_a, class_b=class_b)
+#            r_.append(curr_iter)
+#        curr_iterdf = pd.concat(r_, axis=0)
+#        out_q.put(curr_iterdf)
+#        
+#    try:        
+#        # Each process gets "chunksize' filenames and a queue to put his out-dict into:
+#        iter_list = np.arange(0, n_iterations) #gdf.groups.keys()
+#        out_q = mp.Queue()
+#        chunksize = int(math.ceil(len(iter_list) / float(n_processes)))
+#        procs = []
+#        for i in range(n_processes):
+#            p = mp.Process(target=worker,
+#                           args=(iter_list[chunksize * i:chunksize * (i + 1)],
+#                                 ncells, celldf, sdf, NEURALDATA, C_value,
+#                                 class_a, class_b, out_q))
+#            procs.append(p)
+#            p.start()
+#
+#        # Collect all results into single results dict. We should know how many dicts to expect:
+#        results = []
+#        for i in range(n_processes):
+#            results.append(out_q.get(99999))
+#        # Wait for all worker processes to finish
+#        for p in procs:
+#            p.join()
+#    except KeyboardInterrupt:
+#        terminating.set()
+#        print("***Terminating!")
+#    except Exception as e:
+#        traceback.print_exc()
+#    finally:
+#        for p in procs:
+#            p.join()
+#
+#    if len(results)>0:
+#        iter_df = pd.concat(results, axis=0)
+# 
+#    return iter_df #results
 
 #
 # ======================================================================

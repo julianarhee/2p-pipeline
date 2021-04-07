@@ -233,7 +233,8 @@ def decode_split_pupil(datakey, visual_area, neuraldf, pupildf, sdf=None,
                 'input_trials': input_trials,
 #                'low_ixs': low_trial_ixs, 'high_ixs': high_trial_ixs, 
 #                'low_ixs_shuffled': low_shuffle_ixs, 'high_ixs_shuffled': high_shuffle_ixs,
-                'equalize_conditions': equalize_conditions, 'match_all_configs': match_all_configs}
+                'equalize_conditions': equalize_conditions, 
+                'match_all_configs': match_all_configs}
     with open(data_inputfile, 'wb') as f:
         pkl.dump(inputdata, f, protocol=pkl.HIGHEST_PROTOCOL)
 
@@ -415,7 +416,7 @@ def create_results_id(prefix='fov_results', visual_area='varea', C_value=None,
         if has_retino:      
             overlap_str = 'retino'
         else:
-            overlap_str = 'noRF' if overlap_thr is None else 'overlap%.1f' % overlap_thr
+            overlap_str = 'noRF' if overlap_thr is None else 'overlap%.2f' % overlap_thr
         #results_id='%s_%s_%s__%s-%s_%s__%s' % (prefix, visual_area, C_str, response_type, responsive_test, overlap_str, trial_epoch)
     results_id='%s_%s__%s-%s_%s__%s__%s' \
                     % (prefix, visual_area, response_type, responsive_test, overlap_str, trial_epoch, C_str)
@@ -1044,13 +1045,13 @@ def main(options):
     # Pupil -------------------------------------------
     pupil_feature='pupil_fraction'
     pupil_alignment='trial'
-    pupil_epoch='pre'
+    pupil_epoch='stimulus' #'pre'
     pupil_snapshot=391800
     redo_pupil=False
     pupil_framerate=20.
     pupil_quantiles=3.
     equalize_conditions=True
-    match_all_configs=False #analysis_type=='by_ncells'
+    match_all_configs=True #False #analysis_type=='by_ncells'
     # -------------------------------------------------
     # Alignment 
     iti_pre=1.

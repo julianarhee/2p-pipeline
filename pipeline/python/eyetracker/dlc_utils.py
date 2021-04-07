@@ -41,7 +41,7 @@ def create_parsed_traces_id(experiment='EXP', alignment_type='ALIGN',
 
 
 def load_pupil_traces_fov(animalid, session, fov, experiment, 
-                        alignment_type='stimulus', snapshot=391800, 
+                        alignment_type='trial', snapshot=391800, 
                         feature_name='pupil_area', 
                         rootdir='/n/coxfs01/2p-data'):
     '''
@@ -82,7 +82,7 @@ def load_pupil_traces_fov(animalid, session, fov, experiment,
 
 def aggregate_pupil_traces(experiment, traceid='traces001', 
                 feature_name='pupil_area', 
-                snapshot=391800, alignment_type='stimulus',
+                snapshot=391800, alignment_type='trial',
                 verbose=False, return_missing=False,
                 rootdir='/n/coxfs01/2p-data', fov_type='zoom2p0x', state='awake',
                 aggregate_dir='/n/coxfs01/julianarhee/aggregate-visual-areas'):
@@ -111,6 +111,7 @@ def aggregate_pupil_traces(experiment, traceid='traces001',
                                 experiment=experiment, snapshot=snapshot, 
                                 rootdir=rootdir)
         if results is None:
+            #print("... missing traces: %s" % datakey)
             missing_dsets.append(datakey)
             continue
         #### Add to dict
@@ -156,11 +157,7 @@ def load_pupil_traces(experiment='blobs', feature_name='pupil_area',
     traces_fname = create_parsed_traces_id(experiment=experiment, 
                             alignment_type=alignment_type,
                             feature_name=feature_name, snapshot=snapshot)
-#    if feature_name == 'pupil_area':
-#        traces_fname = '%s_pupil_area_traces_snapshot-%i' % (experiment, snapshot)
-#    else:
-#        traces_fname = '%s_pupil-traces_snapshot-%i' % (experiment, snapshot)
-       
+      
     pupil_fpath = os.path.join(aggregate_dir, 'behavior-state', '%s.pkl' % traces_fname)  
     if not os.path.exists(pupil_fpath):
         print( "NOT found: %s" % traces_fname)
@@ -231,8 +228,8 @@ def load_pupil_dataframes(snapshot, experiment='blobs',
         keys: datakeys (like MEANS dict)
         values: dataframes (pupildf, trial metrics) 
     '''
-    import cPickle as pkl
-
+    import pickle as pkl
+    #import dill as pkl
     fname = create_dataframes_name(experiment, feature_name, trial_epoch, snapshot)
     pupildf_fpath = os.path.join(aggregate_dir, 
                                     'behavior-state', '%s.pkl' % fname)
@@ -241,9 +238,11 @@ def load_pupil_dataframes(snapshot, experiment='blobs',
         with open(pupildf_fpath, 'rb') as f:
             pupildata = pkl.load(f)
         print(">>>> Loaded aggregate pupil dataframes.")
+    except UnicodeDecodeError:
+        with open(pupildf_fpath, 'rb') as f:
+            pupildata = pkl.load(f, encoding='latin1')
     except Exception as e:
         print('File not found: %s' % pupildf_fpath)
-
 
     if return_missing:
         sdata = aggr.get_aggregate_info(traceid=traceid, fov_type=fov_type, state=state)
@@ -304,7 +303,7 @@ def get_pupil_df(pupil_r, trial_epoch='pre', new_stim_on=20., nframes_on=20.):
     
     trial_epoch : (str)
         'pre': Use PRE-stimulus period for response metric.
-        'stim': Use stimulus period
+        'stimulus': Use stimulus period
         'all': Use full trial period
     
     new_stim_on: (int)
@@ -315,7 +314,7 @@ def get_pupil_df(pupil_r, trial_epoch='pre', new_stim_on=20., nframes_on=20.):
     if trial_epoch=='pre':
         pupildf = pd.concat([g[g['frame_ix'].isin(np.arange(0, new_stim_on))].mean(axis=0) \
                             for t, g in pupil_r.groupby(['trial'])], axis=1).T
-    elif trial_epoch=='stim':
+    elif trial_epoch=='stimulus':
         pupildf = pd.concat([g[g['frame_ix'].isin(np.arange(new_stim_on, new_stim_on+nframes_on))].mean(axis=0) \
                             for t, g in pupil_r.groupby(['trial'])], axis=1).T
     else:
@@ -332,7 +331,7 @@ def get_aggregate_pupildfs(experiment='blobs', feature_name='pupil_area',
                            aggregate_dir='/n/coxfs01/julianarhee/aggregate-visual-areas', 
                            create_new=False, return_missing=False):
     '''
-    Load or create AGGREGATED dit of pupil dataframes (per-trial metrics).
+    Load or create AGGREGATED dit of pupil dataframes (per-trial metrics)
     (prev called load_pupil_data)
     Returns:
 
@@ -351,6 +350,7 @@ def get_aggregate_pupildfs(experiment='blobs', feature_name='pupil_area',
             create_new=True
 
     if create_new:
+        print("... creating new aggregated pupil dataframe, epoch=%s" % trial_epoch)
         fname = create_dataframes_name(experiment, feature_name, trial_epoch, snapshot)
         pupildf_fpath = os.path.join(aggregate_dir, 'behavior-state', '%s.pkl' % fname)
         pupiltraces, missing_dsets = get_aggregate_pupil_traces(experiment, feature_name=feature_name, 

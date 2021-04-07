@@ -235,7 +235,7 @@ def parse_all_missing(experiment,
                     pupil_framerate=20.,
                     rootdir='/n/coxfs01/2p-data', fov_type='zoom2p0x', state='awake',
                     eyetracker_dir='/n/coxfs01/2p-data/eyetracker_tmp'):
-    exclude_for_now = [] #['20190315_JC070_fov1']
+    exclude_for_now = ['20190315_JC070_fov1']
     missing=[]
 
     # Get all datasets
@@ -255,6 +255,7 @@ def parse_all_missing(experiment,
                                         snapshot=snapshot, create_new=True, return_missing=True)
 
     dsets_todo = edata[edata['datakey'].isin(missing_dsets)]
+    print("Missing %i pupil data sets. Parsing pose data now." % len(missing_dsets))
 
     for (animalid, session, fov, datakey), g in dsets_todo.groupby(['animalid', 'session', 'fov', 'datakey']):
         if datakey in exclude_for_now:
