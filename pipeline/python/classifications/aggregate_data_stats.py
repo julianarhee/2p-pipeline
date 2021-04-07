@@ -2353,7 +2353,7 @@ def crop_legend_labels(ax, n_hues, bbox_to_anchor=(1.05, 1), loc='upper left', f
 
 
 def plot_pairwise_by_axis(plotdf, curr_metric='abs_coef', c1='az', c2='el', 
-                          c1_label=None, c2_label=None, rotation=9, ha='center', 
+                          c1_label=None, c2_label=None, rotation=0, ha='center', 
                           compare_var='cond', fontsize=10, fontcolor='k', 
                             fmt='%.2f', xytext=(0, 10),
                           area_colors=None, legend=True, legend_fontsize=8, 
