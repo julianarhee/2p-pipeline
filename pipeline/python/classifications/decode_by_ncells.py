@@ -844,7 +844,7 @@ cv=True
 
 min_ncells = 20
 overlap_thr=0.
-filter_fovs = True
+#filter_fovs = True
 remove_too_few = False
 
 
@@ -1000,8 +1000,8 @@ def main(options):
     print("Do CV -%s- (C=%s)" % (str(do_cv), str(C_value)))
 
     # Dataset filtering --------------------------------
-    filter_fovs = True
-    remove_too_few = False #True
+    #filter_fovs = True
+    remove_too_few = analysis_type=='by_ncells' #False #True
     min_ncells = 5 #10 if remove_too_few else 0
     overlap_thr = None if opts.overlap_thr in ['None', None] else float(opts.overlap_thr)
     has_retino = opts.has_retino

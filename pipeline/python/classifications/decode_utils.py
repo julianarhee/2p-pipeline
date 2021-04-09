@@ -563,8 +563,8 @@ def shuffle_arousal_trials(p_low, p_high, equalize_by='config', common_labels=No
 class WorkerStop(Exception):
     pass
 
-def pupil_worker(out_q, n_iters, neuraldf, pupildf, sdf, equalize_by, common_labels, test_type,
-                cv_nfolds=5, test_split=0.2, C_value=None, verbose=False,
+def pupil_worker(out_q, n_iters, neuraldf, pupildf, sdf, equalize_by, common_labels, test_type, verbose,
+                cv_nfolds=5, test_split=0.2, C_value=None,
                 class_a=0, class_b=106, do_shuffle=True, feature_name='pupil_fraction', n_cuts=3,
                 n_train_configs=4):
     curr_iterdf=None; inputdf=None;
@@ -669,7 +669,7 @@ def iterate_split_pupil(neuraldf, pupildf, sdf, n_iterations=100, n_processes=1,
             p = mp.Process(target=pupil_worker,
                            args=(out_q, iter_list[chunksize * i:chunksize * (i + 1)],
                                 neuraldf, pupildf, sdf, equalize_by, common_labels, test_type,
-                                cv_nfolds, test_split))
+                                cv_nfolds, test_split, verbose))
             procs.append(p)
             p.start() # start asynchronously
         # Collect all results into 1 results dict. We should know how many dicts to expect:
