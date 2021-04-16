@@ -166,6 +166,32 @@ def aggregate_rfs(rf_dsets, traceid='traces001',
     rfdf = rfdf.reset_index(drop=True)
     return rfdf
 
+def add_rf_positions(rfdf, calculate_position=False, traceid='traces001'):
+    '''
+    Add ROI position info to RF dataframe (converted and pixel-based).
+    Set calculate_position=True, to re-calculate.
+    '''
+    from pipeline.python.rois.utils import load_roi_coords
+
+    print("Adding RF position info...")
+    pos_params = ['fov_xpos', 'fov_xpos_pix', 'fov_ypos', 'fov_ypos_pix', 'ml_pos','ap_pos']
+    for p in pos_params:
+        rfdf[p] = ''
+    p_list=[]
+    #for (animalid, session, fovnum, exp), g in rfdf.groupby(['animalid', 'session', 'fovnum', 'experiment']):
+    for (va, dk, exp), g in rfdf.groupby(['visual_area', 'datakey', 'experiment']):
+        session, animalid, fovnum = split_datakey_str(dk)
+
+        fcoords = load_roi_coords(animalid, session, 'FOV%i_zoom2p0x' % fovnum, 
+                                  traceid=traceid, create_new=calculate_position)
+
+        #for ei, e_df in g.groupby(['experiment']):
+        cell_ids = g['cell'].unique()
+        p_ = fcoords['roi_positions'].loc[cell_ids]
+        for p in pos_params:
+            rfdf[p][g.index] = p_[p].values
+
+    return rfdf
 
 def get_rf_positions(rf_dsets, df_fpath, traceid='traces001', 
                         fit_desc='fit-2dgaus_dff-no-cutoff', reliable_only=True, verbose=False):
@@ -190,7 +216,9 @@ def get_rf_positions(rf_dsets, df_fpath, traceid='traces001',
         for p in pos_params:
             rfdf[p] = ''
         p_list=[]
-        for (animalid, session, fovnum), g in rfdf.groupby(['animalid', 'session', 'fovnum']):
+        #for (animalid, session, fovnum), g in rfdf.groupby(['animalid', 'session', 'fovnum']):
+        for (va, dk, exp), g in rfdf.groupby(['visual_area', 'datakey', 'experiment']):
+            session, animalid, fovnum = split_datakey_str(dk)
             fcoords = load_roi_coords(animalid, session, 'FOV%i_zoom2p0x' % fovnum, 
                                       traceid=traceid, create_new=False)
 

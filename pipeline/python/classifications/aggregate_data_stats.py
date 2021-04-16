@@ -519,7 +519,7 @@ def get_rf_datasets_drop(filter_by='drop_repeats', excluded_sessions=[], as_dict
 
 
 #def get_assigned_cells_with_rfs(rf_dsets):
-def select_best_fovs(counts_by_fov, criterion='max', colname='cell'):
+def select_best_fovs(counts_by_fov, criterion='max', colname='cell', first_max_only=True):
     # Cycle thru all dsets and drop repeats
     fovkeys = get_sorted_fovs()
     incl_dsets=[]
@@ -581,7 +581,10 @@ def select_best_fovs(counts_by_fov, criterion='max', colname='cell'):
                         # Find which has most cells
                         max_loc = choose_best_fov(which_fovs, criterion=criterion, colname=colname)
                         #max_loc = np.where(which_fovs['cell']==which_fovs['cell'].max())[0] 
-                        incl_dsets.append(which_fovs.iloc[[max_loc[0]]])
+                        if first_max_only:
+                            incl_dsets.append(which_fovs.iloc[[max_loc[0]]])
+                        else:
+                            incl_dsets.append(which_fovs.iloc[[max_loc[0]]])
                     except Exception as e:
                         print("ERROR, skipping (%s, %s):" % (visual_area, animalid), which_fovs, curr_datakeys)
                         continue
