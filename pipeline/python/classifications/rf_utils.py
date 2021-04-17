@@ -1200,7 +1200,8 @@ def get_proportion_overlap(poly_tuple1, poly_tuple2):
 # ===================================================
 # plotting
 # ===================================================
-def anisotropy_polarplot(rdf, metric='anisotropy', cmap='spring_r', alpha=0.5, marker='o', ax=None, dpi=150):
+def anisotropy_polarplot(rdf, metric='anisotropy', cmap='spring_r', alpha=0.5, 
+                            marker='o', ax=None, dpi=150, cbar_bbox=[0.4, 0.15, 0.2, 0.03]):
 
     vmin=0; vmax=1;
     norm = mpl.colors.Normalize(vmin=vmin, vmax=vmax)
@@ -1228,7 +1229,7 @@ def anisotropy_polarplot(rdf, metric='anisotropy', cmap='spring_r', alpha=0.5, m
 
     # Colorbar
     iso_cmap._A = []
-    cbar_ax = ax.figure.add_axes([0.4, 0.15, 0.2, 0.03])
+    cbar_ax = ax.figure.add_axes(cbar_bbox)
     cbar = ax.figure.colorbar(iso_cmap, cax=cbar_ax, orientation='horizontal', ticks=[0, 1])
     if metric == 'anisotropy':
         xlabel_min = 'Iso\n(%.1f)' % (vmin) 

@@ -2662,7 +2662,7 @@ def do_mannwhitney(mdf, metric='I_rs', multi_comp_test='holm'):
     return results
 
 def annotate_stats_areas(statresults, ax, lw=1, color='k', 
-                        y_loc=None, offset=0.1, 
+                        y_loc=None, offset=0.1, fontsize=12,
                          visual_areas=['V1', 'Lm', 'Li']):
    
     if y_loc is None:
@@ -2679,13 +2679,13 @@ def annotate_stats_areas(statresults, ax, lw=1, color='k',
         ax.plot([x1,x1, x2, x2], [y1, y2, y2, y1], linewidth=lw, color=color)
         ctrx = x1 + (x2-x1)/2. 
         star_str = '**' if pv<0.01 else '*'
-        ax.text(ctrx, y1+(offset/8.), star_str)
+        ax.text(ctrx, y1+(offset/8.), star_str, fontsize=fontsize)
 
     return ax
 
 
 def annotate_stats_areas_fromlist(statresults, ax, lw=1, color='k', 
-                        y_loc=None, offset=0.1, 
+                        y_loc=None, offset=0.1, fontsize=12,
                          visual_areas=['V1', 'Lm', 'Li']):
    
     if y_loc is None:
@@ -2703,7 +2703,7 @@ def annotate_stats_areas_fromlist(statresults, ax, lw=1, color='k',
             ax.plot([x1,x1, x2, x2], [y1, y2, y2, y1], linewidth=lw, color=color)
             ctrx = x1 + (x2-x1)/2.
             star_str = '**' if cpair[2]<0.01 else '*'
-            ax.text(ctrx, y1+(offset/8.), star_str)
+            ax.text(ctrx, y1+(offset/8.), star_str, fontsize=fontsize)
 
     return ax
 
