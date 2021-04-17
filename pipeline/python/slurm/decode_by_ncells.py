@@ -181,7 +181,7 @@ if analysis_type=='by_ncells':
     # -----------------------------------------------------------------
     datakey=None
     if len(sample_sizes)==0:
-        size_range = [1, 4, 16, 32, 64, 128, 256] #[2**i for i in np.arange(0, 9)]  
+        size_range = [1, 2, 4, 8, 16, 32, 64, 96, 128, 256] #[2**i for i in np.arange(0, 9)]  
         # Get min N cells
         CELLS = get_cells(overlap_thr=overlap_thr, traceid=traceid, responsive_test=responsive_test, 
                     trial_epoch=trial_epoch, images_only=True, response_type=response_type)

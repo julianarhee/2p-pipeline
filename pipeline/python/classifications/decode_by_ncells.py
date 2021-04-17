@@ -18,6 +18,7 @@ import copy
 import itertools
 import datetime
 import time
+import re
 import pprint 
 pp = pprint.PrettyPrinter(indent=4)
 import traceback
@@ -206,13 +207,16 @@ def decode_split_pupil(datakey, visual_area, neuraldf, pupildf, sdf=None,
     n_cells = int(neuraldf.shape[1]-1) 
     print("... SPLIT_PUPIL | [%s] %s, n=%i cells" % (visual_area, datakey, n_cells))
  
-    iter_results, input_trials = decutils.iterate_split_pupil(neuraldf, pupildf, sdf, 
+    iter_results, input_trials, coefdf = decutils.iterate_split_pupil(neuraldf, pupildf, sdf, 
                         n_iterations=n_iterations, n_processes=n_processes, 
                         C_value=C_value, cv_nfolds=cv_nfolds, test_split=test_split, 
-                        test_type=test_type, n_train_configs=n_train_configs, verbose=verbose, within_fov=True,
-                        class_name=class_name, class_a=class_a, class_b=class_b, do_shuffle=do_shuffle,
+                        test_type=test_type, n_train_configs=n_train_configs, 
+                        verbose=verbose, within_fov=True,
+                        class_name=class_name, class_a=class_a, class_b=class_b, 
+                        do_shuffle=do_shuffle,
                         feature_name=feature_name, n_cuts=n_cuts, 
-                        equalize_by=equalize_by, match_all_configs=match_all_configs)
+                        equalize_by=equalize_by, match_all_configs=match_all_configs,
+                        return_clf=True)
     if iter_results is None:
         print("NONE returned -- %s, %s" % (visual_area, datakey))
         return None
@@ -229,6 +233,7 @@ def decode_split_pupil(datakey, visual_area, neuraldf, pupildf, sdf=None,
     # Save input data
     data_inputfile = os.path.join(curr_dst_dir, 'inputdata_%s.pkl' % results_id)
     inputdata = {'neuraldf': neuraldf, 'pupildf': pupildf, 'sdf': sdf, 
+                'coefs': coefdf,
                 'feature_name': feature_name, 'n_cuts': n_cuts,
                 'input_trials': input_trials,
 #                'low_ixs': low_trial_ixs, 'high_ixs': high_trial_ixs, 
@@ -243,6 +248,8 @@ def decode_split_pupil(datakey, visual_area, neuraldf, pupildf, sdf=None,
     else:
         print(iter_results.groupby(['condition', 'arousal', 'novel']).mean())   
 
+    print("[Got COEFS]:")
+    print(coefdf.head())
     print("@@@@@@@@@ done. %s|%s  @@@@@@@@@@" % (visual_area, datakey))
     print(results_outfile) 
  
@@ -462,7 +469,7 @@ def load_fov_results(animalid, session, fov, traceid='traces001',
                      visual_area=None, C_value=None, response_type='dff', 
                     responsive_test='nstds', trial_epoch='stimulus', 
                     overlap_thr=None, has_retino=False, threshold_dff=False,
-                    test_type=None): 
+                    test_type=None, try_reformat=False): 
     # Get result ID
     results_id = create_results_id(prefix=analysis_type, visual_area=visual_area, 
                         C_value=C_value, response_type=response_type, responsive_test=responsive_test,
@@ -471,12 +478,33 @@ def load_fov_results(animalid, session, fov, traceid='traces001',
                         test_type=test_type) 
     # Load FOV results
     iterdf = load_decode_within_fov(animalid, session, fov, traceid=traceid, 
-                                        results_id=results_id, n_iterations=n_iterations)
-       
+                            results_id=results_id, n_iterations=n_iterations,
+                            try_reformat=try_reformat) 
     
     return iterdf, results_id
 
+def reformat_results_id_to_old(results_id):
+    if len(results_id.split('__'))==5:
+        varea, rparams, tepoch, cstr, testinfo = results_id.split('__')
+    else:
+        varea, rparams, tepoch, cstr = results_id.split('__')
+    if 'noRF' in rparams:
+        rparams = rparams.replace('noRF', 'no-rfs')
+    else:
+        if len(re.findall(r'overlap-(\d*\.)', rparams))>0:
+            rparams = rparams.replace('overlap', 'overlap-')
+    # CHeck format
+    if len(re.findall(r'overlap(\d*\.\d{2})_', results_id))>0:
+        onum = float(re.findall(r'overlap(\d*\.\d{2})_', results_id)[0])
+        rparams = rparams.replace('overlap%.2f' % onum, 'overlap%.1f' % onum)
+
+    #old_id = '%s_%s__%s__%s' % (varea, cstr, rparams, tepoch)
+    old_id = '%s__%s__%s__%s' % (varea, rparams, tepoch, cstr)
+    #print(old_id)
+    return old_id
+
 def load_decode_within_fov(animalid, session, fov, results_id='fov_results',
+                            try_reformat=False,
                             traceid='traces001', n_iterations=100,
                             rootdir='/n/coxfs01/2p-data', verbose=False):
     iter_df=None
@@ -488,20 +516,14 @@ def load_decode_within_fov(animalid, session, fov, results_id='fov_results',
         os.makedirs(curr_dst_dir)
         print("... saving tmp results to:\n  %s" % curr_dst_dir)
 
-    if not os.path.exists(os.path.join(curr_dst_dir, '%s.pkl' % results_id)):
-        if len(results_id.split('__'))==5:
-            varea, rparams, tepoch, cstr, testinfo = results_id.split('__')
-        else:
-            varea, rparams, tepoch, cstr = results_id.split('__')
-        if 'noRF' in rparams:
-            rparams = rparams.replace('noRF', 'no-rfs')
-        else:
-            rparams = rparams.replace('overlap', 'overlap-')
-        old_id = '%s_%s__%s__%s' % (varea, cstr, rparams, tepoch)
+    #print("Loading: %s" % results_id)
+    if not os.path.exists(os.path.join(curr_dst_dir, '%s.pkl' % results_id)) and try_reformat:
+        old_id = reformat_results_id_to_old(results_id)
         old_outfile = os.path.join(curr_dst_dir, '%s.pkl' % old_id)
         if os.path.exists(old_outfile):
             print("... renaming (%s-->%s" % (old_id, results_id))
             os.rename(old_outfile, os.path.join(curr_dst_dir, '%s.pkl' % results_id))
+
     results_outfile = os.path.join(curr_dst_dir, '%s.pkl' % results_id)
        
     if verbose:
@@ -1002,7 +1024,7 @@ def main(options):
     # Dataset filtering --------------------------------
     #filter_fovs = True
     remove_too_few = analysis_type=='by_ncells' #False #True
-    min_ncells = 5 #10 if remove_too_few else 0
+    min_ncells = 3 #10 if remove_too_few else 0
     overlap_thr = None if opts.overlap_thr in ['None', None] else float(opts.overlap_thr)
     has_retino = opts.has_retino
     has_rfs = (overlap_thr is not None) and (has_retino is False)
@@ -1015,7 +1037,7 @@ def main(options):
             overlap_str = 'retino'
             has_rfs = False
         else:
-            overlap_str = 'noRF' if overlap_thr is None else 'overlap%.1f' % overlap_thr
+            overlap_str = 'noRF' if overlap_thr is None else 'overlap%.2f' % overlap_thr
        
     stim_filterby = None # 'first'
     has_gratings = experiment!='blobs'
@@ -1192,7 +1214,7 @@ def main(options):
         if has_retino:
             overlap_str = 'retino'
         else:
-            overlap_str = 'noRF' if overlap_thr is None else 'overlap%.1f' % overlap_thr
+            overlap_str = 'noRF' if overlap_thr is None else 'overlap%.2f' % overlap_thr
 
     print('... Classify %i v %i (C=%s)' % (m0, m100, str(C_value)))
     print('... N=%i iters (%i proc), %s' % (n_iterations, n_processes, overlap_str))
@@ -1322,7 +1344,7 @@ def main(options):
 
     elif analysis_type=='by_ncells':
 
-        with_replacement=True
+        with_replacement=False #True
 
         sdf = aggr.get_master_sdf(images_only=True)
 
