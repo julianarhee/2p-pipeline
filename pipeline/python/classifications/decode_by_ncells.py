@@ -972,7 +972,7 @@ def extract_options(options):
  
     parser.add_option('--shuffle-thr', action='store', dest='shuffle_thr', 
             default=None, help="Percentile greater than shuffle for filtering FOVs (default: Don't filter FOVs by shuffle test, None)")
-    parser.add_option('--unique', action='store_true', dest='drop_repeats', 
+    parser.add_option('--drop-repeats', action='store_true', dest='drop_repeats', 
             default=False, help="Drop repeats (Note: really only relevant for analysis_type=by_ncells)")
  
 
