@@ -310,10 +310,10 @@ def set_threecolor_palette(c1='magenta', c2='orange', c3='dodgerblue', cmap=None
 def set_plot_params(lw_axes=0.25, labelsize=6, color='k', dpi=100):
     import pylab as pl
     #### Plot params
-    #pl.rcParams['font.size'] = 6
+    pl.rcParams['font.size'] = labelsize
     #pl.rcParams['text.usetex'] = True
     
-    pl.rcParams["axes.labelsize"] = labelsize + 2
+    pl.rcParams["axes.labelsize"] = labelsize
     pl.rcParams["axes.linewidth"] = lw_axes
     pl.rcParams["xtick.labelsize"] = labelsize
     pl.rcParams["ytick.labelsize"] = labelsize
@@ -376,7 +376,7 @@ def set_split_xlabels(ax, offset=0.25, a_label='rfs', b_label='rfs10', rotation=
 
 
 def plot_mannwhitney(mdf, metric='I_rs', multi_comp_test='holm',
-                        ax=None, y_loc=None, offset=0.1):
+                        ax=None, y_loc=None, offset=0.1, lw=0.25, fontsize=6):
     if ax is None:
         fig, ax = pl.subplots()
 
@@ -385,7 +385,8 @@ def plot_mannwhitney(mdf, metric='I_rs', multi_comp_test='holm',
     #print(statresults)
 
     # stats significance
-    ax = annotate_stats_areas(statresults, ax, y_loc=y_loc, offset=offset)
+    ax = annotate_stats_areas(statresults, ax, y_loc=y_loc, offset=offset, 
+                                lw=lw, fontsize=fontsize)
     print("****************************")
 
     return statresults, ax
@@ -393,7 +394,7 @@ def plot_mannwhitney(mdf, metric='I_rs', multi_comp_test='holm',
 
 # Stats
 def annotate_stats_areas(statresults, ax, lw=1, color='k',
-                        y_loc=None, offset=0.1,
+                        y_loc=None, offset=0.1, fontsize=6,
                          visual_areas=['V1', 'Lm', 'Li']):
 
     if y_loc is None:
@@ -410,7 +411,7 @@ def annotate_stats_areas(statresults, ax, lw=1, color='k',
         ax.plot([x1,x1, x2, x2], [y1, y2, y2, y1], linewidth=lw, color=color)
         ctrx = x1 + (x2-x1)/2.
         star_str = '**' if pv<0.01 else '*'
-        ax.text(ctrx, y1+(offset/8.), star_str)
+        ax.text(ctrx, y1+(offset/8.), star_str, fontsize=fontsize)
 
     return ax
 
