@@ -586,7 +586,7 @@ def select_best_fovs(counts_by_fov, criterion='max', colname='cell', first_max_o
                         else:
                             incl_dsets.append(which_fovs.iloc[[max_loc[0]]])
                     except Exception as e:
-                        print("ERROR, skipping (%s, %s):" % (visual_area, animalid), which_fovs, curr_datakeys)
+                        print("ERROR, skipping (%s, %s): %s" % (visual_area, animalid, str(curr_datakeys)), which_fovs)
                         continue
                 else:
                     # THere are no repeats, so just format, then append df data
@@ -1631,7 +1631,7 @@ def get_neuraldata_and_rfdata(assigned_cells, rfdf, MEANS,
 
 def load_rfdf_and_pos(sdata, assigned_cells=None, response_type='dff', rf_filter_by=None, reliable_only=True,
                         rf_fit_thr=0.05, traceid='traces001', assign_cells=True,
-                        aggregate_dir='/n/coxfs01/2p-data'):
+                        aggregate_dir='/n/coxfs01/julianarhee/aggregate-visual-areas'):
     '''
     Does the same thing as rfutils.load_rfdf_with_positions(assign_cells=True)
     '''
