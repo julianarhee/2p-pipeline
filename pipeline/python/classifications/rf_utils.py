@@ -196,16 +196,23 @@ def add_rf_positions(rfdf, calculate_position=False, traceid='traces001'):
 def get_rf_positions(rf_dsets, df_fpath, traceid='traces001', 
                         fit_desc='fit-2dgaus_dff-no-cutoff', reliable_only=True, verbose=False):
     from pipeline.python.rois.utils import load_roi_coords
-
+    rfdf=None
     get_positions = False
     if os.path.exists(df_fpath) and get_positions is False:
         print("Loading existing RF coord conversions...")
         try:
             with open(df_fpath, 'rb') as f:
                 df= pkl.load(f)
-            rfdf = df['df']
+            #print(df.keys())
+            if isinstance(df, dict):
+                rfdf = df['df']
+            else:
+                rfdf = df.copy() #['df']
         except Exception as e:
+            traceback.print_exc()
             get_positions = True
+    else:
+        get_positions=True
 
     if get_positions:
         # This aggregates rf data from analyzed dfiles, not saved dataframes
