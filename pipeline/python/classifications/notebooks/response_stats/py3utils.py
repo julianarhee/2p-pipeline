@@ -57,6 +57,10 @@ def load_split_pupil_input(animalid, session, fovnum, curr_id='results_id', trac
 # ###############################################################
 # Data formatting
 # ###############################################################
+def zscore_dataframe(xdf):
+    rlist = [r for r in xdf.columns if isnumber(r)]
+    z_xdf = (xdf[rlist]-xdf[rlist].mean()).divide(xdf[rlist].std())
+    return z_xdf
 
 def unstacked_neuraldf_to_stacked(ndf, response_type='response', id_vars = ['config', 'trial']):
     ndf['trial'] = ndf.index.tolist()
@@ -103,7 +107,24 @@ def split_datakey_str(s):
     fovnum = int(fovn[3:])
     return session, animalid, fovnum
 
+def get_pixel_size():
+    # Use measured pixel size from PSF (20191005, most recent)
+    # ------------------------------------------------------------------
+    xaxis_conversion = 2.3 #1  # size of x-axis pixel, goes with A-P axis
+    yaxis_conversion = 1.9 #89  # size of y-axis pixels, goes with M-L axis
+    return (xaxis_conversion, yaxis_conversion)
 
+
+def convert_range(oldval, newmin=None, newmax=None, oldmax=None, oldmin=None):
+    oldrange = (oldmax - oldmin)
+    newrange = (newmax - newmin)
+    newval = (((oldval - oldmin) * newrange) / oldrange) + newmin
+    return newval
+
+
+# ###############################################################
+# Data selection and loading
+# ###############################################################
 def choose_best_fov(which_fovs, criterion='max', colname='cell'):
     if criterion=='max':
         max_loc = np.where(which_fovs[colname]==which_fovs[colname].max())[0]
@@ -194,6 +215,32 @@ def select_best_fovs(counts_by_fov, criterion='max', colname='cell'):
 
     return incl
 
+def add_rf_positions(rfdf, calculate_position=False, traceid='traces001'):
+    '''
+    Add ROI position info to RF dataframe (converted and pixel-based).
+    Set calculate_position=True, to re-calculate.
+    '''
+    import roi_utils as rutils
+    print("Adding RF position info...")
+    pos_params = ['fov_xpos', 'fov_xpos_pix', 'fov_ypos', 'fov_ypos_pix', 'ml_pos','ap_pos']
+    for p in pos_params:
+        rfdf[p] = ''
+    p_list=[]
+    #for (animalid, session, fovnum, exp), g in rfdf.groupby(['animalid', 'session', 'fovnum', 'experiment']):
+    for (va, dk, exp), g in rfdf.groupby(['visual_area', 'datakey', 'experiment']):
+        session, animalid, fovnum = split_datakey_str(dk)
+
+        fcoords = rutils.load_roi_coords(animalid, session, 'FOV%i_zoom2p0x' % fovnum,
+                                  traceid=traceid, create_new=False)
+
+        #for ei, e_df in g.groupby(['experiment']):
+        cell_ids = g['cell'].unique()
+        p_ = fcoords['roi_positions'].loc[cell_ids]
+        for p in pos_params:
+            rfdf.loc[g.index, p] = p_[p].values
+
+    return rfdf
+
 
 # ===============================================================
 # Dataset selection
@@ -278,7 +325,7 @@ def get_sorted_fovs(filter_by='drop_repeats', excluded_sessions=[]):
 
     return fov_keys
 
-                
+             
     
 # ###############################################################
 # Plotting:
@@ -580,4 +627,129 @@ def load_corrected_dff_traces(animalid, session, fov, experiment='blobs', tracei
 
 
 
+def load_roi_assignments(animalid, session, fov, retinorun='retino_run1', 
+                            rootdir='/n/coxfs01/2p-data'):
     
+    results_fpath = os.path.join(rootdir, animalid, session, fov, retinorun, 
+                              'retino_analysis', 'segmentation', 'roi_assignments.json')
+    
+    assert os.path.exists(results_fpath), "Assignment results not found: %s" % results_fpath
+    with open(results_fpath, 'r') as f:
+        roi_assignments = json.load(f)
+   
+    return roi_assignments #, roi_masks_labeled
+
+
+def get_cells_by_area(sdata, excluded_datasets=[], return_missing=False, verbose=False,
+                    rootdir='/n/coxfs01/2p-data'):
+    '''
+    Use retionrun to ID area boundaries. If more than 1 retino, combine.
+    '''
+
+    excluded_datasets = ['20190602_JC080_fov1', '20190605_JC090_fov1',
+                         '20191003_JC111_fov1', 
+                         '20191104_JC117_fov1', '20191104_JC117_fov2', #'20191105_JC117_fov1',
+                         '20191108_JC113_fov1', '20191004_JC110_fov3',
+                         '20191008_JC091_fov'] 
+    missing_segmentation=[]
+    d_ = []
+    for (animalid, session, fov, datakey), g in sdata.groupby(['animalid', 'session', 'fov', 'datakey']):
+        if datakey in excluded_datasets:
+            continue
+        retinoruns = [os.path.split(r)[-1] for r in glob.glob(os.path.join(rootdir, animalid, session, fov, 'retino*'))]
+        roi_assignments=dict()
+        for retinorun in retinoruns:
+            try:
+                rois_ = load_roi_assignments(animalid, session, fov, retinorun=retinorun)
+                for varea, rlist in rois_.items():
+                    if varea not in roi_assignments.keys():
+                        roi_assignments[varea] = []
+                    roi_assignments[varea].extend(rlist)
+            except Exception as e:
+                if verbose:
+                    print("... skipping %s (%s)" % (datakey, retinorun))
+                missing_segmentation.append((datakey, retinorun))
+                continue
+ 
+        for varea, rlist in roi_assignments.items():
+            if isnumber(varea):
+                continue
+             
+            tmpd = pd.DataFrame({'cell': list(set(rlist))})
+            metainfo = {'visual_area': varea, 'animalid': animalid, 'session': session,
+                        'fov': fov, 'fovnum': g['fovnum'].values[0], 'datakey': g['datakey'].values[0]}
+            tmpd = add_meta_to_df(tmpd, metainfo)
+            d_.append(tmpd)
+
+    cells = pd.concat(d_, axis=0).reset_index(drop=True)
+    cells = cells[~cells['datakey'].isin(excluded_datasets)]
+    
+    #print("Missing %i datasets for segmentation:" % len(missing_segmentation)) 
+    if verbose: 
+        print("Segmentation, missing:")
+        for r in missing_segmentation:
+            print(r)
+    else:
+        print("Segmentation: missing %i dsets" % len(missing_segmentation))
+    if return_missing:
+        return cells, missing_segmentation
+    else:
+        return cells
+
+def add_meta_to_df(tmpd, metainfo):
+    for v, k in metainfo.items():
+        tmpd[v] = k
+    return tmpd
+
+
+def get_aggregate_info(traceid='traces001', fov_type='zoom2p0x', state='awake',
+                        visual_areas=['V1', 'Lm', 'Li', 'Ll'], return_cells=False, create_new=False,
+                        aggregate_dir='/n/coxfs01/julianarhee/aggregate-visual-areas'):
+
+    sdata_fpath = os.path.join(aggregate_dir, 'dataset_info_assigned.pkl')
+    if create_new is False:
+        print(sdata_fpath)
+        try:
+            assert os.path.exists(sdata_fpath)
+            with open(sdata_fpath, 'rb') as f:
+                sdata = pkl.load(f, encoding='latin1')
+            if return_cells:
+                cells, missing_seg = get_cells_by_area(sdata, return_missing=True)
+                cells = cells[cells.visual_area.isin(visual_areas)]
+            all_sdata = sdata.copy()
+
+        except Exception as e:
+            traceback.print_exc()
+            create_new=True
+
+    if create_new:
+        print("Loading old...")
+        unassigned_fp = os.path.join(aggregate_dir, 'dataset_info.pkl') 
+        with open(unassigned_fp, 'rb') as f:
+            sdata = pkl.load(f, encoding='latin1')
+        cells, missing_seg = get_cells_by_area(sdata, return_missing=True)
+        cells = cells[cells.visual_area.isin(visual_areas)]
+
+        d_=[]
+        all_dkeys = cells[['visual_area', 'datakey', 'fov']].drop_duplicates().reset_index(drop=True)
+        for (visual_area, datakey, fov), g in all_dkeys.groupby(['visual_area', 'datakey','fov']):
+            if visual_area not in visual_areas:
+                print("... skipping %s" % visual_area)
+                continue
+            found_exps = sdata[(sdata['datakey']==datakey) & (sdata['fov']==fov)]['experiment'].values
+            tmpd = pd.DataFrame({'experiment': found_exps})
+            tmpd['visual_area'] = visual_area
+            tmpd['datakey'] = datakey
+            tmpd['fov'] = fov
+            d_.append(tmpd)
+        all_sdata = pd.concat(d_, axis=0).reset_index(drop=True)
+        all_sdata = split_datakey(all_sdata)
+        all_sdata['fovnum'] = [int(f.split('_')[0][3:]) for f in all_sdata['fov']]
+
+    if return_cells:
+        return all_sdata, cells
+    else:
+        return all_sdata
+
+
+
