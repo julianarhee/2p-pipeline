@@ -97,9 +97,9 @@ def isnumber(n):
     return True
 
 def split_datakey(df):
-    df['animalid'] = [s.split('_')[1] for s in df['datakey']]
-    df['fov'] = ['FOV%i_zoom2p0x' % int(s.split('_')[2][3:]) for s in df['datakey']]
-    df['session'] = [s.split('_')[0] for s in df['datakey']]
+    df['animalid'] = [s.split('_')[1] for s in df['datakey'].values]
+    df['fov'] = ['FOV%i_zoom2p0x' % int(s.split('_')[2][3:]) for s in df['datakey'].values]
+    df['session'] = [s.split('_')[0] for s in df['datakey'].values]
     return df
 
 def split_datakey_str(s):
@@ -141,6 +141,8 @@ def choose_best_fov(which_fovs, criterion='max', colname='cell'):
 #     return fov_keys
 
 def select_best_fovs(counts_by_fov, criterion='max', colname='cell'):
+    if 'animalid' not in counts_by_fov.columns:
+        counts_by_fov = split_datakey(counts_by_fov)
     # Cycle thru all dsets and drop repeats
     fovkeys = get_sorted_fovs()
     incl_dsets=[]
@@ -213,7 +215,7 @@ def select_best_fovs(counts_by_fov, criterion='max', colname='cell'):
             incl_dsets.append(g)
     incl = pd.concat(incl_dsets, axis=0).reset_index(drop=True)
 
-    return incl
+    return incl.drop_duplicates()
 
 def add_rf_positions(rfdf, calculate_position=False, traceid='traces001'):
     '''

@@ -1,9 +1,13 @@
 import os
+import itertools
 import glob
 import traceback
 import json
-import dill as pkl
 
+import pylab as pl
+import matplotlib as mpl
+import dill as pkl
+import scipy.stats as spstats
 import numpy as np
 import pandas as pd
 import py3utils as p3
@@ -14,6 +18,53 @@ from shapely.geometry.point import Point
 from shapely.geometry import box
 from shapely import affinity
 
+
+# plotting
+def anisotropy_polarplot(rdf, metric='anisotropy', cmap='spring_r', alpha=0.5, 
+                            marker='o', markersize=30, ax=None, 
+                            hue_param='aniso_index', cbar_bbox=[0.4, 0.15, 0.2, 0.03]):
+
+    vmin=0; vmax=1;
+    norm = mpl.colors.Normalize(vmin=vmin, vmax=vmax)
+    iso_cmap = mpl.cm.ScalarMappable(norm=norm, cmap=cmap)
+    
+    if ax is None:
+        fig, ax = pl.subplots(1, subplot_kw=dict(projection='polar'), figsize=(4,3))
+
+    thetas = rdf['theta_Mm_c'].values #% np.pi # all thetas should point the same way
+    ratios = rdf[metric].values
+    ax.scatter(thetas, ratios, s=markersize, c=ratios, cmap=cmap, alpha=alpha)
+
+    ax.set_theta_zero_location("E")
+    ax.set_theta_direction(1)
+    ax.set_xticklabels(['0$^\circ$', '', '90$^\circ$', '', '', '', '-90$^\circ$', ''])
+    ax.set_rlabel_position(135) #315)
+    ax.set_xlabel('')
+    ax.set_yticklabels(['', 0.4, '', 0.8])
+    ax.set_ylabel(metric, fontsize=12)
+
+    # Grid lines and such
+    ax.spines['polar'].set_visible(False)
+    pl.subplots_adjust(left=0.1, right=0.9, wspace=0.2, bottom=0.3, top=0.8, hspace=0.5)
+
+    # Colorbar
+    iso_cmap._A = []
+    cbar_ax = ax.figure.add_axes(cbar_bbox)
+    cbar = ax.figure.colorbar(iso_cmap, cax=cbar_ax, orientation='horizontal', ticks=[0, 1])
+    if metric == 'anisotropy':
+        xlabel_min = 'Iso\n(%.1f)' % (vmin) 
+        xlabel_max= 'Aniso\n(%.1f)' % (vmax) 
+    else:             
+        xlabel_min = 'H\n(%.1f)' % (vmin) if hue_param in ['angle', 'aniso_index'] else '%.2f' % vmin
+        xlabel_max= 'V\n(%.1f)' % (vmax) if hue_param in ['angle', 'aniso_index'] else '%.2f' % vmax
+    cbar.ax.set_xticklabels([xlabel_min, xlabel_max])  # horizontal colorbar
+    cbar.ax.tick_params(which='both', size=0)
+
+    return ax
+
+
+
+# Ellipse fitting and formatting
 def create_ellipse(center, lengths, angle=0):
     """
     create a shapely ellipse. adapted from
@@ -96,6 +147,25 @@ def get_proportion_overlap(poly_tuple1, poly_tuple2):
                         'perc_overlap': perc_overlap}, index=[0])
     
     return odf
+
+
+def get_rf_overlaps(rf_polys):
+    '''
+    tuning_ (pd.DataFrame): nconds x nrois.
+    Each entry is the mean response (across trials) for a given stim condition.
+    '''
+    # Calculate signal corrs
+    o_=[]
+    rois_ = sorted(rf_polys.keys())
+    # Get unique pairs, then iterate thru and calculate pearson's CC
+    for col_a, col_b in itertools.combinations(rois_, 2):
+        df_ = calculate_overlap(rf_polys[col_a], rf_polys[col_b], \
+                                  r1=col_a, r2=col_b)
+        o_.append(df_)
+    overlapdf = pd.concat(o_)
+                   
+    return overlapdf
+
 
 # Data processing
 def rfits_to_df(fitr, row_vals=[], col_vals=[], roi_list=None, fit_params={},
@@ -730,23 +800,56 @@ def add_rf_positions(rfdf, calculate_position=False, traceid='traces001'):
     return rfdf
 
 
+def average_rfs_select(rfdf):
+    final_rfdf=None
+    rf_=[]
+    for (visual_area, datakey), curr_rfdf in rfdf.groupby(['visual_area', 'datakey']):
+        final_rf=None
+        if visual_area=='V1' and 'rfs' in curr_rfdf['experiment'].values:
+            final_rf = curr_rfdf[curr_rfdf.experiment=='rfs'].copy()
+        elif visual_area in ['Lm', 'Li']:
+            # Which cells have receptive fields
+            rois_ = curr_rfdf['cell'].unique()
+
+            # Means by cell id (some dsets have rf-5 and rf10 measurements, average these)
+            meanrf = curr_rfdf.groupby(['cell']).mean().reset_index()
+            mean_thetas = curr_rfdf.groupby(['cell'])['theta'].apply(spstats.circmean, low=0, high=2*np.pi).values
+            meanrf['theta'] = mean_thetas
+            meanrf['visual_area'] = visual_area
+            meanrf['experiment'] = ['average_rfs' if len(g['experiment'].values)>1 \
+                                    else str(g['experiment'].unique()[0]) for c, g in curr_rfdf.groupby(['cell'])]
+            #meanrf['experiment'] = ['average_rfs' for _ in np.arange(0, len(assigned_with_rfs))]
+
+            # Add the meta/non-numeric info
+            non_num = [c for c in curr_rfdf.columns if c not in meanrf.columns and c!='experiment']
+            metainfo = pd.concat([g[non_num].iloc[0] for c, g in \
+                                curr_rfdf.groupby(['cell'])], axis=1).T.reset_index(drop=True)
+            final_rf = pd.concat([metainfo, meanrf], axis=1)            
+            final_rf = update_rf_metrics(final_rf, scale_sigma=True)
+        rf_.append(final_rf)
+
+    final_rfdf = pd.concat(rf_).reset_index(drop=True)
+
+    return final_rfdf
+
+
 def average_rfs(rfdf):
     final_rfdf=None
     rf_=[]
     for (visual_area, datakey), curr_rfdf in rfdf.groupby(['visual_area', 'datakey']):
-        # Which cells have receptive fields
-        rois_ = curr_rfdf['cell'].unique()
-
         # Means by cell id (some dsets have rf-5 and rf10 measurements, average these)
         meanrf = curr_rfdf.groupby(['cell']).mean().reset_index()
         mean_thetas = curr_rfdf.groupby(['cell'])['theta'].apply(spstats.circmean, low=0, high=2*np.pi).values
         meanrf['theta'] = mean_thetas
         meanrf['visual_area'] = [visual_area for _ in  np.arange(0, len(assigned_with_rfs))] # reassign area
-        meanrf['experiment'] = ['average_rfs' for _ in np.arange(0, len(assigned_with_rfs))]
+        meanrf['experient'] = ['average_rfs' if len(g['experiment'].values)>1 \
+                                else str(g['experiment'].unique()) for c, g in curr_rfdf.groupby(['cell'])]
+        #meanrf['experiment'] = ['average_rfs' for _ in np.arange(0, len(assigned_with_rfs))]
 
         # Add the meta/non-numeric info
         non_num = [c for c in curr_rfdf.columns if c not in meanrf.columns and c!='experiment']
-        metainfo = pd.concat([g[non_num].iloc[0] for c, g in curr_rfdf.groupby(['cell'])], axis=1).T.reset_index(drop=True)
+        metainfo = pd.concat([g[non_num].iloc[0] for c, g in \
+                            curr_rfdf.groupby(['cell'])], axis=1).T.reset_index(drop=True)
         final_rf = pd.concat([metainfo, meanrf], axis=1)
         final_rf = update_rf_metrics(final_rf, scale_sigma=True)
         rf_.append(final_rf)
@@ -754,3 +857,5 @@ def average_rfs(rfdf):
     final_rfdf = pd.concat(r_).reset_index(drop=True)
 
     return final_rfdf
+
+
