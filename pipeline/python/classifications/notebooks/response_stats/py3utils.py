@@ -1,5 +1,5 @@
 import os
-
+import re
 import glob
 import json
 import traceback
@@ -23,7 +23,6 @@ import statsmodels as sm
 
 np.warnings.filterwarnings('ignore', category=np.VisibleDeprecationWarning)       
 
-import re
 
 # ###############################################################
 # Analysis specific
@@ -84,6 +83,12 @@ def stacked_neuraldf_to_unstacked(ndf): #neuraldf):
 # ###############################################################
 # General
 # ###############################################################
+def atoi(text):
+    return int(text) if text.isdigit() else text
+
+def natural_keys(text):
+    return [ atoi(c) for c in re.split('(\d+)', text) ]
+
 def isnumber(n):
     try:
         float(n)   # Type-casting the string to `float`.
@@ -95,6 +100,18 @@ def isnumber(n):
         return False
 
     return True
+
+def add_datakey(sdata):
+    if 'fovnum' not in sdata.keys():
+        sdata['fovnum'] = [int(re.findall(r'FOV(\d+)_', x)[0]) for x in sdata['fov']]
+
+    sdata['datakey'] = ['%s_%s_fov%i' % (session, animalid, fovnum)
+                              for session, animalid, fovnum in \
+                                zip(sdata['session'].values,
+                                    sdata['animalid'].values,
+                                    sdata['fovnum'].values)]
+    return sdata
+
 
 def split_datakey(df):
     df['animalid'] = [s.split('_')[1] for s in df['datakey'].values]
@@ -120,6 +137,23 @@ def convert_range(oldval, newmin=None, newmax=None, oldmax=None, oldmin=None):
     newrange = (newmax - newmin)
     newval = (((oldval - oldmin) * newrange) / oldrange) + newmin
     return newval
+
+
+def get_screen_dims():
+    screen_x = 59.7782*2 #119.5564
+    screen_y =  33.6615*2. #67.323
+    resolution = [1920, 1080] #[1024, 768]
+    deg_per_pixel_x = screen_x / float(resolution[0])
+    deg_per_pixel_y = screen_y / float(resolution[1])
+    deg_per_pixel = np.mean([deg_per_pixel_x, deg_per_pixel_y])
+    screen = {'azimuth_deg': screen_x,
+              'altitude_deg': screen_y,
+              'azimuth_cm': 103.0,
+              'altitude_cm': 58.0,
+              'resolution': resolution,
+              'deg_per_pixel': (deg_per_pixel_x, deg_per_pixel_y)}
+
+    return screen
 
 
 # ###############################################################
@@ -330,141 +364,14 @@ def get_sorted_fovs(filter_by='drop_repeats', excluded_sessions=[]):
              
     
 # ###############################################################
-# Plotting:
+# STATS
 # ###############################################################
-def print_means(plotdf, groupby=['visual_area', 'arousal'], params=None):
-    if params is None:
-        params = [k for k in plotdf.columns if k not in groupby]
-        
-    m_ = plotdf.groupby(groupby)[params].mean().reset_index()
-    s_ = plotdf.groupby(groupby)[params].std().reset_index()
-    for p in params:
-        m_['%s_std' % p] = s_[p].values
-    print("MEANS:")
-    print(m_)
-
-def set_threecolor_palette(c1='magenta', c2='orange', c3='dodgerblue', cmap=None, soft=False,
-                            visual_areas = ['V1', 'Lm', 'Li']):
-    if soft:
-        c1='turquoise';c2='cornflowerblue';c3='orchid';
-
-    # colors = ['k', 'royalblue', 'darkorange'] #sns.color_palette(palette='colorblind') #, n_colors=3)
-    # area_colors = {'V1': colors[0], 'Lm': colors[1], 'Li': colors[2]}
-    if cmap is not None:
-        c1, c2, c3 = sns.color_palette(palette=cmap, n_colors=len(visual_areas))#'colorblind') #, n_colors=3) 
-    area_colors = dict((k, v) for k, v in zip(visual_areas, [c1, c2, c3]))
-
-    return visual_areas, area_colors
-
-def set_plot_params(lw_axes=0.25, labelsize=6, color='k', dpi=100):
-    import pylab as pl
-    #### Plot params
-    pl.rcParams['font.size'] = labelsize
-    #pl.rcParams['text.usetex'] = True
-    
-    pl.rcParams["axes.labelsize"] = labelsize
-    pl.rcParams["axes.linewidth"] = lw_axes
-    pl.rcParams["xtick.labelsize"] = labelsize
-    pl.rcParams["ytick.labelsize"] = labelsize
-    pl.rcParams['xtick.major.width'] = lw_axes
-    pl.rcParams['xtick.minor.width'] = lw_axes
-    pl.rcParams['ytick.major.width'] = lw_axes
-    pl.rcParams['ytick.minor.width'] = lw_axes
-    pl.rcParams['legend.fontsize'] = labelsize
-    
-    pl.rcParams['figure.figsize'] = (5, 4)
-    pl.rcParams['figure.dpi'] = dpi
-    pl.rcParams['savefig.dpi'] = dpi
-    pl.rcParams['svg.fonttype'] = 'none' #: path
-        
-    
-    for param in ['xtick.color', 'ytick.color', 'axes.labelcolor', 'axes.edgecolor']:
-        pl.rcParams[param] = color
-
-    return 
-    
-# Plotting
+   
 def label_figure(fig, data_identifier):
     fig.text(0, 1,data_identifier, ha='left', va='top', fontsize=8)
 
-    
-def crop_legend_labels(ax, n_hues, bbox_to_anchor=(1.05, 1), loc='upper left', fontsize=12,
-                        title='', ncol=1, markerscale=1):
-    # Get the handles and labels.
-    leg_handles, leg_labels = ax.get_legend_handles_labels()
-    # When creating the legend, only use the first two elements
-    leg = ax.legend(leg_handles[0:n_hues], leg_labels[0:n_hues], title=title,
-            bbox_to_anchor=bbox_to_anchor, fontsize=fontsize, loc=loc, ncol=ncol, 
-            markerscale=markerscale)
-    return leg
-
-def get_empirical_ci(stat, ci=0.95):
-    p = ((1.0-ci)/2.0) * 100
-    lower = np.percentile(stat, p) #max(0.0, np.percentile(stat, p))
-    p = (ci+((1.0-ci)/2.0)) * 100
-    upper = np.percentile(stat, p) # min(1.0, np.percentile(x0, p))
-    #print('%.1f confidence interval %.2f and %.2f' % (alpha*100, lower, upper))
-    return lower, upper
-
-def set_split_xlabels(ax, offset=0.25, a_label='rfs', b_label='rfs10', rotation=0, ha='center', ncols=3):
-    locs = []
-    labs = []
-    for li in np.arange(0, ncols):
-        locs.extend([li-offset, li+offset])
-        labs.extend([a_label, b_label])
-    ax.set_xticks(locs)
-    ax.set_xticklabels(labs, rotation=rotation, ha=ha)
-
-#    ax.set_xticks([0-offset, 0+offset, 1-offset, 1+offset, 2-offset, 2+offset])
-#    ax.set_xticklabels([a_label, b_label, a_label, b_label, a_label, b_label],
-#                        rotation=rotation, ha=ha)
-#    ax.set_xlabel('')
-    ax.tick_params(axis='x', size=0)
-    sns.despine(bottom=True, offset=4)
-    return ax
-
-
-def plot_mannwhitney(mdf, metric='I_rs', multi_comp_test='holm',
-                        ax=None, y_loc=None, offset=0.1, lw=0.25, fontsize=6):
-    if ax is None:
-        fig, ax = pl.subplots()
-
-    print("********* [%s] Mann-Whitney U test(mc=%s) **********" % (metric, multi_comp_test))
-    statresults = do_mannwhitney(mdf, metric=metric, multi_comp_test=multi_comp_test)
-    #print(statresults)
-
-    # stats significance
-    ax = annotate_stats_areas(statresults, ax, y_loc=y_loc, offset=offset, 
-                                lw=lw, fontsize=fontsize)
-    print("****************************")
-
-    return statresults, ax
-
 
 # Stats
-def annotate_stats_areas(statresults, ax, lw=1, color='k',
-                        y_loc=None, offset=0.1, fontsize=6,
-                         visual_areas=['V1', 'Lm', 'Li']):
-
-    if y_loc is None:
-        y_loc = round(ax.get_ylim()[-1], 1)*1.2
-        offset = y_loc*offset #0.1
-
-    for ci in statresults[statresults['reject']].index.tolist():
-    #np.arange(0, statresults[statresults['reject']].shape[0]):
-        v1, v2, pv, uv = statresults.iloc[ci][['d1', 'd2', 'p_val', 'U_val']].values
-        x1 = visual_areas.index(v1)
-        x2 = visual_areas.index(v2)
-        y1 = y_loc+(ci*offset)
-        y2 = y1
-        ax.plot([x1,x1, x2, x2], [y1, y2, y2, y1], linewidth=lw, color=color)
-        ctrx = x1 + (x2-x1)/2.
-        star_str = '**' if pv<0.01 else '*'
-        ax.text(ctrx, y1+(offset/8.), star_str, fontsize=fontsize)
-
-    return ax
-
-
 def do_mannwhitney(mdf, metric='I_rs', multi_comp_test='holm'):
     '''
     bonferroni : one-step correction
