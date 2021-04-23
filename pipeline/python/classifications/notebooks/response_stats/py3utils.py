@@ -43,7 +43,7 @@ def load_split_pupil_input(animalid, session, fovnum, curr_id='results_id', trac
     try:
         assert len(curr_inputfiles)==1, "More than 1 input file: %s" % str(curr_inputfiles)
         with open(curr_inputfiles[0], 'rb') as f:
-            res = pkl.load(f)  
+            res = pkl.load(f, encoding='latin1')  
     except UnicodeDecodeError:
         with open(curr_inputfiles[0], 'rb') as f:
             res = pkl.load(f, encoding='latin1')  
@@ -52,6 +52,42 @@ def load_split_pupil_input(animalid, session, fovnum, curr_id='results_id', trac
         return None
     
     return res
+
+def reformat_morph_values(sdf, verbose=False):
+    aspect_ratio=1.75
+    control_ixs = sdf[sdf['morphlevel']==-1].index.tolist()
+    if len(control_ixs)==0: # Old dataset
+        if 17.5 in sdf['size'].values:
+            sizevals = np.array([round(s/aspect_ratio,0) for s in sdf['size'].values])
+            sdf['size'] = sizevals
+    else:  
+        sizevals = np.array([round(s, 1) for s in sdf['size'].unique() if s not in ['None', None] and not np.isnan(s)])
+        sdf.loc[sdf.morphlevel==-1, 'size'] = pd.Series(sizevals, index=control_ixs)
+        sdf['size'] = [round(s, 1) for s in sdf['size'].values]
+    xpos = [x for x in sdf['xpos'].unique() if x is not None]
+    ypos =  [x for x in sdf['ypos'].unique() if x is not None]
+    #assert len(xpos)==1 and len(ypos)==1, "More than 1 pos? x: %s, y: %s" % (str(xpos), str(ypos))
+    if verbose and (len(xpos)>1 or len(ypos)>1):
+        print("warning: More than 1 pos? x: %s, y: %s" % (str(xpos), str(ypos)))
+    sdf.loc[sdf.morphlevel==-1, 'xpos'] = [xpos[0] for _ in np.arange(0, len(control_ixs))]
+    sdf.loc[sdf.morphlevel==-1, 'ypos'] = [ypos[0] for _ in np.arange(0, len(control_ixs))]
+
+    return sdf
+
+
+def get_stimuli(datakey, experiment, rootdir='/n/coxfs01/2p-data', verbose=False):
+    session, animalid, fovn = split_datakey_str(datakey)
+    if verbose:
+        print("... getting stimulus info for: %s" % experiment)
+    dset_path = glob.glob(os.path.join(rootdir, animalid, session, 'FOV%i_*' % fovn,
+                        'combined_%s_static' % experiment, 'traces/traces*', 'data_arrays', 'labels.npz'))[0]
+    dset = np.load(dset_path, allow_pickle=True)
+    sdf = pd.DataFrame(dset['sconfigs'][()]).T
+    if 'blobs' in experiment:
+        sdf = reformat_morph_values(sdf)
+
+    return sdf
+
 
 # ###############################################################
 # Data formatting
@@ -257,23 +293,29 @@ def add_rf_positions(rfdf, calculate_position=False, traceid='traces001'):
     Set calculate_position=True, to re-calculate.
     '''
     import roi_utils as rutils
+    if 'fovnum' not in rfdf.columns:
+        rfdf = split_datakey(rfdf)
+
     print("Adding RF position info...")
     pos_params = ['fov_xpos', 'fov_xpos_pix', 'fov_ypos', 'fov_ypos_pix', 'ml_pos','ap_pos']
     for p in pos_params:
-        rfdf[p] = ''
+        rfdf[p] = None
     p_list=[]
     #for (animalid, session, fovnum, exp), g in rfdf.groupby(['animalid', 'session', 'fovnum', 'experiment']):
     for (va, dk, exp), g in rfdf.groupby(['visual_area', 'datakey', 'experiment']):
         session, animalid, fovnum = split_datakey_str(dk)
+        try:
+            fcoords = rutils.load_roi_coords(animalid, session, 'FOV%i_zoom2p0x' % fovnum,
+                                      traceid=traceid, create_new=False)
 
-        fcoords = rutils.load_roi_coords(animalid, session, 'FOV%i_zoom2p0x' % fovnum,
-                                  traceid=traceid, create_new=False)
-
-        #for ei, e_df in g.groupby(['experiment']):
-        cell_ids = g['cell'].unique()
-        p_ = fcoords['roi_positions'].loc[cell_ids]
-        for p in pos_params:
-            rfdf.loc[g.index, p] = p_[p].values
+            #for ei, e_df in g.groupby(['experiment']):
+            cell_ids = g['cell'].unique()
+            p_ = fcoords['roi_positions'].loc[cell_ids]
+            for p in pos_params:
+                rfdf.loc[g.index, p] = p_[p].values
+        except Exception as e:
+            print('{ERROR} %s, %s' % (va, dk))
+            traceback.print_exc()
 
     return rfdf
 
@@ -514,7 +556,7 @@ def load_corrected_dff_traces(animalid, session, fov, experiment='blobs', tracei
     Fc = pd.DataFrame(dset['data']) # np_subtracted:  Np-corrected trace, with baseline subtracted
 
     # Load raw (pre-neuropil subtraction)
-    raw = np.load(soma_fpath.replace('np_subtracted', 'raw'))
+    raw = np.load(soma_fpath.replace('np_subtracted', 'raw'), allow_pickle=True)
     F0_raw = pd.DataFrame(raw['f0'])
 
     # Calculate df/f
@@ -533,6 +575,51 @@ def load_corrected_dff_traces(animalid, session, fov, experiment='blobs', tracei
         labels = convert_columns_byte_to_str(labels)
         dfmat = traces_to_trials(dff, labels, epoch=epoch, metric=metric)
         return dfmat
+
+
+def traces_to_trials(traces, labels, epoch='stimulus', metric='mean', n_on=None):
+    '''
+    Returns dataframe w/ columns = roi ids, rows = mean response to stim ON per trial
+    Last column is config on given trial.
+    '''
+    print(labels.columns)
+    s_on = int(labels['stim_on_frame'].mean())
+    if epoch=='stimulus':
+        n_on = int(labels['nframes_on'].mean()) 
+    elif epoch=='firsthalf':
+        n_on = int(labels['nframes_on'].mean()/2.)
+    elif epoch=='plushalf':
+        half_dur = labels['nframes_on'].mean()/2.
+        n_on = int(labels['nframes_on'].mean() + half_dur) 
+
+    roi_list = traces.columns.tolist()
+    trial_list = np.array([int(trial[5:]) for trial, g in labels.groupby(['trial'])])
+    if epoch in ['stimulus', 'firsthalf', 'plushalf']:
+        mean_responses = pd.DataFrame(np.vstack([np.nanmean(traces.iloc[g.index[s_on:s_on+n_on]], axis=0)\
+                                            for trial, g in labels.groupby(['trial'])]),
+                                             columns=roi_list, index=trial_list)
+        if metric=='zscore':
+            std_responses = pd.DataFrame(np.vstack([np.nanstd(traces.iloc[g.index[0:s_on]], axis=0)\
+                                            for trial, g in labels.groupby(['trial'])]),
+                                             columns=roi_list, index=trial_list)
+            tmp = mean_responses.divide(std_baseline)
+            mean_responses = tmp.copy()
+    elif epoch == 'baseline':
+        mean_responses = pd.DataFrame(np.vstack([np.nanmean(traces.iloc[g.index[0:s_on]], axis=0)\
+                                            for trial, g in labels.groupby(['trial'])]),
+                                             columns=roi_list, index=trial_list)
+        if metric=='zscore':
+            std_baseline = pd.DataFrame(np.vstack([np.nanstd(traces.iloc[g.index[0:s_on]], axis=0)\
+                                            for trial, g in labels.groupby(['trial'])]),
+                                             columns=roi_list, index=trial_list)
+            tmp = mean_responses.divide(std_baseline)
+            mean_responses = tmp.copy()
+ 
+    condition_on_trial = np.array([g['config'].unique()[0] for trial, g in labels.groupby(['trial'])])
+    mean_responses['config'] = condition_on_trial
+
+    return mean_responses
+
 
 
 
@@ -661,4 +748,759 @@ def get_aggregate_info(traceid='traces001', fov_type='zoom2p0x', state='awake',
         return all_sdata
 
 
+# Data loading.
 
+def get_aggregate_data_filepath(experiment, traceid='traces001', response_type='dff', 
+                        epoch='stimulus', 
+                       responsive_test='ROC', responsive_thr=0.05, n_stds=0.0,
+                       aggregate_dir='/n/coxfs01/julianarhee/aggregate-visual-areas'):
+    
+    data_dir = os.path.join(aggregate_dir, 'data-stats')
+    #### Get DATA
+    data_desc_base = create_dataframe_name(traceid=traceid, response_type=response_type, 
+                                responsive_test=responsive_test, responsive_thr=responsive_thr,
+                                epoch=epoch)    
+    data_desc = 'aggr_%s_%s' % (experiment, data_desc_base)
+    data_outfile = os.path.join(data_dir, '%s.pkl' % data_desc)
+
+    return data_outfile #print(data_desc)
+    
+
+def create_dataframe_name(traceid='traces001', response_type='dff', 
+                             epoch='stimulus',
+                             responsive_test='ROC', responsive_thr=0.05, n_stds=0.0): 
+
+    data_desc = 'trialmeans_%s_%s-thr-%.2f_%s_%s' \
+                    % (traceid, str(responsive_test), responsive_thr, response_type, epoch)
+    return data_desc
+
+def get_aggregate_data(experiment, traceid='traces001', response_type='dff', epoch='stimulus', 
+                       responsive_test='ROC', responsive_thr=0.05, n_stds=0.0,
+                       rename_configs=True, equalize_now=False, zscore_now=False,
+                       return_configs=False, images_only=False, 
+                       diff_configs = ['20190327_JC073_fov1', '20190314_JC070_fov1'], # 20190426_JC078 (LM, backlight)
+                       aggregate_dir='/n/coxfs01/julianarhee/aggregate-visual-areas',
+                       visual_areas=['V1','Lm', 'Li'], verbose=False):
+    '''
+    Oldv:  load_aggregate_data(), then get_neuraldata() combines CELLS + MEANS into NEURALDATA.
+
+   NEURALDATA (dict)
+        keys=visual areas
+        values = MEANS (i.e., dict of dfs) for each visual area
+        Only inclues cells that are assigned to the specified area.
+    '''
+    sdata, cells0 = get_aggregate_info(visual_areas=visual_areas, return_cells=True)
+    if 'rfs' in experiment:
+        experiment_list = ['rfs', 'rfs10']
+    else:
+        experiment_list = [experiment]
+    print(experiment_list)
+    meta = sdata[sdata.experiment.isin(experiment_list)].copy()
+ 
+    # Only get cells for current experiment
+    all_dkeys = [(va, dk) for (va, dk), g in meta.groupby(['visual_area', 'datakey'])]
+    CELLS = pd.concat([g for (va, dk), g in cells0.groupby(['visual_area', 'datakey'])\
+                    if (va, dk) in all_dkeys])
+
+    visual_areas = CELLS['visual_area'].unique()
+    # Get "MEANS" dict (output of classification.aggregate_data_stats.py, p2)
+    if experiment!='blobs':
+        rename_configs=False
+        return_configs=False
+    MEANS = load_aggregate_data(experiment, traceid=traceid, response_type=response_type, epoch=epoch,
+                        responsive_test=responsive_test, responsive_thr=responsive_thr, n_stds=n_stds,
+                        rename_configs=rename_configs, equalize_now=equalize_now, zscore_now=zscore_now,
+                        return_configs=return_configs, images_only=images_only)
+
+    # Combine into dataframe
+    NEURALDATA = dict((visual_area, {}) for visual_area in visual_areas)
+    rf_=[]
+    for (visual_area, datakey), curr_c in CELLS.groupby(['visual_area', 'datakey']):
+        #print(datakey)
+        if visual_area not in NEURALDATA.keys():
+            print("... skipping: %s" % visual_area)
+            continue
+        if datakey not in meta['datakey'].values:
+            print("... not in exp: %s" % datakey)
+            continue
+
+        # Get neuradf for these cells only
+        neuraldf = get_neuraldf_for_cells_in_area(curr_c, MEANS, 
+                                                  datakey=datakey, visual_area=visual_area)
+        if verbose:
+            # Which cells are in assigned area
+            n_resp = int(MEANS[datakey].shape[1]-1)
+            curr_assigned = curr_c['cell'].unique() 
+            print("[%s] %s: %i cells responsive (%i in fov)" % (visual_area, datakey, len(curr_assigned), n_resp))
+            if neuraldf is not None:
+                print("Neuraldf: %s" % str(neuraldf.shape)) 
+            else:
+                print("No keys: %s|%s" % (visual_area, datakey))
+
+        if neuraldf is not None:            
+            NEURALDATA[visual_area].update({datakey: neuraldf})
+
+    NEURALDATA = neuraldf_dict_to_dataframe(NEURALDATA)
+
+    return NEURALDATA
+
+def neuraldf_dict_to_dataframe(NEURALDATA, response_type='response', add_cols=[]):
+    ndfs = []
+    id_vars = ['datakey', 'config', 'trial']
+    id_vars.extend(add_cols)
+    k1 = list(NEURALDATA.keys())[0]
+    if isinstance(NEURALDATA[k1], dict):
+        id_vars.append('visual_area')
+        for visual_area, vdict in NEURALDATA.items():
+            for datakey, neuraldf in vdict.items():
+                neuraldf['visual_area'] = visual_area
+                neuraldf['datakey'] = datakey
+                neuraldf['trial'] = neuraldf.index.tolist()
+                melted = pd.melt(neuraldf, id_vars=id_vars, var_name='cell', value_name=response_type)
+                ndfs.append(melted)
+    else:
+        for datakey, neuraldf in NEURALDATA.items():
+            neuraldf['datakey'] = datakey
+            neuraldf['trial'] = neuraldf.index.tolist()
+            melted = pd.melt(neuraldf, id_vars=id_vars, 
+                             var_name='cell', value_name=response_type)
+            ndfs.append(melted)
+
+    NDATA = pd.concat(ndfs, axis=0)
+   
+    return NDATA
+
+
+
+def load_aggregate_data(experiment, traceid='traces001', response_type='dff', epoch='stimulus', 
+                       responsive_test='ROC', responsive_thr=0.05, n_stds=0.0,
+                        rename_configs=True, equalize_now=False, zscore_now=False,
+                        return_configs=False, images_only=False, 
+                        diff_configs = ['20190327_JC073_fov1', '20190314_JC070_fov1'], # 20190426_JC078 (LM, backlight)
+                        aggregate_dir='/n/coxfs01/julianarhee/aggregate-visual-areas'):
+    '''
+    Return dict of neural dataframes (keys are datakeys).
+
+    rename_configs (bool) : Get each dataset's stim configs (sdf), and rename matching configs to match master.
+    Note, rename_configs *only* tested with experiment=blobs. (Prev. called check_configs).
+
+    equalize_now (bool) : Random sample trials per config so that same # trials/config.
+    zscore_now (bool) : Zscore neurons' responses.
+    ''' 
+    MEANS=None
+    SDF=None
+    data_outfile = get_aggregate_data_filepath(experiment, traceid=traceid, 
+                        response_type=response_type, epoch=epoch,
+                        responsive_test=responsive_test, 
+                        responsive_thr=responsive_thr, n_stds=n_stds,
+                        aggregate_dir=aggregate_dir)
+    # print("...loading: %s" % data_outfile)
+
+    with open(data_outfile, 'rb') as f:
+        MEANS = pkl.load(f, encoding='latin1')
+    print("...loading: %s" % data_outfile)
+
+    #### Fix config labels 
+    
+    if experiment=='blobs' and (rename_configs or return_configs):
+        SDF, renamed_configs = check_sdfs(MEANS.keys(), traceid=traceid, 
+                                          images_only=images_only, return_incorrect=True)
+        if rename_configs:
+            sdf_master = get_master_sdf(images_only=images_only)
+            for k, cfg_lut in renamed_configs.items():
+                #if k in diff_configs:
+                #    print("(skipping %s)" % k)
+                #    continue
+                #print("... updating %s" % k)
+                updated_cfgs = [cfg_lut[cfg] for cfg in MEANS[k]['config']]
+                MEANS[k]['config'] = updated_cfgs
+
+    if experiment=='blobs' and images_only is True: #Update MEANS dict
+        for k, md in MEANS.items():
+            incl_configs = SDF[k].index.tolist()
+            MEANS[k] = md[md['config'].isin(incl_configs)]
+
+    if equalize_now:
+        # Get equal counts
+        print("---equalizing now---")
+        MEANS = equal_counts_per_condition(MEANS)
+
+    if return_configs: 
+        return MEANS, SDF
+    else:
+        return MEANS
+
+def equal_counts_per_condition(MEANS):
+    '''
+    MEANS: dict
+        keys = datakeys
+        values = neural dataframes (columns=rois, index=trial numbers)
+    
+    Resample so that N trials per condition is the same as min N.
+        '''
+
+    for k, v in MEANS.items():
+        v_df = equal_counts_df(v)
+        
+        MEANS[k] = v_df
+
+    return MEANS
+
+def equal_counts_df(neuraldf, equalize_by='config'): #, randi=None):
+    curr_counts = neuraldf[equalize_by].value_counts()
+    if len(curr_counts.unique())==1:
+        return neuraldf #continue
+        
+    min_ntrials = curr_counts.min()
+    all_cfgs = neuraldf[equalize_by].unique()
+    drop_trial_col=False
+    if 'trial' not in neuraldf.columns:
+        neuraldf['trial'] = neuraldf.index.tolist()
+        drop_trial_col = True
+
+    #kept_trials=[]
+    #for cfg in all_cfgs:
+        #curr_trials = neuraldf[neuraldf[equalize_by]==cfg].index.tolist()
+        #np.random.shuffle(curr_trials)
+        #kept_trials.extend(curr_trials[0:min_ntrials])
+    #kept_trials=np.array(kept_trials)
+    kept_trials = neuraldf[['config', 'trial']].drop_duplicates().groupby(['config'])\
+        .apply(lambda x: x.sample(n=min_ntrials, replace=False, random_state=None))['trial'].values
+    
+    subdf = neuraldf[neuraldf.trial.isin(kept_trials)]
+    assert len(subdf[equalize_by].value_counts().unique())==1, \
+            "Bad resampling... Still >1 n_trials"
+    if drop_trial_col:
+        subdf = subdf.drop('trial', axis=1)
+ 
+    return subdf #neuraldf.loc[kept_trials]
+
+
+
+# Overlaps, cell assignments, etc.
+def get_neuraldf_for_cells_in_area(cells, MEANS, datakey=None, visual_area=None):
+    '''
+    For a given dataframe (index=trials, columns=cells), only return cells
+    in specified visual area
+    '''
+    neuraldf=None
+    try:
+        if isinstance(MEANS, dict):
+            if 'V1' in MEANS.keys(): # dict of dict
+                neuraldf_dict = MEANS[visual_area]
+            else:
+                neuraldf_dict = MEANS
+        elif isinstance(MEANS, pd.DataFrame):
+            MEANS = neuraldf_dataframe_to_dict(MEANS)
+            neuraldf_dict = MEANS[visual_area] 
+
+        assert datakey in neuraldf_dict.keys(), "%s--not found in RESPONSES" % datakey
+        assert datakey in cells['datakey'].values, "%s--not found in SEGMENTED" % datakey
+
+        curr_rois = cells[(cells['datakey']==datakey) 
+                        & (cells['visual_area']==visual_area)]['cell'].astype(int).values
+        curr_cols = [i for i in np.array(curr_rois.copy()) if i in neuraldf_dict[datakey].columns.tolist()]
+        #curr_cols = list(curr_rois.copy())
+        neuraldf = neuraldf_dict[datakey][curr_cols].copy()
+        neuraldf['config'] = neuraldf_dict[datakey]['config'].copy()
+    except Exception as e:
+        return neuraldf
+ 
+    return neuraldf
+
+
+
+
+def get_neuraldf(animalid, session, fovnum, experiment, traceid='traces001', 
+                   response_type='dff', epoch='stimulus',
+                   responsive_test='ROC', responsive_thr=0.05, n_stds=2.5, 
+                   create_new=False, redo_stats=False, n_processes=1,
+                   rootdir='/n/coxfs01/2p-data'):
+    '''
+    epoch options
+        stimulus: use full stimulus period
+        baseline: average over baseline period
+        firsthalf: use first HALF of stimulus period
+        plushalf:  use stimulus period + extra half 
+    '''
+    # output
+    traceid_dir = glob.glob(os.path.join(rootdir, animalid, session, 
+                            'FOV%i_*' % fovnum, 'combined_%s_static' % experiment,
+                            'traces', '%s*' % traceid))[0]
+    if responsive_test is not None:
+        statdir = os.path.join(traceid_dir, 'summary_stats', str(responsive_test))
+    else:
+        statdir = os.path.join(traceid_dir, 'summary_stats')
+    data_desc_base = create_dataframe_name(traceid=traceid, 
+                                            response_type=response_type, 
+                                            responsive_test=responsive_test,
+                                            responsive_thr=responsive_thr,
+                                            epoch=epoch)
+    ndf_fpath = os.path.join(statdir, '%s.pkl' % data_desc_base)
+    
+    create_new = redo_stats is True
+    if not create_new:
+        try:
+            with open(ndf_fpath, 'rb') as f:
+                mean_responses = pkl.load(f, encoding='latin1')
+        except Exception as e:
+            print("Unable to get neuraldf. Creating now.")
+            create_new=True
+
+    if create_new:
+        # Load traces
+        if response_type=='dff0':
+            meanr = load_corrected_dff_traces(animalid, session, 'FOV%i_zoom2p0x' % fovnum, 
+                                    experiment=experiment, traceid=traceid,
+                                  return_traces=False, epoch=epoch, metric='mean') 
+            tmp_desc_base = create_dataframe_name(traceid=traceid, 
+                                            response_type='dff', 
+                                            responsive_test=responsive_test,
+                                            responsive_thr=responsive_thr,
+                                            epoch=epoch) 
+            tmp_fpath = os.path.join(statdir, '%s.pkl' % tmp_desc_base)
+            with open(tmp_fpath, 'rb') as f:
+                tmpd = pkl.load(f, encoding='latin1')
+            cols = tmpd.columns.tolist()
+            mean_responses = meanr[cols]
+            print("min:", mean_responses.min().min())
+
+        else:
+            trace_type = 'df' if response_type=='zscore' else response_type
+            traces, labels, sdf = load_traces(animalid, session, fovnum, 
+                                              experiment, traceid=traceid, 
+                                              response_type=trace_type,
+                                              responsive_test=responsive_test, 
+                                              responsive_thr=responsive_thr, 
+                                              n_stds=n_stds,
+                                              redo_stats=redo_stats, 
+                                              n_processes=n_processes)
+            if traces is None:
+                return None
+            # Calculate mean trial metric
+            metric = 'zscore' if response_type=='zscore' else 'mean'
+            mean_responses = traces_to_trials(traces, labels, epoch=epoch, metric=response_type)
+
+        # save
+        with open(ndf_fpath, 'wb') as f:
+            pkl.dump(mean_responses, f, protocol=2)
+
+    return mean_responses
+
+def process_and_save_traces(trace_type='dff',
+                            animalid=None, session=None, fov=None, 
+                            experiment=None, traceid='traces001',
+                            soma_fpath=None,
+                            rootdir='/n/coxfs01/2p-data'):
+
+    print("... processing + saving data arrays (%s)." % trace_type)
+
+    assert (animalid is None and soma_fpath is not None) or (soma_fpath is None and animalid is not None), "Must specify either dataset params (animalid, session, etc.) OR soma_fpath to data arrays."
+
+    if soma_fpath is None:
+        search_str = '' if 'combined' in experiment else '_'
+        soma_fpath = glob.glob(os.path.join(rootdir, animalid, session, fov,
+                                '*%s%s*' % (experiment, search_str), 'traces', '%s*' % traceid, 
+                                'data_arrays', 'np_subtracted.npz'))[0]
+
+    dset = np.load(soma_fpath, allow_pickle=True)
+    
+    # Stimulus / condition info
+    labels = pd.DataFrame(data=dset['labels_data'], 
+                          columns=dset['labels_columns'])
+    sdf = pd.DataFrame(dset['sconfigs'][()]).T
+    if 'blobs' in soma_fpath: #self.experiment_type:
+        sdf = reformat_morph_values(sdf)
+    run_info = dset['run_info'][()]
+
+    xdata_df = pd.DataFrame(dset['data'][:]) # neuropil-subtracted & detrended
+    F0 = pd.DataFrame(dset['f0'][:]).mean().mean() # detrended offset
+    
+    #% Add baseline offset back into raw traces:
+    neuropil_fpath = soma_fpath.replace('np_subtracted', 'neuropil')
+    npdata = np.load(neuropil_fpath, allow_pickle=True)
+    neuropil_f0 = np.nanmean(np.nanmean(pd.DataFrame(npdata['f0'][:])))
+    neuropil_df = pd.DataFrame(npdata['data'][:]) 
+    print("    adding NP offset (NP f0 offset: %.2f)" % neuropil_f0)
+
+    # # Also add raw 
+    raw_fpath = soma_fpath.replace('np_subtracted', 'raw')
+    rawdata = np.load(raw_fpath, allow_pickle=True)
+    raw_f0 = np.nanmean(np.nanmean(pd.DataFrame(rawdata['f0'][:])))
+    raw_df = pd.DataFrame(rawdata['data'][:])
+    print("    adding raw offset (raw f0 offset: %.2f)" % raw_f0)
+
+    raw_traces = xdata_df + list(np.nanmean(neuropil_df, axis=0)) + raw_f0 
+    #+ neuropil_f0 + raw_f0 # list(np.nanmean(raw_df, axis=0)) #.T + F0
+     
+    # SAVE
+    data_dir = os.path.split(soma_fpath)[0]
+    data_fpath = os.path.join(data_dir, 'corrected.npz')
+    print("... Saving corrected data (%s)" %  os.path.split(data_fpath)[-1])
+    np.savez(data_fpath, data=raw_traces.values)
+  
+    # Process dff/df/etc.
+    stim_on_frame = labels['stim_on_frame'].unique()[0]
+    tmp_df = []
+    tmp_dff = []
+    for k, g in labels.groupby(['trial']):
+        tmat = raw_traces.loc[g.index]
+        bas_mean = np.nanmean(tmat[0:stim_on_frame], axis=0)
+        
+        #if trace_type == 'dff':
+        tmat_dff = (tmat - bas_mean) / bas_mean
+        tmp_dff.append(tmat_dff)
+
+        #elif trace_type == 'df':
+        tmat_df = (tmat - bas_mean)
+        tmp_df.append(tmat_df)
+
+    dff_traces = pd.concat(tmp_dff, axis=0) 
+    data_fpath = os.path.join(data_dir, 'dff.npz')
+    print("... Saving dff data (%s)" %  os.path.split(data_fpath)[-1])
+    np.savez(data_fpath, data=dff_traces.values)
+
+    df_traces = pd.concat(tmp_df, axis=0) 
+    data_fpath = os.path.join(data_dir, 'df.npz')
+    print("... Saving df data (%s)" %  os.path.split(data_fpath)[-1])
+    np.savez(data_fpath, data=df_traces.values)
+
+    if trace_type=='dff':
+        return dff_traces, labels, sdf, run_info
+    elif trace_type == 'df':
+        return df_traces, labels, sdf, run_info
+    else:
+        return raw_traces, labels, sdf, run_info
+
+
+def load_dataset(soma_fpath, trace_type='dff', add_offset=True, 
+                make_equal=False, create_new=False):
+    
+    #print("... [loading dataset]")
+    traces=None
+    labels=None
+    sdf=None
+    run_info=None
+
+    try:
+        data_fpath = soma_fpath.replace('np_subtracted', trace_type)
+        if not os.path.exists(data_fpath) or create_new is True:
+            # Process data and save
+            traces, labels, sdf, run_info = process_and_save_traces(
+                                                    trace_type=trace_type,
+                                                    soma_fpath=soma_fpath
+                                                    )
+
+        else:
+            #print("... loading saved data array (%s)." % trace_type)
+            traces_dset = np.load(data_fpath, allow_pickle=True)
+            traces = pd.DataFrame(traces_dset['data'][:]) 
+            labels_fpath = data_fpath.replace('%s.npz' % trace_type, 'labels.npz')
+            labels_dset = np.load(labels_fpath, allow_pickle=True, encoding='latin1')
+            
+            # Stimulus / condition info
+            labels = pd.DataFrame(data=labels_dset['labels_data'], 
+                                  columns=labels_dset['labels_columns'])
+            labels = convert_columns_byte_to_str(labels)
+
+            sdf = pd.DataFrame(labels_dset['sconfigs'][()]).T
+            if 'blobs' in soma_fpath: #self.experiment_type:
+                sdf = reformat_morph_values(sdf)
+            run_info = labels_dset['run_info'][()]
+        if make_equal:
+            print("... making equal")
+            traces, labels = check_counts_per_condition(traces, labels)           
+            
+    except Exception as e:
+        traceback.print_exc()
+        print("ERROR LOADING DATA")
+
+    # Format condition info:
+    if 'image' in sdf['stimtype']:
+        aspect_ratio = sdf['aspect'].unique()[0]
+        sdf['size'] = [round(sz/aspect_ratio, 1) for sz in sdf['size']]
+
+
+    return traces, labels, sdf, run_info
+
+
+def load_traces(animalid, session, fovnum, experiment, traceid='traces001',
+                response_type='dff', 
+                responsive_test='ROC', responsive_thr=0.05, n_stds=2.5,
+                redo_stats=False, n_processes=1, rootdir='/n/coxfs01/2p-data'):
+    '''
+    redo_stats: use carefully, will re-run responsivity test if True
+   
+    To return ALL selected cells, set responsive_test to None
+    '''
+    soma_fpath = glob.glob(os.path.join(rootdir, animalid, session, 'FOV%i_*' % fovnum,
+                                    '*%s_static' % (experiment), 'traces', '%s*' % traceid,
+                                    'data_arrays', 'np_subtracted.npz'))[0]
+ 
+    # Load experiment neural data
+    traces, labels, sdf, run_info = load_dataset(soma_fpath, trace_type=response_type,create_new=False)
+
+    # Get responsive cells
+    if responsive_test is not None:
+        responsive_cells, ncells_total = get_responsive_cells(animalid, session, fovnum, run=experiment,
+                                                responsive_test=responsive_test, responsive_thr=responsive_thr,
+                                                create_new=redo_stats)
+        #print("%i responsive" % len(responsive_cells))
+        if responsive_cells is None:
+            print("NO LOADING")
+            return None, None, None
+        traces = traces[responsive_cells]
+    else:
+        responsive_cells = [c for c in traces.columns if isnumber(c)]
+
+    return traces[responsive_cells], labels, sdf
+
+def load_corrected_dff_traces(animalid, session, fov, experiment='blobs', traceid='traces001',
+                              return_traces=True, epoch='stimulus', metric='mean', return_labels=False,
+                              rootdir='/n/coxfs01/2p-data'):
+    print('... calculating F0 for df/f')
+    # Load corrected
+    soma_fpath = glob.glob(os.path.join(rootdir, animalid, session, fov,
+                                    '*%s_static' % (experiment), 'traces', '%s*' % traceid,
+                                    'data_arrays', 'np_subtracted.npz'))[0]
+    dset = np.load(soma_fpath, allow_pickle=True, encoding='latin1')
+    Fc = pd.DataFrame(dset['data']) # np_subtracted:  Np-corrected trace, with baseline subtracted
+
+    # Load raw (pre-neuropil subtraction)
+    raw = np.load(soma_fpath.replace('np_subtracted', 'raw'), allow_pickle=True)
+    F0_raw = pd.DataFrame(raw['f0'])
+
+    # Calculate df/f
+    dff = Fc.divide(F0_raw) # dff 
+
+    if return_traces:
+        if return_labels:
+            labels = pd.DataFrame(data=dset['labels_data'],columns=dset['labels_columns'])
+            return dff, labels
+        else:
+            return dff
+    else:
+        labels = pd.DataFrame(data=dset['labels_data'],columns=dset['labels_columns'])
+        dfmat = traces_to_trials(dff, labels, epoch=epoch, metric=metric)
+        return dfmat 
+
+
+
+def get_responsive_cells(animalid, session, fovnum, run=None, traceid='traces001',
+                         response_type='dff',create_new=False, n_processes=1,
+                         responsive_test='ROC', responsive_thr=0.05, n_stds=2.5,
+                         rootdir='/n/coxfs01/2p-data', verbose=False):
+        
+    roi_list=None; nrois_total=None;
+    rname = run if 'combined' in run else 'combined_%s_' % run
+    traceid_dir =  glob.glob(os.path.join(rootdir, animalid, session, 
+                                    'FOV%i_*' % fovnum, '%s*' % rname, 'traces', '%s*' % traceid))[0]        
+    stat_dir = os.path.join(traceid_dir, 'summary_stats', responsive_test)
+    if not os.path.exists(stat_dir):
+        os.makedirs(stat_dir) 
+    # move old dir
+    if create_new and (('gratings' in run) or ('blobs' in run)):
+        print("@@@ running anew, might take awhile (%s|%s|%s) @@@" % (animalid, session, fov))
+        try:
+            if responsive_test=='ROC':
+                print("NOT implemented, need to run bootstrap") #DOING BOOT - run: %s" % run) 
+#                bootstrap_roc_func(animalid, session, fov, traceid, run, 
+#                            trace_type='corrected', rootdir=rootdir,
+#                            n_processes=n_processes, plot_rois=True, n_iters=1000)
+            elif responsive_test=='nstds':
+                fdf = calculate_nframes_above_nstds(animalid, session, fov, 
+                            run=run, traceid=traceid, n_stds=n_stds, 
+                            #response_type=response_type, 
+                            n_processes=n_processes, rootdir=rootdir, 
+                            create_new=True)
+            print('@@@@@@ finished responsivity test (%s|%s|%s) @@@@@@' % (animalid, session, fov))
+
+        except Exception as e:
+            traceback.print_exc()
+            print("JK ERROR")
+            return None, None 
+
+    if responsive_test=='nstds':
+        stats_fpath = glob.glob(os.path.join(stat_dir, 
+                            '%s-%.2f_result*.pkl' % (responsive_test, n_stds)))
+    else:
+        stats_fpath = glob.glob(os.path.join(stat_dir, 'roc_result*.pkl'))
+
+    try:
+        #stats_fpath = glob.glob(os.path.join(stats_dir, '*results*.pkl'))
+        #assert len(stats_fpath) == 1, "Stats results paths: %s" % str(stats_fpath)
+        with open(stats_fpath[0], 'rb') as f:
+            if verbose:
+                print("... loading stats")
+            rstats = pkl.load(f, encoding='latin1')
+        # print("...loaded")        
+        if responsive_test == 'ROC':
+            roi_list = [r for r, res in rstats.items() if res['pval'] < responsive_thr]
+            nrois_total = len(rstats.keys())
+        elif responsive_test == 'nstds':
+            assert n_stds == rstats['nstds'], "... incorrect nstds, need to recalculate"
+            #print rstats
+            roi_list = [r for r in rstats['nframes_above'].columns \
+                            if any(rstats['nframes_above'][r] > responsive_thr)]
+            nrois_total = rstats['nframes_above'].shape[-1]
+    except Exception as e:
+        print(e)
+        traceback.print_exc()
+
+    if verbose:
+        print("... %i of %i cells responsive" % (len(roi_list), nrois_total))
+ 
+    return roi_list, nrois_total
+ 
+def calculate_nframes_above_nstds(animalid, session, fov, run=None, traceid='traces001',
+                         #response_type='dff', 
+                        n_stds=2.5, create_new=False,
+                         n_processes=1, rootdir='/n/coxfs01/2p-data'):
+
+    if 'combined' in run:
+        rname = run
+    else:
+        rname = 'combined_%s' % run
+
+    traceid_dir =  glob.glob(os.path.join(rootdir, animalid, session, 
+                                    fov, '%s*' % rname, 'traces', '%s*' % traceid))[0]        
+    stat_dir = os.path.join(traceid_dir, 'summary_stats', 'nstds')
+    if not os.path.exists(stat_dir):
+        os.makedirs(stat_dir) 
+    results_fpath = os.path.join(stat_dir, 'nstds-%.2f_results.pkl' % n_stds)
+    
+    calculate_frames = False
+    if  os.path.exists(results_fpath) and create_new is False:
+        try:
+            with open(results_fpath, 'rb') as f:
+                results = pkl.load(f, encoding='latin1')
+            assert results['nstds'] == n_stds, "... different nstds requested. Re-calculating"
+            framesdf = results['nframes_above']            
+        except Exception as e:
+            calculate_frames = True
+    else:
+        calculate_frames = True
+   
+    if calculate_frames:
+
+        print("... Testing responsive (n_stds=%.2f)" % n_stds)
+        # Load data
+        soma_fpath = glob.glob(os.path.join(traceid_dir, 
+                                    'data_arrays', 'np_subtracted.npz'))[0]
+        traces, labels, sdf, run_info = load_dataset(soma_fpath, 
+                                            trace_type='corrected', #response_type, 
+                                            add_offset=True, 
+                                            make_equal=False) #make_equal)
+        #self.load(trace_type=trace_type, add_offset=add_offset)
+        ncells_total = traces.shape[-1]
+        
+        # Calculate N frames 
+        print("... Traces: %s, Labels: %s" % (str(traces.shape), str(labels.shape)))
+        framesdf = pd.concat([find_n_responsive_frames(traces[roi], labels, 
+                                n_stds=n_stds) for roi in range(ncells_total)], axis=1)
+        results = {'nframes_above': framesdf,
+                   'nstds': n_stds}
+        # Save    
+        with open(results_fpath, 'wb') as f:
+            pkl.dump(results, f, protocol=2)
+        print("... Saved: %s" % os.path.split(results_fpath)[-1])
+ 
+    return framesdf
+
+def find_n_responsive_frames(roi_traces, labels, n_stds=2.5):
+    roi = roi_traces.name
+    stimon = labels['stim_on_frame'].unique()[0]
+    nframes_on = labels['nframes_on'].unique()[0]
+    rtraces = pd.concat([pd.DataFrame(data=roi_traces.values, 
+                        columns=['values'], index=labels.index), labels], axis=1)
+
+    n_resp_frames = {}
+    for config, g in rtraces.groupby(['config']):
+        tmat = np.vstack(g.groupby(['trial'])['values'].apply(np.array))
+        tr = tmat.mean(axis=0)
+        b_mean = np.nanmean(tr[0:stimon])
+        b_std = np.nanstd(tr[0:stimon])
+        #threshold = abs(b_mean) + (b_std*n_stds)
+        #nframes_trial = len(tr[0:stimon+nframes_on])
+        #n_frames_above = len(np.where(np.abs(tr[stimon:stimon+nframes_on]) > threshold)[0])
+        thr_lo = abs(b_mean) - (b_std*n_stds)
+        thr_hi = abs(b_mean) + (b_std*n_stds)
+        nframes_above = len(np.where(np.abs(tr[stimon:stimon+nframes_on]) > thr_hi)[0])
+        nframes_below = len(np.where(np.abs(tr[stimon:stimon+nframes_on]) < thr_lo)[0])
+        n_resp_frames[config] = nframes_above + nframes_below
+
+    #rconfigs = [k for k, v in n_resp_frames.items() if v>=min_nframes]
+    #[stimdf['sf'][cfg] for cfg in rconfigs]
+    cfs = pd.DataFrame(n_resp_frames, index=[roi]).T #columns=[roi])
+   
+    return cfs
+ 
+
+
+
+
+def aggregate_and_save(experiment, traceid='traces001', 
+                       response_type='dff', epoch='stimulus',
+                       responsive_test='ROC', responsive_thr=0.05, n_stds=2.5, 
+                       create_new=False, redo_stats=False, redo_fov=False,
+                       always_exclude=['20190426_JC078'], n_processes=1,
+                       aggregate_dir='/n/coxfs01/julianarhee/aggregate-visual-areas'):
+    '''
+    create_new: remake aggregate file
+    redo_stats: for each loaded FOV, re-calculate stats 
+    redo_fov: create new neuraldf (otherwise just loads existing)
+    '''
+    #if experiment=='gratings':
+    #    always_exclude.append('20190517_JC083')
+
+    #### Load mean trial info for responsive cells
+    data_dir = os.path.join(aggregate_dir, 'data-stats')
+    sdata = get_aggregate_info(traceid=traceid)
+    
+    #### Get DATA   
+    data_outfile = get_aggregate_data_filepath(experiment, traceid=traceid, 
+                        response_type=response_type, epoch=epoch,
+                        responsive_test=responsive_test, 
+                        responsive_thr=responsive_thr, n_stds=n_stds,
+                        aggregate_dir=aggregate_dir)
+    data_desc = os.path.splitext(os.path.split(data_outfile)[-1])[0]
+    print(data_desc)
+    if not os.path.exists(data_outfile):
+        create_new=True
+
+    if create_new:
+        print("Getting data: %s" % experiment)
+        print("Saving data to %s" % data_outfile)
+        dsets = sdata[sdata['experiment']==experiment].copy()
+        no_stats = []
+        DATA = {}
+        for (animalid, session, fovnum), g in dsets.groupby(['animalid', 'session', 'fovnum']):
+            datakey = '%s_%s_fov%i' % (session, animalid, fovnum)
+            if '%s_%s' % (session, animalid) in always_exclude:
+                continue 
+            else:
+                print(datakey)
+            mean_responses = get_neuraldf(animalid, session, fovnum, experiment, 
+                                traceid=traceid, 
+                                response_type=response_type, epoch=epoch,
+                                responsive_test=responsive_test, 
+                                responsive_thr=responsive_thr, n_stds=n_stds,
+                                create_new=redo_fov, redo_stats=any([redo_fov, redo_stats]))          
+            if mean_responses is None:
+                print("NO stats, rerun: %s" % datakey)
+                no_stats.append(datakey)
+                continue
+            DATA[datakey] = mean_responses
+
+        # Save
+        with open(data_outfile, 'wb') as f:
+            pkl.dump(DATA, f, protocol=pkl.HIGHEST_PROTOCOL)
+        print("Done!")
+
+    print("There were %i datasets without stats:" % len(no_stats))
+    for d in no_stats:
+        print(d)
+    
+    print("Saved aggr to: %s" % data_outfile)
+
+    return data_outfile

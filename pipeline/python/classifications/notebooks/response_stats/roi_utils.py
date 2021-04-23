@@ -5,11 +5,83 @@ import h5py
 import glob
 import json
 import imutils
-
+import h5py
+import tifffile as tf
 import dill as pkl
 import numpy as np
 import pandas as pd
 import py3utils as p3
+
+
+
+def get_masks_and_centroids(dk, traceid='traces001',
+                        rootdir='/n/coxfs01/2p-data'):
+    '''
+    Load zprojected image, masks (nrois, d2, d2), and centroids for dataset.
+    '''
+    session, animalid, fovnum = p3.split_datakey_str(dk)
+    fov = 'FOV%i_zoom2p0x' % fovnum
+
+    # Load zimg
+    roiid = get_roiid_from_traceid(animalid, session, 'FOV%i_*' % fovnum, 
+                                          'gratings', traceid=traceid)
+    zimg_path = glob.glob(os.path.join(rootdir, animalid, session, \
+                                       'ROIs', '%s*' % roiid, 'figures', '*.tif'))[0]
+    zimg = tf.imread(zimg_path)
+    zimg = zimg[:, :, 1]
+    # Load masks for centroids
+    masks, _ = load_roi_masks(animalid, session, fov, rois=roiid, 
+                                       rois_first=True)
+    # Get centroids, better for plotting
+    centroids =  get_roi_centroids(masks)
+
+    return zimg, masks, centroids
+
+def get_roi_centroids(masks):
+    '''Calculate center of soma, then return centroid coords.
+    '''
+    centroids=[]
+    for roi in range(masks.shape[0]):
+        img = masks[roi, :, :].copy()
+        x, y = np.where(img>0)
+        centroid = ( round(sum(x) / len(x)), round(sum(y) / len(x)) )
+        centroids.append(centroid)
+    
+    nrois_total = masks.shape[0]
+    ctr_df = pd.DataFrame(centroids, columns=['x', 'y'], index=range(nrois_total))
+
+    return ctr_df
+
+
+def load_roi_masks(animalid, session, fov, rois=None, 
+                rois_first=False, rootdir='/n/coxfs01/2p-data'):
+    '''
+    Loads ROI masks (orig) hdf5 file.
+    Returns masks, zimg
+    '''
+    masks=None; zimg=None;
+    mask_fpath = glob.glob(os.path.join(rootdir, animalid, session, 
+                                'ROIs', '%s*' % rois, 'masks.hdf5'))[0]
+    try:
+        mfile = h5py.File(mask_fpath, 'r')
+
+        # Load and reshape masks
+        reffile = list(mfile.keys())[0]
+        masks = mfile[reffile]['masks']['Slice01'][:].T
+        #print(masks.shape)
+
+        zimg = mfile[reffile]['zproj_img']['Slice01'][:].T
+       
+        if rois_first:
+            masks_r0 = np.swapaxes(masks, 0, 2)
+            masks = np.swapaxes(masks_r0, 1, 2)
+    except Exception as e:
+        traceback.print_exc()
+    finally:
+        mfile.close()
+ 
+    return masks, zimg
+
 
 def load_roi_coords(animalid, session, fov, roiid=None,
                     convert_um=True, traceid='traces001',
@@ -60,19 +132,6 @@ def get_roiid_from_traceid(animalid, session, fov, run_type=None,
 
     return roiid
 
-
-def load_roi_masks(animalid, session, fov, rois=None, rootdir='/n/coxfs01/2p-data'):
-    mask_fpath = glob.glob(os.path.join(rootdir, animalid, session,
-                                'ROIs', '%s*' % rois, 'masks.hdf5'))[0]
-    mfile = h5py.File(mask_fpath, 'r')
-    ref_file = list(mfile.keys())[0]
-
-    # Load and reshape masks
-    masks = mfile[ref_file]['masks']['Slice01'][:].T
-    #print(masks.shape)
-    zimg = mfile[ref_file]['zproj_img']['Slice01'][:].T
-
-    return masks, zimg
 
 def calculate_roi_coords(masks, zimg, roi_list=None, convert_um=True):
     '''
@@ -191,7 +250,7 @@ def get_roi_position_in_fov(tmp_roi_contours, roi_list=None,
     return fov_pos_x, fov_pos_y, xlim, ylim, centroids
 
 def get_contour_center(cnt):
-
+    cnt =(cnt).astype(np.float32)
     M = cv2.moments(cnt)
     cX = int(M["m10"] / M["m00"])
     cY = int(M["m01"] / M["m00"])
