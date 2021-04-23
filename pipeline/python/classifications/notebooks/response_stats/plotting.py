@@ -84,6 +84,64 @@ def set_plot_params(lw_axes=0.25, labelsize=6, color='k', dpi=100):
         pl.rcParams[param] = color
 
     return 
+
+# Colorbar stuff
+import numpy as np
+from matplotlib.colors import LinearSegmentedColormap as lsc
+
+def cmap_map(function, cmap, name='colormap_mod', N=None, gamma=None):
+    """
+    Modify a colormap using `function` which must operate on 3-element
+    arrays of [r, g, b] values.
+
+    You may specify the number of colors, `N`, and the opacity, `gamma`,
+    value of the returned colormap. These values default to the ones in
+    the input `cmap`.
+
+    You may also specify a `name` for the colormap, so that it can be
+    loaded using pl.get_cmap(name).
+    """
+    if N is None:
+        N = cmap.N
+    if gamma is None:
+        gamma = cmap._gamma
+    cdict = cmap._segmentdata
+#     # Cast the steps into lists:
+#     step_dict = {key: map(lambda x: x[0], cdict[key]) for key in cdict}
+#     print(step_dict)
+#     # Now get the unique steps (first column of the arrays):
+#     step_list = np.unique(sum(step_dict.values(), []))
+    step_dict = dict((k, list(v)) for k, v in cdict.items())
+    step_list = np.unique(sum(step_dict.values(), []))
+
+    # 'y0', 'y1' are as defined in LinearSegmentedColormap docstring:
+    y0 = cmap(step_list)[:, :3]
+    y1 = y0.copy()[:, :3]
+    # Go back to catch the discontinuities, and place them into y0, y1
+    for iclr, key in enumerate(['red', 'green', 'blue']):
+        for istp, step in enumerate(step_list):
+            try:
+                ind = step_dict[key].index(step)
+            except ValueError:
+                # This step is not in this color
+                continue
+            y0[istp, iclr] = cdict[key][ind][1]
+            y1[istp, iclr] = cdict[key][ind][2]
+    # Map the colors to their new values:
+#     y0 = np.array(map(function, y0))
+#     y1 = np.array(map(function, y1))
+    y0 = function(y0)
+    y1 = function(y1)
+    # Build the new colormap (overwriting step_dict):
+    for iclr, clr in enumerate(['red', 'green', 'blue']):
+        step_dict[clr] = np.vstack((step_list, y0[:, iclr], y1[:, iclr])).T
+    return lsc(name, step_dict, N=N, gamma=gamma)
+
+def darken(x, ):
+   return x * 0.85
+
+
+
  
 def adjust_polar_axes(ax, theta_loc='E'):
 
@@ -276,5 +334,130 @@ def annotate_stats_areas(statresults, ax, lw=1, color='k',
         ax.text(ctrx, y1+(offset/8.), star_str, fontsize=fontsize)
 
     return ax
+
+
+
+# Drawing funcs
+from matplotlib.offsetbox import OffsetImage,AnnotationBbox
+from matplotlib.patches import Ellipse, Rectangle, Polygon
+
+def get_icon(name, icon_type='ori'):
+    src = '/n/coxfs01/julianarhee/legends/%s/%s%03d.png' % (icon_type, icon_type, name)
+    #print(src)
+    im = pl.imread(src)
+    return im
+
+def offset_image(coord, ax, name=None, pad=0, xybox=(0, 0), xycoords=('data'), yloc=None, zoom=1.0):
+    img = get_icon(name)
+    im = OffsetImage(img, zoom=zoom)
+    im.image.axes = ax
+    
+    if yloc is None:
+        yloc=ax.get_ylim()[-1]
+    ab = AnnotationBbox(im, (coord, yloc), xybox=xybox, frameon=False,
+                        xycoords=xycoords,
+                        boxcoords="offset points", pad=pad, annotation_clip=False)
+    ax.add_artist(ab)
+    
+    return yloc
+
+def replace_ori_labels(ori_names, bin_centers=None, ax=None, xybox=(0, 0), yloc=None,
+                       zoom=0.25, pad=0, polar=False):
+    if polar:
+        xycoords=("data")
+        for i, c in enumerate(ori_names):
+            yloc = offset_image(np.deg2rad(c), ax, name=c, xybox=xybox, xycoords=xycoords, 
+                                yloc=yloc,  pad=pad, zoom=zoom)
+            ax.set_xticklabels([])
+        #if yloc is not None:
+        #ax.set_ylim([0, yloc])
+        ax.spines['polar'].set_visible(False)
+    else:
+        xycoords=("data", "axes fraction")
+        if bin_centers is None:
+            bin_centers = ori_names
+        for i, (binloc, binval) in enumerate(zip(bin_centers, ori_names)):
+            yloc = offset_image(binloc, ax, name=binval, xybox=xybox, xycoords=xycoords,
+                                yloc=yloc, pad=pad, zoom=zoom)
+            ax.set_xticklabels([])
+    
+    return ax
+
+# Plotting
+from matplotlib.offsetbox import (DrawingArea, OffsetImage,AnnotationBbox)
+
+def replace_rf_labels(rf_bins, ax=None, width=20, height=10, yloc=None, polar=True,
+                      box_alignment=(0.5, 1),xybox=(0,0), alpha=0.5,
+                      fill=False, color='k', lw=1):
+    
+    for rf_ang in rf_bins:
+        # Annotate the 1st position with a circle patch
+        da = DrawingArea(height, height, height, height)
+        p = Ellipse((0, 0), width=width, height=height, angle=rf_ang, alpha=alpha, color=color,
+                                    lw=lw, fill=fill, clip_on=False)
+        da.add_artist(p)
+
+        xloc = np.deg2rad(rf_ang) if polar else rf_ang
+        
+        ab = AnnotationBbox(da, (xloc, yloc),
+                            xybox=xybox, 
+                            xycoords=("data"),
+                            box_alignment=box_alignment, #(.5, 0.5),
+                            boxcoords="offset points",
+                            bboxprops={"edgecolor" : "none", "facecolor": "none"},
+                            annotation_clip=False)
+
+        ax.add_artist(ab)
+    
+    ax.set_xticklabels([])
+    ax.spines['polar'].set_visible(False)
+    return ax
+
+def add_subplot_axes(ax,rect,axisbg='w', axis_alpha=1):
+    '''
+    https://stackoverflow.com/questions/17458580/embedding-small-plots-inside-subplots-in-matplotlib
+    '''
+    fig = pl.gcf()
+    box = ax.get_position()
+    width = box.width
+    height = box.height
+    
+    inax_position  = ax.transAxes.transform(rect[0:2])
+    transFigure = fig.transFigure.inverted()
+    infig_position = transFigure.transform(inax_position)    
+    x = infig_position[0]
+    y = infig_position[1]
+    width *= rect[2]
+    height *= rect[3]  # <= Typo was here
+    subax = fig.add_axes([x,y,width,height],facecolor=axisbg) #axisbg=axisbg)
+    subax.patch.set_alpha(axis_alpha)
+    
+    x_labelsize = subax.get_xticklabels()[0].get_size()
+    y_labelsize = subax.get_yticklabels()[0].get_size()
+    x_labelsize *= rect[2]**0.5
+    y_labelsize *= rect[3]**0.5
+    subax.xaxis.set_tick_params(labelsize=x_labelsize)
+    subax.yaxis.set_tick_params(labelsize=y_labelsize)
+    
+    return subax
+
+
+def turn_off_axis_ticks(ax, despine=True):
+    ax.tick_params(which='both', axis='both', size=0)
+    if despine:
+        sns.despine(ax=ax, left=True, right=True, bottom=True, top=True) #('off')
+    ax.set_xticklabels([])
+    ax.set_yticklabels([])
+
+def custom_legend_markers(colors=['m', 'c'], labels=['label1', 'label2'], marker='o'):
+    from matplotlib.patches import Patch
+    from matplotlib.lines import Line2D
+
+    leg_elements=[]
+    for col, label in zip(colors, labels):
+        leg_elements.append(Line2D([0], [0], marker=marker, color=col, label=label))
+
+    return leg_elements
+
 
 
