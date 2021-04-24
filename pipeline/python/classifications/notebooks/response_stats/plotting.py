@@ -459,5 +459,22 @@ def custom_legend_markers(colors=['m', 'c'], labels=['label1', 'label2'], marker
 
     return leg_elements
 
+def darken_cmap(colormap='spectral', alpha=0.9, 
+        cmapdir = '/n/coxfs01/julianarhee/colormaps'):
 
-
+    try:
+        cmap = mpl.cm.get_cmap(colormap)
+    except Exception as e:
+        print(e)
+        cdata = np.loadtxt(os.path.join(cmapdir, colormap) + ".txt")
+        cmap = mpl.colors.LinearSegmentedColormap.from_list(colormap, cdata[::-1])
+    # modify colormap
+    colors = []
+    for ind in range(cmap.N):
+        c = []
+        for x in cmap(ind)[:3]: c.append(x*alpha)
+        colors.append(tuple(c))
+    dark_cmap = mpl.colors.ListedColormap(colors, name='dark_%s' % colormap)
+    mpl.cm.register_cmap("dark_%s" % colormap, dark_cmap)
+    new_cmap_name='dark_%s' % colormap
+    return new_cmap_name

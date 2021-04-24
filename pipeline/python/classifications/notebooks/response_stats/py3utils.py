@@ -89,6 +89,60 @@ def get_stimuli(datakey, experiment, rootdir='/n/coxfs01/2p-data', verbose=False
     return sdf
 
 
+def get_master_sdf(experiment='blobs', images_only=False):
+
+    sdf_master = get_stimuli('20190522_JC084_fov1', experiment)
+    if images_only:
+        sdf_master=sdf_master[sdf_master['morphlevel']!=-1].copy()
+    return sdf_master
+
+def check_sdfs(stim_datakeys, experiment='blobs', traceid='traces001', images_only=False,
+                rename=True, return_incorrect=False, diff_configs=['20190314_JC070_fov1', '20190327_JC073_fov1'] ):
+    '''
+    Checks config names and reutrn master dict of all stimconfig dataframes
+    Notes: only tested with blobs, and renaming only works with blobs.
+    '''
+    sdf_master = get_master_sdf(images_only=False)
+    n_configs = sdf_master.shape[0]
+    #### Check that all datasets have same stim configs
+    SDF={}
+    renamed_configs={}
+    for datakey in stim_datakeys:
+        session, animalid, fov_ = datakey.split('_')
+        fovnum = int(fov_[3:])
+        sdf = get_stimuli(datakey, experiment)
+        if len(sdf['xpos'].unique())>1 or len(sdf['ypos'].unique())>1:
+            print("*Warning* <%s> More than 1 pos? x: %s, y: %s" \
+                    % (datakey, str(sdf['xpos'].unique()), str(sdf['ypos'].unique())))
+        if experiment=='blobs': # and (sdf.shape[0]!=sdf_master.shape[0]):
+            key_names = ['morphlevel', 'size']
+            updated_keys={}
+            for old_ix in sdf.index:
+                #try:
+                new_ix = sdf_master[(sdf_master[key_names] == sdf.loc[old_ix,  key_names]).all(1)].index[0]
+                updated_keys.update({old_ix: new_ix})
+            if rename: # and (datakey not in diff_configs): 
+                sdf = sdf.rename(index=updated_keys)
+            # Save renamed key 
+            renamed_configs[datakey] = updated_keys
+        if experiment=='blobs' and images_only:
+            SDF[datakey] = sdf[sdf['morphlevel']!=-1].copy()
+        else:
+            SDF[datakey] = sdf
+    ignore_params = ['xpos', 'ypos', 'position', 'color']
+    if experiment != 'blobs':
+        ignore_params.extend(['size'])
+    compare_params = [p for p in sdf_master.columns if p not in ignore_params]
+    different_configs = renamed_configs.keys()
+    sdf_master = get_master_sdf(images_only=images_only)
+    assert all([all(sdf_master[compare_params]==d[compare_params]) for k, d in SDF.items() \
+              if k not in different_configs]), "Incorrect stimuli..."
+    if return_incorrect:
+        return SDF, renamed_configs
+    else:
+        return SDF
+
+
 # ###############################################################
 # Data formatting
 # ###############################################################
@@ -1284,6 +1338,54 @@ def load_corrected_dff_traces(animalid, session, fov, experiment='blobs', tracei
         dfmat = traces_to_trials(dff, labels, epoch=epoch, metric=metric)
         return dfmat 
 
+def process_traces(raw_traces, labels, response_type='zscore', nframes_post_onset=None):
+    print("--- processed traces: %s" % response_type)
+    # Get stim onset frame: 
+    stim_on_frame = labels['stim_on_frame'].unique()
+    assert len(stim_on_frame) == 1, "---[stim_on_frame]: More than 1 stim onset found: %s" % str(stim_on_frame)
+    stim_on_frame = stim_on_frame[0]
+
+    # Get n frames stimulus on:
+    nframes_on = labels['nframes_on'].unique()
+    assert len(nframes_on) == 1, "---[nframes_on]: More than 1 stim dur found: %s" % str(nframes_on)
+    nframes_on = nframes_on[0]
+
+    if nframes_post_onset is None:
+        nframes_post_onset = nframes_on*2
+
+    zscored_traces_list = []
+    zscores_list = []
+    #snrs_list = []
+    for trial, tmat in labels.groupby(['trial']):
+
+        # Get traces using current trial's indices: divide by std of baseline
+        curr_traces = raw_traces.iloc[tmat.index]
+        bas_std = curr_traces.iloc[0:stim_on_frame].std(axis=0)
+        bas_mean = curr_traces.iloc[0:stim_on_frame].mean(axis=0)
+        if response_type == 'zscore':
+            curr_zscored_traces = pd.DataFrame(curr_traces).subtract(bas_mean).divide(bas_std, axis='columns')
+        else:
+            curr_zscored_traces = pd.DataFrame(curr_traces).subtract(bas_mean).divide(bas_mean, axis='columns')
+        zscored_traces_list.append(curr_zscored_traces)
+
+        # Also get zscore (single value) for each trial:
+        stim_mean = curr_traces.iloc[stim_on_frame:(stim_on_frame+nframes_on+nframes_post_onset)].mean(axis=0)
+        if response_type == 'zscore':
+            zscores_list.append((stim_mean-bas_mean)/bas_std)
+        elif response_type == 'snr':
+            zscores_list.append(stim_mean/bas_mean)
+        elif response_type == 'meanstim':
+            zscores_list.append(stim_mean)
+        elif response_type == 'dff':
+            zscores_list.append((stim_mean-bas_mean) / bas_mean)
+
+        #zscores_list.append(curr_zscored_traces.iloc[stim_on_frame:stim_on_frame+nframes_post_onset].mean(axis=0)) # Get average zscore value for current trial
+
+    zscored_traces = pd.concat(zscored_traces_list, axis=0)
+    zscores =  pd.concat(zscores_list, axis=1).T # cols=rois, rows = trials
+
+    return zscored_traces, zscores
+
 
 
 def get_responsive_cells(animalid, session, fovnum, run=None, traceid='traces001',
@@ -1504,3 +1606,47 @@ def aggregate_and_save(experiment, traceid='traces001',
     print("Saved aggr to: %s" % data_outfile)
 
     return data_outfile
+
+
+def get_common_cells_from_dataframes(NEURALDATA, RFDATA):
+    ndf_list=[]
+    rdf_list=[]
+    for (visual_area, datakey), rfdf in RFDATA.groupby(['visual_area', 'datakey']):
+        rf_rois = rfdf['cell'].unique()
+        if isinstance(NEURALDATA, pd.DataFrame):
+            neuraldf = NEURALDATA[(NEURALDATA['visual_area']==visual_area)
+                                & (NEURALDATA['datakey']==datakey)]
+            blob_rois = neuraldf['cell'].unique()
+            common_rois = np.intersect1d(blob_rois, rf_rois)
+            new_neuraldf = neuraldf[neuraldf['cell'].isin(common_rois)]
+        else:
+            if 'V1' in NEURALDATA.keys():
+                neuraldf = NEURALDATA[visual_area][datakey]
+            else:
+                neuraldf = NEURALDATA[datakey] 
+            blob_rois = neuraldf['cell'].unique()
+            common_rois = np.intersect1d(blob_rois, rf_rois)
+            new_neuraldf = neuraldf[common_rois]
+            new_neuraldf['config'] = neuraldf['config']
+            
+        ndf_list.append(new_neuraldf)
+        new_rfdf = rfdf[rfdf['cell'].isin(common_rois)]
+        rdf_list.append(new_rfdf)
+    N = pd.concat(ndf_list, axis=0)
+    R = pd.concat(rdf_list, axis=0)
+
+    return N, R
+
+
+
+def cells_in_experiment_df(assigned_cells, rfdf):
+    if isinstance(rfdf, dict):
+        rfdf = neuraldf_dict_to_dataframe(rfdf) #, response_type='response'):
+
+    updated_cells = pd.concat([assigned_cells[(assigned_cells['visual_area']==v) 
+                              & (assigned_cells['datakey']==dk) 
+                              & (assigned_cells['cell'].isin(g['cell'].unique()))] \
+                        for (v, dk), g in rfdf.groupby(['visual_area', 'datakey'])])
+    return updated_cells
+
+

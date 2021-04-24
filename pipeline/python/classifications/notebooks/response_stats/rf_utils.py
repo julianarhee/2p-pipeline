@@ -989,5 +989,62 @@ def average_rfs(rfdf):
 
     return final_rfdf
 
+# RFMAPS
+def get_trials_by_cond(labels):
+    # Get single value for each trial and sort by config:
+    trials_by_cond = dict()
+    for k, g in labels.groupby(['config']):
+        trials_by_cond[k] = sorted([int(tr[5:])-1 for tr in g['trial'].unique()])
+
+    return trials_by_cond
+
+
+def load_rfmap_array(rfdir, do_spherical_correction=True):  
+    rfarray_dpath = os.path.join(rfdir, 'rfmap_array.pkl')    
+    avg_resp_by_cond=None
+    if os.path.exists(rfarray_dpath):
+        print("-- loading: %s" % rfarray_dpath)
+        with open(rfarray_dpath, 'rb') as f:
+            avg_resp_by_cond = pkl.load(f, encoding='latin1')
+    return avg_resp_by_cond
+
+def save_rfmap_array(avg_resp_by_cond, rfdir):  
+    rfarray_dpath = os.path.join(rfdir, 'rfmap_array.pkl')    
+    with open(rfarray_dpath, 'wb') as f:
+        pkl.dump(avg_resp_by_cond, f, protocol=pkl.HIGHEST_PROTOCOL)
+    return
+
+
+def reshape_array_for_nynx(rfmap_values, nx, ny):
+    if isinstance(rfmap_values, (pd.Series, pd.DataFrame)):
+        rfmap_orig = np.reshape(rfmap_values.values, (nx, ny)).T
+    else:
+        rfmap_orig = rfmap_values.reshape(nx, ny).T
+    return rfmap_orig.ravel()
+
+
+def group_trial_values_by_cond(zscores, trials_by_cond, do_spherical_correction=False, nx=21, ny=11):
+    resp_by_cond = dict()
+    for cfg, trial_ixs in trials_by_cond.items():
+        resp_by_cond[cfg] = zscores.iloc[trial_ixs]  # For each config, array of size ntrials x nrois
+
+    trialvalues_by_cond = pd.DataFrame([resp_by_cond[cfg].mean(axis=0) \
+                                            for cfg in sorted(resp_by_cond.keys(), key=p3.natural_keys)]) # nconfigs x nrois
+    #if do_spherical_correction:
+    avg_t = trialvalues_by_cond.apply(reshape_array_for_nynx, args=(nx, ny))
+    trialvalues_by_cond = avg_t.copy()
+            
+    return trialvalues_by_cond
+
+
+# plotting
+def get_centered_screen_points(screen_xlim, nc):
+    col_pts = np.linspace(screen_xlim[0], screen_xlim[1], nc+1) # n points for NC columns
+    pt_spacing = np.mean(np.diff(col_pts)) 
+    # Add half point spacing on either side of boundary points to center the column points
+    xlim_min = col_pts.min() - (pt_spacing/2.) 
+    xlim_max = col_pts.max() + (pt_spacing/2.)
+    return (xlim_min, xlim_max)
+
 
 
