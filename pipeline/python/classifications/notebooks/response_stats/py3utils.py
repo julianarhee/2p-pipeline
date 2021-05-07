@@ -1309,35 +1309,6 @@ def load_traces(animalid, session, fovnum, experiment, traceid='traces001',
 
     return traces[responsive_cells], labels, sdf
 
-def load_corrected_dff_traces(animalid, session, fov, experiment='blobs', traceid='traces001',
-                              return_traces=True, epoch='stimulus', metric='mean', return_labels=False,
-                              rootdir='/n/coxfs01/2p-data'):
-    print('... calculating F0 for df/f')
-    # Load corrected
-    soma_fpath = glob.glob(os.path.join(rootdir, animalid, session, fov,
-                                    '*%s_static' % (experiment), 'traces', '%s*' % traceid,
-                                    'data_arrays', 'np_subtracted.npz'))[0]
-    dset = np.load(soma_fpath, allow_pickle=True, encoding='latin1')
-    Fc = pd.DataFrame(dset['data']) # np_subtracted:  Np-corrected trace, with baseline subtracted
-
-    # Load raw (pre-neuropil subtraction)
-    raw = np.load(soma_fpath.replace('np_subtracted', 'raw'), allow_pickle=True)
-    F0_raw = pd.DataFrame(raw['f0'])
-
-    # Calculate df/f
-    dff = Fc.divide(F0_raw) # dff 
-
-    if return_traces:
-        if return_labels:
-            labels = pd.DataFrame(data=dset['labels_data'],columns=dset['labels_columns'])
-            return dff, labels
-        else:
-            return dff
-    else:
-        labels = pd.DataFrame(data=dset['labels_data'],columns=dset['labels_columns'])
-        dfmat = traces_to_trials(dff, labels, epoch=epoch, metric=metric)
-        return dfmat 
-
 def process_traces(raw_traces, labels, response_type='zscore', nframes_post_onset=None):
     print("--- processed traces: %s" % response_type)
     # Get stim onset frame: 

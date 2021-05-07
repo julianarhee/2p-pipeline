@@ -24,18 +24,22 @@ def get_rid_from_str(s, ndec=3):
     #print(re.findall(r"rid\d{%s}" % ndec, s)[0][3:])
     return int(re.findall(r"rid\d{%s}" % ndec, s)[0][3:])
 
-def load_fitparams(dk, roi_list=None, allow_negative=True,
+def load_fitparams(dk, roi_list=None, allow_negative=True, param='morphlevel', 
                   split_pupil=False, sigmoid='gauss', return_dicts=False, return_missing=False):
     results={}
     roifits=None
     
     sigmoid_dir = sigmoid if allow_negative else '%s_reverse' % sigmoid
-    prefix = 'meanAUC_' if split_pupil else ''
+    prefix = '%s_meanAUC_' % param if split_pupil else '%s_' % param
     fit_subdir = 'split_pupil/fits/%s' % sigmoid_dir if split_pupil else 'fits/%s' % sigmoid_dir
 
     if split_pupil:
         return_dicts=False # no dict saving here 
-        
+    
+    if param=='morphstep':
+        single_eff=False
+        allow_negative=False
+    
     traceid_dir = get_tracedir_from_datakey(dk)
     if roi_list is None:
         roi_fit_fns = glob.glob(os.path.join(traceid_dir, 'neurometric', fit_subdir, '%srid*.pkl' % prefix))
@@ -56,12 +60,12 @@ def load_fitparams(dk, roi_list=None, allow_negative=True,
             continue
         if return_dicts:
             assert 'results' in rd.keys(), "No results dict found, skipping [%s]" % fn
-            results[rid] = rd['results']
-        
+            results[rid] = rd['results']    
         r_.append(rd if split_pupil else rd['pars'])
     if len(r_)>0:
         roifits = pd.concat(r_).reset_index(drop=True)
-    
+   
+    #print("Missing %i cells" % len(missing)) 
     if return_dicts:
         if return_missing:
             return roifits, results, missing
@@ -303,7 +307,7 @@ def split_AB_morphstep(rdf, param='morphstep', Eff=None, include_ref=True, class
     '''
     # Split responses into A and B distns at each morph step
     Eff_obj = 'A' if Eff==class_a else 'B'
-    Ineff_obj = 'B' if Eff_obj=='A' else 'B'
+    Ineff_obj = 'B' if Eff_obj=='A' else 'A'
     resp_A=[]; resp_B=[]; resp_cfgs=[]; resp_counts=[];
     
     if include_ref:
@@ -323,7 +327,8 @@ def split_AB_morphstep(rdf, param='morphstep', Eff=None, include_ref=True, class
     # Get all the other responses
     resp_A_ = [g['response'].values for c, g in rdf[rdf.object==Ineff_obj].groupby(['size', param])]
     resp_B_ = [g['response'].values for c, g in rdf[rdf.object==Eff_obj].groupby(['size', param])]
-    
+    resp_A.extend(resp_A_)
+    resp_B.extend(resp_B_) 
     # Corresponding configs
     resp_cfgs1_ = [c for c, g in rdf[rdf.object==Ineff_obj].groupby(['size', param])]
     resp_cfgs2_ = [c for c, g in rdf[rdf.object==Eff_obj].groupby(['size', param])]
@@ -438,6 +443,7 @@ def get_auc_AB(rdf, param='morphlevel', n_crit=50,
                 .groupby(['object'])['response'].mean().argmax()
     pref_obj = objects[max_ix]
     Eff = class_a if pref_obj=='A' else  class_b
+    rdf = p3.equal_counts_df(rdf, equalize_by='config')
 
     p_hits, p_fas, resp_cfgs, counts = split_signal_distns(rdf, param=param, n_crit=n_crit, 
                                                         include_ref=include_ref, Eff=Eff)
