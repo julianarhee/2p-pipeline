@@ -11,6 +11,7 @@ import tifffile as tf
 import pandas as pd
 import pylab as pl
 import seaborn as sns
+import dill as pkl
 import numpy as np
 from matplotlib.colors import LinearSegmentedColormap
 from scipy import misc,interpolate,stats,signal
@@ -68,13 +69,13 @@ def get_final_maps(magratios_soma, phases_soma, trials_by_cond=None, mag_thr=0.0
     # Get absolute maps from conditions
     magmaps, absolute_az, absolute_el, delay_az, delay_el = absolute_maps_from_conds(
                             magratios_soma, phases_soma, trials_by_cond=trials_by_cond,
-                            mag_thr=magthr_2p, dims=(d1_orig, d2_orig),
+                            mag_thr=mag_thr, dims=dims, #(d1_orig, d2_orig),
                             ds_factor=ds_factor, return_map=use_pixels)
     
     # #### Filter where delay map is not uniform (Az v El)
     filt_az, filt_el = filter_by_delay_map(absolute_az, absolute_el,
                                 delay_az, delay_el,
-                                delay_map_thr=delay_map_thr, return_delay=False)
+                                delay_map_thr=delay_thr, return_delay=False)
     phases_by_cond = pd.DataFrame({'phase_az': filt_az, 'phase_el': filt_el})
 
     #### Mean mag ratios
@@ -88,7 +89,7 @@ def get_final_maps(magratios_soma, phases_soma, trials_by_cond=None, mag_thr=0.0
     n_pass_magthr = absolute_az.dropna().shape[0]
     n_pass_delaythr = filt_az.dropna().shape[0]
     print("Total: %i\n After mag_thr (%.3f): %i\n After delay_thr (%.3f): %i" \
-          % (ntotal, magthr_2p, n_pass_magthr, delay_map_thr, n_pass_delaythr))
+          % (ntotal, mag_thr, n_pass_magthr, delay_thr, n_pass_delaythr))
     
     df = pd.concat([phases_by_cond, mags_by_cond], axis=1)
     
@@ -448,7 +449,7 @@ def extract_from_fft_results(fft_soma):
 
 
 def load_fft_results(animalid, session, fov, retinorun='retino_run1', trace_type='corrected',
-                    traceid='traces001', create_new=False,
+                    traceid='traces001', create_new=False, use_pixels=False,
                      detrend_after_average=True, in_negative=False,
                      rootdir='/n/coxfs01/2p-data'):
 
@@ -829,6 +830,19 @@ def get_phase_masks(masks, azim, elev, average_overlap=True, roi_list=None): #, 
 # #########################################################################
 # Widefield
 # #########################################################################
+# smoothing ------------------
+def smooth_neuropil(azim_r, smooth_fwhm=21):
+    V=azim_r.copy()
+    V[np.isnan(azim_r)]=0
+    VV=ndimage.gaussian_filter(V,sigma=smooth_fwhm)
+
+    W=0*azim_r.copy()+1
+    W[np.isnan(azim_r)]=0
+    WW=ndimage.gaussian_filter(W,sigma=smooth_fwhm)
+
+    azim_smoothed = VV/WW
+    return azim_smoothed
+
 def smooth_array(inputArray, fwhm, phaseArray=False):
     szList=np.array([None,None,None,11,None,21,None,27,None,31,None,37,None,43,None,49,None,53,None,59,None,55,None,69,None,79,None,89,None,99])
     sigmaList=np.array([None,None,None,.9,None,1.7,None,2.6,None,3.4,None,4.3,None,5.1,None,6.4,None,6.8,None,7.6,None,8.5,None,9.4,None,10.3,None,11.2,None,12])
