@@ -555,8 +555,7 @@ def do_split_pupil_fits(curr_visual_area, curr_datakey, param='morphlevel',
     else:
         fname = '%s_AUC_split_pupil_%s__%s' % (param, curr_visual_area, curr_decode_id)
         auc_outfile = os.path.join(curr_dst_dir, '%s.pkl' % fname)
-    assert os.path.exists(auc_outfile),\
-        "(%s) No file for: s" % (curr_datakey,fname) 
+    assert os.path.exists(auc_outfile), "(%s) No file for: %s" % (curr_datakey, auc_outfile) 
 
     print('AUC file: %s' % auc_outfile)
     with open(auc_outfile, 'rb') as f:
