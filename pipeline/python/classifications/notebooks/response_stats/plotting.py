@@ -33,15 +33,19 @@ from matplotlib.patches import PathPatch
 # ###############################################################
 # Plotting:
 # ###############################################################
-def print_means(plotdf, groupby=['visual_area', 'arousal'], params=None):
+def print_means(plotdf, groupby=['visual_area', 'arousal'], params=None, metric='mean'):
     if params is None:
         params = [k for k in plotdf.columns if k not in groupby]
-        
-    m_ = plotdf.groupby(groupby)[params].mean().reset_index()
+       
+    if metric=='mean': 
+        m_ = plotdf.groupby(groupby)[params].mean().reset_index()
+    else:
+        m_ = plotdf.groupby(groupby)[params].median().reset_index()
+       
     s_ = plotdf.groupby(groupby)[params].std().reset_index()
     for p in params:
         m_['%s_std' % p] = s_[p].values
-    print("MEANS:")
+    print("[%s]:" % metric)
     print(m_)
 
 def set_threecolor_palette(c1='magenta', c2='orange', c3='dodgerblue', cmap=None, soft=False,
@@ -151,7 +155,7 @@ def adjust_polar_axes(ax, theta_loc='E'):
     ax.set_rlabel_position(135) #315)
     ax.set_yticks(np.linspace(0, 0.8, 3))
     ax.set_yticklabels(np.linspace(0, 0.8, 3))
-    ax.set_ylabel(metric, fontsize=12)
+    #ax.set_ylabel(metric, fontsize=12)
     # Grid lines and such
     ax.spines['polar'].set_visible(False)
     
