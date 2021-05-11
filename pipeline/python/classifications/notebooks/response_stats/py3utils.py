@@ -5,6 +5,9 @@ import json
 import traceback
 
 # import pickle as pkl
+import matplotlib as mpl
+mpl.use('agg')
+
 import statsmodels as sm
 import dill as pkl
 import numpy as np
@@ -16,7 +19,7 @@ import importlib
 
 import scipy as sp
 import itertools
-import matplotlib as mpl
+
 from matplotlib.lines import Line2D
 import statsmodels as sm
 #import statsmodels.api as sm
@@ -1277,6 +1280,27 @@ def load_dataset(soma_fpath, trace_type='dff', add_offset=True,
 
     return traces, labels, sdf, run_info
 
+def load_run_info(animalid, session, fov, run, traceid='traces001',
+                  rootdir='/n/coxfs01/2p-ddata'):
+   
+    search_str = '' if 'combined' in run else '_'  
+    labels_fpath = glob.glob(os.path.join(rootdir, animalid, session, fov, '*%s%s*' % (run, search_str),
+                           'traces', '%s*' % traceid, 'data_arrays', 'labels.npz'))[0]
+    labels_dset = np.load(labels_fpath, allow_pickle=True, encoding='latin1')
+    
+    # Stimulus / condition info
+    labels = pd.DataFrame(data=labels_dset['labels_data'], 
+                          columns=labels_dset['labels_columns'])
+    labels = convert_columns_byte_to_str(labels)
+
+    sdf = pd.DataFrame(labels_dset['sconfigs'][()]).T
+    if 'blobs' in labels_fpath: #self.experiment_type:
+        sdf = reformat_morph_values(sdf)
+    run_info = labels_dset['run_info'][()]
+
+    return run_info, sdf
+   
+
 
 def load_traces(animalid, session, fovnum, experiment, traceid='traces001',
                 response_type='dff', 
@@ -1308,6 +1332,8 @@ def load_traces(animalid, session, fovnum, experiment, traceid='traces001',
         responsive_cells = [c for c in traces.columns if isnumber(c)]
 
     return traces[responsive_cells], labels, sdf
+
+
 
 def process_traces(raw_traces, labels, response_type='zscore', nframes_post_onset=None):
     print("--- processed traces: %s" % response_type)

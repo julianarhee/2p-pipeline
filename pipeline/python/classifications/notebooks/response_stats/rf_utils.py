@@ -3,15 +3,22 @@ import itertools
 import glob
 import traceback
 import json
+import cv2
+import math
 
-import pylab as pl
 import matplotlib as mpl
+mpl.use('agg')
+import pylab as pl
+
 import seaborn as sns
 import dill as pkl
 import scipy.stats as spstats
 import numpy as np
 import pandas as pd
+import scipy.optimize as opt
+
 import py3utils as p3
+import plotting as pplot
 from py3utils import convert_range
 
 from matplotlib.patches import Ellipse, Rectangle, Polygon
@@ -19,7 +26,9 @@ from shapely.geometry.point import Point
 from shapely.geometry import box
 from shapely import affinity
 
+from scipy import interpolate
 
+from mpl_toolkits.axes_grid1 import make_axes_locatable
 
 import copy
 
@@ -393,6 +402,9 @@ def get_spherical_coords(cart_pointsX=None, cart_pointsY=None, cm_to_degrees=Tru
 
 def warp_spherical(image_values, cart_pointsX, cart_pointsY, sphr_pointsTh, sphr_pointsPh, 
                     normalize_range=True, in_radians=True, method='linear'):
+    '''
+    Take an image, warp from cartesian to spherical ("perceived" image)
+    '''
     from scipy.interpolate import griddata
 
     xmaxRad = sphr_pointsTh.max()
@@ -419,7 +431,9 @@ def warp_spherical(image_values, cart_pointsX, cart_pointsY, sphr_pointsTh, sphr
 
 
 def get_screen_lim_pixels(lin_coord_x, lin_coord_y, row_vals=None, col_vals=None):
-    
+    '''
+    Get Bbox of stimulated pixels on screen for RF maps
+    ''' 
     #pix_per_deg=16.050716 pix_per_deg = screeninfo['pix_per_deg']
     stim_size = float(np.unique(np.diff(row_vals)))
 
@@ -494,14 +508,19 @@ def coordinates_for_transformation(fit_params):
     return grid_points, cart_values, sphr_values
 
 
-def convert_fit_to_coords_spherical(fitdf, fit_params, scale_sigma=True, sigma_scale=2.35, spherical=True):
+def convert_fit_to_coords_spherical(fitdf0, fit_params, scale_sigma=True, sigma_scale=2.35, spherical=True):
+    '''
+    RF map arrays to be converted to real-world fit params
+    '''
+    fitdf = fitdf0.copy()
     sigma_scale = sigma_scale if scale_sigma else 1.0
-
     grid_points, cart_values, sphr_values = coordinates_for_transformation(fit_params)
     
     if spherical:
+        # Upsampled, with spherical correction
         converted = fitdf.apply(apply_scaling_to_df, args=(grid_points, sphr_values), axis=1)
     else:
+        # This is just upsampling
         converted = fitdf.apply(apply_scaling_to_df, args=(grid_points, cart_values), axis=1)
     newdf = pd.DataFrame([[x0, y0, sx*sigma_scale, sy*sigma_scale] \
                         for x0, y0, sx, sy in converted.values], index=converted.index, 
@@ -989,7 +1008,10 @@ def average_rfs(rfdf):
 
     return final_rfdf
 
+
+# ----------------------------------------------------------------------------
 # RFMAPS
+# ----------------------------------------------------------------------------
 def get_trials_by_cond(labels):
     # Get single value for each trial and sort by config:
     trials_by_cond = dict()
@@ -1001,17 +1023,17 @@ def get_trials_by_cond(labels):
 
 def load_rfmap_array(rfdir, do_spherical_correction=True):  
     rfarray_dpath = os.path.join(rfdir, 'rfmap_array.pkl')    
-    avg_resp_by_cond=None
+    rfmaps_arr=None
     if os.path.exists(rfarray_dpath):
         print("-- loading: %s" % rfarray_dpath)
         with open(rfarray_dpath, 'rb') as f:
-            avg_resp_by_cond = pkl.load(f, encoding='latin1')
-    return avg_resp_by_cond
+            rfmaps_arr = pkl.load(f, encoding='latin1')
+    return rfmaps_arr
 
-def save_rfmap_array(avg_resp_by_cond, rfdir):  
+def save_rfmap_array(rfmaps_arr, rfdir):  
     rfarray_dpath = os.path.join(rfdir, 'rfmap_array.pkl')    
     with open(rfarray_dpath, 'wb') as f:
-        pkl.dump(avg_resp_by_cond, f, protocol=pkl.HIGHEST_PROTOCOL)
+        pkl.dump(rfmaps_arr, f, protocol=pkl.HIGHEST_PROTOCOL)
     return
 
 
@@ -1037,6 +1059,315 @@ def group_trial_values_by_cond(zscores, trials_by_cond, do_spherical_correction=
     return trialvalues_by_cond
 
 
+
+def get_lin_coords(resolution=[1080, 1920], cm_to_deg=True, 
+                   xlim_degrees=(-59.7, 59.7), ylim_degrees=(-33.6, 33.6)):
+    """
+    **From: https://github.com/zhuangjun1981/retinotopic_mapping (Monitor initialiser)
+
+    Parameters
+    ----------
+    resolution : tuple of two positive integers
+        value of the monitor resolution, (pixel number in height, pixel number in width)
+    dis : float
+         distance from eyeball to monitor (in cm)
+    mon_width_cm : float
+        width of monitor (in cm)
+    mon_height_cm : float
+        height of monitor (in cm)
+    C2T_cm : float
+        distance from gaze center to monitor top
+    C2A_cm : float
+        distance from gaze center to anterior edge of the monitor
+    center_coordinates : tuple of two floats
+        (altitude, azimuth), in degrees. the coordinates of the projecting point
+        from the eye ball to the monitor. This allows to place the display monitor
+        in any arbitrary position.
+    visual_field : str from {'right','left'}, optional
+        the eye that is facing the monitor, defaults to 'left'
+    """
+    mon_height_cm = 58.
+    mon_width_cm = 103.
+    # resolution = [1080, 1920]
+    visual_field = 'left'
+    
+    C2T_cm = mon_height_cm/2. #np.sqrt(dis**2 + mon_height_cm**2)
+    C2A_cm = mon_width_cm/2.
+    
+    # distance form projection point of the eye to bottom of the monitor
+    C2B_cm = mon_height_cm - C2T_cm
+    # distance form projection point of the eye to right of the monitor
+    C2P_cm = -C2A_cm #mon_width_cm - C2A_cm
+
+    map_coord_x, map_coord_y = np.meshgrid(range(resolution[1]),
+                                           range(resolution[0]))
+
+    if visual_field == "left":
+        #map_x = np.linspace(C2A_cm, -1.0 * C2P_cm, resolution[1])
+        map_x = np.linspace(C2P_cm, C2A_cm, resolution[1])
+
+    if visual_field == "right":
+        map_x = np.linspace(-1 * C2A_cm, C2P_cm, resolution[1])
+
+    map_y = np.linspace(C2T_cm, -1.0 * C2B_cm, resolution[0])
+    old_map_x, old_map_y = np.meshgrid(map_x, map_y, sparse=False)
+
+    lin_coord_x = old_map_x
+    lin_coord_y = old_map_y    
+    
+    if cm_to_deg:
+        xmin_cm = lin_coord_x.min(); xmax_cm = lin_coord_x.max();
+        ymin_cm = lin_coord_y.min(); ymax_cm = lin_coord_y.max();
+        
+        xmin_deg, xmax_deg = xlim_degrees
+        ymin_deg, ymax_deg = ylim_degrees
+        
+        lin_coord_x = convert_range(lin_coord_x, oldmin=xmin_cm, oldmax=xmax_cm, 
+                                           newmin=xmin_deg, newmax=xmax_deg)
+        lin_coord_y = convert_range(lin_coord_y, oldmin=ymin_cm, oldmax=ymax_cm, 
+                                           newmin=ymin_deg, newmax=ymax_deg)
+    return lin_coord_x, lin_coord_y
+
+
+def cart2sph(x,y,z):
+    azimuth = np.arctan2(y,x)
+    elevation = np.arctan2(z,np.sqrt(x**2 + y**2))
+    r = np.sqrt(x**2 + y**2 + z**2)
+    return azimuth, elevation, r
+
+
+def get_spherical_coords(cart_pointsX=None, cart_pointsY=None, cm_to_degrees=True,
+                    resolution=(1080, 1920),
+                   xlim_degrees=(-59.7, 59.7), ylim_degrees=(-33.6, 33.6)):
+    '''
+    From spherical_correction analyses. Convert monitor linear coordinates to spherical
+    '''
+    # Monitor size and position variables
+    width_cm = 103; #%56.69;  % 103 width of screen, in cm
+    height_cm = 58; #%34.29;  % 58 height of screen, in cm
+    pxXmax = resolution[1] #1920; #%200; % number of pixels in an image that fills the whole screen, x
+    pxYmax = resolution[0] #1080; #%150; % number of pixels in an image that fills the whole screen, y
+
+    # Eye info
+    cx = width_cm/2. # % eye x location, in cm
+    cy = height_cm/2. # %11.42; % eye y location, in cm
+    eye_dist = 30.; #% in cm
+
+    # Distance to bottom of screen, along the horizontal eye line
+    zdistBottom = np.sqrt((cy**2) + (eye_dist**2)) #; %24.49;     % in cm
+    zdistTop    = np.sqrt((cy**2) + (eye_dist**2)) #; %14.18;     % in cm
+
+    # Internal conversions
+    top = height_cm-cy;
+    bottom = -cy;
+    right = cx;
+    left = cx - width_cm;
+
+    if cart_pointsX is None or cart_pointsY is None:
+        [xi, yi] = np.meshgrid(np.arange(0, pxXmax), np.arange(0, pxYmax))
+        print(xi.shape, yi.shape)
+        cart_pointsX = left + (float(width_cm)/pxXmax)*xi;
+        cart_pointsY = top - (float(height_cm)/pxYmax)*yi;
+        cart_pointsZ = zdistTop + ((zdistBottom-zdistTop)/float(pxYmax))*yi
+    else:
+        cart_pointsZ = zdistTop + ((zdistBottom-zdistTop)/float(pxYmax))*cart_pointsY
+
+    if cm_to_degrees:
+        xmin_cm=cart_pointsX.min(); xmax_cm=cart_pointsX.max();
+        ymin_cm=cart_pointsY.min(); ymax_cm=cart_pointsY.max();
+        xmin_deg, xmax_deg = xlim_degrees
+        ymin_deg, ymax_deg = ylim_degrees
+        cart_pointsX = convert_range(cart_pointsX, oldmin=xmin_cm, oldmax=xmax_cm, 
+                                       newmin=xmin_deg, newmax=xmax_deg)
+        cart_pointsY = convert_range(cart_pointsY, oldmin=ymin_cm, oldmax=ymax_cm, 
+                                       newmin=ymin_deg, newmax=ymax_deg)
+        cart_pointsZ = convert_range(cart_pointsZ, oldmin=ymin_cm, oldmax=ymax_cm, 
+                                       newmin=ymin_deg, newmax=ymax_deg)
+
+    sphr_pointsTh, sphr_pointsPh, sphr_pointsR = cart2sph(cart_pointsZ, cart_pointsX, cart_pointsY)
+    #sphr_pointsTh, sphr_pointsPh, sphr_pointsR = cart2sph(cart_pointsX, cart_pointsY, cart_pointsZ)
+
+    return cart_pointsX, cart_pointsY, sphr_pointsTh, sphr_pointsPh
+
+
+def get_scaled_sigmas(grid_points, new_values, x0, y0, sx, sy, th, convert=True):
+    '''
+    From upsampled RF map array, calculate RF parameters
+    '''
+    x0_scaled, y0_scaled = interpolate.griddata(grid_points, new_values, (x0, y0))
+    x0_scaled, y0_scaled = interpolate.griddata(grid_points, new_values, (x0, y0))
+
+    # Get flanking points spanned by sx, sy
+    sx_linel, sx_line2, sy_line1, sy_line2 = get_endpoints_from_sigma(x0, y0, sx, sy, th, 
+                                                                        scale_sigma=False)
+
+    # Get distances
+    if convert:
+        # Convert coordinates of array to new coordinate system
+        sx_x1_sc, sx_y1_sc = interpolate.griddata(grid_points, new_values, sx_linel) 
+        sx_x2_sc, sx_y2_sc = interpolate.griddata(grid_points, new_values, sx_line2)
+        sx_scaled = math.hypot(sx_x2_sc - sx_x1_sc, sx_y2_sc - sx_y1_sc)
+    else:
+        #sx_scaled = math.hypot(sx_x2 - sx_x1, sx_y2 - sx_y1)
+        sx_scaled = math.hypot(sx_line2[0] - sx_linel[0], sx_line2[1] - sx_linel[1])
+
+    if convert:
+        sy_x1_sc, sy_y1_sc = interpolate.griddata(grid_points, new_values, sy_line1)
+        sy_x2_sc, sy_y2_sc = interpolate.griddata(grid_points, new_values, sy_line2)
+        sy_scaled = math.hypot(sy_x2_sc - sy_x1_sc, sy_y2_sc - sy_y1_sc)
+    else:
+        #sy_scaled = math.hypot(sy_x2 - sy_x1, sy_y2 - sy_y1)
+        sy_scaled = math.hypot(sy_line2[0] - sy_line1[0], sy_line2[1] - sy_line1[1])
+    
+    return x0_scaled, y0_scaled, abs(sx_scaled), abs(sy_scaled)
+
+
+def get_endpoints_from_sigma(x0, y0, sx, sy, th, scale_sigma=False, sigma_scale=2.35):
+    '''
+    Calculate major and minor axis lines spanning sigma_x and sigma_y
+    '''    
+    sx = sx*sigma_scale if scale_sigma else sx
+    sy = sy*sigma_scale if scale_sigma else sy
+    
+    sx_x1, sx_y1 = (x0-(sx/2.)*np.cos(th), y0-(sx/2.)*np.sin(th)) # Get min half
+    sx_x2, sx_y2 = (x0+(sx/2.)*np.cos(th), y0+(sx/2.)*np.sin(th)) # Get other half
+
+    th_orth = th + (np.pi/2.)
+    sy_x1, sy_y1 = (x0-(sy/2.)*np.cos(th_orth), y0-(sy/2.)*np.sin(th_orth))
+    sy_x2, sy_y2 = (x0+(sy/2.)*np.cos(th_orth), y0+(sy/2.)*np.sin(th_orth))
+
+    lA = (sy_x1, sy_y1), (sy_x2, sy_y2) # The line along y-axis
+    lB = (sx_x1, sx_y1), (sx_x2, sx_y2) # The line along x-axis
+    ang_deg = ang(lA, lB)
+    assert ang_deg==90.0, "bad angle calculation (%.1f)..." % ang_deg
+
+    return (sx_x1, sx_y1), (sx_x2, sx_y2), (sy_x1, sy_y1), (sy_x2, sy_y2)
+
+
+def ang(lineA, lineB):
+    '''
+    Calculate angle between 2 lines, given their coords as:
+    lA = (A_x1, A_y1), (A_x2, A_y2)
+    lB = (B_x1, B_y1), (B_x2, B_y2)
+    
+    '''
+    # Get nicer vector form
+    vA = [(lineA[0][0]-lineA[1][0]), (lineA[0][1]-lineA[1][1])]
+    vB = [(lineB[0][0]-lineB[1][0]), (lineB[0][1]-lineB[1][1])]
+    # Get dot prod
+    dot_prod = np.dot(vA, vB)
+    # Get magnitudes
+    magA = np.dot(vA, vA)**0.5
+    magB = np.dot(vB, vB)**0.5
+    # Get cosine value
+    cos_ = dot_prod/magA/magB
+    # Get angle in radians and then convert to degrees
+    angle = math.acos(dot_prod/magB/magA)
+    # Basically doing angle <- angle mod 360
+    ang_deg = math.degrees(angle)%360.
+
+    if ang_deg-180>=0:
+        # As in if statement
+        return round(360 - ang_deg, 2)
+    else: 
+        return round(ang_deg, 2)
+
+
+
+def resample_map(rfmap, lin_coord_x, lin_coord_y, row_vals=None, col_vals=None,
+                 resolution=(1080,1920)):
+    '''Get resampled RF map in screen coords
+    '''
+    screen_bounds_pix = get_screen_lim_pixels(lin_coord_x, lin_coord_y, 
+                                            row_vals=row_vals, col_vals=col_vals)
+    (pix_bottom_edge, pix_left_edge, pix_top_edge, pix_right_edge) = screen_bounds_pix
+
+    # We don't stimulate every pixel, so get BBox of stimulated positions
+    stim_height = pix_bottom_edge-pix_top_edge+1
+    stim_width = pix_right_edge-pix_left_edge+1
+    stim_resolution = [stim_height, stim_width]
+
+    # Upsample rfmap to match resolution of stimulus-occupied space
+    rfmap_r = cv2.resize(rfmap.astype(float), (stim_resolution[1], stim_resolution[0]), 
+                          interpolation=cv2.INTER_NEAREST)
+
+    rfmap_to_screen = np.ones((resolution[0], resolution[1]))*np.nan
+    rfmap_to_screen[pix_top_edge:pix_bottom_edge+1, pix_left_edge:pix_right_edge+1] = rfmap_r
+
+    return rfmap_to_screen
+
+def trim_resampled_map(rfmap_r, screen_bounds_pix): 
+    '''
+    After resampling the RF map (in downsampled pixel resolution coords),
+    trim off the reshaped (or also warped) map to match dims of screen portions that 
+    were stimulated based on non-warped
+    '''
+    #screen_bounds_pix = get_screen_lim_pixels(lin_coord_x, lin_coord_y, 
+    #                                        row_vals=row_vals, col_vals=col_vals)
+    (pix_bottom_edge, pix_left_edge, pix_top_edge, pix_right_edge) = screen_bounds_pix
+
+    rfmap_trim  = rfmap_r[pix_top_edge:pix_bottom_edge, pix_left_edge:pix_right_edge]
+    return rfmap_trim
+
+
+def sphr_correct_maps(rfmaps_arr,  fit_params=None, ds_factor=3, multiproc=False):
+    '''
+    rfmaps_arr:  array (dataframe) of rfmap (vector) x nrois
+    do spherical correction, return rfmap array
+
+    '''
+    if multiproc:
+        rfmaps_arr = rfmaps_arr.T
+    # ds_factor = fit_params['downsample_factor']
+    col_vals = fit_params['col_vals']
+    row_vals = fit_params['row_vals']
+    # Downsample screen resolution
+    resolution_ds = [int(i/ds_factor) for i in \
+                     fit_params['screen']['resolution'][::-1]]
+    # Get linear coordinates in degrees (downsampled)
+    # lin_x, lin_y = get_lin_coords(resolution=resolution_ds, cm_to_deg=True)
+    print("Screen res (ds=%ix): [%i, %i]" % (ds_factor, resolution_ds[0], resolution_ds[1]))
+    # Get Spherical coordinate mapping
+    cart_x, cart_y, sphr_th, sphr_ph = get_spherical_coords(
+                                        cart_pointsX=None, cart_pointsY=None,
+                                        cm_to_degrees=True, resolution=resolution_ds) # already in deg
+
+    args=(cart_x, cart_y, sphr_th, sphr_ph, resolution_ds, row_vals, col_vals,)
+    rfmaps_arr0 = rfmaps_arr.apply(warp_spherical_fromarr, axis=0, args=args)
+
+    return rfmaps_arr0.reset_index(drop=True)
+
+def warp_spherical_fromarr(rfmap_values, cart_x=None, cart_y=None, 
+                           sphr_th=None, sphr_ph=None, resolution=(1080, 1920),
+                           row_vals=None, col_vals=None,normalize_range=True):  
+    '''
+    Given rfmap values as vector, reshape, warp, return as array.
+    '''
+    nx = len(col_vals)
+    ny = len(row_vals)
+    rfmap = rfmap_values.values.reshape(ny, nx) #rfmap_values.reshape(nx, ny).T
+    # Upsample to screen resolution (pixels)
+    rfmap_orig = resample_map(rfmap, cart_x, cart_y, #lin_coord_x, lin_coord_y, 
+                            row_vals=row_vals, col_vals=col_vals,
+                            resolution=resolution) 
+    # Warp upsampled
+    rfmap_warp = warp_spherical(rfmap_orig, sphr_th, sphr_ph, cart_x, cart_y,
+                                normalize_range=normalize_range, method='linear')
+    # Crop
+    screen_bounds_pix = get_screen_lim_pixels(cart_x, cart_y, 
+                                              row_vals=row_vals, col_vals=col_vals)
+    (pix_bottom_edge, pix_left_edge, pix_top_edge, pix_right_edge) = screen_bounds_pix
+    rfmap_trim = rfmap_warp[pix_top_edge:pix_bottom_edge, pix_left_edge:pix_right_edge]
+
+    # Resize back to known grid
+    rfmap_resize = cv2.resize(rfmap_trim, (nx, ny))
+ 
+    return rfmap_resize.flatten()
+
+
+
+
+
 # plotting
 def get_centered_screen_points(screen_xlim, nc):
     col_pts = np.linspace(screen_xlim[0], screen_xlim[1], nc+1) # n points for NC columns
@@ -1045,6 +1376,669 @@ def get_centered_screen_points(screen_xlim, nc):
     xlim_min = col_pts.min() - (pt_spacing/2.) 
     xlim_max = col_pts.max() + (pt_spacing/2.)
     return (xlim_min, xlim_max)
+
+
+def plot_rfs_to_screen_pretty(fitdf, sdf, screen, sigma_scale=2.35, fit_roi_list=[], ax=None,
+                             ellipse_lw=1, roi_colors=None):
+    '''
+    fitdf:  dataframe w/ converted fit params
+    '''
+    rows='ypos'
+    cols='xpos'
+
+    screen_left = -1*screen['azimuth_deg']/2.
+    screen_right = screen['azimuth_deg']/2.
+    screen_top = screen['altitude_deg']/2.
+    screen_bottom = -1*screen['altitude_deg']/2.
+    
+    row_vals = sorted(sdf[rows].unique())
+    col_vals = sorted(sdf[cols].unique())
+    tile_sz = np.mean(np.diff(row_vals))
+    screen_rect = mpl.patches.Rectangle(
+                ( min(col_vals)-tile_sz/2., min(row_vals)-tile_sz/2.), 
+                max(col_vals)-min(col_vals)+tile_sz,
+                max(row_vals)-min(row_vals)+tile_sz, 
+                facecolor='none', edgecolor='k', lw=0.5)
+    ax.add_patch(screen_rect)
+    if ax is None:
+        fig, ax = pl.subplots(figsize=(12, 6))
+        fig.patch.set_visible(False) #(False) #('off')
+    if roi_colors is None:
+        roi_colors=sns.color_palette('bone', n_colors=len(fit_roi_list)+5) 
+    for rid, rcolor in zip(fit_roi_list, roi_colors):
+        ell = mpl.patches.Ellipse((fitdf['x0'][rid], fitdf['y0'][rid]),
+                      abs(fitdf['sigma_x'][rid])*sigma_scale, abs(fitdf['sigma_y'][rid])*sigma_scale,
+                      angle=np.rad2deg(fitdf['theta'][rid]))
+        ell.set_alpha(1.0)
+        ell.set_linewidth(ellipse_lw)
+        ell.set_edgecolor(rcolor)
+        ell.set_facecolor('none')
+        ax.add_patch(ell)
+    ax.set_ylim([screen_bottom, screen_top])
+    ax.set_xlim([screen_left, screen_right])
+    # print(screen_bottom, screen_top, screen_left, screen_right)
+ 
+    ax.set_xticks([])
+    ax.set_xticklabels([])
+    ax.set_yticks([])
+    ax.set_yticklabels([])
+    #summary_str = "Avg sigma-x, -y: (%.2f, %.2f)\nAvg RF size: %.2f (min: %.2f, max: %.2f)" % (np.mean(majors), np.mean(minors), np.mean([np.mean(majors), np.mean(minors)]), avg_rfs.min(), avg_rfs.max())
+    #pl.text(ax.get_xlim()[0]-12, ax.get_ylim()[0]-8, summary_str, ha='left', rotation=0, wrap=True)
+    return ax
+
+
+    
+def plot_rf_map(rfmap, cmap='inferno', ax=None):
+    if ax is None:
+        fig, ax = pl.subplots()
+    im = ax.imshow(rfmap, cmap='inferno')
+    divider = make_axes_locatable(ax)
+    cax = divider.append_axes('right', size='5%', pad=0.05)
+    ax.figure.colorbar(im, cax=cax, orientation='vertical')
+   
+    return ax
+
+def plot_rf_ellipse(fitr, ax=None, sigma_scale=2.35, scale_sigma=True):
+      
+    sigma_scale = sigma_scale if scale_sigma else 1.0
+    
+    # Draw ellipse: 
+    amp_f, x0_f, y0_f, sigx_f, sigy_f, theta_f, offset_f = fitr['popt']
+    
+    if ax is None:
+        fig, ax = pl.subplots()
+        ax.set_ylim([y0_f-sigy_f*2., y0_f+sigy_f*2.])
+        ax.set_xlim([x0_f-sigx_f*2., x0_f+sigx_f*2.])
+ 
+    ell = Ellipse((x0_f, y0_f), abs(sigx_f)*sigma_scale, abs(sigy_f)*sigma_scale, 
+                    angle=np.rad2deg(theta_f), alpha=0.5, edgecolor='w') #theta_f)
+    ax.add_patch(ell)
+    ax.text(0, -1, 'r2=%.2f, theta=%.2f' % (fitr['r2'], theta_f), color='k')
+
+    return ax
+
+def plot_fit_results(fitr, ax=None):
+    if ax is None:
+        fig, ax = pl.subplots()
+    im2 = ax.imshow(fitr['pcov'])
+    ax.set_yticks(np.arange(0, 7))
+    ax.set_yticklabels(['amp', 'x0', 'y0', 'sigx', 'sigy', 'theta', 'offset'], rotation=0)
+    
+    divider = make_axes_locatable(ax)
+    cax2 = divider.append_axes('right', size='5%', pad=0.05)
+    pl.colorbar(im2, cax=cax2, orientation='vertical')
+   
+    return ax
+ 
+
+# -----------------------------------------------------------------------------
+# Fitting functions
+# -----------------------------------------------------------------------------
+
+
+def twoD_Gaussian(X, amplitude, xo, yo, sigma_x, sigma_y, theta, offset):
+    x, y = X
+    xo = float(xo)
+    yo = float(yo)    
+    a = (np.cos(theta)**2)/(2*sigma_x**2) + (np.sin(theta)**2)/(2*sigma_y**2)
+    # b = -(np.sin(2*theta))/(4*sigma_x**2) + (np.sin(2*theta))/(4*sigma_y**2)
+    b = (np.sin(2*theta))/(2*sigma_x**2) - (np.sin(2*theta))/(2*sigma_y**2)
+    c = (np.sin(theta)**2)/(2*sigma_x**2) + (np.cos(theta)**2)/(2*sigma_y**2)
+#    g = offset + amplitude*np.exp( - (a*((x-xo)**2) + 2*b*(x-xo)*(y-yo) 
+#                            + c*((y-yo)**2)))
+    g = offset + amplitude*np.exp( -a*((x-xo)**2) - b*(x-xo)*(y-yo) - c*((y-yo)**2) )
+    return g.ravel()
+
+
+def twoD_gauss(X, b, x0, y0, sigma_x, sigma_y, theta, a):
+    x, y = X
+    res = a + b * np.exp( -( ((x-x0)*np.cos(theta) + (y-y0)*np.sin(theta)) / (np.sqrt(2)*sigma_x) )**2 - ( ( -(x-x0)*np.sin(theta) + (y-y0)*np.cos(theta) ) / (np.sqrt(2)*sigma_y) )**2 )
+    
+    return res.ravel()
+
+
+
+class MultiplePeaks(Exception): pass
+class NoPeaksFound(Exception): pass
+
+from scipy.interpolate import splrep, sproot, splev, interp1d
+
+
+def fwhm(x, y, k=3):
+    """
+    Determine full-with-half-maximum of a peaked set of points, x and y.
+
+    Assumes that there is only one peak present in the datasset.  The function
+    uses a spline interpolation of order k.
+    """
+
+    half_max = max(y)/2.0
+    s = splrep(x, y - half_max, k=k)
+    roots = sproot(s)
+    #print(roots)
+    if len(roots) > 2:
+        return None
+#        raise MultiplePeaks("The dataset appears to have multiple peaks, and "
+#                "thus the FWHM can't be determined.")
+    elif len(roots) < 2:
+        return None
+#        raise NoPeaksFound("No proper peaks were found in the data set; likely "
+#                "the dataset is flat (e.g. all zeros).")
+    else:
+        return abs(roots[1] - roots[0])
+
+
+def raw_fwhm(arr):
+    
+    interpf = interp1d(np.linspace(0, len(arr)-1, num=len(arr)), arr, kind='linear')
+    xnew = np.linspace(0, len(arr)-1, num=len(arr)*3)
+    ynew = interpf(xnew)
+    
+    hm = ((ynew.max() - ynew.min()) / 2 ) + ynew.min() # half-max
+    pk = ynew.argmax() # find peak
+
+    if pk == 0:
+        r2 = pk + np.abs(ynew[pk:] - hm).argmin()
+        return abs(xnew[r2]*2)
+    else:
+        r1 = np.abs(ynew[0:pk] - hm).argmin() # find index of local min on left
+        r2 = pk + np.abs(ynew[pk:] - hm).argmin() # find index of local min on right
+        
+        return abs(xnew[r2]-xnew[r1]) # return full width
+    
+
+
+
+def fit_rfs(rfmaps_arr, fit_params={}, #row_vals=[], col_vals=[], fitparams=None,
+            response_type='dff', roi_list=None, #scale_sigma=True,
+            #rf_results_fpath='/tmp/fit_results.pkl', 
+            do_spherical_correction=False,
+            data_identifier='METADATA'):
+            #response_thr=None):
+
+    '''
+    Main fitting function.    
+    Saves 2 output files for fitting: 
+        fit_results.pkl 
+        fit_params.json
+    '''
+    print("@@@ doing rf fits @@@")
+    scale_sigma = fit_params['scale_sigma']
+    sigma_scale = fit_params['sigma_scale']
+    row_vals = fit_params['row_vals']
+    col_vals = fit_params['col_vals']
+
+    rfdir = fit_params['rfdir'] #os.path.split(rf_results_fpath)[0]    
+    rf_results_fpath = os.path.join(rfdir, 'fit_results.pkl')
+    rf_params_fpath = os.path.join(rfdir, 'fit_params.json')
+
+    # Save params
+    with open(rf_params_fpath, 'w') as f:
+        json.dump(fit_params, f, indent=4, sort_keys=True)
+    
+    # Create subdir for saving each roi's fit
+    if not os.path.exists(os.path.join(rfdir, 'roi_fits')):
+        os.makedirs(os.path.join(rfdir, 'roi_fits'))
+
+    roi_list = rfmaps_arr.columns.tolist()
+    bad_rois = [r for r in roi_list if rfmaps_arr.max()[r] > 1.0]
+    print("... %i bad rois (skipping: %s)" % (len(bad_rois), str(bad_rois)))
+    if len(bad_rois) > 0:
+        badr_fpath = os.path.join(rfdir.split('/receptive_fields/')[0], 'funky.json')
+        with open(badr_fpath, 'w') as f:
+            json.dump(bad_rois, f)
+     
+    fit_results = {}
+    for rid in roi_list:
+        #print rid
+        if rid in bad_rois:
+            continue
+        roi_fit_results, fig = plot_and_fit_roi_RF(rfmaps_arr[rid], 
+                                                    row_vals, col_vals,
+                                                    scale_sigma=scale_sigma, 
+                                                    sigma_scale=sigma_scale) 
+        fig.suptitle('roi %i' % int(rid+1))
+        pplot.label_figure(fig, data_identifier)            
+        figname = '%s_RF_roi%05d' % (response_type, int(rid+1))
+        pl.savefig(os.path.join(rfdir, 'roi_fits', '%s.png' % figname))
+        pl.close()    
+        if len(roi_fit_results)>0: # != {}:
+            fit_results[rid] = roi_fit_results
+        #%
+    xi = np.arange(0, len(col_vals))
+    yi = np.arange(0, len(row_vals))
+    xx, yy = np.meshgrid(xi, yi)
+        
+    with open(rf_results_fpath, 'wb') as f:
+        pkl.dump(fit_results, f, protocol=pkl.HIGHEST_PROTOCOL)
+
+    return fit_results, fit_params
+
+
+
+#
+def plot_and_fit_roi_RF(response_vector, row_vals, col_vals, 
+                        plot_roi_fit=True, cmap='inferno',
+                        min_sigma=2.5, max_sigma=50, 
+                        sigma_scale=2.35, scale_sigma=True):
+    '''
+    Fits RF for single ROI. 
+    Note: This does not filter by R2, includes all fit-able.
+ 
+    Returns a dict with fit info if doesn't error out.
+    
+    Sigma must be [2.5, 50]...
+    '''
+    sigma_scale = sigma_scale if scale_sigma else 1.0
+    results = {}
+    fig = None
+
+    # Do fit 
+    # ---------------------------------------------------------------------
+    nrows = len(row_vals)
+    ncols = len(col_vals)
+    rfmap = np.reshape(response_vector.values, (nrows, ncols)) 
+    fitr, fit_y = do_2d_fit(rfmap, nx=len(col_vals), ny=len(row_vals))
+
+    xres = np.mean(np.diff(sorted(row_vals)))
+    yres = np.mean(np.diff(sorted(col_vals)))
+    min_sigma = xres/2.0
+    
+    if fitr['success']:
+        amp_f, x0_f, y0_f, sigx_f, sigy_f, theta_f, offset_f = fitr['popt']
+        if any(s < min_sigma for s in [abs(sigx_f)*xres*sigma_scale, abs(sigy_f)*yres*sigma_scale])\
+            or any(s > max_sigma for s in [abs(sigx_f)*xres*sigma_scale, abs(sigy_f)*yres*sigma_scale]):
+            fitr['success'] = False
+
+    if plot_roi_fit:    
+        fig, axes = pl.subplots(1,2, figsize=(8, 4)) # pl.figure()
+        ax = axes[0]
+        ax2 = axes[1] 
+        ax = plot_rf_map(rfmap, ax=ax, cmap=cmap)
+        if fitr['success']:
+            # Draw ellipse: 
+            ax = plot_rf_ellipse(fitr, ax, scale_sigma=scale_sigma)                
+            # Visualize fit results:
+            ax2 = plot_fit_results(fitr, ax=ax2)         
+            # Adjust subplot:
+            bbox1 = ax.get_position()
+            subplot_ht = bbox1.height
+            bbox2 = ax2.get_position()
+            ax2.set_position([bbox2.x0, bbox1.y0, subplot_ht, subplot_ht])
+        else:
+            ax.text(0, -1, 'no fit')
+            ax2.axis('off') 
+        pl.subplots_adjust(wspace=0.3, left=0.1, right=0.9)
+
+    xi = np.arange(0, len(col_vals))
+    yi = np.arange(0, len(row_vals))
+    xx, yy = np.meshgrid(xi, yi)
+    if fitr['success']:
+        results = {'amplitude': amp_f,
+                   'x0': x0_f, 'y0': y0_f,'sigma_x': sigx_f, 'sigma_y': sigy_f,
+                   'theta': theta_f, 'offset': offset_f, 'r2': fitr['r2'],
+                   'fit_y': fit_y,'fit_r': fitr,'data': rfmap} 
+    
+    return results, fig
+    
+def do_2d_fit(rfmap, nx=None, ny=None, verbose=False):
+
+    #TODO:  Instead of finding critical pts w/ squared RF map, do:
+    #    mean subtraction, followed by finding max delta from the  ____
+    #nx=len(col_vals); ny=len(row_vals);
+    # Set params for fit:
+    xi = np.arange(0, nx)
+    yi = np.arange(0, ny)
+    popt=None; pcov=None; fitr=None; r2=None; success=None;
+    xx, yy = np.meshgrid(xi, yi)
+    initial_guess = None
+    try:
+        #amplitude = (rfmap**2).max()
+        #y0, x0 = np.where(rfmap == rfmap.max())
+        #y0, x0 = np.where(rfmap**2. == (rfmap**2.).max())
+        #print "x0, y0: (%i, %i)" % (int(x0), int(y0))    
+
+        rfmap_sub = np.abs(rfmap - np.nanmean(rfmap))
+        y0, x0 = np.where(rfmap_sub == np.nanmax(rfmap_sub))
+        amplitude = rfmap[y0, x0][0]
+        #print "x0, y0: (%i, %i) | %.2f" % (int(x0), int(y0), amplitude)    
+        try:
+            #sigma_x = fwhm(xi, (rfmap**2).sum(axis=0))
+            #sigma_x = fwhm(xi, abs(rfmap.sum(axis=0) - rfmap.sum(axis=0).mean()) )
+            sigma_x = fwhm(xi, np.nansum(rfmap_sub, axis=0) )
+            assert sigma_x is not None
+        except AssertionError:
+            #sigma_x = raw_fwhm(rfmap.sum(axis=0)) 
+            sigma_x = raw_fwhm( np.nansum(rfmap_sub, axis=0) ) 
+        try:
+            sigma_y = fwhm(yi, np.nansum(rfmap_sub, axis=1))
+            assert sigma_y is not None
+        except AssertionError: #Exception as e:
+            sigma_y = raw_fwhm(np.nansum(rfmap_sub, axis=1))
+        #print "sig-X, sig-Y:", sigma_x, sigma_y
+        theta = 0
+        offset=0
+        initial_guess = (amplitude, int(x0), int(y0), sigma_x, sigma_y, theta, offset)
+        valid_ixs = ~np.isnan(rfmap)
+        popt, pcov = opt.curve_fit(twoD_gauss, (xx[valid_ixs], yy[valid_ixs]), rfmap[valid_ixs].ravel(), 
+                                   p0=initial_guess, maxfev=2000)
+        fitr = twoD_gauss((xx, yy), *popt)
+
+        # Get residual sum of squares 
+        residuals = rfmap.ravel() - fitr
+        ss_res = np.nansum(residuals**2)
+        ss_tot = np.nansum((rfmap.ravel() - np.nanmean(rfmap.ravel()))**2)
+        r2 = 1 - (ss_res / ss_tot)
+        #print(r2)
+        if len(np.where(fitr > fitr.min())[0]) < 2 or pcov.max() == np.inf or r2 == 1: 
+            success = False
+        else:
+            success = True
+            # modulo theta
+            #mod_theta = popt[5] % np.pi
+            #popt[5] = mod_theta            
+    except Exception as e:
+        if verbose:
+            traceback.print_exc() 
+    
+    return {'popt': popt, 'pcov': pcov, 'init': initial_guess, 'r2': r2, 'success': success}, fitr
+
+#
+#
+def get_fit_params(animalid, session, fov, run='combined_rfs_static', traceid='traces001', 
+                   response_type='dff', fit_thr=0.5, do_spherical_correction=False, ds_factor=3.,
+                   post_stimulus_sec=0.5, sigma_scale=2.35, scale_sigma=True,
+                   rootdir='/n/coxfs01/2p-data'):
+    
+    screen = p3.get_screen_dims()
+    run_info, sdf = p3.load_run_info(animalid, session, fov, run,traceid=traceid, rootdir=rootdir)
+    
+    run_name = run.split('_')[1] if 'combined' in run else run
+    dk = '%s_%s_fov%i' % (session, animalid, int(fov.split('_')[0][3:]))
+    sdf= p3.get_stimuli(dk, run_name)
+    row_vals = sorted(sdf['ypos'].unique())
+    col_vals = sorted(sdf['xpos'].unique())
+
+   
+    rfdir, fit_desc = create_rf_dir(animalid, session, fov, 
+                                    run, traceid=traceid,
+                                    response_type=response_type, 
+                                    do_spherical_correction=do_spherical_correction, 
+                                    fit_thr=fit_thr)
+    fr = run_info['framerate'] 
+    nframes_post_onset = int(round(post_stimulus_sec * fr))
+
+    #print(fit_params) 
+    fit_params = {
+            'response_type': response_type,
+            'frame_rate': fr,
+            'nframes_per_trial': int(run_info['nframes_per_trial'][0]),
+            'stim_on_frame': run_info['stim_on_frame'],
+            'nframes_on': int(run_info['nframes_on'][0]),
+            'post_stimulus_sec': post_stimulus_sec,
+            'nframes_post_onset': nframes_post_onset,
+            'row_spacing': np.mean(np.diff(row_vals)),
+            'column_spacing': np.mean(np.diff(col_vals)),
+            'fit_thr': fit_thr,
+            'sigma_scale': float(sigma_scale),
+            'scale_sigma': scale_sigma,
+            'screen': screen,
+            'row_vals': row_vals,
+            'col_vals': col_vals,
+            'rfdir': rfdir,
+            'fit_desc': fit_desc,
+            'do_spherical_correction': do_spherical_correction,
+            'downsample_factor': ds_factor
+            } 
+   
+    with open(os.path.join(rfdir, 'fit_params.json'), 'w') as f:
+        json.dump(fit_params, f, indent=4, sort_keys=True)
+    
+    return fit_params
+
+def fit_2d_receptive_fields(animalid, session, fov, run, traceid, 
+                            reload_data=False, create_new=False,
+                            trace_type='corrected', response_type='dff', 
+                            do_spherical_correction=False, ds_factor=3, 
+                            post_stimulus_sec=0.5, scaley=None,
+                            make_pretty_plots=False, nrois_plot=10,
+                            plot_response_type='dff', plot_format='svg',
+                            ellipse_ec='w', ellipse_fc='none', ellipse_lw=2, 
+                            plot_ellipse=True, scale_sigma=True, sigma_scale=2.35,
+                            linecolor='darkslateblue', cmap='bone', legend_lw=2, 
+                            fit_thr=0.5, rootdir='/n/coxfs01/2p-data', n_processes=1, test_subset=False):
+
+    fit_results=None; fit_params=None;
+    rows = 'ypos'; cols = 'xpos';
+
+    # Set output dirs
+    # -----------------------------------------------------------------------------
+    # rf_param_str = 'fit-2dgaus_%s-no-cutoff' % (response_type) 
+    if int(session)<20190511:
+        run = 'gratings'
+    run_name = run.split('_')[1] if 'combined' in run else run
+    rfdir, fit_desc = create_rf_dir(animalid, session, fov, 
+                                    'combined_%s_static' % run_name, traceid=traceid,
+                                    response_type=response_type, 
+                                    do_spherical_correction=do_spherical_correction, fit_thr=fit_thr)
+    # Get data source
+    traceid_dir = rfdir.split('/receptive_fields/')[0]
+    data_fpath = os.path.join(traceid_dir, 'data_arrays', 'np_subtracted.npz')
+    data_id = '|'.join([animalid, session, fov, run, traceid, fit_desc])
+    if not os.path.exists(data_fpath):
+        # Realign traces
+        print("*****corrected offset unfound, running now*****")
+        print("%s | %s | %s | %s | %s" % (animalid, session, fov, run, traceid))
+        # aggregate_experiment_runs(animalid, session, fov, run_name, traceid=traceid)
+        print("*****corrected offsets!*****")
+        return None
+ 
+    # Create results outfile, or load existing:
+    if create_new is False:
+        try:
+            print("... checking for existing fit results")
+            fit_results, fit_params = load_fit_results(animalid, session, fov,
+                                        experiment=run_name, traceid=traceid,
+                                        response_type=response_type, 
+                                        do_spherical_correction=do_spherical_correction)
+            print("... loaded RF fit results")
+            assert fit_results is not None and fit_params is not None, "EMPTY fit_results"
+        except Exception as e:
+            traceback.print_exc()
+            create_new = True
+    print("... do fits?", create_new) 
+    rfmaps_arr=None
+    if create_new or reload_data: #do_fits:
+        # Load processed traces 
+        raw_traces, labels, sdf, run_info = p3.load_dataset(data_fpath, 
+                                                    trace_type=trace_type,add_offset=True, make_equal=False,
+                                                    create_new=reload_data)        
+        # Get screen dims and fit params
+        fit_params = get_fit_params(animalid, session, fov, run=run, traceid=traceid, 
+                                    response_type=response_type, 
+                                    do_spherical_correction=do_spherical_correction, ds_factor=ds_factor,
+                                    fit_thr=fit_thr,
+                                    post_stimulus_sec=post_stimulus_sec, 
+                                    sigma_scale=sigma_scale, scale_sigma=scale_sigma)
+        # Z-score or dff the traces:
+        trials_by_cond = get_trials_by_cond(labels)
+        zscored_traces, zscores = p3.process_traces(raw_traces, labels, 
+                                                response_type=fit_params['response_type'],
+                                                nframes_post_onset=fit_params['nframes_post_onset'])       
+        # -------------------------------------------------------
+        nx = len(fit_params['col_vals'])
+        ny = len(fit_params['row_vals']) 
+        if create_new is False:
+            rfmaps_arr = load_rfmap_array(fit_params['rfdir'], 
+                                            do_spherical_correction=do_spherical_correction)
+        if rfmaps_arr is None:
+            print("Error loading array, extracting now")
+            print("...getting avg by cond")
+            rfmaps_arr = group_trial_values_by_cond(zscores, trials_by_cond, nx=nx, ny=ny,
+                                                    do_spherical_correction=do_spherical_correction)
+            if do_spherical_correction:
+                print("...doin spherical warps")
+                if n_processes>1:
+                    rfmaps_arr = sphr_correct_maps_mp(rfmaps_arr, fit_params, 
+                                                                n_processes=n_processes, test_subset=test_subset)
+                else:
+                    rfmaps_arr = sphr_correct_maps(rfmaps_arr, fit_params, multiproc=False)
+            print("...saved array")
+            save_rfmap_array(rfmaps_arr, fit_params['rfdir'])
+         
+        # Do fits 
+        print("...now, fitting")
+        fit_results, fit_params = fit_rfs(rfmaps_arr, response_type=response_type, 
+                                          do_spherical_correction=do_spherical_correction, 
+                                          fit_params=fit_params, data_identifier=data_id)            
+    
+    #
+    fitdf = rfits_to_df(fit_results, scale_sigma=False, convert_coords=False,
+                        fit_params=fit_params, spherical=fit_params['do_spherical_correction'], 
+                        row_vals=fit_params['row_vals'], col_vals=fit_params['col_vals'])
+ 
+    fit_roi_list = fitdf[fitdf['r2'] > fit_params['fit_thr']].sort_values('r2', axis=0, ascending=False).index.tolist()
+    print("... %i out of %i fit rois with r2 > %.2f" % 
+                (len(fit_roi_list), fitdf.shape[0], fit_params['fit_thr']))
+
+    try:
+
+        fig = plot_top_rfs(fitdf, fit_params, fit_roi_list=fit_roi_list)
+        pplot.label_figure(fig, data_id)
+        figname = 'top%i_fit_thr_%.2f_%s_ellipse__p3' % (len(fit_roi_list), fit_thr, fit_desc)
+        pl.savefig(os.path.join(fit_params['rfdir'], '%s.png' % figname))
+        print(figname)
+        pl.close()
+    except Exception as e:
+        traceback.print_exc()
+        print("Error plotting best RFs grid")
+
+    try:
+        fitdf = rfits_to_df(fit_results, scale_sigma=False, convert_coords=True,
+                        fit_params=fit_params, spherical=fit_params['do_spherical_correction'], 
+                        row_vals=fit_params['row_vals'], col_vals=fit_params['col_vals'])
+ 
+        dk = '%s_%s_fov%i' % (session, animalid, int(fov.split('_')[0][3:]))
+        sdf = p3.get_stimuli(dk, run_name)
+        screen = p3.get_screen_dims()
+        print(fit_params['sigma_scale'])
+        fig = plot_rfs_to_screen(fitdf, sdf, screen, sigma_scale=fit_params['sigma_scale'],
+                        fit_roi_list=fit_roi_list)
+        pplot.label_figure(fig, data_id)
+
+        figname = 'overlaid_RFs_pretty__p3' 
+        pl.savefig(os.path.join(rfdir, '%s.svg' % figname))
+        print(figname)
+        pl.close()
+    except Exception as e:
+        traceback.print_exc()
+        print("Error printing RFs to screen, pretty")
+
+    return fit_results, fit_params
+
+
+def plot_rfs_to_screen(fitdf, sdf, screen,sigma_scale=2.35, fit_roi_list=None):
+    '''
+    plot overlay of cell RFs
+    '''
+    if fit_roi_list is None:
+        fit_roi_list = fitdf.index.tolist()
+
+    fig, ax = pl.subplots( figsize=(10, 5.7))
+    #fig.patch.set_visible(False) #(False) #('off')
+
+    ax = plot_rfs_to_screen_pretty(fitdf, sdf, screen, 
+                               sigma_scale=sigma_scale,
+                               fit_roi_list=fit_roi_list, ax=ax, 
+                               roi_colors=['w']*len(fit_roi_list), ellipse_lw=0.2)
+
+    ax.patch.set_color([0.7]*3)
+    ax.patch.set_alpha(1)
+    ax.set_aspect('equal')
+
+    return fig
+ 
+
+
+def plot_top_rfs(fitdf, fit_params,fit_roi_list=None): 
+    # Convert to dataframe
+    if fit_roi_list is None:
+        fit_roi_list = fitdf.index.tolist()
+    rfmaps_arr = load_rfmap_array(fit_params['rfdir'], 
+                                do_spherical_correction=fit_params['do_spherical_correction'])
+
+    # Plot all RF maps for fit cells (limit = 60 to plot)
+    fig = plot_best_rfs(fit_roi_list, rfmaps_arr, fitdf, fit_params,
+                        single_colorbar=True, plot_ellipse=True, nr=6, nc=10)
+    return fig
+
+
+from mpl_toolkits.axes_grid1 import AxesGrid
+
+def plot_best_rfs(fit_roi_list, rfmaps_arr, fitdf, fit_params,
+                    plot_ellipse=True, single_colorbar=True, nr=6, nc=10):
+    #plot_ellipse = True
+    #single_colorbar = True
+    
+    row_vals = fit_params['row_vals']
+    col_vals = fit_params['col_vals']
+    response_type = fit_params['response_type']
+    sigma_scale = fit_params['sigma_scale'] if fit_params['scale_sigma'] else 1.0
+     
+    cbar_pad = 0.05 if not single_colorbar else 0.5 
+    cmap = 'magma' if plot_ellipse else 'inferno' # inferno
+    cbar_mode = 'single' if single_colorbar else  'each'
+ 
+    vmin = round(max([rfmaps_arr.min().min(), 0]), 1)
+    vmax = round(min([.5, rfmaps_arr.max().max()]), 1)
+   
+    nx = len(col_vals)
+    ny = len(row_vals)
+ 
+    fig = pl.figure(figsize=(nc*2,nr+2))
+    grid = AxesGrid(fig, 111,
+                nrows_ncols=(nr, nc),
+                axes_pad=0.5,
+                cbar_mode=cbar_mode,
+                cbar_location='right',
+                cbar_pad=cbar_pad, cbar_size="3%") 
+    for aix, rid in enumerate(fit_roi_list[0:nr*nc]):
+        ax = grid.axes_all[aix]
+        ax.clear()
+        coordmap = rfmaps_arr[rid].values.reshape(ny, nx) 
+        
+        im = ax.imshow(coordmap, cmap=cmap, vmin=vmin, vmax=vmax) #, vmin=vmin, vmax=vmax)
+        ax.set_title('roi %i (r2=%.2f)' % (int(rid+1), fitdf['r2'][rid]), fontsize=8) 
+        if plot_ellipse:    
+            ell = Ellipse((fitdf['x0'][rid], fitdf['y0'][rid]), 
+                          abs(fitdf['sigma_x'][rid])*sigma_scale, abs(fitdf['sigma_y'][rid])*sigma_scale, 
+                          angle=np.rad2deg(fitdf['theta'][rid]))
+            ell.set_alpha(0.5)
+            ell.set_edgecolor('w')
+            ell.set_facecolor('none')
+            ax.add_patch(ell)            
+        if not single_colorbar:
+            cbar = ax.cax.colorbar(im)
+            cbar = grid.cbar_axes[aix].colorbar(im)
+            cbar_yticks = [vmin, vmax] #[coordmap.min(), coordmap.max()]
+            cbar.cbar_axis.axes.set_yticks(cbar_yticks)
+            cbar.cbar_axis.axes.set_yticklabels([ cy for cy in cbar_yticks], fontsize=8) 
+        ax.set_ylim([0, len(row_vals)]) # This inverts y-axis so values go from positive to negative
+        ax.set_xlim([0, len(col_vals)])
+        #ax.invert_yaxis() 
+
+    if single_colorbar:
+        cbar = grid.cbar_axes[0].colorbar(im)
+        cbar.ax.set_title(response_type) 
+    #%
+    for a in np.arange(0, nr*nc):
+        grid.axes_all[a].set_axis_off()  
+    if not single_colorbar and len(fit_roi_list) < (nr*nc):
+        for nix in np.arange(len(fit_roi_list), nr*nc):
+            grid.cbar_axes[nix].remove()    
+    pl.subplots_adjust(left=0.05, right=0.95, wspace=0.3, hspace=0.3)
+    
+    return fig
 
 
 

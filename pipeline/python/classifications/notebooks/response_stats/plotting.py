@@ -17,6 +17,8 @@ import importlib
 import scipy as sp
 import itertools
 import matplotlib as mpl
+mpl.use('agg')
+
 from matplotlib.lines import Line2D
 import statsmodels as sm
 #import statsmodels.api as sm # put this in Nb
