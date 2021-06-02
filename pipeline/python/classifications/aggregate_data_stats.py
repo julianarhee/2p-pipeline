@@ -519,7 +519,7 @@ def get_rf_datasets_drop(filter_by='drop_repeats', excluded_sessions=[], as_dict
 
 
 #def get_assigned_cells_with_rfs(rf_dsets):
-def select_best_fovs(counts_by_fov, criterion='max', colname='cell'):
+def select_best_fovs(counts_by_fov, criterion='max', colname='cell', first_max_only=True):
     # Cycle thru all dsets and drop repeats
     fovkeys = get_sorted_fovs()
     incl_dsets=[]
@@ -573,14 +573,21 @@ def select_best_fovs(counts_by_fov, criterion='max', colname='cell'):
                 if isinstance(dkeys, tuple):
                     # Reformat listed session strings in fovkeys dict.
                     curr_datakeys = ['_'.join([dk.split('_')[0], animalid, dk.split('_')[-1]])
-                            if len(dk.split('_'))>1 \
-                            else '_'.join([dk.split('_')[0], animalid, 'fov1']) for dk in dkeys]
+                                    if len(dk.split('_'))>1 \
+                                    else '_'.join([dk.split('_')[0], animalid, 'fov1']) for dk in dkeys]
                     # Get df data for current "repeat" FOVs
                     which_fovs = g[g['datakey'].isin(curr_datakeys)]
-                    # Find which has most cells
-                    max_loc = choose_best_fov(which_fovs, criterion=criterion, colname=colname)
-                    #max_loc = np.where(which_fovs['cell']==which_fovs['cell'].max())[0]
-                    incl_dsets.append(which_fovs.iloc[max_loc])
+                    try:
+                        # Find which has most cells
+                        max_loc = choose_best_fov(which_fovs, criterion=criterion, colname=colname)
+                        #max_loc = np.where(which_fovs['cell']==which_fovs['cell'].max())[0] 
+                        if first_max_only:
+                            incl_dsets.append(which_fovs.iloc[[max_loc[0]]])
+                        else:
+                            incl_dsets.append(which_fovs.iloc[[max_loc[0]]])
+                    except Exception as e:
+                        print("ERROR, skipping (%s, %s): %s" % (visual_area, animalid, str(curr_datakeys)), which_fovs)
+                        continue
                 else:
                     # THere are no repeats, so just format, then append df data
                     curr_datakey = '_'.join([dkeys.split('_')[0], animalid, dkeys.split('_')[-1]]) \
@@ -634,7 +641,7 @@ def get_dsets_with_max_rfs(rf_dsets, assigned_cells):
 
     # Load all RF data
     from pipeline.python.classifications import rf_utils as rfutils
-    all_rfdfs = rfutils.load_aggregate_rfs(rf_dsets)
+    all_rfdfs = rfutils.aggregate_rfs(rf_dsets)
     all_rfs = get_rfdata(assigned_cells, all_rfdfs, verbose=False, average_repeats=True)
    
     best_dfs = get_dsets_with_most_cells(all_rfs) #, assigned_cells)
@@ -953,7 +960,7 @@ def get_cells_and_data(all_cells, MEANS, experiment='blobs', sdata=None, traceid
         # Get position info for RFs
         rfdf = load_rfdf_and_pos(sdata, assigned_cells=all_cells, rf_filter_by=None, assign_cells=True,
                                     reliable_only=True, traceid=traceid)
-        #rfdf_avg = aggr.get_rfdata(all_cells, rfdf, average_repeats=True)
+        #rfdf_avg = get_rfdata(all_cells, rfdf, average_repeats=True)
 
         # RF dataframes
         NEURALDATA, RFDATA, assigned_cells = get_neuraldata_and_rfdata(all_cells, rfdf, MEANS,
@@ -1624,7 +1631,7 @@ def get_neuraldata_and_rfdata(assigned_cells, rfdf, MEANS,
 
 def load_rfdf_and_pos(sdata, assigned_cells=None, response_type='dff', rf_filter_by=None, reliable_only=True,
                         rf_fit_thr=0.05, traceid='traces001', assign_cells=True,
-                        aggregate_dir='/n/coxfs01/2p-data'):
+                        aggregate_dir='/n/coxfs01/julianarhee/aggregate-visual-areas'):
     '''
     Does the same thing as rfutils.load_rfdf_with_positions(assign_cells=True)
     '''
@@ -2353,11 +2360,11 @@ def crop_legend_labels(ax, n_hues, bbox_to_anchor=(1.05, 1), loc='upper left', f
 
 
 def plot_pairwise_by_axis(plotdf, curr_metric='abs_coef', c1='az', c2='el', 
-                          c1_label=None, c2_label=None, rotation=9, ha='center', 
+                          c1_label=None, c2_label=None, rotation=0, ha='center', 
                           compare_var='cond', fontsize=10, fontcolor='k', 
-                            fmt='%.2f', xytext=(0, 10),
+                            fmt='%.2f', xytext=(0, 10), xlabel_offset=-1,
                           area_colors=None, legend=True, legend_fontsize=8, 
-                            bbox_to_anchor=(1.5,1.1), loc='center', ax=None, 
+                            bbox_to_anchor=(1,1), loc='upper left', ax=None, 
                         return_stats=False, ttest=True):
     if ax is None:
         fig, ax = pl.subplots(figsize=(5,4), dpi=150)
@@ -2365,7 +2372,8 @@ def plot_pairwise_by_axis(plotdf, curr_metric='abs_coef', c1='az', c2='el',
         ax.patch.set_alpha(0)
     ax, statdf = pairwise_compare_single_metric(plotdf, curr_metric=curr_metric, ax=ax,
                                         c1=c1, c2=c2, compare_var=compare_var, 
-                                        area_colors=area_colors, return_stats=True, ttest=ttest)
+                                        area_colors=area_colors, return_stats=True, ttest=ttest,
+                                        xlabel_offset=xlabel_offset)
     plotdf.apply(annotateBars, ax=ax, axis=1, fontsize=fontsize, 
                     fontcolor=fontcolor, fmt=fmt, xytext=xytext) 
 
@@ -2481,7 +2489,7 @@ def plot_paired(plotdf, aix=0, curr_metric='avg_size', ax=None,
 
 def pairwise_compare_single_metric(comdf, curr_metric='avg_size', 
                                     c1='rfs', c2='rfs10', compare_var='experiment',
-                                    ax=None, marker='o', visual_areas=['V1', 'Lm', 'Li'],
+                                    ax=None, marker='o', visual_areas=['V1', 'Lm', 'Li'],xlabel_offset=-1,
                                     area_colors=None, return_stats=False, round_to=3, ttest=True):
     assert 'datakey' in comdf.columns, "Need a sorter, 'datakey' not found."
 
@@ -2530,6 +2538,9 @@ def pairwise_compare_single_metric(comdf, curr_metric='avg_size',
                 ax=ax, order=visual_areas,
                 errcolor="k", edgecolor=('k', 'k', 'k'), facecolor=(1,1,1,0), linewidth=2.5)
     ax.legend_.remove()
+    print(ax.get_xticks())
+    for x in ax.get_xticks():
+        ax.text(x, xlabel_offset, visual_areas[x])
 
     set_split_xlabels(ax, a_label=c1, b_label=c2)
     if return_stats:
@@ -2651,7 +2662,7 @@ def do_mannwhitney(mdf, metric='I_rs', multi_comp_test='holm'):
     return results
 
 def annotate_stats_areas(statresults, ax, lw=1, color='k', 
-                        y_loc=None, offset=0.1, 
+                        y_loc=None, offset=0.1, fontsize=12,
                          visual_areas=['V1', 'Lm', 'Li']):
    
     if y_loc is None:
@@ -2668,13 +2679,13 @@ def annotate_stats_areas(statresults, ax, lw=1, color='k',
         ax.plot([x1,x1, x2, x2], [y1, y2, y2, y1], linewidth=lw, color=color)
         ctrx = x1 + (x2-x1)/2. 
         star_str = '**' if pv<0.01 else '*'
-        ax.text(ctrx, y1+(offset/8.), star_str)
+        ax.text(ctrx, y1+(offset/8.), star_str, fontsize=fontsize)
 
     return ax
 
 
 def annotate_stats_areas_fromlist(statresults, ax, lw=1, color='k', 
-                        y_loc=None, offset=0.1, 
+                        y_loc=None, offset=0.1, fontsize=12,
                          visual_areas=['V1', 'Lm', 'Li']):
    
     if y_loc is None:
@@ -2692,7 +2703,7 @@ def annotate_stats_areas_fromlist(statresults, ax, lw=1, color='k',
             ax.plot([x1,x1, x2, x2], [y1, y2, y2, y1], linewidth=lw, color=color)
             ctrx = x1 + (x2-x1)/2.
             star_str = '**' if cpair[2]<0.01 else '*'
-            ax.text(ctrx, y1+(offset/8.), star_str)
+            ax.text(ctrx, y1+(offset/8.), star_str, fontsize=fontsize)
 
     return ax
 
@@ -3022,16 +3033,19 @@ def get_aggregate_info(traceid='traces001', fov_type='zoom2p0x', state='awake',
     sdata = get_aggregate_info_unassigned(traceid=traceid, fov_type=fov_type, state=state,
                     visual_areas=visual_areas)
     cells, missing_seg = seg.get_cells_by_area(sdata, return_missing=True)
+    cells = cells[cells.visual_area.isin(visual_areas)]
 
     d_=[]
-    all_dkeys = cells[['visual_area', 'datakey']].drop_duplicates().reset_index(drop=True)
-    for (visual_area, datakey), g in all_dkeys.groupby(['visual_area', 'datakey']):
+    all_dkeys = cells[['visual_area', 'datakey', 'fov']].drop_duplicates().reset_index(drop=True)
+    for (visual_area, datakey, fov), g in all_dkeys.groupby(['visual_area', 'datakey','fov']):
         if visual_area not in visual_areas:
+            print("... skipping %s" % visual_area)
             continue
-        found_exps = sdata[(sdata['datakey']==datakey)]['experiment'].values
+        found_exps = sdata[(sdata['datakey']==datakey) & (sdata['fov']==fov)]['experiment'].values
         tmpd = pd.DataFrame({'experiment': found_exps})
         tmpd['visual_area'] = visual_area
         tmpd['datakey'] = datakey
+        tmpd['fov'] = fov
         d_.append(tmpd)
     all_sdata = pd.concat(d_, axis=0).reset_index(drop=True)
     all_sdata = split_datakey(all_sdata)

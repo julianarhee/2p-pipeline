@@ -5,7 +5,7 @@
 #SBATCH -p shared # run on cox gpu to use correct env 
 #SBATCH -n 4 # one core
 #SBATCH -N 1 # on one node
-#SBATCH -t 0-01:00 # Running time of 3 hours
+#SBATCH -t 0-02:00 # Running time of 3 hours
 #SBATCH --mem 16384 #70656 # Memory request of 70 GB (set to 98304 if exceed lim)
 #SBATCH -o decode_%A_%a.out # Standard output
 #SBATCH -e decode_%A_%a.err # Standard error
@@ -47,7 +47,7 @@ echo "N ITERS: ${NITER}"
 echo "response type: ${DFF}"
 
 #
-python /n/coxfs01/2p-pipeline/repos/2p-pipeline/pipeline/python/classifications/decode_by_ncells.py -E $EXP -t $TRACEID -R $RTEST --new -o $OVERLAP -C ${CVAL} -V $VAREA -S $SAMPLESIZE -X $ANALYSIS -k $DKEY --epoch $EPOCH --shuffle -T $GENTEST --shuffle-thr $SHUFFTHR --unique -n 8 -N ${NITER} -d $DFF
+python /n/coxfs01/2p-pipeline/repos/2p-pipeline/pipeline/python/classifications/decode_by_ncells.py -E $EXP -t $TRACEID -R $RTEST --new -o $OVERLAP -C ${CVAL} -V $VAREA -S $SAMPLESIZE -X $ANALYSIS -k $DKEY --epoch $EPOCH --shuffle -T $GENTEST --shuffle-thr $SHUFFTHR --drop-repeats -n 8 -N $NITER -d $DFF
 
 #{EXP} {TRACEID} {RTEST} {OVERLAP} {ANALYSIS} {CVAL} {VAREA} {NCELLS} {DKEY}".format(
 

@@ -13,7 +13,7 @@ import traceback
 import matplotlib as mpl
 import matplotlib.cm as cm
 from matplotlib import colors as mcolors
-from pipeline.python.utils import convert_range, get_screen_dims, isnumber
+from pipeline.python.utils import convert_range, get_screen_dims, isnumber, split_datakey_str
 # ------------------------------------------------------------------------------------
 # General stats
 # ------------------------------------------------------------------------------------
@@ -152,43 +152,80 @@ def plot_all_rfs(RFs, MEANS=None, screeninfo=None, cmap='cubehelix', dpi=150):
 # ------------------------------------------------------------------------------------
 # Data loading
 # ------------------------------------------------------------------------------------
-def load_aggregate_rfs(rf_dsets, traceid='traces001', 
+def aggregate_rfs(rf_dsets, traceid='traces001', 
                         fit_desc='fit-2dgaus_dff-no-cutoff', 
-                        reliable_only=True, verbose=False):
-#    try:
-#        df
-#    except Exception as e:
-#        con
+                        reliable_only=True, verbose=False,
+                        assigned_cells=None):
+    # Gets all results for provided datakeys (sdata, for rfs/rfs10)
+    # Aggregates results for the datakeys
+    # assigned_cells:  cells assigned by visual area
+
     rf_dpaths, no_fits = get_fit_dpaths(rf_dsets, traceid=traceid, fit_desc=fit_desc)
-    rfdf = aggregate_rf_data(rf_dpaths, reliable_only=reliable_only, 
+    rfdf = aggregate_rf_data(rf_dpaths, reliable_only=reliable_only, assigned_cells=assigned_cells,
                                         fit_desc=fit_desc, traceid=traceid, verbose=verbose)
     rfdf = rfdf.reset_index(drop=True)
     return rfdf
 
+def add_rf_positions(rfdf, calculate_position=False, traceid='traces001'):
+    '''
+    Add ROI position info to RF dataframe (converted and pixel-based).
+    Set calculate_position=True, to re-calculate.
+    '''
+    from pipeline.python.rois.utils import load_roi_coords
+
+    print("Adding RF position info...")
+    pos_params = ['fov_xpos', 'fov_xpos_pix', 'fov_ypos', 'fov_ypos_pix', 'ml_pos','ap_pos']
+    for p in pos_params:
+        rfdf[p] = ''
+    p_list=[]
+    #for (animalid, session, fovnum, exp), g in rfdf.groupby(['animalid', 'session', 'fovnum', 'experiment']):
+    for (va, dk, exp), g in rfdf.groupby(['visual_area', 'datakey', 'experiment']):
+        session, animalid, fovnum = split_datakey_str(dk)
+
+        fcoords = load_roi_coords(animalid, session, 'FOV%i_zoom2p0x' % fovnum, 
+                                  traceid=traceid, create_new=calculate_position)
+
+        #for ei, e_df in g.groupby(['experiment']):
+        cell_ids = g['cell'].unique()
+        p_ = fcoords['roi_positions'].loc[cell_ids]
+        for p in pos_params:
+            rfdf[p][g.index] = p_[p].values
+
+    return rfdf
 
 def get_rf_positions(rf_dsets, df_fpath, traceid='traces001', 
                         fit_desc='fit-2dgaus_dff-no-cutoff', reliable_only=True, verbose=False):
     from pipeline.python.rois.utils import load_roi_coords
-
-    rfdf = load_aggregate_rfs(rf_dsets, traceid=traceid, fit_desc=fit_desc, 
-                                reliable_only=reliable_only, verbose=verbose)
+    rfdf=None
     get_positions = False
     if os.path.exists(df_fpath) and get_positions is False:
         print("Loading existing RF coord conversions...")
         try:
             with open(df_fpath, 'rb') as f:
                 df= pkl.load(f)
-            rfdf = df['df']
+            #print(df.keys())
+            if isinstance(df, dict):
+                rfdf = df['df']
+            else:
+                rfdf = df.copy() #['df']
         except Exception as e:
+            traceback.print_exc()
             get_positions = True
+    else:
+        get_positions=True
 
     if get_positions:
+        # This aggregates rf data from analyzed dfiles, not saved dataframes
+        rfdf = aggregate_rfs(rf_dsets, traceid=traceid, fit_desc=fit_desc, 
+                                reliable_only=reliable_only, verbose=verbose)
         print("Calculating RF coord conversions...")
         pos_params = ['fov_xpos', 'fov_xpos_pix', 'fov_ypos', 'fov_ypos_pix', 'ml_pos','ap_pos']
         for p in pos_params:
             rfdf[p] = ''
         p_list=[]
-        for (animalid, session, fovnum), g in rfdf.groupby(['animalid', 'session', 'fovnum']):
+        #for (animalid, session, fovnum), g in rfdf.groupby(['animalid', 'session', 'fovnum']):
+        for (va, dk, exp), g in rfdf.groupby(['visual_area', 'datakey', 'experiment']):
+            session, animalid, fovnum = split_datakey_str(dk)
             fcoords = load_roi_coords(animalid, session, 'FOV%i_zoom2p0x' % fovnum, 
                                       traceid=traceid, create_new=False)
 
@@ -386,11 +423,12 @@ def aggregate_rf_data(rf_dpaths, fit_desc=None, traceid='traces001', fit_thr=0.5
     from pipeline.python.classifications import evaluate_receptivefield_fits as evalrf
 
     df_list = []
-    for (visual_area, animalid, session, fovnum, experiment), g in rf_dpaths.groupby(['visual_area', 'animalid', 'session', 'fovnum', 'experiment']):
+    for (visual_area, datakey, experiment), g in \
+                            rf_dpaths.groupby(['visual_area', 'datakey', 'experiment']):
         if experiment not in ['rfs', 'rfs10']:
             continue
-
-        datakey = '%s_%s_fov%i' % (session, animalid, fovnum) #'-'.join([animalid, session, fovnum])
+        session, animalid, fovnum = split_datakey_str(datakey)
+        #datakey = '%s_%s_fov%i' % (session, animalid, fovnum) #'-'.join([animalid, session, fovnum])
         #print(datakey)
         fov = 'FOV%i_zoom2p0x' % fovnum
 
@@ -440,8 +478,10 @@ def aggregate_rf_data(rf_dpaths, fit_desc=None, traceid='traces001', fit_thr=0.5
             reliable_rois = evalrf.get_reliable_fits(eval_results['pass_cis'],
                                                      pass_criterion='all')
             if verbose:
-                print("[%s] %s: %i of %i fit rois pass for all params" % (visual_area, datakey, len(pass_rois), len(fit_rois)))
-                print("...... : %i of %i fit rois passed as reliiable" % (len(reliable_rois), len(pass_rois)))
+                print("[%s] %s: %i of %i fit rois pass for all params" \
+                            % (visual_area, datakey, len(pass_rois), len(fit_rois)))
+                print("...... : %i of %i fit rois passed as reliiable" \
+                            % (len(reliable_rois), len(pass_rois)))
 
             #### Create dataframe with params only for good fit cells
             keep_rois = reliable_rois if reliable_only else pass_rois
@@ -456,16 +496,23 @@ def aggregate_rf_data(rf_dpaths, fit_desc=None, traceid='traces001', fit_thr=0.5
                 passdf['sigma_x'] = sigma_x
                 passdf['sigma_y'] = sigma_y
 
-            tmpmeta = pd.DataFrame({'cell': keep_rois,
-                                    'datakey': [datakey for _ in np.arange(0, len(keep_rois))],
-                                    'animalid': [animalid for _ in np.arange(0, len(keep_rois))],
-                                    'session': [session for _ in np.arange(0, len(keep_rois))],
-                                    'fovnum': [fovnum for _ in np.arange(0, len(keep_rois))],
-                                    'visual_area': [visual_area for _ in np.arange(0, len(keep_rois))],
-                                    'experiment': [experiment for _ in np.arange(0, len(keep_rois))]}, index=passdf.index)
+            passdf['cell'] = keep_rois
+            passdf['datakey'] = datakey
+            passdf['animalid'] = animalid
+            passdf['session'] = session
+            passdf['fovnum'] = fovnum
+            passdf['visual_area'] = visual_area
+            passdf['experiment'] = experiment
+#            tmpmeta = pd.DataFrame({'cell': keep_rois,
+#                                    'datakey': [datakey for _ in np.arange(0, len(keep_rois))],
+#                                    'animalid': [animalid for _ in np.arange(0, len(keep_rois))],
+#                                    'session': [session for _ in np.arange(0, len(keep_rois))],
+#                                    'fovnum': [fovnum for _ in np.arange(0, len(keep_rois))],
+#                                    'visual_area': [visual_area for _ in np.arange(0, len(keep_rois))],
+#                                    'experiment': [experiment for _ in np.arange(0, len(keep_rois))]}, index=passdf.index)
 
-            fitdf = pd.concat([passdf, tmpmeta], axis=1).reset_index(drop=True)
-            df_list.append(fitdf)
+#            fitdf = pd.concat([passdf, tmpmeta], axis=1).reset_index(drop=True)
+            df_list.append(passdf) #(fitdf)
 
         except Exception as e:
             print("***ERROR: %s" % datakey)
@@ -1160,7 +1207,8 @@ def get_proportion_overlap(poly_tuple1, poly_tuple2):
 # ===================================================
 # plotting
 # ===================================================
-def anisotropy_polarplot(rdf, metric='anisotropy', cmap='spring_r', alpha=0.5, marker='o', ax=None, dpi=150):
+def anisotropy_polarplot(rdf, metric='anisotropy', cmap='spring_r', alpha=0.5, 
+                            marker='o', ax=None, dpi=150, cbar_bbox=[0.4, 0.15, 0.2, 0.03]):
 
     vmin=0; vmax=1;
     norm = mpl.colors.Normalize(vmin=vmin, vmax=vmax)
@@ -1188,7 +1236,7 @@ def anisotropy_polarplot(rdf, metric='anisotropy', cmap='spring_r', alpha=0.5, m
 
     # Colorbar
     iso_cmap._A = []
-    cbar_ax = ax.figure.add_axes([0.4, 0.15, 0.2, 0.03])
+    cbar_ax = ax.figure.add_axes(cbar_bbox)
     cbar = ax.figure.colorbar(iso_cmap, cax=cbar_ax, orientation='horizontal', ticks=[0, 1])
     if metric == 'anisotropy':
         xlabel_min = 'Iso\n(%.1f)' % (vmin) 

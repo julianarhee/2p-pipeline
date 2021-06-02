@@ -56,28 +56,73 @@ import cPickle as pkl
 # -----------------------------------------------------------------------------
 # Map funcs 
 # -----------------------------------------------------------------------------
+#def arrays_to_maps(magratio, phase, trials_by_cond, use_cont=False,
+#                            dims=(512, 512), ds_factor=2, cond='right', 
+#                            mag_thr=None, mag_perc=0.05):
+#    if mag_thr is None:
+#        mag_thr = magratio.max().max()*mag_perc
+#        
+#    currmags = magratio[trials_by_cond[cond]]
+#    currmags[currmags<mag_thr] = np.nan
+#    currmags_mean = np.nanmean(currmags, axis=1)
+#    #d1 = int(np.sqrt(currmags_mean.shape[0]))
+#    d1 = dims[0] / ds_factor
+#    d2 = dims[1] / ds_factor
+#    currmags_map = np.reshape(currmags_mean, (d1, d2))
+#    
+#    currphase = phase[trials_by_cond[cond]]
+#    currphase_mean = stats.circmean(currphase, low=-np.pi, high=np.pi, axis=1)
+#    currphase_mean_c = correct_phase_wrap(currphase_mean)
+#
+#    currphase_mean_c[np.isnan(currmags_mean)] = np.nan
+#    currphase_map_c = np.reshape(currphase_mean_c, (d1, d2))
+#    
+#    return currmags_map, currphase_map_c, mag_thr
+#
+
 def arrays_to_maps(magratio, phase, trials_by_cond, use_cont=False,
-                            dims=(512, 512), ds_factor=2, cond='right', 
-                            mag_thr=None, mag_perc=0.05):
+                            dims=(512, 512), ds_factor=2, cond='right',
+                            mag_thr=None, mag_perc=0.05, return_map=True):
     if mag_thr is None:
         mag_thr = magratio.max().max()*mag_perc
-        
-    currmags = magratio[trials_by_cond[cond]]
-    currmags[currmags<mag_thr] = np.nan
-    currmags_mean = np.nanmean(currmags, axis=1)
-    #d1 = int(np.sqrt(currmags_mean.shape[0]))
-    d1 = dims[0] / ds_factor
-    d2 = dims[1] / ds_factor
-    currmags_map = np.reshape(currmags_mean, (d1, d2))
-    
-    currphase = phase[trials_by_cond[cond]]
-    currphase_mean = stats.circmean(currphase, low=-np.pi, high=np.pi, axis=1)
-    currphase_mean_c = correct_phase_wrap(currphase_mean)
 
-    currphase_mean_c[np.isnan(currmags_mean)] = np.nan
-    currphase_map_c = np.reshape(currphase_mean_c, (d1, d2))
-    
+    currmags = magratio[trials_by_cond[cond]].copy()
+    currmags_mean = currmags.mean(axis=1)
+    currmags_mean.loc[currmags_mean<mag_thr] = np.nan 
+    #currmags_mean = means_[means_>=mag_thr]
+
+    if return_map:
+        #currmags = magratio[trials_by_cond[cond]]
+        #currmags.loc[currmags<mag_thr, trials_by_cond[cond]] = np.nan
+        #currmags_mean = np.nanmean(currmags, axis=1)
+        #d1 = int(np.sqrt(currmags_mean.shape[0]))
+        d1 = int(dims[0] / ds_factor)
+        d2 = int(dims[1] / ds_factor)
+        print(d1, d2)
+        currmags_map = np.reshape(currmags_mean.values, (d1, d2))
+    else:
+        currmags_map = currmags_mean.copy()
+
+        
+    currphase = phase[trials_by_cond[cond]].copy() #.loc[currmags_mean.index]
+    #currphase.loc[currmags_mean[currmags_mean<mag_thr].index, trials_by_cond[cond]] = np.nan
+    currphase.loc[currmags_mean[np.isnan(currmags_mean)].index, trials_by_cond[cond]] = np.nan
+    #currphase_mean = stats.circmean(currphase, low=-np.pi, high=np.pi, axis=1, nan_policy='omit')
+    #currphase_mean_c = correct_phase_wrap(currphase_mean)
+    non_nan_ix = currphase.dropna().index #.tolist()
+    currphase_mean0 = stats.circmean(currphase.dropna(), low=-np.pi, high=np.pi, axis=1) #, nan_policy='omit')
+    currphase_mean_c0 = correct_phase_wrap(currphase_mean0)
+    currphase_mean_c = pd.DataFrame(data=np.ones(len(currphase),)*np.nan, index=currphase.index)
+    currphase_mean_c.loc[non_nan_ix, 0] = currphase_mean_c0
+        
+    if return_map:
+        #currphase_mean_c[np.isnan(currmags_mean)] = np.nan
+        currphase_map_c = np.reshape(currphase_mean_c.values, (d1, d2))
+    else:
+        currphase_map_c = currphase_mean_c.copy()
+        
     return currmags_map, currphase_map_c, mag_thr
+
 
 def absolute_maps_from_conds(magratio, phase, trials_by_cond, mag_thr=0.01,
                                 dims=(512, 512), ds_factor=2, outdir='/tmp', 

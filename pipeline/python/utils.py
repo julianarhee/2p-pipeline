@@ -24,6 +24,10 @@ from scipy import ndimage
 from scipy.interpolate import griddata
 
 
+def get_rid_from_str(s, ndec=3):
+    #print(re.findall(r"rid\d{%s}" % ndec, s)[0][3:])
+    return int(re.findall(r"rid\d{%s}" % ndec, s)[0][3:])
+
 def split_datakey(df):
     df['animalid'] = [s.split('_')[1] for s in df['datakey']]
     df['fov'] = ['FOV%i_zoom2p0x' % int(s.split('_')[2][3:]) for s in df['datakey']]
@@ -244,6 +248,18 @@ def warp_spherical(image_values, cart_pointsX, cart_pointsY, sphr_pointsTh, sphr
 # -----------------------------------------------------------------------------
 # Plotting:
 # -----------------------------------------------------------------------------
+
+def print_means(plotdf, groupby=['visual_area', 'arousal'], params=None):
+    if params is None:
+        params = [k for k in plotdf.columns if k not in groupby]
+        
+    m_ = plotdf.groupby(groupby)[params].mean().reset_index()
+    s_ = plotdf.groupby(groupby)[params].std().reset_index()
+    for p in params:
+        m_['%s_std' % p] = s_[p].values
+    print("MEANS:")
+    print(m_)
+
 def set_threecolor_palette(c1='magenta', c2='orange', c3='dodgerblue', cmap=None, soft=False,
                             visual_areas = ['V1', 'Lm', 'Li']):
     if soft:
@@ -257,23 +273,51 @@ def set_threecolor_palette(c1='magenta', c2='orange', c3='dodgerblue', cmap=None
     #area_colors = {'V1': c1, 'Lm': c2, 'Li': c3}
     return visual_areas, area_colors
 
-def set_plot_params(lw_axes=1, labelsize=12, color='k'):
+
+def set_plot_params(lw_axes=0.25, labelsize=6, color='k', dpi=100):
     import pylab as pl
     #### Plot params
-    pl.rcParams["axes.labelsize"] = labelsize + 4
+    #pl.rcParams['font.size'] = 6
+    #pl.rcParams['text.usetex'] = True
+    
+    pl.rcParams["axes.labelsize"] = labelsize + 2
     pl.rcParams["axes.linewidth"] = lw_axes
     pl.rcParams["xtick.labelsize"] = labelsize
     pl.rcParams["ytick.labelsize"] = labelsize
     pl.rcParams['xtick.major.width'] = lw_axes
+    pl.rcParams['xtick.minor.width'] = lw_axes
     pl.rcParams['ytick.major.width'] = lw_axes
-
+    pl.rcParams['ytick.minor.width'] = lw_axes
+    pl.rcParams['legend.fontsize'] = labelsize
+    
+    #pl.rcParams['figure.figsize'] = (5, 4)
+    pl.rcParams['figure.dpi'] = dpi
+    pl.rcParams['savefig.dpi'] = dpi
+    pl.rcParams['svg.fonttype'] = 'none' #: path
+        
+    
     for param in ['xtick.color', 'ytick.color', 'axes.labelcolor', 'axes.edgecolor']:
         pl.rcParams[param] = color
 
-    dpi = 150
+    return 
 
-    return dpi
-
+#def set_plot_params(lw_axes=1, labelsize=12, color='k'):
+#    import pylab as pl
+#    #### Plot params
+#    pl.rcParams["axes.labelsize"] = labelsize + 4
+#    pl.rcParams["axes.linewidth"] = lw_axes
+#    pl.rcParams["xtick.labelsize"] = labelsize
+#    pl.rcParams["ytick.labelsize"] = labelsize
+#    pl.rcParams['xtick.major.width'] = lw_axes
+#    pl.rcParams['ytick.major.width'] = lw_axes
+#
+#    for param in ['xtick.color', 'ytick.color', 'axes.labelcolor', 'axes.edgecolor']:
+#        pl.rcParams[param] = color
+#
+#    dpi = 150
+#
+#    return dpi
+#
 def colorbar(mappable, label=None):
     from mpl_toolkits.axes_grid1 import make_axes_locatable
     import matplotlib.pyplot as plt
