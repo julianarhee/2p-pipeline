@@ -15,18 +15,18 @@ import sys
 import optparse
 import itertools
 import glob
+import shutil
 import seaborn as sns
 import numpy as np
 import pandas as pd
 import pylab as pl
 from scipy import stats
-#from pipeline.python.classifications import experiment_classes as util
 
 from pipeline.python.paradigm import align_acquisition_events as acq
 #from pipeline.python.traces.utils import get_frame_info
 from pipeline.python.utils import label_figure, get_frame_info
 from pipeline.python import utils as util
-
+#from pipeline.python.classifications.aggregate_data_stats import get_aggregate_info
 
 def extract_options(options):
 
@@ -45,12 +45,14 @@ def extract_options(options):
                           default=None, help='Stimulus param to compare bw runs (e.g., backlight)')
 
     # Set specific session/run for current animal:
-    parser.add_option('-S', '--session', action='store', dest='session',
+    parser.add_option('-S', '--session', action='store', dest=None,
                           default='', help='session dir (format: YYYMMDD_ANIMALID')
     parser.add_option('-A', '--acq', action='store', dest='acquisition',
-                          default='FOV1', help="acquisition folder (ex: 'FOV1_zoom3x') [default: FOV1]")
+                          default='FOV1_zoom2p0x', help="acquisition folder (ex: 'FOV1_zoom3x') [default: FOV1]")
     parser.add_option('-R', '--run', dest='run', default='', action='store', help="run name")
-    parser.add_option('-t', '--traceid', dest='traceid', default=None, action='store', help="e.g., traces001")
+    parser.add_option('-t', '--traceid', dest='traceid', default='traces001', action='store', help="e.g., traces001")
+    parser.add_option('-V', '--visual-area', dest='visual_area', default=None, action='store', help="only plot cells assigned to specified visual area")
+
 
     # Set specific session/run for current animal:
     parser.add_option('-d', '--datatype', action='store', dest='datatype',
@@ -78,7 +80,15 @@ def extract_options(options):
                         help='Set to filter our noisy spikes') 
     parser.add_option('--no-offset', action='store_false', dest='add_offset',
                           default=True, help='Set to do offset old way') 
-   
+ 
+
+    parser.add_option('--responsive', action='store_true', dest='plot_responsive',
+                          default=False, help='Only plot responsive cells') 
+    parser.add_option('--test', action='store', dest='responsive_test',
+                          default='nstds', help='responsive test (if --responsive flagged, default: nstds)') 
+    parser.add_option('--thr', action='store', dest='responsive_thr',
+                          default=10.0, help='responsive threshold (if --responsive flagged, default: 10 frames)') 
+  
     (options, args) = parser.parse_args(options)
 
     
@@ -168,12 +178,16 @@ def plot_psth_grid(meandfs, plot_params, trace_type='trace_type', palette='color
                        stim_start_tsec=0, stim_end_tsec=1):
     
     p = sns.FacetGrid(meandfs, col=plot_params['cols'], row=plot_params['rows'], hue=plot_params['hue'],\
-                      sharex=True, sharey=True, palette=palette)
+                      sharex=True, sharey=True, palette=palette, gridspec_kws={'wspace': 0.6, 'hspace': 0.6})
 
 
     if len(meandfs[plot_params['rows']].unique()) == 1:
-        p.fig.set_figheight(3)
-        p.fig.set_figwidth(20)
+        p.fig.set_figheight(4)
+        p.fig.set_figwidth(8)
+    else:
+        p.fig.set_figheight(12)
+        p.fig.set_figwidth(18)
+
 
     if plot_params['hue'] is None:
         p = p.map(pl.fill_between, "tsec", "fill_minus", "fill_plus", alpha=0.5, color='k')
@@ -182,18 +196,17 @@ def plot_psth_grid(meandfs, plot_params, trace_type='trace_type', palette='color
         p = p.map(pl.fill_between, "tsec", "fill_minus", "fill_plus", alpha=0.5)
         p = (p.map(pl.plot, "tsec", trace_type, lw=1, alpha=1).add_legend())
 
-    p = p.set_titles(col_template="{col_name}", size=12)   
+    p = p.set_titles(col_template="{col_name}", size=8)   
     p.map(add_stimulus_bar, 'ntrials',  start_val=stim_start_tsec, end_val=stim_end_tsec, color='k', alpha=0.1)
     if plot_params['hue'] is not None:
         p.map(add_text, 'ntrials', plot_params['hue'])
-    pl.subplots_adjust(top=0.9, right=0.9, wspace=0.1, hspace=0.4)
     sns.despine(trim=True) #, bottom=True) 
     fix_grid_labels(p, trace_type=trace_type)
 
     if 'xpos' in plot_params.values() and 'ypos' in plot_params.values(): 
         pl.subplots_adjust(wspace=0.05, hspace=0.3, top=0.85, bottom=0.1, left=0.05) 
     else:
-        pl.subplots_adjust(wspace=0.1, hspace=0.4, top=0.9, right=0.9)
+        pl.subplots_adjust(wspace=0.5, hspace=0.5, top=0.8, right=0.9, left=0.1, bottom=0.2)
 
     return p
     
@@ -219,11 +232,20 @@ def make_clean_psths(options):
     #%%
     optsE = extract_options(options)
     run = optsE.run #run_list[0]
+    animalid = optsE.animalid
+    session = optsE.session
+    fov = optsE.acquisition
+
     traceid = optsE.traceid #traceid_list[0]
     inputdata = optsE.datatype
     filetype = optsE.filetype
     filter_noise = optsE.filter_noise
     trace_type = optsE.datatype
+    visual_area = optsE.visual_area
+
+    responsive_test = optsE.responsive_test
+    responsive_thr = float(optsE.responsive_thr)
+    plot_responsive = optsE.plot_responsive
 
     # Plotting options:
     filetype = optsE.filetype
@@ -235,7 +257,7 @@ def make_clean_psths(options):
         traceid_dirs = glob.glob(os.path.join(acquisition_dir, run, 'cnmf', '%s*' % traceid))[0]
     else:
         traceid_dirs = [t for t in glob.glob(os.path.join(acquisition_dir, run, 'traces', '%s*' % traceid)) if 'ORIG' not in t] #[0]
-   
+    print(acquisition_dir) 
     compare_runs = optsE.compare_runs
     auto  = optsE.auto
     if len(traceid_dirs) > 1 and compare_runs is False:
@@ -266,7 +288,6 @@ def make_clean_psths(options):
     xdata_list=[]; labels_list=[]; sdf_list=[]; data_ids=[];
     for traceid_dir in traceid_dirs:
         dataset_name = 'np_subtracted' if trace_type in ['dff', 'df', 'corrected'] else trace_type
-
         soma_fpath = os.path.join(traceid_dir, 'data_arrays', '%s.npz' % dataset_name)
         xdata, labels, sdf, run_info = util.load_dataset(soma_fpath, trace_type=trace_type)
         sdf = sdf.assign(ix=[int(i.split('config')[-1]) for i in sdf.index]).sort_values('ix')
@@ -276,7 +297,7 @@ def make_clean_psths(options):
         labels_list.append(labels)
         sdf_list.append(sdf)
         data_ids.append(data_identifier)
-    
+    print(data_ids) 
     data_id_list = data_ids[0].split('|')
     if len(data_ids) > 1:
         data_id_list.extend([s for s in data_ids[1].split('|') if s not in data_id_list])
@@ -312,6 +333,8 @@ def make_clean_psths(options):
             labels_list[si] = tmp_labels        
         sdf_list[si] = sdf
 #% 
+
+
     # Combine data:
     sdf_c = pd.concat(sdf_list, axis=0) # Get rid of config labels
     xdata_c = pd.concat(xdata_list, axis=0).reset_index(drop=True)
@@ -319,7 +342,44 @@ def make_clean_psths(options):
     stim_on = labels_c['stim_on_frame'].unique()[0]
     nframes_on = labels_c['nframes_on'].unique()[0]
     mean_tsecs = labels_c.groupby(['trial'])['tsec'].apply(np.array).mean(axis=0)
-    print(xdata_c.head())
+    #print(xdata_c.head())
+
+    #%% Set what gets plotted where and houes
+    # Get varying transforms:
+    ignore_params = ['position', 'aspect', 'stimtype']
+    transform_params = [p for p in sdf_c.columns if p not in ignore_params]
+    transform_dict = dict((param, sdf_c[param].unique()) for param in transform_params)
+    for k, v in transform_dict.items():
+        if len(v) == 1:
+            transform_dict.pop(k)
+
+    # replace duration:
+    if 'duration' in transform_dict.keys():
+        transform_dict['stim_dur'] = transform_dict['duration']
+        transform_dict.pop('duration')
+
+    if 'position' in plot_params.values() and 'position' not in sdf_c.columns.tolist():
+        posvals = list(set(zip(sdf_c['xpos'].values, sdf_c['ypos'].values)))
+        print "Found %i unique positions." % len(posvals)
+        transform_dict['position'] = posvals
+        sdf_c['position'] = list(zip(sdf_c['xpos'], sdf_c['ypos']))
+
+
+    if isinstance(plot_params['rows'], list) and len(plot_params['rows']) > 1:
+        combo_param_name = '_'.join(plot_params['rows'])
+        sdf_c[combo_param_name] = ['_'.join([str(c) for c in list(combo[0])]) for combo in list(zip(sdf_c[plot_params['rows']].values))]
+        plot_params['rows'] = combo_param_name
+        
+    if isinstance(plot_params['cols'], list) and len(plot_params['cols']) > 1:
+        combo_param_name = '_'.join(plot_params['cols'])
+        sdf_c[combo_param_name] = ['_'.join([str(c) for c in list(combo[0])]) for combo in list(zip(sdf_c[plot_params['cols']].values))]
+        plot_params['cols'] = combo_param_name
+
+    if isinstance(plot_params['hue'], list) and len(plot_params['hue']) > 1:
+        combo_param_name = '_'.join(plot_params['hue'])
+        sdf_c[combo_param_name] = ['_'.join([str(c) for c in list(combo[0])]) for combo in list(zip(sdf_c[plot_params['hue']].values))]
+        plot_params['hue'] = combo_param_name
+ 
 
     for pparam in plot_params.values():
         if isinstance(pparam, list):
@@ -346,47 +406,13 @@ def make_clean_psths(options):
     print "OUTPUT saved to:", output_figdir    
     #%%
   
-    #%% Set what gets plotted where and houes
-    # Get varying transforms:
-    ignore_params = ['position', 'aspect', 'stimtype']
-    transform_params = [p for p in sdf_c.columns if p not in ignore_params]
-    transform_dict = dict((param, sdf_c[param].unique()) for param in transform_params)
-    for k, v in transform_dict.items():
-        if len(v) == 1:
-            transform_dict.pop(k)
 
-    # replace duration:
-    if 'duration' in transform_dict.keys():
-        transform_dict['stim_dur'] = transform_dict['duration']
-        transform_dict.pop('duration')
-
-    if 'position' in plot_params.values() and 'position' not in sdf_c.columns.tolist():
-        posvals = list(set(zip(sdf_c['xpos'].values, sdf_c['ypos'].values)))
-        print "Found %i unique positions." % len(posvals)
-        transform_dict['position'] = posvals
-        sdf['position'] = list(zip(sdf_c['xpos'], sdf_c['ypos']))
-
-
-    if isinstance(plot_params['rows'], list) and len(plot_params['rows']) > 1:
-        combo_param_name = '_'.join(plot_params['rows'])
-        sdf_c[combo_param_name] = ['_'.join([str(c) for c in list(combo[0])]) for combo in list(zip(sdf_c[plot_params['rows']].values))]
-        plot_params['rows'] = combo_param_name
-        
-    if isinstance(plot_params['cols'], list) and len(plot_params['cols']) > 1:
-        combo_param_name = '_'.join(plot_params['cols'])
-        sdf_c[combo_param_name] = ['_'.join([str(c) for c in list(combo[0])]) for combo in list(zip(sdf_c[plot_params['cols']].values))]
-        plot_params['cols'] = combo_param_name
-
-    if isinstance(plot_params['hue'], list) and len(plot_params['hue']) > 1:
-        combo_param_name = '_'.join(plot_params['hue'])
-        sdf_c[combo_param_name] = ['_'.join([str(c) for c in list(combo[0])]) for combo in list(zip(sdf_c[plot_params['hue']].values))]
-        plot_params['hue'] = combo_param_name
-        
         
     trans_types = sorted([trans for trans in transform_dict.keys() if len(transform_dict[trans]) > 1 and trans!='ix'])         
     print "Trans:", trans_types
     #print sdf_c.head()    
-   
+    ##print(sdf_c.columns)
+ 
     # -------------------------------------------------------------------------
     # Create PSTH plot grid:
     # -------------------------------------------------------------------------
@@ -412,11 +438,7 @@ def make_clean_psths(options):
     if optsE.filetype == 'pdf':
         psth_dir = '%s_hq' % psth_dir
        
-    if not os.path.exists(psth_dir):
-        os.makedirs(psth_dir)
-    print "Saving PSTHs to: %s" % psth_dir
-
-    # Set COLORS for subplots:
+   # Set COLORS for subplots:
     print "Trans Types:", trans_types
     if len(trans_types)<=2 and plot_params['hue'] is None:
         print "PLOTTING 1 color"
@@ -441,10 +463,48 @@ def make_clean_psths(options):
     stim_start_tsec = 0.0
     stim_end_tsec = mean_tsecs[stim_on + int(round(nframes_on))]
 
-    for ridx in range(xdata.shape[-1]):
+    # =====================================================================================
+    # Plot
+    # =====================================================================================
+    if visual_area is not None:
+        from pipeline.python.classifications.aggregate_data_stats import get_aggregate_info
+        sdata, rois = get_aggregate_info(traceid=traceid, return_cells=True)
+        fovnum = int(fov.split('_')[0][3:])
+        datakey = '%s_%s_fov%i' % (session, animalid, fovnum)
+        curr_rois = rois[(rois.visual_area==visual_area) & (rois.datakey==datakey)]['cell'].unique()
+        ncells_t = xdata.shape[-1]
+        print("%i of %i cells are in assigned area (%s)" % (len(curr_rois), ncells_t, visual_area))
+    else:
+        curr_rois= np.arange(0, xdata.shape[-1])
+
+    if plot_responsive:
+        from pipeline.python.classifications.experiment_classes import get_responsive_cells
+        roi_resp, ncells_t = get_responsive_cells(animalid, session, fov, run=run, traceid=traceid,
+                             response_type=trace_type, create_new=False, n_processes=1,
+                             responsive_test=responsive_test, responsive_thr=responsive_thr)
+        roi_list = [r for r in curr_rois if r in roi_resp]
+        print("**** plotting %i of %i responsive (%s, thr=%.2f)" % (len(roi_list), ncells_t, responsive_test, responsive_thr))
+        psth_dir = '%s_%s' % (psth_dir, responsive_test)
+    else: 
+        roi_list = np.arange(0, xdata.shape[-1])
+
+    if visual_area is not None:
+        psth_dir = '%s_%s' % (psth_dir, visual_area)
+
+    if not os.path.exists(psth_dir):
+        os.makedirs(psth_dir)
+    else:
+        # Remove old files
+        print("removing old files")
+        for i in os.listdir(psth_dir):
+            os.remove(os.path.join(psth_dir, i))
+
+    print "Saving PSTHs to: %s" % psth_dir
+ 
+    for ri, ridx in enumerate(roi_list):
         #%%
-        if ridx % 20 == 0:
-            print "Plotting %i of %i rois." % (ridx, xdata.shape[-1])
+        if ri % 20 == 0:
+            print "Plotting %i of %i rois." % (int(ri+1), len(roi_list))
         roi_id = 'roi%05d' % int(ridx+1)
 
         sns.set_style('ticks')

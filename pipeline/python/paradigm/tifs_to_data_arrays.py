@@ -385,6 +385,8 @@ def create_rdata_array(opts):
     paradigm_dir = os.path.join(run_dir, 'paradigm')
     si_info = get_frame_info(run_dir)
     trial_info = acq.get_alignment_specs(paradigm_dir, si_info, iti_pre=iti_pre, iti_post=iti_post)
+    assert trial_info is not None, "Bad trial alignment... abort. (iti_pre=%s, iti_post=%s)" % (str(iti_pre), str(iti_post))
+
     with open(os.path.join(data_basedir, 'trial_info.json'), 'w') as f:
         json.dump(trial_info, f, indent=4) #f
    

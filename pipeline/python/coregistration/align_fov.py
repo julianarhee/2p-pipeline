@@ -574,7 +574,12 @@ class FOV():
         acquisition_dir = os.path.join(self.rootdir, self.animalid, self.session, self.acquisition)
 
         image_paths = []
+        no_anatomical=False
         anatomical_fpath = glob.glob(os.path.join(acquisition_dir, 'anatomical', 'processed', 'processed*', 'mcorrected*', '*.tif'))
+        if len(anatomical_fpath)==0:
+            anatomical_fpath = [glob.glob(os.path.join(acquisition_dir, '*_run*', 'processed', 'processed*', 'mcorrected*', '*.tif'))[0]]
+            no_anatomical=True
+
         assert len(anatomical_fpath) == 1, "More than 1 anatomical .tif found: %s" % str(anatomical_fpath)
         anatomical_fpath = anatomical_fpath[0]
         
@@ -582,7 +587,10 @@ class FOV():
         img = tf.imread(anatomical_fpath)
         
         # Load SI meta data:
-        si_fpath = glob.glob(os.path.join(acquisition_dir, 'anatomical', 'raw*', 'SI*.json'))[0]
+        if no_anatomical:
+            si_fpath = glob.glob(os.path.join(acquisition_dir, '*_run*', 'raw*', 'SI*.json'))[0]
+        else:
+            si_fpath = glob.glob(os.path.join(acquisition_dir, 'anatomical', 'raw*', 'SI*.json'))[0]
         with open(si_fpath, 'r') as f: SI = json.load(f)
         SI = SI['File001']['SI']
         
@@ -597,7 +605,13 @@ class FOV():
         
         # Determine zoom factor
         zoom_factor = SI['hRoiManager']['scanAngleMultiplierSlow']
-        
+
+        # Craete anatomical outdir, if nec
+        if no_anatomical:
+            if not os.path.exists(os.path.join(acquisition_dir, 'anatomical')):
+                os.makedirs(os.path.join(acquisition_dir, 'anatomical'))
+
+
         for channel_ix in range(nchannels):
             # Split channels
             channel_img = img[channel_ix::nchannels, :, :]

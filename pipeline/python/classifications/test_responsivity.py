@@ -356,20 +356,27 @@ def find_n_responsive_frames(roi_traces, labels, n_stds=2.5):
     stimon = labels['stim_on_frame'].unique()[0]
     nframes_on = labels['nframes_on'].unique()[0]
     rtraces = pd.concat([pd.DataFrame(data=roi_traces.values, columns=['values'], index=labels.index), labels], axis=1)
-    
+
     n_resp_frames = {}
     for config, g in rtraces.groupby(['config']):
         tmat = np.vstack(g.groupby(['trial'])['values'].apply(np.array))
         tr = tmat.mean(axis=0)
+        b_mean = np.nanmean(tr[0:stimon])
         b_std = np.nanstd(tr[0:stimon])
-        nframes_trial = len(tr[0:stimon+nframes_on])
-        n_frames_above = len(np.where(np.abs(tr[stimon:stimon+nframes_on]) > b_std*n_stds)[0])
-        n_resp_frames[config] = n_frames_above
+        #threshold = abs(b_mean) + (b_std*n_stds)
+        #nframes_trial = len(tr[0:stimon+nframes_on])
+        #n_frames_above = len(np.where(np.abs(tr[stimon:stimon+nframes_on]) > threshold)[0])
+        thr_lo = abs(b_mean) - (b_std*n_stds)
+        thr_hi = abs(b_mean) + (b_std*n_stds)
+        nframes_above = len(np.where(np.abs(tr[stimon:stimon+nframes_on]) > thr_hi)[0])
+        nframes_below = len(np.where(np.abs(tr[stimon:stimon+nframes_on]) < thr_lo)[0])
+
+        n_resp_frames[config] = nframes_above + nframes_below
 
     #rconfigs = [k for k, v in n_resp_frames.items() if v>=min_nframes]
     #[stimdf['sf'][cfg] for cfg in rconfigs]
     cfs = pd.DataFrame(n_resp_frames, index=[roi]).T #columns=[roi])
-    
+   
     return cfs
     
 def group_roidata_stimresponse(roidata, labels_df, roi_list=None, return_grouped=True, nframes_post=0): #None):
@@ -386,8 +393,14 @@ def group_roidata_stimresponse(roidata, labels_df, roi_list=None, return_grouped
 #        roidata = roidata - np.nanmin(roidata)
 #        print(roidata.min())
 
+    
     if isinstance(roidata, pd.DataFrame):
         roidata = roidata.values
+    if roi_list is not None:
+        roi_list = np.array(roi_list)
+        roidata0 = roidata.copy()
+        roidata = roidata0[:, roi_list]
+        print("... selecting %i of %i rois" % (roidata0.shape[1], roidata.shape[1]))
 #    
     try:
         stimdur_vary = False
@@ -444,12 +457,13 @@ def group_roidata_stimresponse(roidata, labels_df, roi_list=None, return_grouped
                                      'base_mean': base_mean,
                                      
                                      'stim_mean_df': stim_mean_df,
-                                     'bas_mean_df': bas_mean_df,
-                                     'bas_std_df': bas_std_df
+                                     'base_mean_df': bas_mean_df,
+                                     'base_std_df': bas_std_df
                                      
                                      }, index=roi_list))
 
     df = pd.concat(df_list, axis=0) # size:  ntrials * 2 * nrois\
+    df['cell'] = df.index.tolist()
     if return_grouped:    
         df_by_rois = df.groupby(df.index)
         return df_by_rois

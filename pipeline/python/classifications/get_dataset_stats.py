@@ -190,13 +190,15 @@ def aggregate_session_info(traceid='traces001', trace_type='corrected',
                         #sessiondatapaths[visual_area][animalid].update({s: experiment_list})
     
                         for e in experiment_list:
-                            if 'dyn' in e:
+                            if 'dyn' in e or e=='blobs_pos' or e in ['XgratingsX', 'xblobsx']:
                                 continue
                             sessiondata.append(pd.DataFrame({'visual_area': visual_area, 
                                                                'animalid': animalid, 
                                                                'experiment': e,
                                                                'session': session_str,
-                                                               'fov': '%s_%s' % (fov_str, fov_type)}, index=[dcounter]) )
+                                                               'fov': '%s_%s' % (fov_str, fov_type),
+                                                              'fovnum': int(fov_str[3:]),
+                                                            'datakey': '%s_%s_fov%i' % (session_str, animalid, int(fov_str[3:]))}, index=[dcounter]) )
                             dcounter += 1
     
             else:

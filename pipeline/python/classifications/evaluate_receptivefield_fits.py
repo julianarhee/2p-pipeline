@@ -1128,7 +1128,7 @@ def load_eval_results(animalid, session, fov, experiment='rfs',
 
     rfname = experiment.split('_')[1] if 'combined' in experiment else experiment
     try: 
-        print("Checking to load: %s" % fit_desc)
+        #print("Checking to load: %s" % fit_desc)
         rfdir = glob.glob(os.path.join(rootdir, animalid, session, 
                         fov, '*%s_*' % rfname,
                         'traces', '%s*' % traceid, 'receptive_fields', 
@@ -1137,8 +1137,10 @@ def load_eval_results(animalid, session, fov, experiment='rfs',
         assert os.path.exists(evaldir), "No evaluation exists\n(%s)\n. Aborting" % evaldir
     except IndexError as e:
         traceback.print_exc()
+        return None, None
     except AssertionError as e:
         traceback.print_exc()
+        return None, None
 
     # Load results
     rf_eval_fpath = os.path.join(evaldir, 'evaluation_results.pkl')

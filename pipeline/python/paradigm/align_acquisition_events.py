@@ -194,17 +194,19 @@ def get_alignment_specs(paradigm_dir, si_info, iti_pre=1.0, iti_post=None, same_
 
         # Get presentation info (should be constant across trials and files):
         trial_list = sorted(trialdict.keys(), key=natural_keys)
-        stim_durs = [round((trialdict[t]['stim_dur_ms']/1E3), 1) for t in trial_list]
-        if all(stim_durs) >= 1.0: 
+        stim_durs = [round((float(trialdict[t]['stim_dur_ms'])/1E3), 1) for t in trial_list]
+        print('Found STIM durs:', list(set(stim_durs)))
+        if all([i >= 1.0 for i in stim_durs]): 
             stim_durs = [round(t, 0) for t in stim_durs]
         #assert len(list(set(stim_durs))) == 1, "More than 1 stim_dur found..."
         if len(list(set(stim_durs))) > 1:
             print "more than 1 stim_dur found:", list(set(stim_durs))
-            stim_on_sec = dict((t, round(trialdict[t]['stim_dur_ms']/1E3, 1)) for t in trial_list)
+            stim_on_sec = dict((t, round(float(trialdict[t]['stim_dur_ms'])/1E3, 1)) for t in trial_list)
         else:
-            stim_on_sec = stim_durs[0]
-       
-        iti_durs = [round(np.floor(trialdict[t]['iti_dur_ms']/1E3), 1) for t in trial_list]
+            stim_on_sec = list(set(stim_durs))[0]
+        print('Found STIM durs:', list(set(stim_durs)))
+      
+        iti_durs = [round(np.floor(float(trialdict[t]['iti_dur_ms'])/1E3), 1) for t in trial_list]
         print 'Found ITI durs:', list(set(iti_durs))
         if len(list(set(iti_durs))) > 1:
             iti_jitter = round(max(iti_durs) - min(iti_durs)) #1.0 # TMP TMP 
@@ -221,6 +223,7 @@ def get_alignment_specs(paradigm_dir, si_info, iti_pre=1.0, iti_post=None, same_
         if iti_post is None:
             iti_post = iti_full - iti_pre
         print "ITI POST:", iti_post
+        assert (stim_on_sec + iti_pre + iti_post) <= (stim_on_sec + iti_full), "Requested ITI pre/post plus stim_dur is greater than allowed (iti_full=%.1f, stim_dur=%.1f)" % (iti_full, stim_on_sec)
 
         # Check whether acquisition method is one-to-one (1 aux file per SI tif) or single-to-many:
         if trialdict[trial_list[0]]['ntiffs_per_auxfile'] == 1:
@@ -234,6 +237,7 @@ def get_alignment_specs(paradigm_dir, si_info, iti_pre=1.0, iti_post=None, same_
         print "---------------------------------------------------------------"
         traceback.print_exc()
         print "---------------------------------------------------------------"
+        return None
 
     try:
         nframes_iti_pre = int(round(iti_pre * si_info['volumerate'])) #framerate
@@ -255,6 +259,7 @@ def get_alignment_specs(paradigm_dir, si_info, iti_pre=1.0, iti_post=None, same_
     except Exception as e:
         print "Problem calcuating nframes for trial epochs..."
         traceback.print_exc()
+        return None
 
     trial_epoch_info['stim_on_sec'] = stim_on_sec
     trial_epoch_info['iti_full'] = iti_full
@@ -1461,6 +1466,7 @@ def align_roi_traces(trace_type, TID, si_info, traceid_dir, run_dir, iti_pre=1.0
     # =============================================================================
     paradigm_dir = os.path.join(run_dir, 'paradigm')
     trial_info = get_alignment_specs(paradigm_dir, si_info, iti_pre=iti_pre, iti_post=iti_post)
+    assert trial_info is not None, "Bad trial alignment (iti_pre=%s, iti_post=%s)" % (str(iti_pre), str(iti_post))
 
     print "-------------------------------------------------------------------"
     print "Getting frame indices for trial epochs..."

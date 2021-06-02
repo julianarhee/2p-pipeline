@@ -12,6 +12,7 @@ import cv2
 import traceback
 
 import numpy as np
+import seaborn as sns
 import tifffile as tf
 from skimage import exposure
 from skimage import img_as_ubyte
@@ -23,15 +24,79 @@ from scipy import ndimage
 from scipy.interpolate import griddata
 
 
-# -----------------------------------------------------------------------------
-# Screen:
-# -----------------------------------------------------------------------------
+def get_rid_from_str(s, ndec=3):
+    #print(re.findall(r"rid\d{%s}" % ndec, s)[0][3:])
+    return int(re.findall(r"rid\d{%s}" % ndec, s)[0][3:])
+
+def split_datakey(df):
+    df['animalid'] = [s.split('_')[1] for s in df['datakey']]
+    df['fov'] = ['FOV%i_zoom2p0x' % int(s.split('_')[2][3:]) for s in df['datakey']]
+    df['session'] = [s.split('_')[0] for s in df['datakey']]
+    return df
+
+def split_datakey_str(s):
+    session, animalid, fovn = s.split('_')
+    fovnum = int(fovn[3:])
+    return session, animalid, fovnum
+
 def cart2sph(x,y,z):
     azimuth = np.arctan2(y,x)
     elevation = np.arctan2(z,np.sqrt(x**2 + y**2))
     r = np.sqrt(x**2 + y**2 + z**2)
     return azimuth, elevation, r
 
+
+def get_empirical_ci(stat, ci=0.95):
+    p = ((1.0-ci)/2.0) * 100
+    lower = np.percentile(stat, p) #max(0.0, np.percentile(stat, p))
+    p = (ci+((1.0-ci)/2.0)) * 100
+    upper = np.percentile(stat, p) # min(1.0, np.percentile(x0, p))
+    #print('%.1f confidence interval %.2f and %.2f' % (alpha*100, lower, upper))
+    return lower, upper
+
+import time
+import bisect
+
+def get_closest_match(a, b):
+    return list(map(lambda y:min(a, key=lambda x:abs(x-y)),b))
+
+def take_closest(myList, myNumber):
+    """
+    Assumes myList is sorted. Returns closest value to myNumber.
+
+    If two numbers are equally close, return the smallest number.
+    """
+    pos = bisect.bisect_left(myList, myNumber)
+    if pos == 0:
+        return myList[0]
+    if pos == len(myList):
+        return myList[-1]
+    before = myList[pos - 1]
+    after = myList[pos]
+    if after - myNumber < myNumber - before:
+        return after
+    else:
+        return before
+    
+def take_closest_index(myList, myNumber):
+    """
+    Assumes myList is sorted. Returns closest value to myNumber.
+
+    If two numbers are equally close, return the smallest number.
+    """
+    pos = bisect.bisect_left(myList, myNumber)
+    if pos == 0 or pos == len(myList):
+        return pos
+    
+    before = myList[pos - 1]
+    after = myList[pos]
+    if after - myNumber < myNumber - before:
+        return pos
+    else:
+        return pos-1
+# -----------------------------------------------------------------------------
+# Screen:
+# -----------------------------------------------------------------------------
 
 def get_lin_coords(resolution=[1080, 1920], cm_to_deg=True, 
                    xlim_degrees=(-59.7, 59.7), ylim_degrees=(-33.6, 33.6)):
@@ -183,32 +248,106 @@ def warp_spherical(image_values, cart_pointsX, cart_pointsY, sphr_pointsTh, sphr
 # -----------------------------------------------------------------------------
 # Plotting:
 # -----------------------------------------------------------------------------
-def set_threecolor_palette(c1='magenta', c2='orange', c3='dodgerblue', cmap=None):
+
+def print_means(plotdf, groupby=['visual_area', 'arousal'], params=None):
+    if params is None:
+        params = [k for k in plotdf.columns if k not in groupby]
+        
+    m_ = plotdf.groupby(groupby)[params].mean().reset_index()
+    s_ = plotdf.groupby(groupby)[params].std().reset_index()
+    for p in params:
+        m_['%s_std' % p] = s_[p].values
+    print("MEANS:")
+    print(m_)
+
+def set_threecolor_palette(c1='magenta', c2='orange', c3='dodgerblue', cmap=None, soft=False,
+                            visual_areas = ['V1', 'Lm', 'Li']):
+    if soft:
+        c1='turquoise';c2='cornflowerblue';c3='orchid';
+
     # colors = ['k', 'royalblue', 'darkorange'] #sns.color_palette(palette='colorblind') #, n_colors=3)
     # area_colors = {'V1': colors[0], 'Lm': colors[1], 'Li': colors[2]}
-    visual_areas = ['V1', 'Lm', 'Li']
     if cmap is not None:
-        c1, c2, c3 = sns.color_palette(palette='colorblind') #, n_colors=3) 
-    area_colors = {'V1': c1, 'Lm': c2, 'Li': c3}
+        c1, c2, c3 = sns.color_palette(palette=cmap, n_colors=len(visual_areas))#'colorblind') #, n_colors=3) 
+    area_colors = dict((k, v) for k, v in zip(visual_areas, [c1, c2, c3]))
+    #area_colors = {'V1': c1, 'Lm': c2, 'Li': c3}
     return visual_areas, area_colors
 
-def set_plot_params(lw_axes=1, labelsize=12, color='k'):
+
+def set_plot_params(lw_axes=0.25, labelsize=6, color='k', dpi=100):
     import pylab as pl
     #### Plot params
-    pl.rcParams["axes.labelsize"] = labelsize + 4
+    #pl.rcParams['font.size'] = 6
+    #pl.rcParams['text.usetex'] = True
+    
+    pl.rcParams["axes.labelsize"] = labelsize + 2
     pl.rcParams["axes.linewidth"] = lw_axes
     pl.rcParams["xtick.labelsize"] = labelsize
     pl.rcParams["ytick.labelsize"] = labelsize
     pl.rcParams['xtick.major.width'] = lw_axes
+    pl.rcParams['xtick.minor.width'] = lw_axes
     pl.rcParams['ytick.major.width'] = lw_axes
-
+    pl.rcParams['ytick.minor.width'] = lw_axes
+    pl.rcParams['legend.fontsize'] = labelsize
+    
+    #pl.rcParams['figure.figsize'] = (5, 4)
+    pl.rcParams['figure.dpi'] = dpi
+    pl.rcParams['savefig.dpi'] = dpi
+    pl.rcParams['svg.fonttype'] = 'none' #: path
+        
+    
     for param in ['xtick.color', 'ytick.color', 'axes.labelcolor', 'axes.edgecolor']:
         pl.rcParams[param] = color
 
-    dpi = 150
+    return 
 
-    return dpi
+#def set_plot_params(lw_axes=1, labelsize=12, color='k'):
+#    import pylab as pl
+#    #### Plot params
+#    pl.rcParams["axes.labelsize"] = labelsize + 4
+#    pl.rcParams["axes.linewidth"] = lw_axes
+#    pl.rcParams["xtick.labelsize"] = labelsize
+#    pl.rcParams["ytick.labelsize"] = labelsize
+#    pl.rcParams['xtick.major.width'] = lw_axes
+#    pl.rcParams['ytick.major.width'] = lw_axes
+#
+#    for param in ['xtick.color', 'ytick.color', 'axes.labelcolor', 'axes.edgecolor']:
+#        pl.rcParams[param] = color
+#
+#    dpi = 150
+#
+#    return dpi
+#
+def colorbar(mappable, label=None):
+    from mpl_toolkits.axes_grid1 import make_axes_locatable
+    import matplotlib.pyplot as plt
+    last_axes = plt.gca()
+    ax = mappable.axes
+    fig = ax.figure
+    divider = make_axes_locatable(ax)
+    cax = divider.append_axes("right", size="5%", pad=0.05)
+    cbar = fig.colorbar(mappable, cax=cax)
+    plt.sca(last_axes)
+    if label is not None:
+        cax.set_title(label)
+    return cbar
 
+def turn_off_axis_ticks(ax, despine=True):
+    ax.tick_params(which='both', axis='both', size=0)
+    if despine: 
+        sns.despine(ax=ax, left=True, right=True, bottom=True, top=True) #('off')
+    ax.set_xticklabels([])
+    ax.set_yticklabels([])
+    
+def custom_legend_markers(colors=['m', 'c'], labels=['label1', 'label2'], marker='o'):
+    from matplotlib.patches import Patch
+    from matplotlib.lines import Line2D
+
+    leg_elements=[]
+    for col, label in zip(colors, labels):
+        leg_elements.append(Line2D([0], [0], marker=marker, color=col, label=label))
+                          
+    return leg_elements
 
 # -----------------------------------------------------------------------------
 # Commonly used, generic methods:
@@ -249,6 +388,8 @@ def get_screen_dims():
 
     screen = {'azimuth_deg': screen_x,
               'altitude_deg': screen_y,
+              'azimuth_cm': 103.0,
+              'altitude_cm': 58.0,
               'resolution': resolution,
               'deg_per_pixel': (deg_per_pixel_x, deg_per_pixel_y)}
 
@@ -359,6 +500,7 @@ def abline(slope, intercept, ax=None, color='purple', ls='-',
 import random
 import pandas as pd
 
+
 def melt_square_matrix(df, metric_name='value', add_values={}, include_diagonal=False):
     
     k = 0 if include_diagonal else 1
@@ -373,6 +515,35 @@ def melt_square_matrix(df, metric_name='value', add_values={}, include_diagonal=
     
     return df
 
+
+def get_equal_counts_per_condition(labels, return_labels=True):
+    # Check trial counts / condn:
+    #print("Checking counts / condition...")
+    min_n = labels.groupby(['config'])['trial'].unique().apply(len).min()
+    conds_to_downsample = np.where(labels.groupby(['config'])['trial'].unique().apply(len) != min_n)[0]
+    if len(conds_to_downsample) > 0:
+        print("... adjusting for equal reps / condn...")
+        d_cfgs = [sorted(labels.groupby(['config']).groups.keys())[i]\
+                  for i in conds_to_downsample]
+        trials_kept = []
+        for cfg in labels['config'].unique():
+            c_trialnames = labels[labels['config']==cfg]['trial'].unique()
+            if cfg in d_cfgs:   
+                # In-place shuffle
+                random.shuffle(c_trialnames) 
+                # Take the first 2 elements of the now randomized array
+                trials_kept.extend(c_trialnames[0:min_n])
+            else:
+                trials_kept.extend(c_trialnames)
+    
+        ixs_kept = labels[labels['trial'].isin(trials_kept)].index.tolist() 
+        tmp_labels = labels[labels['trial'].isin(trials_kept)].reset_index(drop=True)
+    if return_labels:
+        return tmp_labels
+    else:
+        return labels['trial'].unique()
+ 
+ 
 def check_counts_per_condition(raw_traces, labels):
     # Check trial counts / condn:
     #print("Checking counts / condition...")
@@ -407,19 +578,48 @@ def check_counts_per_condition(raw_traces, labels):
         return raw_traces, labels
    
 
-def reformat_morph_values(sdf):
+def reformat_morph_values(sdf, verbose=False):
     #print(sdf.head())
+    aspect_ratio=1.75
     control_ixs = sdf[sdf['morphlevel']==-1].index.tolist()
-    sizevals = np.array([round(s, 1) for s in sdf['size'].unique() if s not in ['None', None] and not np.isnan(s)])
-    sdf.loc[sdf.morphlevel==-1, 'size'] = pd.Series(sizevals, index=control_ixs)
-    sdf['size'] = [round(s, 1) for s in sdf['size'].values]
+    if len(control_ixs)==0: # Old dataset
+        if 17.5 in sdf['size'].values:
+            sizevals = np.array([round(s/aspect_ratio,0) for s in sdf['size'].values])
+            sdf['size'] = sizevals
+    else:  
+        sizevals = np.array([round(s, 1) for s in sdf['size'].unique() if s not in ['None', None] and not np.isnan(s)])
+        sdf.loc[sdf.morphlevel==-1, 'size'] = pd.Series(sizevals, index=control_ixs)
+        sdf['size'] = [round(s, 1) for s in sdf['size'].values]
     xpos = [x for x in sdf['xpos'].unique() if x is not None]
     ypos =  [x for x in sdf['ypos'].unique() if x is not None]
-    assert len(xpos)==1 and len(ypos)==1, "More than 1 pos? x: %s, y: %s" % (str(xpos), str(ypos))
-
+    #assert len(xpos)==1 and len(ypos)==1, "More than 1 pos? x: %s, y: %s" % (str(xpos), str(ypos))
+    if verbose and (len(xpos)>1 or len(ypos)>1):
+        print("warning: More than 1 pos? x: %s, y: %s" % (str(xpos), str(ypos)))
     sdf.loc[sdf.morphlevel==-1, 'xpos'] = [xpos[0] for _ in np.arange(0, len(control_ixs))]
     sdf.loc[sdf.morphlevel==-1, 'ypos'] = [ypos[0] for _ in np.arange(0, len(control_ixs))]
     return sdf
+
+
+def get_stimulus_configs(sdf, experiment='blobs', include_stimuli='all'):
+
+    # Stimulus info
+    all_configs = ['config%03d' % i for i in np.arange(1, sdf.shape[0]+1)]
+    if experiment=='blobs':
+        control_configs = ['config001', 'config002', 'config003', 'config004', 'config005']
+    elif experiment=='gratings':
+        control_configs = sdf[sdf['size']>100].index.tolist()
+
+    if include_stimuli=='fullscreen':
+        included_configs = [c for c in all_configs if c in control_configs]
+    elif include_stimuli=='image':
+        included_configs = [c for c in all_configs if c not in control_configs]
+    elif include_stimuli=='all':
+        included_configs = all_configs
+    else:
+        print("UNKNOWN: %s" % include_stimuli)
+    print("Restricting stimuli to: %s (%i conditions)" % (include_stimuli, len(included_configs)))
+    
+    return included_configs
 
 
 def load_run_info(animalid, session, fov, run, traceid='traces001',
@@ -551,7 +751,7 @@ def load_dataset(soma_fpath, trace_type='dff', add_offset=True,
                                                     )
 
         else:
-            print("... loading saved data array (%s)." % trace_type)
+            #print("... loading saved data array (%s)." % trace_type)
             traces_dset = np.load(data_fpath)
             traces = pd.DataFrame(traces_dset['data'][:]) 
             labels_fpath = data_fpath.replace('%s.npz' % trace_type, 'labels.npz')
@@ -1264,3 +1464,10 @@ def zproj_tseries(source_dir, runinfo_path, zproj_type='mean', write_dir=None, f
 
     # Sort separated tiff slice images:
     sort_deinterleaved_tiffs(write_dir, runinfo_path)  # Moves all 'vis_' files to separate subfolder 'visible'
+
+
+
+def get_run_list(animalid, session, fov, rootdir='/n/coxfs01/2p-data'):
+    run_dirs = glob.glob(os.path.join(rootdir, animalid, session, fov, '*_run*'))
+    r_list = [os.path.split(r)[-1] for r in run_dirs]
+    return [r for r in r_list if re.search('_run(\d+)', s)]

@@ -14,6 +14,8 @@ Created on Fri Aug 2 16:20:01 2019
 """
 import warnings
 warnings.filterwarnings("ignore")
+import matplotlib as mpl
+mpl.use('agg')
 import datetime
 import os
 import cv2
@@ -42,7 +44,7 @@ import itertools
 from pipeline.python.classifications import osi_dsi as osi
 from pipeline.python.classifications import test_responsivity as resp
 #from pipeline.python.classifications import experiment_classes as util
-from pipeline.python.utils import natural_keys, label_figure, load_dataset
+from pipeline.python.utils import natural_keys, label_figure, load_dataset, convert_range
 from pipeline.python.traces.trial_alignment import aggregate_experiment_runs 
 
 #from pipeline.python.retinotopy import fit_2d_rfs as rf
@@ -106,7 +108,7 @@ def get_gratings_run(animalid, session, fov, traceid='traces001', rootdir='/n/co
     
     fovdir = os.path.join(rootdir, animalid, session, fov) 
     found_dirs = glob.glob(os.path.join(fovdir, 'combined_gratings*', 'traces', '%s*' % traceid, 'data_arrays', 'np_subtracted.npz'))
-    if int(session) < 20190511:
+    if 20190405 < int(session) < 20190511:
         return None
     
     try:
@@ -135,9 +137,12 @@ def get_experiment_data(data_fpath, add_offset=True, make_equal=False):
     soma_fpath = data_fpath.replace('datasets', 'np_subtracted')
     print soma_fpath
 
+    # Load corrected/raw traces
     raw_traces, labels, sdf, run_info = load_dataset(soma_fpath, trace_type='corrected')
-    gdf = resp.group_roidata_stimresponse(raw_traces.values, labels, return_grouped=True) # Each group is roi's trials x metrics
+    # Get grouped ROI data: each group is roi's trials x metrics
+    gdf = resp.group_roidata_stimresponse(raw_traces.values, labels, return_grouped=True) 
 
+    # Calculate dff per trial
     stim_on_frame = labels['stim_on_frame'].unique()[0]
     tmp_df = []
     for k, g in labels.groupby(['trial']):
@@ -162,7 +167,8 @@ def get_experiment_data(data_fpath, add_offset=True, make_equal=False):
 #        tmp_df.append(tmat_df)
 #    df_traces = pd.concat(tmp_df, axis=0)
 #    del tmp_df
-#
+
+
     return df_traces, labels, gdf, sdf
 
 
@@ -179,24 +185,25 @@ def get_stimulus_configs(animalid, session, fov, run_name, rootdir='/n/coxfs01/2
 
 
 def load_tuning_results(animalid='', session='', fov='', run_name='', traceid='traces001',
-                        fit_desc='', traceid_dir=None, rootdir='/n/coxfs01/2p-data'):
+                        fit_desc='', traceid_dir=None, rootdir='/n/coxfs01/2p-data', verbose=True):
 
+    if verbose:
+        print("... loading existing fits")
     bootresults=None; fitparams=None;
     if traceid_dir is None:
         osidir = glob.glob(os.path.join(rootdir, animalid, session, fov, run_name,
-                                        'traces', '%s*' % traceid, '*tuning*', fit_desc))
+                                        'traces', '%s*' % traceid, 'tuning*', fit_desc))
     else:
-        osidir = glob.glob(os.path.join(traceid_dir, '*tuning*', fit_desc))
+        osidir = glob.glob(os.path.join(traceid_dir, 'tuning*', fit_desc))
 
     if len(osidir)==0:
         return bootresults, fitparams
-    
-    
+    assert len(osidir)==1, "More than 1 osi results found: %s" % str(osidir)
+  
     results_fpath = os.path.join(osidir[0], 'fitresults.pkl')
     params_fpath = os.path.join(osidir[0], 'fitparams.json')
     
     if os.path.exists(results_fpath):
-        print("... loading existing fits.")
         with open(results_fpath, 'rb') as f:
             bootresults = pkl.load(f)
         with open(params_fpath, 'r') as f:
@@ -296,7 +303,7 @@ def double_gaussian( x, c1, c2, mu, sigma, C ):
     #(c1, c2, mu, sigma) = params
     x1vals = np.array([angdir180(xi - mu) for xi in x])
     x2vals = np.array([angdir180(xi - mu - 180 ) for xi in x])
-    res =   C + c1 * np.exp( - x1vals**2.0 / (2.0 * sigma**2.0) )             + c2 * np.exp( - x2vals**2.0 / (2.0 * sigma**2.0) )
+    res =   C + c1 * np.exp( -(x1vals**2.0) / (2.0 * sigma**2.0) )             + c2 * np.exp( -(x2vals**2.0) / (2.0 * sigma**2.0) )
 
 #    res =   C + c1 * np.exp( - ((x - mu) % 360.)**2.0 / (2.0 * sigma**2.0) ) \
 #            + c2 * np.exp( - ((x + 180 - mu) % 360.)**2.0 / (2.0 * sigma**2.0) )
@@ -417,12 +424,20 @@ def fit_ori_tuning(responsedf, n_intervals_interp=3):
     init_bounds = ([0, 0, -np.inf, sigma/2., -r_pref], [3*r_pref, 3*r_pref, np.inf, np.inf, r_pref])
     
     rfit, fitv = fit_osi_params(oris_interp, resps_interp, init_params, bounds=init_bounds)
-    
+   
+    # Normalize range, 0 to 1
+    rvec = fitv.copy()
+    response_vector = convert_range(rvec, oldmin=rvec.min(), oldmax=rvec.max(), 
+                    newmin=0, newmax=1)
+ 
     response_pref=None; response_null=None; theta_pref=None; 
 
     if rfit['success']:
-         asi_t = get_ASI(fitv[0:], oris_interp[0:])
-         dsi_t = get_DSI(fitv[0:], oris_interp[0:])
+         #asi_t = get_ASI(fitv[0:], oris_interp[0:])
+         #dsi_t = get_DSI(fitv[0:], oris_interp[0:])
+         asi_t = get_ASI(response_vector, oris_interp)
+         dsi_t = get_DSI(response_vector, oris_interp)
+
          #circvar_asi_t, circvar_dsi_t = get_circular_variance(rfit['fit_y'][0:], oris_interp[0:])
          response_pref, response_null, theta_pref, sigma, response_offset = rfit['popt']
          #r2 = rfit['r2']
@@ -493,50 +508,257 @@ def poolcontext(*args, **kwargs):
     yield pool
     pool.terminate()
 
-def pool_bootstrap(rdf_list, sdf, allconfigs=False,
+
+def initializer(terminating_):
+    # This places terminating in the global namespace of the worker subprocesses.
+    # This allows the worker function to access `terminating` even though it is
+    # not passed as an argument to the function.
+    global terminating
+    terminating = terminating_
+
+
+def bootstrap_roi_responses_by_config(roi_df, sdf=None, statdf=None, response_type='dff',
+                            n_bootstrap_iters=1000, n_resamples=20, 
+                            n_intervals_interp=3, min_cfgs_above=2, min_nframes_above=10):
+    '''
+    Inputs
+        roi_df (pd.DataFrame) 
+            Response metrics for all trials for 1 cell.
+        sdf (pd.DataFrame) 
+            Stimulus config key / info
+        statdf (pd.DataFrame) 
+            Dataframe from n_stds responsive test that gives N frames above baseline for each stimulus config (avg over trials)
+        response_type (str)
+            Response metric to use for calculating tuning.
+        min_cfgs_above (int)
+            Number of stimulus configs that should pass the "responsive" threshold for cell to count as responsive
+        min_nframes_above (int)
+            Min num frames (from statdf) that counts as a cell to be reposnsive for a given stimulus config
+            
+    Returns
+        List of dicts from mp for each roi's results
+        {configkey:   'data':
+                            {'responses': dataframe, rows=trials and cols=configs,
+                             'tested_values': tested values we are interpreting over and fitting}
+                      'stimulus_configs': list of stimulus configs corresponding to current set
+                      'fits': 
+                             {'xv': interpreted x-values,
+                              'yv': dataframe of each boot iter of response values
+                              'fitv': dataframe of each boot iter's fit responses}
+                      'results': dataframe of all fit params
+                  
+        Non-responsive cells are {roi: None}
+        Responsive cells without tuning fits will return with 'fits' and 'results' as None
+        
+    '''
+
+    roi = roi_df.index[0]    
+    filter_configs = statdf is not None
+
+    constant_params = ['aspect', 'luminance', 'position', 'stimtype', 'direction', 'xpos', 'ypos']
+    params = [c for c in sdf.columns if c not in constant_params]
+    stimdf = sdf[params]
+    tested_oris = sdf['ori'].unique()
+
+    # Get all config sets: Each set is a set of the 8 tested oris at a specific combination of non-ori params
+    configsets = dict((tuple(round(ki, 1) for ki in k), sorted(cfgs.index.tolist(), key=lambda x: stimdf['ori'][x]) )\
+                     for k, cfgs in stimdf.groupby(['sf', 'size', 'speed']) )
+
+    #def bootstrap_fitter(curr_configset, roi_df, statdf, out_q):    
+    start_t = time.time()
+    print(roi)
+    oridata = {}
+    for ckey, currcfgs in configsets.items():
+        # Idenfify cells that are responsive to given stimulus condition before trying to fit...
+        responsive = len(np.where(statdf[roi].loc[currcfgs] >= min_nframes_above)[0]) >= min_cfgs_above
+        if filter_configs and not responsive:
+            continue
+
+        # Get all trials of current set of cfgs:
+        rdf = roi_df[roi_df['config'].isin(currcfgs)][['config', 'trial', response_type]]
+        responses_df = pd.concat([pd.Series(g[response_type], name=c).reset_index(drop=True)\
+                                  for c, g in rdf.groupby(['config'])], axis=1)
+        datadict = {'responses': responses_df, 'tested_values': tested_oris}
+        
+        # Bootstrap distN of responses (rand w replacement):
+        bootdf_tmp = pd.concat([responses_df.sample(n_resamples, replace=True).mean(axis=0) \
+                                for ni in range(n_bootstrap_iters)], axis=1)
+        bootdf_tmp.index = [sdf['ori'][c] for c in bootdf_tmp.index]
+        #bootdf = np.abs((bootdf_tmp - bootdf_tmp.mean())) 
+        bootdf = (bootdf_tmp-bootdf_tmp.min()) #- (bootdf_tmp-bootdf_tmp.mean()).min()
+
+        # Find init params for tuning fits and set fit constraints:
+        fitp = bootdf.apply(fit_ori_tuning, args=[n_intervals_interp], axis=0) # Get fit params
+        if fitp.dropna().shape[0] == 0:
+            fitdict = None
+            fitp = None
+        else:
+            # Get fits
+            fitv = fitp.apply(fit_from_params, args=[tested_oris], axis=0)
+            # Interpolate boot responses 
+            yvs = bootdf.apply(interp_values, args=[n_intervals_interp, True], axis=0, reduce=True)
+            xvs = interp_values(tested_oris, n_intervals=n_intervals_interp, wrap_value=360)
+            fitdict = {'xv': xvs, 'yv': yvs, 'fitv': fitv, 'n_intervals_interp': n_intervals_interp} 
+            # Create dataframe of all fit params
+            fitp = fitp.T
+            fitp['r2'] = get_r2(fitv, yvs) # Calculate coeff of deterim
+            fitp['cell'] = [roi for _ in range(n_bootstrap_iters)]
+        
+        oridata[ckey] = {'results': fitp, 
+                         'fits': fitdict,
+                         'data': datadict,
+                         'stimulus_configs': currcfgs}
+        
+    # Collect all results into single results dict. We should know how many dicts to expect:       
+    end_t = time.time() - start_t
+    print("--> Elapsed time: {0:.2f}sec".format(end_t))
+      
+    return {roi: oridata}
+
+
+def bootstrap_osi_mp(rdf_list, sdf, statdf=None, response_type='dff',
+                    n_bootstrap_iters=1000, n_resamples=20, 
+                    n_intervals_interp=3, min_cfgs_above=2, min_nframes_above=10, n_processes=1):
+
+    #### Define multiprocessing worker
+    terminating = mp.Event()    
+    def worker(iter_list, sdf, statdf, n_bootstrap_iters, n_resamples, n_intervals_interp,
+                min_cfgs_above, min_nframes_above, out_q):
+        bootr = {}        
+        for roi_df in iter_list: 
+            roi_results = bootstrap_roi_responses_by_config(roi_df, sdf=sdf, statdf=statdf, 
+                                        n_bootstrap_iters=n_bootstrap_iters, n_resamples=n_resamples,
+                                        n_intervals_interp=n_intervals_interp, min_cfgs_above=min_cfgs_above, 
+                                        min_nframes_above=min_nframes_above)
+            bootr.update(roi_results)
+        out_q.put(bootr)
+        
+    try:        
+        # Each process gets "chunksize' filenames and a queue to put his out-dict into:
+        out_q = mp.Queue()
+        chunksize = int(math.ceil(len(rdf_list) / float(n_processes)))
+        procs = []
+        for i in range(n_processes):
+            print(i)
+            p = mp.Process(target=worker,
+                           args=(rdf_list[chunksize * i:chunksize * (i + 1)],
+                                sdf, statdf, n_bootstrap_iters, n_resamples, n_intervals_interp,
+                                min_cfgs_above, min_nframes_above, out_q))
+            procs.append(p)
+            p.start()
+
+        # Collect all results into single results dict. We should know how many dicts to expect:
+        results = {}
+        for i in range(n_processes):
+            results.update(out_q.get(99999))
+        # Wait for all worker processes to finish
+        for p in procs:
+            p.join()
+    except KeyboardInterrupt:
+        terminating.set()
+        print("***Terminating!")
+    except Exception as e:
+        traceback.print_exc()
+    finally:
+        for p in procs:
+            p.join()
+
+    print("BOOTSTRAP ANALYSIS COMPLETE.")
+    return results
+
+
+def do_bootstrap2(gdf, sdf, roi_list=None, allconfigs=True,
+                 statdf=None, response_type='dff',
+                n_bootstrap_iters=1000, n_resamples=20,
+                n_intervals_interp=3, n_processes=1,
+                min_cfgs_above=1, min_nframes_above=10):
+
+    if roi_list is None:
+        roi_list = np.arange(0, len(gdf.groups))
+    
+    #statdf = roistats['nframes_above']
+    start_t = time.time()
+    rdf_list = [gdf.get_group(roi) for roi in roi_list] # HEREHERE
+    results = bootstrap_osi_mp(rdf_list, sdf, statdf=statdf, response_type=response_type,
+                                    n_bootstrap_iters=n_bootstrap_iters, n_resamples=n_resamples,
+                                    n_intervals_interp=n_intervals_interp, min_cfgs_above=min_cfgs_above,
+                                    min_nframes_above=min_nframes_above, n_processes=n_processes)
+
+    end_t = time.time() - start_t
+    print "Multiple processes: {0:.2f}sec".format(end_t)
+    #bootresults = {k: v for d in results for k, v in d.items()}
+    #bootresults = dict((k, v) for d in results for k, v in d.items() if d is not None)
+
+    return results
+
+# ########################################################################################3
+
+def pool_bootstrap(rdf_list, sdf, allconfigs=True,
                    statdf=None, response_type='dff',
                     n_bootstrap_iters=1000, n_resamples=20, 
-                    n_intervals_interp=3, min_cfgs_above=2, min_nframes_above=10,
+                    n_intervals_interp=3, min_cfgs_above=1, min_nframes_above=10,
                     n_processes=1):
 
-    if allconfigs:
-        #with poolcontext(processes=n_processes) as pool:
-        pool = MyPool(n_processes)
-    
-        results = pool.map(partial(boot_roi_responses_allconfigs, 
-                                   sdf=sdf,
-                                   statdf=statdf,
-                                   response_type=response_type, 
-                                   n_bootstrap_iters=n_bootstrap_iters,
-                                   n_resamples=n_resamples,
-                                   n_intervals_interp=n_intervals_interp,
-                                   min_cfgs_above=min_cfgs_above,
-                                   min_nframes_above=min_nframes_above), rdf_list)
-    else:
-        pool = mp.Pool(processes=n_processes)
-        #results = pool.map(boot_star, itertools.izip(rdf_list, itertools.repeat(sdf)))
-        results = pool.map(partial(boot_roi_responses_bestconfig, 
-                                                   sdf=sdf,
-                                                   statdf=statdf,
-                                                   response_type=response_type, 
-                                                   n_bootstrap_iters=n_bootstrap_iters,
-                                                   n_resamples=n_resamples,
-                                                   n_intervals_interp=n_intervals_interp,
-                                                   min_cfgs_above=min_cfgs_above,
-                                                   min_nframes_above=min_nframes_above), rdf_list)
+    bootresults = {}
+    results = None
+    terminating = mp.Event()        
+    pool = mp.Pool(initializer=initializer, initargs=(terminating, ), processes=n_processes)
 
-    pool.close()
-    pool.join()
-    
-    bootresults = {k: v for d in results for k, v in d.items()}
+    try:
+        if allconfigs:       
+            results = pool.map_async(partial(bootstrap_roi_responses_by_config, 
+                                       sdf=sdf,
+                                       statdf=statdf,
+                                       response_type=response_type, 
+                                       n_bootstrap_iters=n_bootstrap_iters,
+                                       n_resamples=n_resamples,
+                                       n_intervals_interp=n_intervals_interp,
+                                       min_cfgs_above=min_cfgs_above,
+                                       min_nframes_above=min_nframes_above), rdf_list).get(99999999)
 
+#            results = pool.map_async(partial(boot_roi_responses_allconfigs, 
+#                                       sdf=sdf,
+#                                       statdf=statdf,
+#                                       response_type=response_type, 
+#                                       n_bootstrap_iters=n_bootstrap_iters,
+#                                       n_resamples=n_resamples,
+#                                       n_intervals_interp=n_intervals_interp,
+#                                       min_cfgs_above=min_cfgs_above,
+#                                       min_nframes_above=min_nframes_above, n_processes=n_processes), rdf_list).get(99999999)
+        else:
+            #pool = mp.Pool(processes=n_processes)
+            #results = pool.map(boot_star, itertools.izip(rdf_list, itertools.repeat(sdf)))
+            results = pool.map(partial(boot_roi_responses_bestconfig, 
+                                                       sdf=sdf,
+                                                       statdf=statdf,
+                                                       response_type=response_type, 
+                                                       n_bootstrap_iters=n_bootstrap_iters,
+                                                       n_resamples=n_resamples,
+                                                       n_intervals_interp=n_intervals_interp,
+                                                       min_cfgs_above=min_cfgs_above,
+                                                       min_nframes_above=min_nframes_above), rdf_list)
+    except KeyboardInterrupt:
+        print("**interupt")
+        pool.terminate()
+        print("***Terminating!")
+    finally:
+        pool.close()
+        pool.join()
+  
+    if results is not None: 
+        #for roi, bootres in results.items():
+        #    print(roi, len([k for k, v in bootres.items() if v['fits'] is not None]))
+
+        #print(results)
+        bootresults = {k: v for d in results for k, v in d.items()}
+        
     return bootresults
     
 #%
 
 def boot_roi_responses_allconfigs(roi_df, sdf, statdf=None, response_type='dff',
                             n_bootstrap_iters=1000, n_resamples=20, 
-                            n_intervals_interp=3, min_cfgs_above=2, min_nframes_above=10,
+                            n_intervals_interp=3, min_cfgs_above=1, min_nframes_above=10,
                             n_processes=1):
     '''
     Inputs
@@ -602,9 +824,12 @@ def boot_roi_responses_allconfigs(roi_df, sdf, statdf=None, response_type='dff',
                         'tested_values': tested_oris}
             
             # Bootstrap distN of responses (rand w replacement):
-            bootdf = pd.concat([responses_df.sample(n_resamples, replace=True).mean(axis=0) for ni in range(n_bootstrap_iters)], axis=1)
-            bootdf.index = [sdf['ori'][c] for c in bootdf.index]
-        
+            bootdf_tmp = pd.concat([responses_df.sample(n_resamples, replace=True).mean(axis=0) \
+                                    for ni in range(n_bootstrap_iters)], axis=1)
+            bootdf_tmp.index = [sdf['ori'][c] for c in bootdf_tmp.index]
+            #bootdf = np.abs((bootdf_tmp - bootdf_tmp.mean())) 
+            bootdf = (bootdf_tmp-bootdf_tmp.min()) #- (bootdf_tmp-bootdf_tmp.mean()).min()
+
             # Find init params for tuning fits and set fit constraints:
             fitp = bootdf.apply(fit_ori_tuning, args=[n_intervals_interp], axis=0) # Get fit params
             if fitp.dropna().shape[0] == 0:
@@ -662,17 +887,6 @@ def boot_roi_responses_allconfigs(roi_df, sdf, statdf=None, response_type='dff',
         print "Finished:", p
         p.join()
         
-#    except KeyboardInterrupt:
-#        print("**interupt")
-#        pool.terminate()
-#        print("***Terminating!")
-#    finally:
-#        pool.close()
-#        pool.join()
-#
-
-
-
     end_t = time.time() - start_t
     print("--> Elapsed time: {0:.2f}sec".format(end_t))
       
@@ -682,7 +896,7 @@ def boot_roi_responses_allconfigs(roi_df, sdf, statdf=None, response_type='dff',
     
 def boot_roi_responses_bestconfig(roi_df, sdf, statdf=None, response_type='dff',
                             n_bootstrap_iters=1000, n_resamples=20, 
-                            n_intervals_interp=3, min_cfgs_above=2, min_nframes_above=10):
+                            n_intervals_interp=3, min_cfgs_above=1, min_nframes_above=10):
     '''
     Find stimulus config (any) that has max response, fit tuning to that config.
     '''
@@ -799,14 +1013,14 @@ def do_bootstrap(gdf, sdf, roi_list=None, allconfigs=True,
                  statdf=None, response_type='dff',
                 n_bootstrap_iters=1000, n_resamples=20,
                 n_intervals_interp=3, n_processes=1,
-                min_cfgs_above=2, min_nframes_above=10):
+                min_cfgs_above=1, min_nframes_above=10):
 
     if roi_list is None:
         roi_list = np.arange(0, len(gdf.groups))
     
     #statdf = roistats['nframes_above']
     start_t = time.time()
-    rdf_list = [gdf.get_group(roi) for roi in roi_list]
+    rdf_list = [gdf.get_group(roi) for roi in roi_list] # HEREHERE
     results = pool_bootstrap(rdf_list, sdf, allconfigs=allconfigs,
                                  statdf=statdf, response_type=response_type,
                                         n_bootstrap_iters=n_bootstrap_iters, n_resamples=n_resamples,
@@ -829,7 +1043,7 @@ def plot_tuning_bootresults(roi, bootr, df_traces, labels, sdf, trace_type='dff'
     
     fit_success = bootr['fits'] is not None
     
-    fig = pl.figure(figsize=(12,8))
+    fig = pl.figure(figsize=(9, 6))
     fig.patch.set_alpha(1)
     nr=2; nc=8;
     #s_row=0
@@ -846,9 +1060,14 @@ def plot_tuning_bootresults(roi, bootr, df_traces, labels, sdf, trace_type='dff'
     sz = np.mean([sdf['size'][c] for c in curr_cfgs])
     sf = np.mean([sdf['sf'][c] for c in curr_cfgs])
     sp = np.mean([sdf['speed'][c] for c in curr_cfgs])
-    
-    curr_resps = responses_df.mean()
-    curr_sems = responses_df.sem()
+   
+    # Correct mean responses to match fitting processing 
+    # curr_resps = responses_df.mean()
+    mean_responses = responses_df.mean(axis=0)
+    #curr_resps = np.abs(mean_responses - mean_responses.mean())
+    curr_resps = (mean_responses - mean_responses.min()) #- (mean_responses-mean_responses.mean()).min()
+
+    curr_sems = responses_df.sem(axis=0)
     fig, ax1 = plot_tuning_curve_roi(curr_oris, curr_resps, curr_sems=curr_sems, 
                                      response_type=trace_type,
                                      fig=fig, nr=nr, nc=nc, s_row=1, colspan=5,
@@ -882,7 +1101,7 @@ def plot_tuning_bootresults(roi, bootr, df_traces, labels, sdf, trace_type='dff'
                                          fig=fig, ax=ax2, nr=nr, nc=nc, s_row=1, s_col=6, colspan=2)
             
         r2_avg = bootr['results']['r2'].mean()
-        ax1.plot(0, 0, alpha=0, label='r2=%.2f' % r2_avg)
+        ax1.plot(0, 0, alpha=0, label='avg r2=%.2f' % r2_avg)
         ax1.legend() #loc='upper left')
         #ax1.text(0, ax1.get_ylim()[-1]*0.75, 'r2=%.2f' % r2_avg, fontsize=6)
     else:
@@ -897,10 +1116,10 @@ def plot_tuning_bootresults(roi, bootr, df_traces, labels, sdf, trace_type='dff'
     sns.despine(trim=True, offset=4, ax=ax1)
     ax1.set_xticks(curr_oris)
     ax1.set_xticklabels(curr_oris)
-    
+    pl.subplots_adjust(hspace=0.5, right=0.95, bottom=0.2) 
 
-    stimkey = 'sf-%i-sz-%.2f-speed-%if' % (sf, sz, sp)
-    fig.suptitle('roi %i (sf %.1f, sz %i, speed %i)' % (roi, sf, sz, sp), fontsize=8)
+    stimkey = 'sf-%.1f-sz-%i-speed-%i' % (sf, sz, sp)
+    fig.suptitle('rid %i (sf %.1f, sz %i, speed %i)' % (roi, sf, sz, sp), fontsize=12)
 
     return fig, stimkey
 
@@ -957,8 +1176,20 @@ def get_tuning(animalid, session, fov, run_name, return_iters=False,
                n_bootstrap_iters=1000, n_resamples=20, n_intervals_interp=3,
                make_plots=True, responsive_test='nstds', responsive_thr=10, n_stds=2.5,
                create_new=False, rootdir='/n/coxfs01/2p-data', n_processes=1,
-               min_cfgs_above=2, min_nframes_above=10):
-    
+               min_cfgs_above=1, min_nframes_above=10, verbose=True):
+    '''
+    bootresults (dict)
+        keys: roi ids
+        values: dicts, where keys=stim param combos (tuple: sf, size, speed)
+        (sf, size, speed): {'data': {'responses': dataframe, cols=configs, rows=trials,
+                                     'tested_values': orientation values},
+                            'results': dataframe, fit values for all iterations of bootstrap, 
+                            'fits': {'fitv': dataframe, values fit for corresponding yvs's,
+                                     'yvs': bootstrapped values for each iteration,
+                                     'xvs': x-values that fitv is fit over,
+                                     'n_intervals_interp': int, # of intervals to interp},
+                            'stimulus_configs': corresponding config names for current stimulus cond}
+    ''' 
     from pipeline.python.classifications import experiment_classes as util
     
     roi_list=None; statdf=None;
@@ -1003,7 +1234,7 @@ def get_tuning(animalid, session, fov, run_name, return_iters=False,
     if create_new is False:
         try:
             bootresults, fitparams = load_tuning_results(traceid_dir=traceid_dir,
-                                                        fit_desc=fit_desc)
+                                                        fit_desc=fit_desc, verbose=verbose)
             assert bootresults is not None, "Unable to load tuning: %s" % fit_desc
         except Exception as e:
             traceback.print_exc()
@@ -1053,6 +1284,10 @@ def get_tuning(animalid, session, fov, run_name, return_iters=False,
             if not os.path.exists(os.path.join(osidir, 'roi-fits')):
                 os.makedirs(os.path.join(osidir, 'roi-fits'))
             print("Saving roi tuning fits to: %s" % os.path.join(osidir, 'roi-fits'))
+            # Delete old imgs
+            for f in os.listdir(os.path.join(osidir, 'roi-fits')):
+                os.remove(os.path.join(osidir, 'roi-fits', f))
+
             for roi in passrois:
                 #stimparams = [cfg for cfg, res in bootresults[roi].items() if res is not None]
                 for stimpara, bootr in bootresults[roi].items():
@@ -1066,7 +1301,7 @@ def get_tuning(animalid, session, fov, run_name, return_iters=False,
 
 
 def evaluate_tuning(animalid, session, fov, run_name, traceid='traces001', fit_desc='', gof_thr=0.66,
-                   create_new=False, rootdir='/n/coxfs01/2p-data', plot_metrics=True):
+                   create_new=False, rootdir='/n/coxfs01/2p-data', plot_metrics=True, verbose=True):
 
     osidir = glob.glob(os.path.join(rootdir, animalid, session, fov, run_name, 
                           'traces', '%s*' % traceid, 'tuning', fit_desc))[0]
@@ -1076,12 +1311,13 @@ def evaluate_tuning(animalid, session, fov, run_name, traceid='traces001', fit_d
     
     data_identifier = '%s\n%s' % ('|'.join([animalid, session, fov, run_name]), fit_desc)
     bootresults, fitparams = load_tuning_results(animalid=animalid, session=session, fov=fov, 
-                                                 run_name=run_name, fit_desc=fit_desc, rootdir=rootdir)
+                                                 run_name=run_name, fit_desc=fit_desc, rootdir=rootdir, verbose=verbose)
 
     # Evaluate metric fits
     if not os.path.exists(os.path.join(osidir, 'evaluation', 'gof-rois')):
         os.makedirs(os.path.join(osidir, 'evaluation', 'gof-rois'))
-
+    for f in os.listdir(os.path.join(osidir, 'evaluation', 'gof-rois')):
+        os.remove(os.path.join(osidir, 'evaluation', 'gof-rois', f))
     
     rmetrics, rmetrics_by_cfg = get_good_fits(bootresults, fitparams, gof_thr=gof_thr)
     if rmetrics is None:
@@ -1089,7 +1325,7 @@ def evaluate_tuning(animalid, session, fov, run_name, traceid='traces001', fit_d
         return None, None
 
     goodrois = rmetrics.index.tolist()
-    print("%i cells have good fits (thr >= %.2f)" % (len(goodrois), gof_thr))
+    print("... %i (of %i) cells have good fits (thr >= %.2f)" % (len(goodrois), len(bootresults.keys()), gof_thr))
 
     #plot_metrics = create_new
     if len(goodrois)>0 and (plot_metrics or create_new):
@@ -1103,12 +1339,13 @@ def evaluate_tuning(animalid, session, fov, run_name, traceid='traces001', fit_d
         g = sns.pairplot(rmetrics[metrics_to_plot], height=2, aspect=1)
         label_figure(g.fig, data_identifier)
         pl.subplots_adjust(top=0.9, right=0.9)
-        pl.savefig(os.path.join(osidir, 'evaluation', 'metrics_avg-iters_gof-thr-%.2f_%i-rois.png' % (gof_thr, len(goodrois))))
+        pl.savefig(os.path.join(osidir, 'evaluation', 'metrics_avg-iters_gof-thr-%.2f.png' % (gof_thr)))
         pl.close()
-        
-        fig = roi_polar_plot_by_config(bootresults, fitparams)
+    
+        # Plot polar tuning    
+        fig = roi_polar_plot_by_config(bootresults, fitparams, gof_thr=gof_thr)
         label_figure(fig, data_identifier)
-        pl.savefig(os.path.join(osidir, 'evaluation', 'polar-plots_gof-thr-%.2f_%irois.png' % (gof_thr, len(goodrois))))
+        pl.savefig(os.path.join(osidir, 'evaluation', 'polar-plots_gof-thr-%.2f.svg' % (gof_thr)))
         pl.close()
         print("*** done! ***")
    
@@ -1119,7 +1356,7 @@ def evaluate_tuning(animalid, session, fov, run_name, traceid='traces001', fit_d
             for skey in g.index.tolist():
                 stimparam = tuple(float(i) for i in skey.split('-')[1::2])
                 bootr = bootresults[roi][stimparam]
-                fig = evaluate_fit_roi(roi, bootr, fitparams, response_type=response_type)
+                fig = evaluate_fit_roi(roi, bootr, fitparams, response_type=response_type, param_str=str(stimparam))
                 label_figure(fig, data_identifier)
                 fig.suptitle('roi %i (%s)' % (int(roi+1), skey))
                 pl.savefig(os.path.join(osidir, 'evaluation', 'gof-rois', 'roi%05d__%s.png' % (int(roi+1), skey)))
@@ -1139,7 +1376,7 @@ def aggregate_all_iters(bootresults, fitparams, gof_thr=0.66):
     interp = fitparams['n_intervals_interp'] > 1
     
     passrois = sorted([k for k, v in bootresults.items() if any(v.values())])
-    print("... aggregating (%i cells fit at least 1 tuning curve)." % len(passrois))
+    print("... aggregating (%i cells attempted)" % len(passrois))
 
     bootdata = []
     for roi in passrois:
@@ -1160,10 +1397,11 @@ def aggregate_all_iters(bootresults, fitparams, gof_thr=0.66):
             #stimkey = 'sf-%.2f-sz-%i-sp-%i' % stimparam
             #tmpd['stimconfig'] = str(stimparam)
                 
-            bootdata.append(rfdf)
-            
+            bootdata.append(rfdf)       
     bootd = pd.concat(bootdata, axis=0)
-    
+
+    print("... aggregating (%i cells fit at least 1 tuning curve)." % len(bootd['cell'].unique()))
+   
     return bootd
             
 def evaluate_fits(bootr, interp=False):
@@ -1171,12 +1409,16 @@ def evaluate_fits(bootr, interp=False):
     params = [c for c in bootr['results'].columns if 'stim' not in c]
     avg_metrics = average_metrics_across_iters(bootr['results'][params])
     
+    orig_ = bootr['data']['responses'].mean(axis=0)
+    #orig_data = np.abs(orig_ - np.mean(orig_)) 
+    orig_data = (orig_ - orig_.min()) #- (orig_ - orig_.mean()).min()
+
     # Get combined r2 between original and avg-fit
     if interp:
-        origr = interp_values(bootr['data']['responses'].mean(axis=0))
+        origr = interp_values(orig_data)
         thetas = bootr['fits']['xv']
     else:
-        origr = bootr['data']['responses'].mean(axis=0).values
+        origr = orig_data #bootr['data']['responses'].mean(axis=0).values
         thetas = bootr['data']['tested_values']
     #thetas = bootr['fits']['xv'][0:-1]
     #origr = interp_values(origr, n_intervals=3, wrap_value=origr[0])[0:-1]
@@ -1192,7 +1434,7 @@ def evaluate_fits(bootr, interp=False):
     return r2_comb, gfit, fitr
     
 
-def get_good_fits(bootresults, fitparams, gof_thr=0.66):
+def get_good_fits(bootresults, fitparams, gof_thr=0.66, verbose=True):
    
     rmetrics=None; rmetrics_by_cfg=None; 
     niters = fitparams['n_bootstrap_iters']
@@ -1211,18 +1453,19 @@ def get_good_fits(bootresults, fitparams, gof_thr=0.66):
             if bootr['fits'] is None:
                 #print("%s: no fit" % str(stimparam))
                 continue
+
+            # Evaluate current fits from bootstrapped results
             r2comb, gof, fitr = evaluate_fits(bootr, interp=interp)
-            if np.isnan(gof) or gof < gof_thr:
+            if np.isnan(gof) or (gof_thr is not None and (gof < gof_thr)):
                 #print("%s: bad fit" % str(stimparam))
                 continue
             
-            rfdf = bootr['results']
-            rfdf['r2comb'] = [r2comb for _ in range(niters)]
-            rfdf['gof'] = [gof for _ in range(niters)]
+            rfdf = bootr['results'] # All 1000 iterations
+            rfdf['r2comb'] = [r2comb for _ in range(niters)] # add combined R2 val
+            rfdf['gof'] = [gof for _ in range(niters)] # add GoF metric
             
-            tmpd = average_metrics_across_iters(rfdf) #pd.DataFrame(rfdf.mean(axis=0)).T #, index=[roi])
+            tmpd = average_metrics_across_iters(rfdf) # Average current roi, current condition results
             stimkey = 'sf-%.2f-sz-%i-sp-%i' % stimparam
-            #tmpd['stimconfig'] = str(stimparam)
                 
             fitresults.append(tmpd)
             stimkeys.append(stimkey)
@@ -1232,14 +1475,16 @@ def get_good_fits(bootresults, fitparams, gof_thr=0.66):
             roif.index = stimkeys
             gof =  roif.mean()['gof']
             
-            if gof >= gof_thr: #0.66:
-                goodrois.append(roi)
-             
-            roidfs.append(pd.DataFrame(roif.sort_values(by='response_pref').iloc[0]).T)
-
-            #roidfs.append(average_metrics_across_iters(roif))
-            
-            #roidfs.append(pd.Series(roif.mean(axis=0), name=roi))
+            if (gof_thr is not None) and (gof >= gof_thr): #0.66:
+                goodrois.append(roi) # This is just for repoorting
+           
+            if gof_thr is not None:
+                best_cond_df = pd.DataFrame(roif.sort_values(by='r2comb').iloc[-1]).T
+            else:
+                best_cond_df = pd.DataFrame(roif.sort_values(by='gof').iloc[-1]).T
+            # Select config w/ strongest response 
+            roidfs.append(best_cond_df)
+            # But also save all results
             metrics_by_config.append(roif)
    
     if len(roidfs) > 0: 
@@ -1248,13 +1493,17 @@ def get_good_fits(bootresults, fitparams, gof_thr=0.66):
         new_ixs = [int(i) for i in rmetrics['cell'].values]
         rmetrics.index = new_ixs
         rmetrics_by_cfg = pd.concat(metrics_by_config, axis=0)
-    
-    print("... %i of %i cells pass GoF thr %.2f" % (len(roidfs), len(passrois), gof_thr))
-    
+      
+        if verbose: 
+            if gof_thr is not None: 
+                print("... %i (of %i) fitable cells pass GoF thr %.2f" % (len(goodrois), len(passrois), gof_thr))
+            else:
+                print("... %i (of %i) fitable cells (no GoF thr)" % (rmetrics.shape[0], len(passrois)))
+
     return rmetrics, rmetrics_by_cfg
 
 
-def evaluate_fit_roi(roi, bootr, fitparams, response_type='dff'):
+def evaluate_fit_roi(roi, bootr, fitparams, response_type='dff', param_str='curr params'):
     #%  Look at residuals        
     n_intervals_interp = fitparams['n_intervals_interp']
     
@@ -1280,6 +1529,8 @@ def evaluate_fit_roi(roi, bootr, fitparams, response_type='dff'):
     ax.tick_params(labelsize=8)
     ax.set_ylabel(response_type)
     sns.despine(ax=ax, trim=True, offset=2)
+    ax.set_title('fit iters (n=%i)' % fitparams['n_bootstrap_iters'])
+
     # ax1: adjust ticks/labels
     ax = axes[0,1]
     ax.axhline(y=0, linestyle=':', color='k')
@@ -1300,12 +1551,16 @@ def evaluate_fit_roi(roi, bootr, fitparams, response_type='dff'):
 
     # Get residual sum of squares and compare ORIG and AVG FIT:
     thetas = xv[0::n_intervals_interp] #[0:-1]
-    origr = bootr['data']['responses'].mean(axis=0).values
-    
+    orig0 = bootr['data']['responses'].mean(axis=0)
+    #origr = np.abs(orig0 - orig0.mean())
+    origr = (orig0-orig0.min()) #- (orig0-orig0.mean()).min()
+    fitv = bootr['fits']['fitv'].mean(axis=1)[0::n_intervals_interp][0:-1]
+ 
     r2comb, gof, fitr = evaluate_fits(bootr, interp=False)        
     ax = axes[1,0]
     ax.plot(thetas, origr, 'k', label='orig')
-    ax.plot(thetas, fitr, 'r:', label='avg-fit')
+    ax.plot(thetas, fitv, 'b:', label='fit_avgboot')
+    ax.plot(thetas, fitr, 'r:', label='fit_avgparams')
     ax.set_title('r2-comb: %.2f' % r2comb)
     ax.legend()
     ax.set_xticks(xv[0::n_intervals_interp])
@@ -1326,6 +1581,7 @@ def evaluate_fit_roi(roi, bootr, fitparams, response_type='dff'):
     ax.set_xlabel('preferred theta')
     ax.set_ylabel('counts of iters')
     ax.tick_params(labelsize=8)
+    ax.axvline(x=fparams['theta_pref'].median(), linestyle=':', color='k')
     
     # Look at calculated ASI/DSIs across iters:
     ax = axes[1,2]
@@ -1336,7 +1592,7 @@ def evaluate_fit_roi(roi, bootr, fitparams, response_type='dff'):
     
     pl.subplots_adjust(hspace=.5, wspace=.5)
     
-    fig.suptitle('roi %i' % int(roi+1))
+    fig.suptitle('rid %i, %s' % (int(roi), param_str))
 
     return fig
 
@@ -1348,7 +1604,12 @@ def average_metrics_across_iters(fitdf):
         if 'stim' in param:
             meanval = fitdf[param].values[0]
         elif 'theta' in param:
-            meanval = np.rad2deg(spstats.circmean(np.deg2rad(fitdf[param] % 360.)))
+            # meanval = np.rad2deg(spstats.circmean(np.deg2rad(fitdf[param] % 360.)))
+            # Use Median, since could have double-peaks
+            #meanval = fitdf[param].median() 
+            cnts, bns = np.histogram(fitdf[param] % 360., 
+                            bins=np.linspace(0, 360., 50))
+            meanval = float(bns[np.where(cnts==max(cnts))[0][0]])
         else:
             meanval = fitdf[param].mean()
         means[param] = meanval
@@ -1375,7 +1636,7 @@ def average_metrics_across_iters(fitdf):
 #    
 #    n_intervals_interp = fitdata['results_by_iter'][roi][0]['n_intervals_interp']
 #    popt = get_average_params_over_iters(fitdata['results_by_iter'][roi])
-#    thetas = fitdata['results_by_iter'][roi][0]['x'][0::n_intervals_interp][0:-1]
+#    thetas = fitdata['results_by_iter'][roi][0]['x'][0::n_intervals_2nterp][0:-1]
 #    responses = fitdata['original_data'][roi]['responses']
 #    origr = responses.mean().values
 #    fitr = double_gaussian( thetas, *popt)
@@ -1646,13 +1907,14 @@ def cleanup_axes(axes_list, which_axis='y'):
                 label.set_visible(False)
             ax.xaxis.offsetText.set_visible(False)
 
+import matplotlib.patches as patches
 
 def plot_psth_roi(roi, raw_traces, labels, curr_cfgs, sdf,  trace_type='dff', fig=None, nr=1, nc=1, s_row=0, colspan=1):
     if fig is None:
         fig = pl.figure()
 
     pl.figure(fig.number)
-    print('plotting roi') 
+    print('plotting roi %i' % roi) 
     # ---------------------------------------------------------------------
     #% plot raw traces:
     mean_traces, std_traces, tpoints = osi.get_mean_and_std_traces(roi, raw_traces, labels, curr_cfgs, sdf)
@@ -1678,6 +1940,10 @@ def plot_psth_roi(roi, raw_traces, labels, curr_cfgs, sdf,  trace_type='dff', fi
         sem_plus = np.array(mean_traces[icfg,:]) + np.array(std_traces[icfg,:])
         sem_minus = np.array(mean_traces[icfg,:]) - np.array(std_traces[icfg,:])
         ax.fill_between(tpoints, sem_plus, y2=sem_minus, alpha=0.5, color='k')
+
+        ax.axvspan(tpoints[stim_on_frame], tpoints[stim_on_frame+nframes_on], alpha=0.3, 
+                                    facecolor='gray', edgecolor='none')
+
 
     return fig, ax
 
@@ -1819,14 +2085,18 @@ def plot_tuning_polar_roi(curr_oris, curr_resps, curr_sems=None, response_type='
 # Summary plotting:
 
 def compare_selectivity_all_fits(fitdf, fit_metric='gof', fit_thr=0.66):
-    
-    strong_fits = [r for r, v in fitdf.groupby(['cell']) if v.mean()[fit_metric] >= fit_thr] # check if average gof good
-    print("%i out of %i cells with strong fits (%.2f)" % (len(strong_fits), len(fitdf['cell'].unique()), fit_thr))
+    # Get average over iters, then max over stim conditions, for each cell
+    max_over_conds_per_cell = fitdf.groupby(['cell','stimulus']).mean().groupby(['cell']).max().reset_index()
+    strong_fits = max_over_conds_per_cell[max_over_conds_per_cell[fit_metric]>=fit_thr]['cell'].unique()
+ 
+    #strong_fits = [r for r, v in fitdf.groupby(['cell']) if v.mean()[fit_metric] >= fit_thr] # check if average gof good
+    print("%i out of %i fitable cells pass (%s=%.2f)" % (len(strong_fits), len(fitdf['cell'].unique()), fit_metric, fit_thr))
     if len(strong_fits)==0:
         return pl.figure(), strong_fits
- 
-   
-    df = fitdf[fitdf['cell'].isin(strong_fits)]
+  
+    #df = fitdf[fitdf['cell'].isin(strong_fits)]
+    df = pd.concat([g for (ri, stim), g in fitdf.groupby(['cell', 'stimulus']) \
+                         if g.mean()[fit_metric]>=fit_thr])
     df['cell'] = df['cell'].astype(str)
     
     g = sns.PairGrid(df, hue='cell', vars=['asi', 'dsi', 'r2comb'])
@@ -1860,13 +2130,24 @@ def compare_selectivity_all_fits(fitdf, fit_metric='gof', fit_thr=0.66):
 
 
 def sort_by_selectivity(fitdf, fit_metric='gof', fit_thr=0.66, topn=10):
-    strong_fits = [r for r, v in fitdf.groupby(['cell']) if v.mean()[fit_metric] >= fit_thr]
-    print("%i out of %i cells with strong fits (%.2f)" % (len(strong_fits), len(fitdf['cell'].unique()), fit_thr))
+    # Get average over iters, then max over stim conditions, for each cell
+    max_over_conds_per_cell = fitdf.groupby(['cell','stimulus']).mean().groupby(['cell']).max().reset_index()
+    strong_fits = max_over_conds_per_cell[max_over_conds_per_cell[fit_metric]>=fit_thr]['cell'].unique()
+ 
+    print("%i out of %i fitable cells pass (%s=%.2f)" % (len(strong_fits), len(fitdf['cell'].unique()), fit_metric, fit_thr))
+    #if len(strong_fits)==0:
+    #    return pl.figure(), strong_fits
+ 
+    #strong_fits = [r for r, v in fitdf.groupby(['cell']) if v.mean()[fit_metric] >= fit_thr]
+    #print("%i out of %i cells with strong fits (%.2f)" % (len(strong_fits), len(fitdf['cell'].unique()), fit_thr))
     if len(strong_fits)==0:
         return None, [], []
     
-    df = fitdf[fitdf['cell'].isin(strong_fits)]
-        
+    #df = fitdf[fitdf['cell'].isin(strong_fits)]
+    df = pd.concat([g for (ri, stim), g in fitdf.groupby(['cell', 'stimulus']) \
+                         if g.mean()[fit_metric]>=fit_thr])
+    df['cell'] = df['cell'].astype(str)
+    
     #df.loc[:, 'cell'] = np.array([int(c) for c in df['cell'].values])
     
     top_asi = df.groupby(['cell']).mean().sort_values(['asi'], ascending=False)
@@ -1904,7 +2185,7 @@ def compare_topn_selective(df, color_by='ASI', palette='cubehelix'):
 #        palette = dsi_colordict
 #    
 
-    g = sns.PairGrid(df, hue=hue, vars=['asi', 'dsi'], palette=palette, size=5)#,
+    g = sns.PairGrid(df, hue=hue, vars=['asi', 'dsi'], palette=palette, size=2)#,
                     #hue_kws={"alpha": alphadict.values()}) # 'cubehelix_r') #'cubehelix') #'')
     
     g.fig.patch.set_alpha(1)
@@ -1924,7 +2205,7 @@ def compare_topn_selective(df, color_by='ASI', palette='cubehelix'):
             lh.set_alpha(1)
             lh._sizes = [20] 
         
-    pl.subplots_adjust(left=0.15, right=0.8, top=0.9, bottom=0.1, wspace=0.2, hspace=0.2)
+    pl.subplots_adjust(left=0.15, right=0.8, top=0.9, bottom=0.2, wspace=0.2, hspace=0.2)
     
     #g.set(xlim=(0,1), ylim=(0,1))
     #g.set(xticks=[0, 1])
@@ -2001,9 +2282,9 @@ def plot_top_asi_and_dsi(fitdf, fitparams, fit_metric='gof', fit_thr=0.66, topn=
     fig = compare_topn_selective(df, color_by=color_by, palette=palette)
     label_figure(fig, data_identifier)
     
-    figname = 'sort-by-%s_top%i_tuning-fit-thr%.2f_bootstrap-%iiters_%iof%i' % (color_by, topn, fit_thr, n_bootstrap_iters, nrois_pass, nrois_fit)
+    figname = 'sort-by-%s_top%i_tuning-fit-thr%.2f_bootstrap-%iiters' % (color_by, topn, fit_thr, n_bootstrap_iters)
 
-    pl.savefig(os.path.join(roi_fitdir, '%s.png' % figname))
+    pl.savefig(os.path.join(roi_fitdir, '%s.svg' % figname))
     pl.close()
     
     #% Color by DSI:
@@ -2012,9 +2293,9 @@ def plot_top_asi_and_dsi(fitdf, fitparams, fit_metric='gof', fit_thr=0.66, topn=
 
     fig = compare_topn_selective(df, color_by=color_by, palette=palette)
     label_figure(fig, data_identifier)
-    figname = 'sort-by-%s_top%i_tuning-fit-thr%.2f_bootstrap-%iiters_%iof%i' % (color_by, topn, fit_thr, n_bootstrap_iters, nrois_pass, nrois_fit)
+    figname = 'sort-by-%s_top%i_tuning-fit-thr%.2f_bootstrap-%iiters' % (color_by, topn, fit_thr, n_bootstrap_iters)
 
-    pl.savefig(os.path.join(roi_fitdir, '%s.png' % figname))
+    pl.savefig(os.path.join(roi_fitdir, '%s.svg' % figname))
     pl.close()
     
     
@@ -2065,14 +2346,15 @@ def roi_polar_plot_by_config(bootresults, fitparams, gof_thr=0.66, plot_polar=Tr
     n_intervals_interp = fitparams['n_intervals_interp']
 
     n_rois_pass = len(goodrois)
-    nr = int(np.ceil(np.sqrt(n_rois_pass))) + 1 # add extra row for legend
-    nc = int(np.ceil(float(n_rois_pass) / nr))
-    
+    nr = int(np.ceil(np.sqrt(n_rois_pass))) + 1 if n_rois_pass>=4 else 1 # add extra row for legend
+    nc = int(np.ceil(float(n_rois_pass) / nr)) 
+    nr += 1
+ 
     cfgs = [tuple(c) for c in fitparams['non_ori_configs']]
     colors = sns.color_palette(palette='cubehelix', n_colors=len(cfgs))
     
     
-    fig, axes = pl.subplots(nr, nc, figsize=(nr*2,nc*2), subplot_kw=dict(polar=True))
+    fig, axes = pl.subplots(nc, nr, figsize=(nc*2.5,nr*2), subplot_kw=dict(polar=True), dpi=150)
     
     for ax, (roi, g) in zip(axes.flat, rmetrics_by_cfg.groupby(['cell'])):
         allgofs = []
@@ -2092,8 +2374,10 @@ def roi_polar_plot_by_config(bootresults, fitparams, gof_thr=0.66, plot_polar=Tr
             #params = [c for c in bootr['results'].columns if 'stim' not in c]
             #avg_metrics = average_metrics_across_iters(bootr['results'][params])
             r2comb, gof, fitr = evaluate_fits(bootr, interp=True)
-            origr = bootr['data']['responses'].mean(axis=0).values
-    
+            origr0 = bootr['data']['responses'].mean(axis=0).values
+            #origr = np.abs(origr0 - origr0.mean())
+            origr = (origr0 - origr0.min()) #- (origr0 - origr0.mean()).min()
+
             if plot_polar:
                 origr = np.append(origr, origr[0]) # wrap back around
                 plot_tuning_polar_roi(thetas, origr, curr_sems=None, response_type='dff',
@@ -2117,15 +2401,17 @@ def roi_polar_plot_by_config(bootresults, fitparams, gof_thr=0.66, plot_polar=Tr
         
     for ax in axes.flat[len(goodrois):]:
         ax.axis('off')
-    pl.subplots_adjust(hspace=0.3, wspace=0.8)
-    
+   
     
     from matplotlib.lines import Line2D
     custom_lines = [Line2D([0], [0], color=colors[i], lw=4) for i, k in enumerate(cfgs)]
     custom_labels = ['sf-%.2f, sz-%i, speed-%i' % k for i, k in enumerate(cfgs)]
     ax = axes.flat[-1]
-    ax.legend(custom_lines, custom_labels, ncol=2, fontsize=8)
+    ncol=2 #1 if nc<=3 else 2
+    ax.legend(custom_lines, custom_labels, ncol=ncol, fontsize=8)
 
+    pl.subplots_adjust(hspace=0.5, wspace=0.8, left=0.15, right=0.95, bottom=0.2, top=0.8)
+ 
     return fig
 
 #
@@ -2273,7 +2559,7 @@ def extract_options(options):
                       help="[n_stds only] n stds above/below baseline to count frames, if test=nstds (default: 2.5)") 
     parser.add_option('-m', '--min-frames', action='store', dest='min_nframes_above', default=10, 
                       help="[n_stds only] Min N frames above baseline std (responsive_thr), if responsive_test=nstds (default: 10)")   
-    parser.add_option('-c', '--min-configs', action='store', dest='min_cfgs_above', default=2, 
+    parser.add_option('-c', '--min-configs', action='store', dest='min_cfgs_above', default=1, 
                       help="[n_stds only] Min N configs in which min-n-frames threshold is met, if responsive_test=nstds (default: 2)")   
 
     # Tuning params:
@@ -2295,6 +2581,9 @@ def extract_options(options):
 
     parser.add_option('--new', action='store_true', dest='create_new', default=False, 
                       help="Create all session objects from scratch")
+    parser.add_option('--plots', action='store_true', dest='make_plots', default=False, 
+                      help='Flag to plot roi fits')
+
 
     (options, args) = parser.parse_args(options)
 #    
@@ -2329,7 +2618,7 @@ def bootstrap_tuning_curves_and_evaluate(animalid, session, fov, traceid='traces
                                          n_bootstrap_iters=1000, n_resamples=20,
                                          n_intervals_interp=3, goodness_thr = 0.66,
                                          n_processes=1, create_new=False, rootdir='/n/coxfs01/2p-data',
-                                         min_cfgs_above=2, min_nframes_above=10, make_plots=True):
+                                         min_cfgs_above=2, min_nframes_above=10, make_plots=True, verbose=True):
 
     from pipeline.python.classifications import experiment_classes as util
 
@@ -2345,7 +2634,8 @@ def bootstrap_tuning_curves_and_evaluate(animalid, session, fov, traceid='traces
                                          responsive_test=responsive_test, 
                                          responsive_thr=responsive_thr, n_stds=n_stds,
                                          create_new=create_new, n_processes=n_processes, rootdir=rootdir,
-                                         min_cfgs_above=min_cfgs_above, min_nframes_above=min_nframes_above, make_plots=make_plots)
+                                         min_cfgs_above=min_cfgs_above, min_nframes_above=min_nframes_above, 
+                                        make_plots=make_plots, verbose=verbose)
 
     fit_desc = os.path.split(fitparams['directory'])[-1]
     print("----- COMPLETED 1/2: bootstrap tuning! ------")
@@ -2380,11 +2670,12 @@ def main(options):
     responsive_thr = float(opts.responsive_thr)
     n_stds = float(opts.n_stds)
     n_processes = int(opts.n_processes)
-    min_nframes_above = int(opts.min_nframes_above)
+    min_nframes_above = int(responsive_thr) if responsive_test=='nstds' else int(opts.min_nframes_above)
     min_cfgs_above = int(opts.min_cfgs_above)
     create_new = opts.create_new
     goodness_thr = float(opts.goodness_thr)
-    
+    make_plots = opts.make_plots
+ 
     bootresults, fitparams, rmetrics, rmetrics_by_cfg = bootstrap_tuning_curves_and_evaluate(
                                              animalid, session, fov, 
                                              traceid=traceid, response_type=response_type, 
@@ -2394,7 +2685,7 @@ def main(options):
                                              responsive_test=responsive_test, responsive_thr=responsive_thr, n_stds=n_stds,
                                              create_new=create_new, n_processes=n_processes, rootdir=rootdir,
                                              min_nframes_above=min_nframes_above, min_cfgs_above=min_cfgs_above,
-                                             goodness_thr=goodness_thr)
+                                             goodness_thr=goodness_thr, make_plots=make_plots)
     print("***** DONE *****")
     
 if __name__ == '__main__':

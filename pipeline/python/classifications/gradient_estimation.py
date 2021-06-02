@@ -32,9 +32,11 @@ import cPickle as pkl
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 from pipeline.python.utils import convert_range
 
-from pipeline.python.utils import natural_keys, label_figure
+from pipeline.python.utils import natural_keys, label_figure, colorbar, turn_off_axis_ticks
 from pipeline.python import utils as putils
 from pipeline.python.retinotopy import utils as ret_utils
+from pipeline.python.retinotopy import segment_retinotopy as seg #et_utils
+
 from pipeline.python.rois import utils as roi_utils
 from pipeline.python.paradigm import utils as par_utils
 from pipeline.python.coregistration import align_fov as coreg
@@ -53,10 +55,32 @@ import sklearn.metrics as skmetrics #import mean_squared_error
 
 #%%
 # Functions for dilating and smoothing masks
-# ---------------------------------------------------------------
-from scipy.interpolate import SmoothBivariateSpline
+# =======================================================================
+from scipy import ndimage as nd
+def fill_nans(data, invalid=None):
+    """
+    Replace the value of invalid 'data' cells (indicated by 'invalid') 
+    by the value of the nearest valid data cell
 
-def fill_and_smooth_nans(img):
+    Input:
+        data:    numpy array of any dimension
+        invalid: a binary array of same shape as 'data'. True cells set where data
+                 value should be replaced.
+                 If None (default), use: invalid  = np.isnan(data)
+
+    Output: 
+        Return a filled array. 
+    """
+    #import numpy as np
+    #import scipy.ndimage as nd
+
+    if invalid is None: invalid = np.isnan(data)
+
+    ind = nd.distance_transform_edt(invalid, return_distances=False, return_indices=True)
+    return data[tuple(ind)]
+
+from scipy.interpolate import SmoothBivariateSpline
+def fill_and_smooth_nans(img, kx=1, ky=1):
 
     y, x = np.meshgrid(np.arange(0, img.shape[1]), np.arange(0, img.shape[0]))
     x = x.astype(float)
@@ -90,11 +114,18 @@ def fill_and_smooth_nans(img):
     znew=f(xnew, ynew) #).T
     
     znew[np.isnan(z)] = np.nan
+
+    # make sure limits are preserved
+    orig_min = np.nanmin(img)
+    orig_max = np.nanmax(img)
+    zfinal = znew.copy()
+    zfinal[znew<orig_min] = orig_min
+    zfinal[znew>orig_max] = orig_max
     
     #print(z.shape, znew.shape)
-    return znew #.T #a
+    return zfinal #:znew #.T #a
 
-def fill_and_smooth_nans_missing(img):
+def fill_and_smooth_nans_missing(img, kx=1, ky=1):
     '''
     Smooths image and fills over NaNs. Useful for dealing with holes from neuropil masks
     '''
@@ -103,23 +134,44 @@ def fill_and_smooth_nans_missing(img):
     y = y.astype(float)
     z = img.copy()
 
-    x[np.isnan(z)] = np.nan
-    y[np.isnan(z)] = np.nan
+    #x[np.isnan(z)] = np.nan
+    #y[np.isnan(z)] = np.nan
 
-    x=x.ravel()
-    x=(x[~np.isnan(x)])
-    y=y.ravel()
-    y=(y[~np.isnan(y)])
-    z=z.ravel()
-    z=(z[~np.isnan(z)])
+#    x=x.ravel()
+#    x=(x[~np.isnan(x)])
+#    y=y.ravel()
+#    y=(y[~np.isnan(y)])
+#    z=z.ravel()
+#    z=(z[~np.isnan(z)])
+    xx = x.copy()
+    yy = y.copy()
+    xx[np.isnan(z)] = np.nan
+    yy[np.isnan(z)] = np.nan
+
+    xx=xx.ravel()
+    xx=(xx[~np.isnan(xx)])
+    yy=yy.ravel()
+    yy=(yy[~np.isnan(yy)])
+    zz=z.ravel()
+    zz=(zz[~np.isnan(zz)])
+
 
     xnew = np.arange(x.min(), x.max()+1) #np.arange(9,11.5, 0.01)
     ynew = np.arange(y.min(), y.max()+1) #np.arange(10.5,15, 0.01)
 
-    f = SmoothBivariateSpline(x,y,z,kx=1,ky=1)
+    f = SmoothBivariateSpline(xx, yy, zz, kx=kx,ky=ky)
     znew=np.transpose(f(xnew, ynew))
 
-    return znew.T #a
+    znew[np.isnan(z.T)] = np.nan
+
+    # make sure limits are preserved
+    orig_min = np.nanmin(img)
+    orig_max = np.nanmax(img)
+    zfinal = znew.copy()
+    zfinal[znew<orig_min] = orig_min
+    zfinal[znew>orig_max] = orig_max
+ 
+    return zfinal.T #znew.T #a
 
 def dilate_mask_centers(maskcenters, kernel_size=9):
     '''Calculate center of soma, then dilate to create masks for smoothed  neuropil
@@ -239,7 +291,9 @@ def get_phase_masks(masks, phases, average_overlap=True, roi_list=None,
     
     return azim_phase, elev_phase
 
-# Plotting functions 
+# =======================================================================
+# Plotting functions
+# =======================================================================
 def plot_retinomap_processing(azim_phase_soma, azim_phase_np, azim_smoothed, az_fill,
                              elev_phase_soma, elev_phase_np, elev_smoothed, el_fill, 
                              cmap='nipy_spectral', vmin=None, vmax=None, 
@@ -276,7 +330,7 @@ def plot_retinomap_processing(azim_phase_soma, azim_phase_np, azim_smoothed, az_
 
     ax = axn[0, 3]
     im0 = ax.imshow(az_fill, cmap=cmap, vmin=vmin, vmax=vmax)
-    pl.colorbar(im0, ax=ax, orientation='horizontal', shrink=0.7)
+    pl.colorbar(im0, ax=ax, orientation='vertical', shrink=0.7)
     ax.set_title('filled NaNs')
 
     ax = axn[1, 0]
@@ -302,46 +356,318 @@ def plot_retinomap_processing(azim_phase_soma, azim_phase_np, azim_smoothed, az_
     return fig
 
 
-def plot_retinomap_processing_pixels(filt_az, azim_smoothed, az_fill,
-                                    filt_el, elev_smoothed, el_fill,
-                                    cmap_phase='nipy_spectral', 
-                                    vmin=-np.pi, vmax=np.pi,
-                                    smooth_fwhm=7):
+def plot_retinomap_processing_pixels(filt_az, azim_smoothed, azim_fillnan, az_fill,
+                                    filt_el, elev_smoothed, elev_fillnan, el_fill,
+                                    cmap_phase='nipy_spectral', show_cbar=False,
+                                    vmin=-np.pi, vmax=np.pi, full_cmap_range=True,
+                                    smooth_fwhm=7, delay_map_thr=1, smooth_spline=(1,1)):
 
-    fig, axn = pl.subplots(2,3, figsize=(10,6))
+    if isinstance(smooth_spline, tuple):
+        smooth_spline_x, smooth_spline_y = smooth_spline
+    else:
+        smooth_spline_x = smooth_spline
+        smooth_spline_y = smooth_spline
+
+    fig, axn = pl.subplots(2,4, figsize=(12,6))
 
     ax = axn[0,0]
-    ax.imshow(filt_az, cmap=cmap_phase, vmin=vmin, vmax=vmax)
+    if full_cmap_range:
+        im0=ax.imshow(filt_az, cmap=cmap_phase, vmin=vmin, vmax=vmax)
+    else:
+        im0=ax.imshow(filt_az, cmap=cmap_phase)
     ax.set_ylabel('Azimuth')
+    ax.set_title('abs map (delay thr=%.2f)' % delay_map_thr)
+    if show_cbar:
+        colorbar(im0)
+
 
     ax = axn[0, 1]
-    ax.imshow(azim_smoothed, cmap=cmap_phase, vmin=vmin, vmax=vmax)
+    if full_cmap_range:
+        im0=ax.imshow(azim_smoothed, cmap=cmap_phase, vmin=vmin, vmax=vmax)
+    else:
+        im0=ax.imshow(azim_smoothed, cmap=cmap_phase)
     ax.set_title('spatial smooth (%i)' % smooth_fwhm)
+    if show_cbar:
+        colorbar(im0)
+
 
     ax = axn[0, 2]
-    im0 = ax.imshow(az_fill, cmap=cmap_phase) #, vmin=vmin, vmax=vmax)
-    ax.set_title('filled NaNs')
-    pl.colorbar(im0, ax=ax, orientation='horizontal', shrink=0.7)
-    #ax.imshow(azim_soma_r, cmap=cmap_phase, vmin=vmin, vmax=vmax)
+    if full_cmap_range:
+        im0 = ax.imshow(azim_fillnan, cmap=cmap_phase, vmin=vmin, vmax=vmax)
+    else:
+        im0 = ax.imshow(azim_fillnan, cmap=cmap_phase)
+    ax.set_title('filled NaNs (spline=(%i, %i))' % (smooth_spline_x, smooth_spline_y))
+    if show_cbar:
+        colorbar(im0)
+ 
+    ax = axn[0, 3]
+    if full_cmap_range:
+        im0 = ax.imshow(az_fill, cmap=cmap_phase, vmin=vmin, vmax=vmax)
+    else:
+        im0 = ax.imshow(az_fill, cmap=cmap_phase)
+    ax.set_title('final')
+    if show_cbar:
+        colorbar(im0)
 
     ax = axn[1, 0]
-    ax.imshow(filt_el, cmap=cmap_phase, vmin=vmin, vmax=vmax)
+    if full_cmap_range:
+        im1=ax.imshow(filt_el, cmap=cmap_phase, vmin=vmin, vmax=vmax)
+    else:
+        im1=ax.imshow(filt_el, cmap=cmap_phase)
     ax.set_ylabel('Altitude')
+    if show_cbar:
+        colorbar(im1)
 
     ax = axn[1, 1]
-    ax.imshow(elev_smoothed, cmap=cmap_phase, vmin=vmin, vmax=vmax)
+    if full_cmap_range:
+        im1=ax.imshow(elev_smoothed, cmap=cmap_phase, vmin=vmin, vmax=vmax)
+    else:
+        im1=ax.imshow(elev_smoothed, cmap=cmap_phase) 
+    if show_cbar:
+        colorbar(im1)
+
 
     ax = axn[1, 2]
-    im1= ax.imshow(el_fill, cmap=cmap_phase) #, vmin=vmin, vmax=vmax)
-    ax.set_title('filled NaNs')
-    pl.colorbar(im1, ax=ax, orientation='vertical', shrink=0.7)
+    if full_cmap_range:
+        im1=ax.imshow(elev_fillnan, cmap=cmap_phase, vmin=vmin, vmax=vmax)
+    else:
+        im1=ax.imshow(elev_fillnan, cmap=cmap_phase)
+    #ax.set_title('filled NaNs')
+    if show_cbar:
+        colorbar(im1)
 
-    pl.subplots_adjust(wspace=0.3, hspace=0.3)
 
+    ax = axn[1, 3]
+    if full_cmap_range:
+        im1= ax.imshow(el_fill, cmap=cmap_phase, vmin=vmin, vmax=vmax)
+    else:
+        im1 = ax.imshow(el_fill, cmap=cmap_phase)
+    #ax.set_title('final')
+    if show_cbar:
+        colorbar(im1)
+
+    pl.subplots_adjust(wspace=0.8, hspace=0.2)
+    for ax in axn.flat:
+        turn_off_axis_ticks(ax, despine=False)
     return fig
 
 
+# =======================================================================
 # Gradient functions
+# =======================================================================
+import math
+
+def py_ang(v1, v2):
+    """ Returns the angle in radians between vectors 'v1' and 'v2'    """
+    cosang = np.dot(v1, v2)
+    sinang = la.norm(np.cross(v1, v2))
+    return np.arctan2(sinang, cosang)
+
+def gradient_phase(f, *varargs, **kwargs):
+    """
+    Return the gradient of an N-dimensional array.
+    The gradient is computed using second order accurate central differences
+    in the interior and either first differences or second order accurate
+    one-sides (forward or backwards) differences at the boundaries. The
+    returned gradient hence has the same shape as the input array.
+    Parameters
+    ----------
+    f : array_like
+        An N-dimensional array containing samples of a scalar function.
+    varargs : scalar or list of scalar, optional
+        N scalars specifying the sample distances for each dimension,
+        i.e. `dx`, `dy`, `dz`, ... Default distance: 1.
+        single scalar specifies sample distance for all dimensions.
+        if `axis` is given, the number of varargs must equal the number of axes.
+    edge_order : {1, 2}, optional
+        Gradient is calculated using N\ :sup:`th` order accurate differences
+        at the boundaries. Default: 1.
+        .. versionadded:: 1.9.1
+    axis : None or int or tuple of ints, optional
+        Gradient is calculated only along the given axis or axes
+        The default (axis = None) is to calculate the gradient for all the axes of the input array.
+        axis may be negative, in which case it counts from the last to the first axis.
+        .. versionadded:: 1.11.0
+    Returns
+    -------
+    gradient : list of ndarray
+        Each element of `list` has the same shape as `f` giving the derivative
+        of `f` with respect to each dimension.
+    Examples
+    --------
+    >>> x = np.array([1, 2, 4, 7, 11, 16], dtype=np.float)
+    >>> np.gradient(x)
+    array([ 1. ,  1.5,  2.5,  3.5,  4.5,  5. ])
+    >>> np.gradient(x, 2)
+    array([ 0.5 ,  0.75,  1.25,  1.75,  2.25,  2.5 ])
+    For two dimensional arrays, the return will be two arrays ordered by
+    axis. In this example the first array stands for the gradient in
+    rows and the second one in columns direction:
+    >>> np.gradient(np.array([[1, 2, 6], [3, 4, 5]], dtype=np.float))
+    [array([[ 2.,  2., -1.],
+            [ 2.,  2., -1.]]), array([[ 1. ,  2.5,  4. ],
+            [ 1. ,  1. ,  1. ]])]
+    >>> x = np.array([0, 1, 2, 3, 4])
+    >>> dx = np.gradient(x)
+    >>> y = x**2
+    >>> np.gradient(y, dx, edge_order=2)
+    array([-0.,  2.,  4.,  6.,  8.])
+    The axis keyword can be used to specify a subset of axes of which the gradient is calculated
+    >>> np.gradient(np.array([[1, 2, 6], [3, 4, 5]], dtype=np.float), axis=0)
+    array([[ 2.,  2., -1.],
+           [ 2.,  2., -1.]])
+    """
+    f = np.asanyarray(f)
+    N = len(f.shape)  # number of dimensions
+
+    axes = kwargs.pop('axis', None)
+    if axes is None:
+        axes = tuple(range(N))
+    # check axes to have correct type and no duplicate entries
+    if isinstance(axes, int):
+        axes = (axes,)
+    if not isinstance(axes, tuple):
+        raise TypeError("A tuple of integers or a single integer is required")
+
+    # normalize axis values:
+    axes = tuple(x + N if x < 0 else x for x in axes)
+    if max(axes) >= N or min(axes) < 0:
+        raise ValueError("'axis' entry is out of bounds")
+
+    if len(set(axes)) != len(axes):
+        raise ValueError("duplicate value in 'axis'")
+
+    n = len(varargs)
+    if n == 0:
+        dx = [1.0]*N
+    elif n == 1:
+        dx = [varargs[0]]*N
+    elif n == len(axes):
+        dx = list(varargs)
+    else:
+        raise SyntaxError(
+            "invalid number of arguments")
+
+    edge_order = kwargs.pop('edge_order', 1)
+    if kwargs:
+        raise TypeError('"{}" are not valid keyword arguments.'.format(
+                                                  '", "'.join(kwargs.keys())))
+    if edge_order > 2:
+        raise ValueError("'edge_order' greater than 2 not supported")
+
+    # use central differences on interior and one-sided differences on the
+    # endpoints. This preserves second order-accuracy over the full domain.
+
+    outvals = []
+
+    # create slice objects --- initially all are [:, :, ..., :]
+    slice1 = [slice(None)]*N
+    slice2 = [slice(None)]*N
+    slice3 = [slice(None)]*N
+    slice4 = [slice(None)]*N
+
+    otype = f.dtype.char
+    if otype not in ['f', 'd', 'F', 'D', 'm', 'M']:
+        otype = 'd'
+
+    # Difference of datetime64 elements results in timedelta64
+    if otype == 'M':
+        # Need to use the full dtype name because it contains unit information
+        otype = f.dtype.name.replace('datetime', 'timedelta')
+    elif otype == 'm':
+        # Needs to keep the specific units, can't be a general unit
+        otype = f.dtype
+
+    # Convert datetime64 data into ints. Make dummy variable `y`
+    # that is a view of ints if the data is datetime64, otherwise
+    # just set y equal to the array `f`.
+    if f.dtype.char in ["M", "m"]:
+        y = f.view('int64')
+    else:
+        y = f
+
+    for i, axis in enumerate(axes):
+
+        if y.shape[axis] < 2:
+            raise ValueError(
+                "Shape of array too small to calculate a numerical gradient, "
+                "at least two elements are required.")
+        
+        # Numerical differentiation: 1st order edges, 2nd order interior
+        if y.shape[axis] == 2 or edge_order == 1:
+            
+            # Use first order differences for time data
+            out = np.empty_like(y, dtype=otype)
+
+            slice1[axis] = slice(1, -1)
+            slice2[axis] = slice(2, None)
+            slice3[axis] = slice(None, -2)
+            # 1D equivalent -- out[1:-1] = (y[2:] - y[:-2])/2.0
+            out[slice1] = (y[slice2] - y[slice3])
+            out[slice1] = (out[slice1] + math.pi) % (2*math.pi) - math.pi
+            out[slice1]=out[slice1]/2.0
+
+            slice1[axis] = 0
+            slice2[axis] = 1
+            slice3[axis] = 0
+            # 1D equivalent -- out[0] = (y[1] - y[0])
+            out[slice1] = (y[slice2] - y[slice3])
+            out[slice1] = (out[slice1] + math.pi) % (2*math.pi) - math.pi
+
+            slice1[axis] = -1
+            slice2[axis] = -1
+            slice3[axis] = -2
+            # 1D equivalent -- out[-1] = (y[-1] - y[-2])
+            out[slice1] = (y[slice2] - y[slice3])
+            out[slice1] = (out[slice1] + math.pi) % (2*math.pi) - math.pi
+
+        # Numerical differentiation: 2st order edges, 2nd order interior
+        else:
+            # Use second order differences where possible
+            out = np.empty_like(y, dtype=otype)
+
+            slice1[axis] = slice(1, -1)
+            slice2[axis] = slice(2, None)
+            slice3[axis] = slice(None, -2)
+            # 1D equivalent -- out[1:-1] = (y[2:] - y[:-2])/2.0
+            out[slice1] = (y[slice2] - y[slice3])
+            out[slice1] = (out[slice1] + math.pi) % (2*math.pi) - math.pi
+            out[slice1] = out[slice1]/2
+
+            slice1[axis] = 0
+            slice2[axis] = 0
+            slice3[axis] = 1
+            slice4[axis] = 2
+            # 1D equivalent -- out[0] = -(3*y[0] - 4*y[1] + y[2]) / 2.0
+            out[slice1] = -(3.0*y[slice2] - 4.0*y[slice3] + y[slice4])
+            out[slice1] = (out[slice1] + math.pi) % (2*math.pi) - math.pi
+            out[slice1]=out[slice1]/2.0
+
+            slice1[axis] = -1
+            slice2[axis] = -1
+            slice3[axis] = -2
+            slice4[axis] = -3
+            # 1D equivalent -- out[-1] = (3*y[-1] - 4*y[-2] + y[-3])
+            out[slice1] = (3.0*y[slice2] - 4.0*y[slice3] + y[slice4])
+            out[slice1] = (out[slice1] + math.pi) % (2*math.pi) - math.pi
+            out[slice1]=out[slice1]/2.0
+
+        # divide by step size
+        out /= dx[i]
+        outvals.append(out)
+
+        # reset the slice object in this dimension to ":"
+        slice1[axis] = slice(None)
+        slice2[axis] = slice(None)
+        slice3[axis] = slice(None)
+        slice4[axis] = slice(None)
+
+    if len(axes) == 1:
+        return outvals[0]
+    else:
+        return outvals
+
+    
 def calculate_gradients(img):
     '''
     Calculate 2d gradient, plus mean direction, etc. Return as dict.
@@ -897,6 +1223,7 @@ def roi_gradients(animalid, session, fov, retinorun='retino_run1',
             'smooth_fwhm': smooth_fwhm,
             'd1': d1, 'd2': d2,
             'pixel_size': pixel_size,
+            'ds_factor': ds_factor,
             'kernel_size': kernel_size,
             'retinoid': retinoid,
             'zimg': zimg_r}
@@ -905,9 +1232,9 @@ def roi_gradients(animalid, session, fov, retinorun='retino_run1',
 
 
 def pixel_gradients(animalid, session, fov, retinorun='retino_run1', 
-                traceid='traces001', mag_thr=0.003,
-                cmap='nipy_spectral', smooth_fwhm=7, 
-                rootdir='/n/coxfs01/2p-data'): 
+                traceid='traces001', mag_thr=0.003, delay_map_thr=1, 
+                cmap='nipy_spectral', smooth_fwhm=7, use_phase_smooth=False, smooth_spline=1,
+                full_cmap_range=True, dst_dir=None, rootdir='/n/coxfs01/2p-data'): 
 
                 #desired_radius_um=10, regr_plot_spacing=200,
                 #regr_line_color='magenta', zero_center=True, regr_model='ols',
@@ -925,15 +1252,15 @@ def pixel_gradients(animalid, session, fov, retinorun='retino_run1',
     trials_by_cond = scaninfo['trials']
 
     # Set current animal's retino output dir
-    #curr_dst_dir = os.path.join(RETID['DST'], 'retino-structure')
-    run_dir = os.path.join(rootdir, animalid, session, fov, retinorun)
-    curr_dst_dir = os.path.join(run_dir, 'retino_analysis', 'retino_structure')
-    if not os.path.exists(curr_dst_dir):
+    curr_dst_dir = dst_dir
+    if curr_dst_dir is None:
+        run_dir = os.path.join(rootdir, animalid, session, fov, retinorun)
+        curr_dst_dir = os.path.join(run_dir, 'retino_analysis', 'retino_structure')
+        if not os.path.exists(curr_dst_dir):
             os.makedirs(curr_dst_dir)
             print("Saving output to:\n %s" % curr_dst_dir)
 
-
-    # Move old stuff
+        # Move old stuff
     old_dir = os.path.join(curr_dst_dir, 'tests')
     if not os.path.exists(old_dir):
         os.makedirs(old_dir)
@@ -975,8 +1302,8 @@ def pixel_gradients(animalid, session, fov, retinorun='retino_run1',
     pl.close()
 
     # Filter phase maps for only where delay map is close to 0  
-    filt_az = np.where(abs(delay_az_shift)<1, abs_az, np.nan)
-    filt_el = np.where(abs(delay_el_shift)<1, abs_el, np.nan)
+    filt_az = np.where(abs(delay_az_shift)<delay_map_thr, abs_az, np.nan)
+    filt_el = np.where(abs(delay_el_shift)<delay_map_thr, abs_el, np.nan)
 
 
     # measured pixel size: (2.3, 1.9)
@@ -989,18 +1316,22 @@ def pixel_gradients(animalid, session, fov, retinorun='retino_run1',
     print("... pixel size: %s (ds_factor=%.2f)" % (str(pixel_size), ds_factor))
 
     #%% Spatial smooth neuropil dilated masks 
-    azim_smoothed = ret_utils.smooth_neuropil(filt_az, smooth_fwhm=smooth_fwhm)
-    elev_smoothed = ret_utils.smooth_neuropil(filt_el, smooth_fwhm=smooth_fwhm)
-    # if 'zoom1p0x' in fov:
-    #     print("... resizing")
-    #     azim_smoothed = cv2.resize(azim_smoothed, (new_d1, new_d2))
-    #     elev_smoothed = cv2.resize(elev_smoothed, (new_d1, new_d2))
-    azim_smoothed = fill_and_smooth_nans(azim_smoothed)
-    elev_smoothed = fill_and_smooth_nans(elev_smoothed)
+    #nan_smooth=1
+    #use_phase_smooth=False
+    #smooth_fwhm=7
+    if use_phase_smooth:
+        azim_smoothed = ret_utils.smooth_phase_nans(filt_az, smooth_fwhm, smooth_fwhm)
+        elev_smoothed = ret_utils.smooth_phase_nans(filt_el, smooth_fwhm, smooth_fwhm)
+    else:
+        azim_smoothed = ret_utils.smooth_neuropil(filt_az, smooth_fwhm=smooth_fwhm)
+        elev_smoothed = ret_utils.smooth_neuropil(filt_el, smooth_fwhm=smooth_fwhm)
+
+    azim_fillnan = fill_and_smooth_nans_missing(azim_smoothed, kx=smooth_spline, ky=smooth_spline)
+    elev_fillnan = fill_and_smooth_nans_missing(elev_smoothed, kx=smooth_spline, ky=smooth_spline)
 
     # Transform FOV to match widefield
-    azim_r = coreg.transform_2p_fov(azim_smoothed, pixel_size, normalize=False)
-    elev_r = coreg.transform_2p_fov(elev_smoothed, pixel_size, normalize=False)
+    azim_r = coreg.transform_2p_fov(azim_fillnan, pixel_size, normalize=False)
+    elev_r = coreg.transform_2p_fov(elev_fillnan, pixel_size, normalize=False)
     print(azim_r[~np.isnan(azim_r)].min(), azim_r[~np.isnan(azim_r)].max())
     print(elev_r[~np.isnan(elev_r)].min(), elev_r[~np.isnan(elev_r)].max())
 
@@ -1010,26 +1341,49 @@ def pixel_gradients(animalid, session, fov, retinorun='retino_run1',
     vmin, vmax = (-np.pi, np.pi)
 
     # In[43]:
-    fig = plot_retinomap_processing_pixels(filt_az, azim_smoothed, az_fill,
-                                           filt_el, elev_smoothed, el_fill, 
+    fig = plot_retinomap_processing_pixels(filt_az, azim_smoothed, azim_fillnan, az_fill,
+                                           filt_el, elev_smoothed, elev_fillnan, el_fill, 
                                            cmap_phase=cmap_phase, 
                                            vmin=vmin, vmax=vmax, 
-                                           smooth_fwhm=smooth_fwhm)
+                                           full_cmap_range=full_cmap_range,
+                                           smooth_fwhm=smooth_fwhm, smooth_spline=smooth_spline,
+                                           delay_map_thr=delay_map_thr)
     putils.label_figure(fig, data_id)
-    figname = 'pixelmaps_smooth-%i_magthr-%.3f' % (smooth_fwhm, mag_thr )
+    figname = 'pixelmaps_smooth-%i_magthr-%.3f_delaymapthr-%.2f' % (smooth_fwhm, mag_thr, delay_map_thr)
     pl.savefig(os.path.join(curr_dst_dir, '%s.png' % figname))
 
     params={'dst_dir':curr_dst_dir,
             'data_id': data_id,
             'mag_thr': mag_thr,
+            'delay_map_thr': delay_map_thr,
             'vmin': vmin, 
             'vmax': vmax,
             'pixel_size': pixel_size,
+            'ds_factor': ds_factor,
             'smooth_fwhm': smooth_fwhm,
+            'smooth_spline': smooth_spline,
             'd1': d1, 'd2': d2,
             'retinoid': retinoid}
 
     return az_fill, el_fill, params, RETID
+
+
+
+# ====================================================================
+# Data loading
+# ====================================================================
+def projection_results_fpaths(animalid, session, fov, retinorun='retino_run1', results_type='projections',
+                           rootdir='/n/coxfs01/2p-data'):
+    
+    '''
+    results_type: can be projections, gradients, etc.
+    '''
+    fpaths = [f for f in glob.glob(os.path.join(rootdir, animalid, session, fov, retinorun,
+                                'retino_analysis', 'retino_structure', '%s_*.pkl' % results_type)) \
+              if '_pixels_thr' not in f]
+    
+    return fpaths
+
 
 
 
@@ -1078,12 +1432,16 @@ def extract_options(options):
     
     parser.add_option('-s', '--smooth', action='store', dest='smooth_fwhm', 
             default=7.0, help="FWHM for spatial smoothing (default: 7)")
+    parser.add_option('-k', '--spline', action='store', dest='smooth_spline', 
+            default=1, help="degree of spline for smoothing (default: 1, use 2+ for multiple areas)")
     parser.add_option('-d', '--dilate', action='store', dest='dilate_um', 
             default=10.0, help="Desired radius for dilation (default: 10.0 um)")
     parser.add_option('-M', '--model', action='store', dest='regr_model', 
             default='ridge', help="Desired radius for dilation (default: ridge)")
-    parser.add_option('--pixels', action='store', dest='use_pixels', 
+    parser.add_option('--pixels', action='store_true', dest='use_pixels', 
             default=False, help="Use pixel maps to calculate gradients (Note: make sure mag_thr is set properly)")
+    parser.add_option('--full-fov', action='store_true', dest='full_fov', 
+            default=False, help="set flag to use whole fov, rather than segmented")
    
     (options, args) = parser.parse_args(options)
 
@@ -1092,9 +1450,9 @@ def extract_options(options):
 
 
 
-def main(options):
+def gradient_full_fov(opts): #options):
 
-    opts = extract_options(options)
+    #opts = extract_options(options)
     rootdir=opts.rootdir
     animalid=opts.animalid
     session=opts.session
@@ -1102,12 +1460,12 @@ def main(options):
     retinorun=opts.run
     traceid=opts.traceid
 
-
     plot_examples=opts.plot_examples
     cmap_name=opts.cmap 
     regr_model = opts.regr_model
 
     smooth_fwhm=opts.smooth_fwhm
+    smooth_spline = opts.smooth_spline
     desired_radius_um=float(opts.dilate_um)
     regr_plot_spacing=int(opts.regr_plot_spacing)
     regr_line_color=opts.regr_line_color 
@@ -1119,33 +1477,33 @@ def main(options):
     if use_pixels:
         mag_thr = 0.003 
 
+    if cmap_name=='nic_Edge':
+        screen, cmap_phase = ret_utils.get_retino_legends(cmap_name=cmap_name, zero_center=True, 
+                                                  return_cmap=True)
 
     # Get gradients
     if use_pixels:
         az_fill, el_fill, params, RETID = pixel_gradients(animalid, session, fov,
                             retinorun=retinorun, traceid=traceid, 
                             mag_thr=mag_thr, cmap=cmap_name, 
-                            smooth_fwhm=smooth_fwhm)                
+                            smooth_fwhm=smooth_fwhm, smooth_spline=smooth_spline)                
                 
         vmin, vmax = (params['vmin'], params['vmax'])
         smooth_fwhm = params['smooth_fwhm']
         mag_thr = params['mag_thr']
+        delay_map_thr = params['delay_map_thr']
         curr_dst_dir = params['dst_dir']
         data_id = params['data_id']
 
-        figname_str = 'pixels_magthr-%.3f' % (mag_thr)
-        gradient_source = 'pixels_thr-%.3f' % (mag_thr)
+        figname_str = 'pixels_magthr-%.3f_delaymapthr-%.2f' % (mag_thr, delay_map_thr)
+        gradient_source = 'pixels_thr-%.3f_delaymapthr-%.2f' % (mag_thr, delay_map_thr)
     else: 
         az_fill, el_fill, params, RETID = roi_gradients(animalid, session, fov, 
                             retinorun=retinorun, traceid=traceid, 
                             mag_thr=mag_thr, pass_criterion=pass_criterion,
                             plot_examples=plot_examples, cmap=cmap_name, 
                             smooth_fwhm=smooth_fwhm) 
-#                            desired_radius_um=desired_radius_um,
-#                            regr_plot_spacing=regr_plot_spacing,
-#                            regr_line_color=regr_line_color, zero_center=True, 
-#                            regr_model=regr_model) 
-#        
+        
         vmin, vmax = (params['vmin'], params['vmax'])
         kernel_size = params['kernel_size']
         smooth_fwhm = params['smooth_fwhm']
@@ -1180,6 +1538,7 @@ def main(options):
                                     if plot_degrees else el_fill.copy()
     grad_az = calculate_gradients(img_az)
     grad_el = calculate_gradients(img_el)
+    
     vmin, vmax = (screen_min, screen_max) if plot_degrees else (-np.pi, np.pi)
 
     #%% Plot gradients 
@@ -1205,7 +1564,7 @@ def main(options):
 
     # Save gradients
     gradients = {'az': grad_az, 'el': grad_el}
-    grad_fpath = os.path.join(curr_dst_dir, 'gradients_%s.pkl' % (gradient_source))
+    grad_fpath = os.path.join(curr_dst_dir, 'gradients.pkl')
     with open(grad_fpath, 'wb') as f:
         pkl.dump(gradients, f, protocol=pkl.HIGHEST_PROTOCOL)
 
@@ -1288,7 +1647,225 @@ def main(options):
 
     return None
 
+
+def gradient_within_visual_area(opts): #options):
+    #opts = extract_options(options)
+    rootdir=opts.rootdir
+    animalid=opts.animalid
+    session=opts.session
+    fov=opts.fov
+    retinorun=opts.run
+    traceid=opts.traceid
+
+    plot_examples=opts.plot_examples
+    cmap_name=opts.cmap 
+    regr_model = opts.regr_model
+
+    smooth_fwhm=opts.smooth_fwhm
+    smooth_spline = opts.smooth_spline
+    desired_radius_um=float(opts.dilate_um)
+    regr_plot_spacing=int(opts.regr_plot_spacing)
+    regr_line_color=opts.regr_line_color 
+    zero_center=True
+  
+    mag_thr=float(opts.mag_thr)
+    pass_criterion=opts.pass_criterion    
+    use_pixels = pass_criterion=='pixels' #opts.use_pixels
+
+
+    run_dir = os.path.join(rootdir, animalid, session, fov, retinorun)
+    curr_dst_dir = os.path.join(run_dir, 'retino_analysis', 'retino_structure')
+    if not os.path.exists(curr_dst_dir):
+        os.makedirs(curr_dst_dir)
+        print("Saving output to:\n %s" % curr_dst_dir)
+
+    # REMOVE old   
+    for f in os.listdir(curr_dst_dir):
+        try:
+            os.remove(os.path.join(curr_dst_dir, f))
+        except OSError:
+            continue 
+    data_id = '_'.join([animalid, session, fov, retinorun])
+
+
+    # Get colormap
+    screen, cmap_phase = ret_utils.get_retino_legends(cmap_name=cmap_name, 
+                                                  zero_center=zero_center,
+                                                  return_cmap=True, 
+                                                  dst_dir=curr_dst_dir)  
+
+
+
+    # -----------------------------------------------
+    #%% ## Calculate gradient on retino map
+    # ------------------------------------------------
+    plot_degrees = True
+    screen = putils.get_screen_dims()
+    screen_max = screen['azimuth_deg']/2.
+    screen_min = -screen_max
+
+    ## Load segmentation
+    seg_results, seg_params = seg.load_segmentation_results(animalid, session, fov, retinorun=retinorun)
+    
+    ## Get inputmaps
+    if 'morphological_kernels' not in seg_params.keys():
+        print("RERUNNING SEGMENTATION")
+        pixel_size = putils.get_pixel_size()
+        target_sigm_um = round(np.ceil(seg_params['smooth_fwhm'] * np.mean(pixel_size)))
+        use_phase_smooth = seg_params['smooth_type']=='phasenan'
+        az_fill, el_fill, pparams = seg.smooth_processed_maps(animalid, session, fov, retinorun=retinorun,
+                                                        target_sigma_um=target_sigm_um,
+                                                        start_with_transformed=seg_params['start_with_transformed'],
+                                                        smooth_spline=seg_params['smooth_spline'],
+                                                        use_phase_smooth=use_phase_smooth, cmap_phase=cmap_phase,
+                                                        reprocess=True)
+
+    img_az, img_el, pparams = seg.load_final_maps(animalid, session, fov, retinorun=retinorun, return_screen=True)
+
+    # ---------------------------------------------------------------------
+    # ## Calculate gradient for segmented areas
+    segmented_areas = seg_results['areas']
+    print(segmented_areas.keys())
+    region_props = seg_results['region_props']
+
+
+    contour_lc='r'
+    contour_lw=1
+    spacing =100
+    scale = 0.001 #0.0001
+    width = 0.01 #1 #0.01
+    headwidth=5
+
+    for vi, (curr_visual_area, area_results) in enumerate(segmented_areas.items()):
+        print(vi, curr_visual_area)
+        if putils.isnumber(curr_visual_area):
+            continue
+        curr_segmented_mask = area_results['mask']
+        grad_az, grad_el = seg.calculate_gradients(curr_segmented_mask, img_az, img_el)
+        
+        # Plot results ------------
+        labeled_image = seg_results['labeled_image'].copy()
+
+        curr_labeled_image = np.zeros(labeled_image.shape)
+        curr_labeled_image[labeled_image==area_results['id']] = 1
+        fig = seg.plot_gradients_in_area(curr_labeled_image, img_az, img_el, grad_az, grad_el,
+                                    cmap_phase=cmap_phase,
+                                    contour_lc='w', contour_lw=2)
+        pl.subplots_adjust(wspace=0.5, hspace=0.5, top=0.8)
+        putils.label_figure(fig, data_id)
+        fig.suptitle(curr_visual_area)
+
+        figname = 'gradients_%s' % curr_visual_area
+        pl.savefig(os.path.join(curr_dst_dir, '%s.png' % figname))
+        print(curr_dst_dir, figname)
+
+        # --------------------------------------------------------------------- 
+        vmin, vmax = (screen_min, screen_max) if plot_degrees else (-np.pi, np.pi)
+
+        #%% Plot gradients 
+        spacing = 200
+        scale = None #0.0001
+        width = 0.01 #0.01
+        headwidth=5
+
+        # Save gradients
+        gradients = {'az': grad_az, 'el': grad_el}
+        grad_fpath = os.path.join(curr_dst_dir, 'gradients_%s.pkl' % curr_visual_area) #% (gradient_source))
+        with open(grad_fpath, 'wb') as f:
+            pkl.dump(gradients, f, protocol=pkl.HIGHEST_PROTOCOL)
+
+        uvectors = {'az': grad_az['vhat'], 'el': grad_el['vhat']}
+        vec_fpath = os.path.join(curr_dst_dir, 'vectors_%s.pkl' % curr_visual_area) #% (gradient_source))
+        with open(vec_fpath, 'wb') as f:
+            pkl.dump(uvectors, f, protocol=pkl.HIGHEST_PROTOCOL)
+
+
+        #%% ## Calculate gradients and projec to get mean
+        projections = get_projection_points(grad_az, grad_el)
+
+        d1, d2 = grad_az['image'].shape
+        fig = test_plot_projections(projections, ncyc=5, startcyc=800, imshape=(d1,d2))
+        label_figure(fig, data_id)
+        pl.subplots_adjust(left=0.1, wspace=0.5)
+        figname = 'test_projections__%s' % curr_visual_area #% (figname_str) 
+        pl.savefig(os.path.join(curr_dst_dir, '%s.png' % figname))
+
+        #%% ## Fit linear  
+        proj_fit_results = {}
+        d_list = []
+        di = 0
+        for i, cond in enumerate(['az', 'el']):
+            proj_v = projections['proj_%s' % cond].copy()
+            ret_v = projections['retino_%s' % cond].copy()
+            fitv, regr = evalrf.fit_linear_regr(proj_v[~np.isnan(ret_v)], 
+                                                ret_v[~np.isnan(ret_v)],
+                                                return_regr=True, model=regr_model)
+         
+            rmse = np.sqrt(skmetrics.mean_squared_error(ret_v[~np.isnan(ret_v)], fitv))
+            r2 = skmetrics.r2_score(ret_v[~np.isnan(ret_v)], fitv)
+            pearson_r, pearson_p = spstats.pearsonr(proj_v[~np.isnan(ret_v)], ret_v[~np.isnan(ret_v)]) 
+            slope = float(regr.coef_)
+            intercept = float(regr.intercept_)
+
+            proj_fit_results.update({'fitv_%s' % cond: fitv, 
+                                     'regr_%s' % cond: regr})
+
+            d_ = pd.DataFrame({'cond': cond, 
+                              'R2': r2,
+                              'RMSE': rmse,
+                              'pearson_p': pearson_p,
+                              'pearson_r': pearson_r,
+                              'coefficient': slope, # float(regr.coef_), 
+                              'intercept': intercept, #float(regr.intercept_)
+                              }, index=[di])
+            print("~~~regr results: y = %.2f + %.2f (R2=%.2f)" % (slope, intercept, r2))
+
+            d_list.append(d_)
+            di += 1
+        regr_df = pd.concat(d_list, axis=0)
+
+        proj_fit_results.update({'projections': projections, 
+                                 'model': regr_model,
+                                 'mag_thr': mag_thr,
+                                 'pass_criterion': pass_criterion, 
+                                 'regr_df': regr_df})
+
+        proj_fpath = os.path.join(curr_dst_dir, 'projection_results_%s.pkl' % curr_visual_area) #% gradient_source)
+        with open(proj_fpath, 'wb') as f:
+            pkl.dump(proj_fit_results, f, protocol=pkl.HIGHEST_PROTOCOL)
+        print(proj_fpath)
+        
+        df_fpath = os.path.join(curr_dst_dir, 'projections_%s.pkl' % curr_visual_area) #% (gradient_source))
+        p_df = {'regr_df': regr_df}
+        with open(df_fpath, 'wb') as f:
+            pkl.dump(p_df, f, protocol=pkl.HIGHEST_PROTOCOL)
+            
+        #%% Plot linear fit
+        fig = plot_projected_vs_retino_positions(projections, proj_fit_results,
+                                                 spacing=regr_plot_spacing, 
+                                                 regr_color=regr_line_color)
+
+        label_figure(fig, data_id)
+        pl.subplots_adjust(left=0.1, wspace=0.5)
+        figname = 'Proj_versus_Retinopos__%s' % curr_visual_area #% (figname_str)
+        pl.savefig(os.path.join(curr_dst_dir, '%s.svg' % figname))
+
+
+    return None
+
+
+def main(options):
+
+    opts = extract_options(options)
+
+    if opts.full_fov:
+        gradient_full_fov(opts)
+    else:        
+        gradient_within_visual_area(opts)
+
+
 if __name__ == '__main__':
+
     main(sys.argv[1:])
 
 

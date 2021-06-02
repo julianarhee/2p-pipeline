@@ -6,8 +6,8 @@ Created on Thu Apr  4 16:37:13 2019
 @author: julianarhee
 """
 
-#import matplotlib as mpl
-#mpl.use('Agg')
+import matplotlib as mpl
+mpl.use('Agg')
 import os
 import h5py
 import json
@@ -34,9 +34,9 @@ import glob
 import scipy as sp
 import pandas as pd
 import seaborn as sns
-
+import scipy.stats as spstats
 from mpl_toolkits.axes_grid1 import make_axes_locatable
-from pipeline.python.utils import natural_keys, label_figure, replace_root, convert_range, get_screen_dims
+from pipeline.python.utils import natural_keys, label_figure, replace_root, convert_range, get_screen_dims, colorbar
 #from matplotlib.patches import Ellipse, Rectangle
 
 pp = pprint.PrettyPrinter(indent=4)
@@ -56,28 +56,73 @@ import cPickle as pkl
 # -----------------------------------------------------------------------------
 # Map funcs 
 # -----------------------------------------------------------------------------
+#def arrays_to_maps(magratio, phase, trials_by_cond, use_cont=False,
+#                            dims=(512, 512), ds_factor=2, cond='right', 
+#                            mag_thr=None, mag_perc=0.05):
+#    if mag_thr is None:
+#        mag_thr = magratio.max().max()*mag_perc
+#        
+#    currmags = magratio[trials_by_cond[cond]]
+#    currmags[currmags<mag_thr] = np.nan
+#    currmags_mean = np.nanmean(currmags, axis=1)
+#    #d1 = int(np.sqrt(currmags_mean.shape[0]))
+#    d1 = dims[0] / ds_factor
+#    d2 = dims[1] / ds_factor
+#    currmags_map = np.reshape(currmags_mean, (d1, d2))
+#    
+#    currphase = phase[trials_by_cond[cond]]
+#    currphase_mean = stats.circmean(currphase, low=-np.pi, high=np.pi, axis=1)
+#    currphase_mean_c = correct_phase_wrap(currphase_mean)
+#
+#    currphase_mean_c[np.isnan(currmags_mean)] = np.nan
+#    currphase_map_c = np.reshape(currphase_mean_c, (d1, d2))
+#    
+#    return currmags_map, currphase_map_c, mag_thr
+#
+
 def arrays_to_maps(magratio, phase, trials_by_cond, use_cont=False,
-                            dims=(512, 512), ds_factor=2, cond='right', 
-                            mag_thr=None, mag_perc=0.05):
+                            dims=(512, 512), ds_factor=2, cond='right',
+                            mag_thr=None, mag_perc=0.05, return_map=True):
     if mag_thr is None:
         mag_thr = magratio.max().max()*mag_perc
-        
-    currmags = magratio[trials_by_cond[cond]]
-    currmags[currmags<mag_thr] = np.nan
-    currmags_mean = np.nanmean(currmags, axis=1)
-    #d1 = int(np.sqrt(currmags_mean.shape[0]))
-    d1 = dims[0] / ds_factor
-    d2 = dims[1] / ds_factor
-    currmags_map = np.reshape(currmags_mean, (d1, d2))
-    
-    currphase = phase[trials_by_cond[cond]]
-    currphase_mean = stats.circmean(currphase, low=-np.pi, high=np.pi, axis=1)
-    currphase_mean_c = correct_phase_wrap(currphase_mean)
 
-    currphase_mean_c[np.isnan(currmags_mean)] = np.nan
-    currphase_map_c = np.reshape(currphase_mean_c, (d1, d2))
-    
+    currmags = magratio[trials_by_cond[cond]].copy()
+    currmags_mean = currmags.mean(axis=1)
+    currmags_mean.loc[currmags_mean<mag_thr] = np.nan 
+    #currmags_mean = means_[means_>=mag_thr]
+
+    if return_map:
+        #currmags = magratio[trials_by_cond[cond]]
+        #currmags.loc[currmags<mag_thr, trials_by_cond[cond]] = np.nan
+        #currmags_mean = np.nanmean(currmags, axis=1)
+        #d1 = int(np.sqrt(currmags_mean.shape[0]))
+        d1 = int(dims[0] / ds_factor)
+        d2 = int(dims[1] / ds_factor)
+        print(d1, d2)
+        currmags_map = np.reshape(currmags_mean.values, (d1, d2))
+    else:
+        currmags_map = currmags_mean.copy()
+
+        
+    currphase = phase[trials_by_cond[cond]].copy() #.loc[currmags_mean.index]
+    #currphase.loc[currmags_mean[currmags_mean<mag_thr].index, trials_by_cond[cond]] = np.nan
+    currphase.loc[currmags_mean[np.isnan(currmags_mean)].index, trials_by_cond[cond]] = np.nan
+    #currphase_mean = stats.circmean(currphase, low=-np.pi, high=np.pi, axis=1, nan_policy='omit')
+    #currphase_mean_c = correct_phase_wrap(currphase_mean)
+    non_nan_ix = currphase.dropna().index #.tolist()
+    currphase_mean0 = stats.circmean(currphase.dropna(), low=-np.pi, high=np.pi, axis=1) #, nan_policy='omit')
+    currphase_mean_c0 = correct_phase_wrap(currphase_mean0)
+    currphase_mean_c = pd.DataFrame(data=np.ones(len(currphase),)*np.nan, index=currphase.index)
+    currphase_mean_c.loc[non_nan_ix, 0] = currphase_mean_c0
+        
+    if return_map:
+        #currphase_mean_c[np.isnan(currmags_mean)] = np.nan
+        currphase_map_c = np.reshape(currphase_mean_c.values, (d1, d2))
+    else:
+        currphase_map_c = currphase_mean_c.copy()
+        
     return currmags_map, currphase_map_c, mag_thr
+
 
 def absolute_maps_from_conds(magratio, phase, trials_by_cond, mag_thr=0.01,
                                 dims=(512, 512), ds_factor=2, outdir='/tmp', 
@@ -120,10 +165,177 @@ def absolute_maps_from_conds(magratio, phase, trials_by_cond, mag_thr=0.01,
 # -----------------------------------------------------------------------------
 # Data processing funcs 
 # -----------------------------------------------------------------------------
+def get_average_mag_across_pixels(animalid, session, fov, rootdir='/n/coxfs01/2p-data'):
+    magratios=[]
+    retinoruns = [os.path.split(r)[-1] for r \
+                  in glob.glob(os.path.join(rootdir, animalid, session, fov, 'retino_run*'))]
+    
+    for retinorun in retinoruns:
+        retinoid, RETID = load_retino_analysis_info(animalid, session, fov, retinorun, use_pixels=True)
+        magratio, phase, trials_by_cond = fft_results_by_trial(RETID)
+        mean_mag = magratio.mean(axis=0).mean()
+
+        magratios.append((retinorun, mean_mag))
+
+    return magratios
+
+def select_strongest_retinorun(projection_df):
+    d_=[]
+    #m_=[]
+    for (varea, dkey), g in projection_df.groupby(['visual_area', 'datakey']):
+        if len(g['retinorun'].unique())>1:
+            session, animalid, fovn = dkey.split('_')
+            fov = 'FOV%i_zoom2p0x' % int(fovn[3:])
+            magratios = get_average_mag_across_pixels(animalid, session, fov)
+    #         means0 = pd.DataFrame({'retinorun': [m[0] for m in magratios],
+    #                                'magratio': [m[1] for m in magratios]})
+    #         means2 = g.groupby(['retinorun']).mean().reset_index()[['retinorun', 'R2']]
+    #         means = means0.merge(means2)
+    #         means = putils.add_meta_to_df(means, {'visual_area': visual_area,'datakey': datakey})
+    #         m_.append(means)
+            if magratios[0][1] > magratios[1][1]:
+                d_.append(g[g['retinorun']==magratios[0][0]])
+            else:
+                d_.append(g[g['retinorun']==magratios[1][0]])
+        else:
+            d_.append(g)
+    df = pd.concat(d_, axis=0).reset_index(drop=True)
+    
+    return df
+
+
+def get_responsive_cells(animalid, session, fov, traceid='traces001', retinorun=None, 
+                         pass_criterion='max', mag_thr=0.01, create_new=False, trace_type='corrected',
+                        detrend_after_average=True,
+                        rootdir='/n/coxfs01/2p-data'):
+    '''
+    Get list of cells that are responsive to retino moving bar stimulus.
+    pass_criterion: 
+        'max': include cells that pass at least 1 condition (mag_thr), otherwise, mean must pass.
+        'mean': include cells if mean of conds pass mag_thr 
+        'all': include cells only if ALL conds pass mag_thr
+    '''
+    if retinorun is None:
+        retinoruns = [os.path.split(r)[-1] for r in \
+                      glob.glob(os.path.join(rootdir, animalid, session, fov, 'retino*'))]
+    else:
+        retinoruns = [retinorun]
+        
+    responsive_cells=[]
+    nrois_total=None
+    for retinorun in retinoruns:
+        fft_results = load_fft_results(animalid, session, fov, retinorun=retinorun, 
+                        traceid=traceid, rootdir=rootdir, create_new=create_new, trace_type=trace_type,
+                        detrend_after_average=detrend_after_average)
+
+        if fft_results is None:
+            continue
+
+        # Create dataframe of magratios -- each column is a condition
+        magratios_soma, phases_soma = extract_from_fft_results(fft_results['fft_soma'])
+        #magratios_np, phases_np = extract_from_fft_results(fft_results['fft_neuropil'])
+
+        nrois_total = magratios_soma.shape[0]
+        if pass_criterion=='all':
+            pass_cells = magratios_soma[magratios_soma>=mag_thr].dropna().index.tolist()
+        else:
+            if pass_criterion=='mean':
+                cell_metrics = pd.DataFrame(magratios_soma.mean(axis=1), columns=['magratio'])
+            else:
+                cell_metrics = pd.DataFrame(magratios_soma.max(axis=1), columns=['magratio'])
+            pass_cells = cell_metrics[cell_metrics['magratio']>=mag_thr].index.tolist()
+    
+        responsive_cells.extend(pass_cells)
+
+    return list(set(responsive_cells)), nrois_total
+
+
+def load_fft_results(animalid, session, fov, retinorun='retino_run1', trace_type='corrected',
+                    traceid='traces001', rootdir='/n/coxfs01/2p-data', create_new=False,
+                    detrend_after_average=True, in_negative=False):
+    
+    run_dir = os.path.join(rootdir, animalid, session, fov, retinorun)
+    try:
+        RETID = load_retinoanalysis(run_dir, traceid)
+        assert RETID is not None
+    except Exception as e:
+        print("NO retino for traceid %s\n(check dir: %s)" % (traceid, run_dir))
+        return None
+
+    analysis_dir = RETID['DST']
+    retinoid = RETID['analysis_id']
+    #print("Loaded: %s, %s (%s))" % (retinorun, retinoid, run_dir))
+    
+    fft_dpath=os.path.join(analysis_dir, 'fft_results.pkl')
+    if create_new is False:
+        try:
+            with open(fft_dpath, 'rb') as f:
+                fft_results = pkl.load(f)
+        except Exception as e:
+            create_new=True
+            
+    if create_new:
+        
+        # Load MW info and SI info
+        mwinfo = load_mw(run_dir)
+        scaninfo = get_protocol_info(animalid, session, fov, run=retinorun) # load_si(run_dir)
+        tiff_paths = tiff_fpaths = sorted(glob.glob(os.path.join(RETID['SRC'], '*.tif')), key=natural_keys)
+        print("Found %i tifs" % len(tiff_paths))
+        
+        # Some preprocessing params
+        temporal_ds = float(RETID['PARAMS']['average_frames'])
+        print("Temporal ds: %.2f" % (temporal_ds))
+
+        #### Load raw and process traces -- returns average trace for condition
+        # retino_dpath = os.path.join(analysis_dir, 'traces', 'extracted_traces.h5')
+        np_traces = load_traces(animalid, session, fov, run=retinorun,
+                        analysisid=retinoid, trace_type='neuropil', detrend_after_average=detrend_after_average)
+        soma_traces = load_traces(animalid, session, fov, run=retinorun,
+                        analysisid=retinoid, trace_type=trace_type, detrend_after_average=detrend_after_average)
+
+        # Do fft
+        n_frames = scaninfo['stimulus']['n_frames']
+        frame_rate = scaninfo['stimulus']['frame_rate']
+        stim_freq_idx = scaninfo['stimulus']['stim_freq_idx']
+
+        #### label frequency bins
+        freqs = np.fft.fftfreq(n_frames, float(1./frame_rate))
+        sorted_freq_idxs = np.argsort(freqs)
+
+        sign = -1 if in_negative else 1
+        fft_soma = dict((cond, do_fft_analysis(sign*tdf, sorted_freq_idxs, stim_freq_idx)) \
+                        for cond, tdf in soma_traces.items())
+        fft_np = dict((cond, do_fft_analysis(tdf, sorted_freq_idxs, stim_freq_idx)) \
+                      for cond, tdf in np_traces.items())
+
+        fft_results = {'fft_soma': fft_soma, 'fft_neuropil': fft_np, 
+                       'scaninfo': scaninfo, 'RETID': RETID}
+
+        #### Save output
+        with open(fft_dpath, 'wb') as f:
+            pkl.dump(fft_results, f, protocol=pkl.HIGHEST_PROTOCOL)
+            
+    return fft_results
+
+
+def extract_from_fft_results(fft_soma):
+    '''
+    Return magratios_soma, phases_soma
+    '''
+    # Create dataframe of magratios -- each column is a condition
+    magratios_soma = pd.DataFrame(dict((cond, k[0]) for cond, k in fft_soma.items()))
+    phases_soma = pd.DataFrame(dict((cond, k[1]) for cond, k in fft_soma.items()))
+    return magratios_soma, phases_soma
+
+def load_mw(run_dir):
+    print("... loading paradigm info")
+    paradigm_fpath = glob.glob(os.path.join(run_dir, 'paradigm', 'files', 'parsed_trials*.json'))[0]
+    with open(paradigm_fpath, 'r') as r: mwinfo = json.load(r)
+    return mwinfo
 
 # preprocessing ---------------
 def load_traces(animalid, session, fov, run='retino_run1', analysisid='analysis002',
-                trace_type='raw', rootdir='/n/coxfs01/2p-data'):
+                trace_type='corrected', detrend_after_average=True, rootdir='/n/coxfs01/2p-data'):
     print("... loading traces (%s)" % trace_type)
     retinoid_path = glob.glob(os.path.join(rootdir, animalid, session, fov, '%s*' % run,
                                 'retino_analysis', 'analysisids_*.json'))[0]
@@ -140,12 +352,12 @@ def load_traces(animalid, session, fov, run='retino_run1', analysisid='analysis0
     scaninfo = get_protocol_info(animalid, session, fov, run=run)
     temporal_ds = RIDS[analysisid]['PARAMS']['downsample_factor']
     traces = load_traces_from_file(retino_dpath, scaninfo, trace_type=trace_type, 
-                                    temporal_ds=temporal_ds)
+                                    temporal_ds=temporal_ds, detrend_after_average=detrend_after_average)
     return traces
 
 
 def load_traces_from_file(retino_dpath, scaninfo, trace_type='corrected', 
-                            temporal_ds=None):
+                            temporal_ds=None, detrend_after_average=False):
     '''
     Pre-processes raw extracted traces by:
         - adding back in neuropil offsets, and 
@@ -162,10 +374,22 @@ def load_traces_from_file(retino_dpath, scaninfo, trace_type='corrected',
         tfile = h5py.File(retino_dpath, 'r')
         for condition, trialnums in trials_by_cond.items():
             #print("... loading cond: %s" % condition)
-            dlist = tuple([process_data(tfile, trialnum, trace_type=trace_type, frame_rate=frame_rate, stim_freq=stim_freq) for trialnum in trialnums])
+            do_detrend = detrend_after_average is False
+            dlist = tuple([process_data(tfile, trialnum, trace_type=trace_type, \
+                        frame_rate=frame_rate, stim_freq=stim_freq, detrend=do_detrend) \
+                        for trialnum in trialnums])
             dfcat = pd.concat(dlist)
             df_rowix = dfcat.groupby(dfcat.index)
+            # Average raw traces together
             meandf = df_rowix.mean()
+
+            # detrend
+            if detrend_after_average:
+                f0 = meandf.mean() #.mean()
+                drift_corr = detrend_array(meandf, frame_rate=frame_rate, stim_freq=stim_freq)
+                meandf = drift_corr + f0
+            
+            # smooth
             if temporal_ds is not None:
                 #print("Temporal ds: %.2f" % temporal_ds)
                 meandf = downsample_array(meandf, temporal_ds=temporal_ds)
@@ -177,23 +401,32 @@ def load_traces_from_file(retino_dpath, scaninfo, trace_type='corrected',
         
     return traces
 
-def process_data(tfile, trialnum, trace_type='corrected', add_offset=True,
-                frame_rate=44.65, stim_freq=0.13):
+def process_data(tfile, trialnum, trace_type='corrected', add_offset=True, #'corrected', add_offset=True,
+                frame_rate=44.65, stim_freq=0.13, correction_factor=0.7, detrend=True):
     #print(tfile['File001'].keys())
     if trace_type != 'neuropil' and add_offset:
         # Get raw soma traces and raw neuropil -- add neuropil offset to soma traces
+        # print(tfile['File%03d' % int(trialnum)].keys())
+        # trace_types:  corrected, neuropil, processed, raw (+ masks)
         soma = pd.DataFrame(tfile['File%03d' % int(trialnum)][trace_type][:].T)
         neuropil = pd.DataFrame(tfile['File%03d' % int(trialnum)]['neuropil'][:].T)
         np_offset = neuropil.mean(axis=0) #neuropil.mean().mean()
-        xd = soma.subtract(neuropil) + np_offset
+        if trace_type=='raw':
+            #print("raw")
+            xd = soma.subtract(correction_factor*neuropil) + np_offset
+        else:
+            xd = soma + np_offset
         del neuropil
         del soma
     else:
         xd = pd.DataFrame(tfile['File%03d' % int(trialnum)][trace_type][:].T)
-    
-    f0 = xd.mean().mean()
-    drift_corrected = detrend_array(xd, frame_rate=frame_rate, stim_freq=stim_freq)
-    xdata = drift_corrected + f0
+   
+    if detrend: 
+        f0 = xd.mean() #.mean()
+        drift_corrected = detrend_array(xd, frame_rate=frame_rate, stim_freq=stim_freq)
+        xdata = drift_corrected + f0
+    else:
+        xdata = xd.copy()
     #if temporal_ds is not None:
     #    xdata = downsample_array(xdata, temporal_ds=temporal_ds)
     
@@ -402,24 +635,29 @@ def load_retinoanalysis(run_dir, traceid, verbose=False):
     run = os.path.split(run_dir)[-1]
     trace_dir = os.path.join(run_dir, 'retino_analysis')
     tracedict_path = os.path.join(trace_dir, 'analysisids_%s.json' % run)
-    with open(tracedict_path, 'r') as f:
-        tracedict = json.load(f)
+    try:
+        with open(tracedict_path, 'r') as f:
+            tracedict = json.load(f)
 
-    if 'traces' in traceid:
-        fovdir = os.path.split(run_dir)[0]
-        tmp_tdictpath = glob.glob(os.path.join(fovdir, '*run*', 'traces', 'traceids*.json'))[0]
-        with open(tmp_tdictpath, 'r') as f:
-            tmptids = json.load(f)
-        roi_id = tmptids[traceid]['PARAMS']['roi_id']
-        analysis_id = [t for t, v in tracedict.items() if v['PARAMS']['roi_type']=='manual2D_circle' and v['PARAMS']['roi_id'] == roi_id][0]
+        if 'traces' in traceid:
+            fovdir = os.path.split(run_dir)[0]
+            tmp_tdictpath = glob.glob(os.path.join(fovdir, '*run*', 'traces', 'traceids*.json'))[0]
+            with open(tmp_tdictpath, 'r') as f:
+                tmptids = json.load(f)
+            roi_id = tmptids[traceid]['PARAMS']['roi_id']
+            analysis_id = [t for t, v in tracedict.items() if v['PARAMS']['roi_type']=='manual2D_circle' and v['PARAMS']['roi_id'] == roi_id][0]
+            if verbose:
+                print("Corresponding ANALYSIS ID (for %s with %s) is: %s" % (traceid, roi_id, analysis_id))
+        else:
+            analysis_id = traceid 
+        TID = tracedict[analysis_id]
         if verbose:
-            print("Corresponding ANALYSIS ID (for %s with %s) is: %s" % (traceid, roi_id, analysis_id))
+            pp.pprint(TID)
+    except Exception as e:
+        print("No data: %s" % tracedict_path)
+        return None
 
-    else:
-        analysis_id = traceid 
-    TID = tracedict[analysis_id]
-    if verbose:
-        pp.pprint(TID)
+
     return TID
 
 def load_soma_and_np_masks(RETID):
@@ -577,12 +815,19 @@ def do_fft_analysis(avg_traces, sorted_idxs, stim_freq_idx):
     phase_data = phase_data[sorted_idxs]
 
     # exclude DC offset from data
-    mag_data = mag_data[int(np.round(n_frames/2.))+1:, :]
-    phase_data = phase_data[int(np.round(n_frames/2.))+1:, :]
+    if len(mag_data.shape)==1:
+        mag_data = mag_data[int(np.round(n_frames/2.))+1:]
+        phase_data = phase_data[int(np.round(n_frames/2.))+1:]
+        #unpack values from frequency analysis
+        mag_array = mag_data[stim_freq_idx]
+        phase_array = phase_data[stim_freq_idx]
+    else:
+        mag_data = mag_data[int(np.round(n_frames/2.))+1:, :]
+        phase_data = phase_data[int(np.round(n_frames/2.))+1:, :]
 
-    #unpack values from frequency analysis
-    mag_array = mag_data[stim_freq_idx, :]
-    phase_array = phase_data[stim_freq_idx, :]
+        #unpack values from frequency analysis
+        mag_array = mag_data[stim_freq_idx, :]
+        phase_array = phase_data[stim_freq_idx, :]
 
     #get magnitude ratio
     tmp = np.copy(mag_data)
@@ -626,10 +871,10 @@ def trials_to_dataframes(processed_fpaths, conditions_fpath):
                 print("No analysis found for file: %s" % tifnum)
                 excluded_tifs.append(tifnum)
         trials_by_cond[cond] = [t for t in tif_list if t not in excluded_tifs]
-    print("TRIALS BY COND:")
-    print(trials_by_cond) 
+    #print("Trials by cond:")
+    #print(trials_by_cond) 
     trial_list = [int(t) for t in conds.keys() if int(t) not in excluded_tifs]
-    print("Trials:", trial_list)
+    #print("Trials:", trial_list)
 
     fits = []
     phases = []
@@ -650,11 +895,11 @@ def trials_to_dataframes(processed_fpaths, conditions_fpath):
     return fit, magratio, phase, trials_by_cond
 
 
-def load_retino_analysis_info(animalid, session, fov, run, retinoid, use_pixels=False, rootdir='/n/coxfs01/2p-data'):
+def load_retino_analysis_info(animalid, session, fov, run, retinoid=None, use_pixels=False, rootdir='/n/coxfs01/2p-data'):
     
     run_dir = glob.glob(os.path.join(rootdir, animalid, session, '%s*' % fov, run))[0]
     fov = os.path.split(os.path.split(run_dir)[0])[-1]
-    print("FOV: %s, run: %s" % (fov, run))
+    #print("FOV: %s, run: %s" % (fov, run))
     retinoids_fpath = glob.glob(os.path.join(run_dir, 'retino_analysis', 'analysisids_*.json'))[0]
     with open(retinoids_fpath, 'r') as f:
         rids = json.load(f)
@@ -664,7 +909,7 @@ def load_retino_analysis_info(animalid, session, fov, run, retinoid, use_pixels=
         roi_analyses = [r for r, rinfo in rids.items() if rinfo['PARAMS']['roi_type'] != 'pixels']
     if retinoid not in roi_analyses:
         retinoid = sorted(roi_analyses, key=natural_keys)[-1] # use most recent roi analysis
-        print("Fixed retino id to most recent: %s" % retinoid)
+        #print("Fixed retino id to most recent: %s" % retinoid)
         
     return retinoid, rids[retinoid]
 
@@ -903,6 +1148,7 @@ def get_interp_positions(condname, mwinfo, stiminfo, trials_by_cond):
                 xs = np.array(mwinfo[str(trial)]['stiminfo']['values'][mw_cyc_ixs[cix]:mw_cyc_ixs[cix+1]])
                 si_ts = si_tstamps[si_cyc_ixs[cix]:si_cyc_ixs[cix+1]]
 
+            #print(len(xs))
             recentered_mw_ts = [t-mw_ts[0] for t in mw_ts]
             recentered_si_ts = [t-si_ts[0] for t in si_ts]
 
@@ -934,12 +1180,12 @@ def get_interp_positions(condname, mwinfo, stiminfo, trials_by_cond):
 # Load colormap
 
 def get_retino_legends(cmap_name='nic_edge', zero_center=True, return_cmap=False,
-                    cmap_dir='/n/coxfs01/julianarhee/aggregate-visual-areas/colormaps', 
+                    cmap_dir='/n/coxfs01/julianarhee/colormaps', 
                     dst_dir='/n/coxfs01/julianarhee/aggregate-visual-areas/retinotopy'):
     #colormap = 'nic_Edge'
     #cmapdir = os.path.join(aggr_dir, 'colormaps')
     cdata = np.loadtxt(os.path.join(cmap_dir, cmap_name) + ".txt")
-    cmap_phase = LinearSegmentedColormap.from_list('my_colormap', cdata[::-1])
+    cmap_phase = LinearSegmentedColormap.from_list(cmap_name, cdata[::-1])
     screen = make_legends(cmap=cmap_phase, cmap_name=cmap_name, zero_center=zero_center,
                             dst_dir=dst_dir)
     if return_cmap:
@@ -1106,11 +1352,41 @@ def plot_example_traces(soma_traces, np_traces, rid=0, cond='right',
 def plot_phase_and_delay_maps(absolute_az, absolute_el, delay_az, delay_el, 
                                 cmap='nipy_spectral', vmin=-np.pi, vmax=np.pi, 
                                 elev_cutoff=0.56):
+    if cmap=='nic_Edge':
+        screen, cmap = get_retino_legends(cmap_name=cmap, zero_center=True, 
+                                                  return_cmap=True)
+
+    abs_vmin, abs_vmax = (-np.pi, np.pi)
+    del_vmin, del_vmax = (0, 2.*np.pi)
+
     fig, axes = pl.subplots(2,2)
-    im1 = axes[0,0].imshow(absolute_az, cmap=cmap, vmin=vmin, vmax=vmax)
-    im2 = axes[0,1].imshow(absolute_el, cmap=cmap, vmin=vmin, vmax=vmax)
-    axes[1,0].imshow(delay_az, cmap=cmap, vmin=vmin, vmax=vmax)
-    axes[1,1].imshow(delay_el, cmap=cmap, vmin=vmin, vmax=vmax)
+    az_mean = spstats.circmean(absolute_az[~np.isnan(absolute_az)], low=abs_vmin, high=abs_vmax)
+    az_std = spstats.circstd(absolute_az[~np.isnan(absolute_az)], low=abs_vmin, high=abs_vmax)
+    im1 = axes[0,0].imshow(absolute_az, cmap=cmap, vmin=abs_vmin, vmax=abs_vmax)
+    axes[0,0].set_title('Azimuth', fontsize=12, loc='left')
+    axes[0,0].set_title('mean AZ %.2f (+/- %.2f)' % (az_mean, az_std), fontsize=8, loc='left')
+    colorbar(im1)
+
+    el_mean = spstats.circmean(absolute_el[~np.isnan(absolute_el)], low=abs_vmin, high=abs_vmax)
+    el_std = spstats.circstd(absolute_el[~np.isnan(absolute_el)], low=abs_vmin, high=abs_vmax)
+    im2 = axes[0,1].imshow(absolute_el, cmap=cmap, vmin=abs_vmin, vmax=abs_vmax)
+    axes[0,1].set_title('mean EL %.2f (+/- %.2f)' % (el_mean, el_std), fontsize=8, loc='left')
+    colorbar(im2)
+
+    # Print some info to plot
+    d_az_mean = spstats.circmean(delay_az[~np.isnan(delay_az)], low=del_vmin, high=del_vmax)
+    d_az_std = spstats.circstd(delay_az[~np.isnan(delay_az)], low=del_vmin, high=del_vmax)
+    im1b=axes[1,0].imshow(delay_az, cmap=cmap, vmin=del_vmin, vmax=del_vmax)
+    axes[1,0].set_title('mean del %.2f (+/- %.2f)' % (d_az_mean, d_az_std),
+                        loc='left', fontsize=8)
+    colorbar(im1b)
+
+    d_el_mean = spstats.circmean(delay_el[~np.isnan(delay_el)], low=del_vmin, high=del_vmax)
+    d_el_std = spstats.circstd(delay_el[~np.isnan(delay_el)], low=del_vmin, high=del_vmax)
+    im2b=axes[1,1].imshow(delay_el, cmap=cmap, vmin=del_vmin, vmax=del_vmax)
+    axes[1,1].set_title('mean del %.2f (+/- %.2f)' % (d_el_mean, d_el_std),
+                        loc='left', fontsize=8)
+    colorbar(im2b)
 
     cbar1_orientation='horizontal'
     cbar1_axes = [0.35, 0.85, 0.1, 0.1]
@@ -1129,12 +1405,74 @@ def plot_phase_and_delay_maps(absolute_az, absolute_el, delay_az, delay_el,
     cb.ax.axhline(y=cb.norm(vmax*elev_cutoff), color='w', lw=1)
     cb.ax.axis('off')
     cb.outline.set_visible(False)
-    pl.subplots_adjust(top=0.8)
+    pl.subplots_adjust(top=0.8, hspace=0.5, wspace=0.5)
 
     for ax in axes.flat:
         ax.axis('off')
  
     return fig
+
+
+def filter_by_delay_map(absolute_az, absolute_el, delay_az, delay_el, delay_map_thr=0.5, plot=True, cmap_phase='nipy_spectral'):
+    delay_diff = abs(delay_az-delay_el)
+
+    filt_az = absolute_az.copy()
+    filt_az[delay_diff>delay_map_thr] = np.nan
+
+    filt_el = absolute_el.copy()
+    filt_el[delay_diff>delay_map_thr] = np.nan
+
+    delay_filt = delay_diff.copy()
+    delay_filt[delay_diff>delay_map_thr] = np.nan
+
+    if plot:
+        fig, axn = pl.subplots(2,3, figsize=(9,6))
+        ax=axn[0,0]
+        ax.set_title("Delay diff")
+        im0 = ax.imshow(delay_diff, cmap=cmap_phase) #, vmin=-np.pi, vmax=np.pi)
+        colorbar(im0)
+        ax = axn[1,0]
+        im1 = ax.imshow(delay_filt, cmap=cmap_phase) #, vmin=-np.pi, vmax=np.pi)
+        colorbar(im1)
+
+
+        filt_delay_az = delay_az.copy()
+        filt_delay_az[delay_diff>delay_map_thr] = np.nan
+
+        ax=axn[0,1]
+        im0 = ax.imshow(filt_az, cmap=cmap_phase, vmin=-np.pi, vmax=np.pi)
+        colorbar(im0)
+        ax.set_title('Azimuth')
+
+        ax=axn[1,1]
+        im0 = ax.imshow(filt_delay_az, cmap=cmap_phase, vmin=0, vmax=2*np.pi)
+        colorbar(im0)
+        ax.set_title('(delay)')
+
+
+        # Visualize for delay map, too
+        filt_delay_el = delay_el.copy()
+        filt_delay_el[delay_diff>delay_map_thr] = np.nan
+
+        ax=axn[0,2]
+        ax.set_title('Elevation')
+        im1 = ax.imshow(filt_el, cmap=cmap_phase, vmin=-np.pi, vmax=np.pi)
+        colorbar(im1)
+
+        ax=axn[1,2]
+        im1 = ax.imshow(filt_delay_el, cmap=cmap_phase, vmin=0, vmax=2*np.pi)
+        colorbar(im1)
+        ax.set_title('(delay)')
+
+        pl.suptitle("delay map thr=%.2f" % delay_map_thr)
+        pl.subplots_adjust(wspace=0.5)
+        
+    if plot:
+        return fig, filt_az, filt_el
+    else:
+        return filt_az, filt_el
+                           
+
 
 def plot_filtered_maps(cond, currmags_map, currphase_map_c, mag_thr):
     '''
@@ -1150,10 +1488,25 @@ def plot_filtered_maps(cond, currmags_map, currphase_map_c, mag_thr):
     divider = make_axes_locatable(axes[1])
     cax = divider.append_axes('right', size='5%', pad=0.05)
     fig.colorbar(im2, cax=cax, orientation='vertical')
-    
+    print("--- %.2f, %.2f" % (np.nanmin(currphase_map_c), np.nanmax(currphase_map_c))) 
     pl.subplots_adjust(wspace=0.5)
     fig.suptitle('%s (mag_thr: %.4f)' % (cond, mag_thr))
 
     return fig
+
+def load_2p_surface(animalid, session, fov, ch_num=1, retinorun='retino_run1', 
+                    rootdir='/n/coxfs01/2p-data'):
+    from skimage.measure import block_reduce
+    run_dir = os.path.join(rootdir, animalid, session, fov, retinorun)
+    fov_imgs = glob.glob(os.path.join(run_dir, 'processed', 'processed*', 
+                                        'mcorrected_*mean_deinterleaved',\
+                                        'Channel%02d' % ch_num, 'File*', '*.tif')) 
+    imlist = []
+    for anat in fov_imgs:
+        im = tf.imread(anat)
+        imlist.append(im)
+    surface_img = np.array(imlist).mean(axis=0)
+    
+    return surface_img
 
 

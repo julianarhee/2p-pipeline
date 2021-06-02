@@ -13,8 +13,7 @@ import traceback
 import matplotlib as mpl
 import matplotlib.cm as cm
 from matplotlib import colors as mcolors
-from pipeline.python.utils import convert_range
-
+from pipeline.python.utils import convert_range, get_screen_dims, isnumber, split_datakey_str
 # ------------------------------------------------------------------------------------
 # General stats
 # ------------------------------------------------------------------------------------
@@ -80,11 +79,235 @@ def compare_rf_size(df, metric='avg_size', cdf=False, ax=None, alpha=1, lw=2,
     return ax
 
 
+def plot_all_rfs(RFs, MEANS=None, screeninfo=None, cmap='cubehelix', dpi=150):
+    '''
+    Plot ALL receptive field pos, mark CoM by FOV. Colormap = datakey.
+    One subplot per visual area.
+    '''
+    screenright = float(screeninfo['azimuth_deg']/2)
+    screenleft = -1*screenright #float(screeninfo['screen_right'].unique())
+    screentop = float(screeninfo['altitude_deg']/2)
+    screenbottom = -1*screentop
+    screenaspect = float(screeninfo['resolution'][0]) / float(screeninfo['resolution'][1])
+
+
+    visual_areas = ['V1', 'Lm', 'Li']
+    is_split_by_area = 'V1' in MEANS.keys() if MEANS is not None else False
+
+    fig, axn = pl.subplots(1,3, figsize=(10,8), dpi=dpi)
+    for visual_area, v_df in RFs.groupby(['visual_area']):
+        ai = visual_areas.index(visual_area)
+        ax = axn[ai]
+        dcolors = sns.color_palette(cmap, n_colors=len(v_df['datakey'].unique()))
+        for di, (datakey, d_df) in enumerate(v_df.groupby(['datakey'])):
+          
+            if isinstance(MEANS, dict):
+                if is_split_by_area:
+                    exp_rids = [r for r in MEANS[visual_area][datakey] if isnumber(r)]
+                else: 
+                    exp_rids = [r for r in MEANS[datakey] if isnumber(r)]     
+            elif isinstance(MEANS, pd.DataFrame):
+                # is dataframe
+                exp_rids = MEANS[(MEANS['visual_area']==visual_area)
+                                & (MEANS['datakey']==datakey)]['cell'].unique()
+            else:
+                exp_rids = d_df['cell'].unique()
+
+            rf_rids = d_df['cell'].unique()
+            common_to_rfs_and_blobs = np.intersect1d(rf_rids, exp_rids)
+            curr_df = d_df[d_df['cell'].isin(common_to_rfs_and_blobs)].copy()
+            
+            sns.scatterplot('x0', 'y0', data=curr_df, ax=ax, color=dcolors[di],
+                           s=10, marker='o', alpha=0.5) 
+
+            x = curr_df['x0'].values
+            y=curr_df['y0'].values
+            
+            ncells_rfs = len(rf_rids)
+            ncells_common = len(common_to_rfs_and_blobs) #curr_df.shape[0]
+            m=np.ones(curr_df['x0'].shape)
+            cgx = np.sum(x*m)/np.sum(m)
+            cgy = np.sum(y*m)/np.sum(m)
+            #print('The center of mass: (%.2f, %.2f)' % (cgx, cgy))
+            ax.plot(cgx, cgy, marker='+', markersize=20, color=dcolors[di], 
+                    label='%s (%s, %i/%i)' 
+                            % (visual_area, datakey, ncells_common, ncells_rfs), lw=3) 
+        ax.set_title(visual_area)
+        ax.legend(bbox_to_anchor=(0.95, -0.4), fontsize=8) #1))
+
+    for ax in axn:
+        ax.set_xlim([screenleft, screenright])
+        ax.set_ylim([screenbottom, screentop])
+        ax.set_aspect('equal')
+        ax.set_ylabel('')
+        ax.set_xlabel('')
+        
+    pl.subplots_adjust(top=0.9, bottom=0.4)
+
+    return fig
+
+
+
+
 # ------------------------------------------------------------------------------------
 # Data loading
 # ------------------------------------------------------------------------------------
+def aggregate_rfs(rf_dsets, traceid='traces001', 
+                        fit_desc='fit-2dgaus_dff-no-cutoff', 
+                        reliable_only=True, verbose=False,
+                        assigned_cells=None):
+    # Gets all results for provided datakeys (sdata, for rfs/rfs10)
+    # Aggregates results for the datakeys
+    # assigned_cells:  cells assigned by visual area
+
+    rf_dpaths, no_fits = get_fit_dpaths(rf_dsets, traceid=traceid, fit_desc=fit_desc)
+    rfdf = aggregate_rf_data(rf_dpaths, reliable_only=reliable_only, assigned_cells=assigned_cells,
+                                        fit_desc=fit_desc, traceid=traceid, verbose=verbose)
+    rfdf = rfdf.reset_index(drop=True)
+    return rfdf
+
+def add_rf_positions(rfdf, calculate_position=False, traceid='traces001'):
+    '''
+    Add ROI position info to RF dataframe (converted and pixel-based).
+    Set calculate_position=True, to re-calculate.
+    '''
+    from pipeline.python.rois.utils import load_roi_coords
+
+    print("Adding RF position info...")
+    pos_params = ['fov_xpos', 'fov_xpos_pix', 'fov_ypos', 'fov_ypos_pix', 'ml_pos','ap_pos']
+    for p in pos_params:
+        rfdf[p] = ''
+    p_list=[]
+    #for (animalid, session, fovnum, exp), g in rfdf.groupby(['animalid', 'session', 'fovnum', 'experiment']):
+    for (va, dk, exp), g in rfdf.groupby(['visual_area', 'datakey', 'experiment']):
+        session, animalid, fovnum = split_datakey_str(dk)
+
+        fcoords = load_roi_coords(animalid, session, 'FOV%i_zoom2p0x' % fovnum, 
+                                  traceid=traceid, create_new=calculate_position)
+
+        #for ei, e_df in g.groupby(['experiment']):
+        cell_ids = g['cell'].unique()
+        p_ = fcoords['roi_positions'].loc[cell_ids]
+        for p in pos_params:
+            rfdf[p][g.index] = p_[p].values
+
+    return rfdf
+
+def get_rf_positions(rf_dsets, df_fpath, traceid='traces001', 
+                        fit_desc='fit-2dgaus_dff-no-cutoff', reliable_only=True, verbose=False):
+    from pipeline.python.rois.utils import load_roi_coords
+    rfdf=None
+    get_positions = False
+    if os.path.exists(df_fpath) and get_positions is False:
+        print("Loading existing RF coord conversions...")
+        try:
+            with open(df_fpath, 'rb') as f:
+                df= pkl.load(f)
+            #print(df.keys())
+            if isinstance(df, dict):
+                rfdf = df['df']
+            else:
+                rfdf = df.copy() #['df']
+        except Exception as e:
+            traceback.print_exc()
+            get_positions = True
+    else:
+        get_positions=True
+
+    if get_positions:
+        # This aggregates rf data from analyzed dfiles, not saved dataframes
+        rfdf = aggregate_rfs(rf_dsets, traceid=traceid, fit_desc=fit_desc, 
+                                reliable_only=reliable_only, verbose=verbose)
+        print("Calculating RF coord conversions...")
+        pos_params = ['fov_xpos', 'fov_xpos_pix', 'fov_ypos', 'fov_ypos_pix', 'ml_pos','ap_pos']
+        for p in pos_params:
+            rfdf[p] = ''
+        p_list=[]
+        #for (animalid, session, fovnum), g in rfdf.groupby(['animalid', 'session', 'fovnum']):
+        for (va, dk, exp), g in rfdf.groupby(['visual_area', 'datakey', 'experiment']):
+            session, animalid, fovnum = split_datakey_str(dk)
+            fcoords = load_roi_coords(animalid, session, 'FOV%i_zoom2p0x' % fovnum, 
+                                      traceid=traceid, create_new=False)
+
+            for ei, e_df in g.groupby(['experiment']):
+                cell_ids = e_df['cell'].unique()
+                p_ = fcoords['roi_positions'].loc[cell_ids]
+                for p in pos_params:
+                    rfdf[p][e_df.index] = p_[p].values
+        with open(df_fpath, 'wb') as f:
+            pkl.dump(rfdf, f, protocol=pkl.HIGHEST_PROTOCOL)
+    return rfdf
+
+
+# OVERLAPS
+def pick_rfs_with_most_overlap(rfdf, MEANS):
+    r_list=[]
+    for datakey, expdf in MEANS.items(): #corrs.groupby(['datakey']):
+        # Get active blob cells
+        exp_rids = [r for r in expdf.columns if isnumber(r)]     
+        # Get current fov's RFs
+        rdf = rfdf[rfdf['datakey']==datakey].copy()
+        
+        # If have both rfs/rfs10, pick the best one
+        if len(rdf['experiment'].unique())>1:
+            rf_rids = rdf[rdf['experiment']=='rfs']['cell'].unique()
+            rf10_rids = rdf[rdf['experiment']=='rfs10']['cell'].unique()
+            same_as_rfs = np.intersect1d(rf_rids, exp_rids)
+            same_as_rfs10 = np.intersect1d(rf10_rids, exp_rids)
+            rfname = 'rfs' if len(same_as_rfs) > len(same_as_rfs10) else 'rfs10'
+            print("%s: Selecting %s, overlappig rfs, %i | rfs10, %i (of %i cells)" 
+                  % (datakey, rfname, len(same_as_rfs), len(same_as_rfs10), len(exp_rids)))
+            r_list.append(rdf[rdf['experiment']==rfname])
+        else:
+            r_list.append(rdf)
+    RFs = pd.concat(r_list, axis=0)
+
+    return RFs
+
+def calculate_overlaps(RFs, datakeys=None, experiment='blobs'):
+    from pipeline.python.classifications import experiment_classes as util
+    from pipeline.python.classifications.aggregate_data_stats import add_meta_to_df
+    
+    rf_fit_params = ['cell', 'std_x', 'std_y', 'theta', 'x0', 'y0']
+    if datakeys is None:
+        datakeys=RFs['datakey'].unique()
+
+    o_list=[]
+    for (visual_area, animalid, session, fovnum, datakey), g in RFs.groupby(['visual_area', 'animalid', 'session', 'fovnum', 'datakey']):  
+        if datakey not in datakeys: #MEANS.keys():
+            continue
+        
+        # Convert RF fit params to polygon
+        rfname = g['experiment'].unique()[0]
+        #print(rfname) 
+        g.index = g['cell'].values
+        rf_polys = rfs_to_polys(g[rf_fit_params])
+
+        S = util.Session(animalid, session, 'FOV%i_zoom2p0x' % fovnum, get_anatomical=False)
+        stim_xpos, stim_ypos = S.get_stimulus_coordinates(experiments=[experiment])
+        stim_sizes = S.get_stimulus_sizes(size_tested=[experiment])
+
+        # Convert stimuli to polyon bounding boxes
+        stim_polys = [(blob_sz, stimsize_poly(blob_sz, xpos=stim_xpos, ypos=stim_ypos))                   for blob_sz in stim_sizes[experiment]]
+        
+        # Get all pairwise overlaps (% of smaller ellipse that overlaps larger ellipse)
+        overlaps = pd.concat([get_proportion_overlap(rf_poly, stim_poly) \
+                    for stim_poly in stim_polys \
+                    for rf_poly in rf_polys]).rename(columns={'row': 'cell', 'col': 'stim_size'})
+        metadict={'visual_area': visual_area, 'animalid': animalid, 'rfname': rfname,
+                  'session': session, 'fovnum': fovnum, 'datakey': datakey}
+        o_ = add_meta_to_df(overlaps, metadict)
+        o_list.append(o_)
+
+    stim_overlaps = pd.concat(o_list, axis=0).reset_index(drop=True)
+    return stim_overlaps
+
+
+# DATA SELECTION
+
+
 def aggregate_rf_dataframes(filter_by, fit_desc=None, scale_sigma=True, fit_thr=0.5, 
-                            traceid='traces001',
+                            traceid='traces001', assign_cells=True,
                             reliable_only=True, verbose=False,
                             fov_type='zoom2p0x', state='awake', stimulus='rfs', 
                             excluded_sessions = ['JC110_20191004_FOV1_zoom2p0x',
@@ -93,20 +316,27 @@ def aggregate_rf_dataframes(filter_by, fit_desc=None, scale_sigma=True, fit_thr=
                                                  'JC113_20191108_FOV2_zoom2p0x']):
     
     from pipeline.python.classifications import aggregate_data_stats as aggr
-                            
+    from pipeline.python.retinotopy import segment_retinotopy as seg
+                         
     assert fit_desc is not None, "No fit_desc provided!"
     #### Get metadata
     dsets = aggr.get_metadata(traceid=traceid, fov_type=fov_type, state=state, 
-                                  filter_by=filter_by, stimulus='rfs')
-    
+                                  filter_by=filter_by, stimulus='rfs') 
     rf_dsets = dsets[dsets['experiment'].isin(['rfs', 'rfs10'])].copy()
 
     #### Check for any datasets that need RF fits
     rf_dpaths, _ = get_fit_dpaths(rf_dsets, traceid=traceid, fit_desc=fit_desc, 
                                               excluded_sessions=excluded_sessions)
 
+
+    #####
+    assigned_cells = None
+    if assign_cells:
+        assigned_cells, missing_seg = seg.get_cells_by_area(rf_dsets, return_missing=True)
+    
     #### Get RF dataframe for all datasets (filter to include only good fits)
-    all_df = aggregate_rf_data(rf_dpaths, scale_sigma=scale_sigma, verbose=verbose,
+    all_df = aggregate_rf_data(rf_dpaths, assigned_cells=assigned_cells,
+                                scale_sigma=scale_sigma, verbose=verbose,
                                 reliable_only=reliable_only,
                                 fit_desc=fit_desc, traceid=traceid)
     all_df.groupby(['visual_area', 'experiment'])['datakey'].count()
@@ -181,6 +411,7 @@ def get_fit_dpaths(dsets, traceid='traces001', fit_desc=None,
 
 
 def aggregate_rf_data(rf_dpaths, fit_desc=None, traceid='traces001', fit_thr=0.5, 
+                        assigned_cells=None,
                       scale_sigma=True, sigma_scale=2.35, verbose=False, 
                       response_type='None', reliable_only=True,
                       rootdir='/n/coxfs01/2p-data'):
@@ -191,12 +422,21 @@ def aggregate_rf_data(rf_dpaths, fit_desc=None, traceid='traces001', fit_thr=0.5
     from pipeline.python.retinotopy import fit_2d_rfs as fitrf
     from pipeline.python.classifications import evaluate_receptivefield_fits as evalrf
 
-
     df_list = []
-    for (visual_area, animalid, session, fovnum, experiment), g in rf_dpaths.groupby(['visual_area', 'animalid', 'session', 'fovnum', 'experiment']):
-        datakey = '%s_%s_fov%i' % (session, animalid, fovnum) #'-'.join([animalid, session, fovnum])
+    for (visual_area, datakey, experiment), g in \
+                            rf_dpaths.groupby(['visual_area', 'datakey', 'experiment']):
+        if experiment not in ['rfs', 'rfs10']:
+            continue
+        session, animalid, fovnum = split_datakey_str(datakey)
+        #datakey = '%s_%s_fov%i' % (session, animalid, fovnum) #'-'.join([animalid, session, fovnum])
         #print(datakey)
         fov = 'FOV%i_zoom2p0x' % fovnum
+
+        curr_cells=None
+        if assigned_cells is not None and datakey in assigned_cells['datakey'].values: 
+            curr_cells = assigned_cells[(assigned_cells['visual_area']==visual_area) 
+                                 & (assigned_cells['datakey']==datakey)]['cell'].unique() 
+
         try:
             #### Load evaluation results (bootstrap analysis of each fit paramater)
             curr_rfname = experiment if int(session)>=20190511 else 'gratings'
@@ -208,7 +448,7 @@ def aggregate_rf_data(rf_dpaths, fit_desc=None, traceid='traces001', fit_thr=0.5
                                                 traceid=traceid, 
                                                 fit_desc=fit_desc)   
             if eval_results is None:
-                print('-- no good (%s), skipping' % datakey)
+                print('-- no good (%s (%s, %s)), skipping' % (datakey, visual_area, experiment))
                 continue
             
             #### Load fit results from measured
@@ -238,11 +478,16 @@ def aggregate_rf_data(rf_dpaths, fit_desc=None, traceid='traces001', fit_thr=0.5
             reliable_rois = evalrf.get_reliable_fits(eval_results['pass_cis'],
                                                      pass_criterion='all')
             if verbose:
-                print("[%s] %s: %i of %i fit rois pass for all params" % (visual_area, datakey, len(pass_rois), len(fit_rois)))
-                print("...... : %i of %i fit rois passed as reliiable" % (len(reliable_rois), len(pass_rois)))
+                print("[%s] %s: %i of %i fit rois pass for all params" \
+                            % (visual_area, datakey, len(pass_rois), len(fit_rois)))
+                print("...... : %i of %i fit rois passed as reliiable" \
+                            % (len(reliable_rois), len(pass_rois)))
 
             #### Create dataframe with params only for good fit cells
             keep_rois = reliable_rois if reliable_only else pass_rois
+            if curr_cells is not None:
+                keep_rois = [r for r in keep_rois if r in curr_cells]
+
             passdf = rfit_df.loc[keep_rois].copy()
             # "un-scale" size, if flagged
             if not scale_sigma:
@@ -251,16 +496,23 @@ def aggregate_rf_data(rf_dpaths, fit_desc=None, traceid='traces001', fit_thr=0.5
                 passdf['sigma_x'] = sigma_x
                 passdf['sigma_y'] = sigma_y
 
-            tmpmeta = pd.DataFrame({'cell': keep_rois,
-                                    'datakey': [datakey for _ in np.arange(0, len(keep_rois))],
-                                    'animalid': [animalid for _ in np.arange(0, len(keep_rois))],
-                                    'session': [session for _ in np.arange(0, len(keep_rois))],
-                                    'fovnum': [fovnum for _ in np.arange(0, len(keep_rois))],
-                                    'visual_area': [visual_area for _ in np.arange(0, len(keep_rois))],
-                                    'experiment': [experiment for _ in np.arange(0, len(keep_rois))]}, index=passdf.index)
+            passdf['cell'] = keep_rois
+            passdf['datakey'] = datakey
+            passdf['animalid'] = animalid
+            passdf['session'] = session
+            passdf['fovnum'] = fovnum
+            passdf['visual_area'] = visual_area
+            passdf['experiment'] = experiment
+#            tmpmeta = pd.DataFrame({'cell': keep_rois,
+#                                    'datakey': [datakey for _ in np.arange(0, len(keep_rois))],
+#                                    'animalid': [animalid for _ in np.arange(0, len(keep_rois))],
+#                                    'session': [session for _ in np.arange(0, len(keep_rois))],
+#                                    'fovnum': [fovnum for _ in np.arange(0, len(keep_rois))],
+#                                    'visual_area': [visual_area for _ in np.arange(0, len(keep_rois))],
+#                                    'experiment': [experiment for _ in np.arange(0, len(keep_rois))]}, index=passdf.index)
 
-            fitdf = pd.concat([passdf, tmpmeta], axis=1).reset_index(drop=True)
-            df_list.append(fitdf)
+#            fitdf = pd.concat([passdf, tmpmeta], axis=1).reset_index(drop=True)
+            df_list.append(passdf) #(fitdf)
 
         except Exception as e:
             print("***ERROR: %s" % datakey)
@@ -272,6 +524,7 @@ def aggregate_rf_data(rf_dpaths, fit_desc=None, traceid='traces001', fit_thr=0.5
     rfdf = update_rf_metrics(rfdf, scale_sigma=scale_sigma)
 
     return rfdf
+
 
 def update_rf_metrics(rfdf, scale_sigma=True):
     # Include average RF size (average of minor/major axes of fit ellipse)
@@ -332,6 +585,68 @@ def update_rf_metrics(rfdf, scale_sigma=True):
     sins_c = convert_range(sins, oldmin=0, oldmax=1, newmin=-1, newmax=1)
     rfdf['aniso_index'] = sins_c * rfdf['anisotropy']
  
+    return rfdf
+
+
+def load_rfdf_with_positions(rf_fit_desc, traceid='traces001', filter_by=None, 
+                            assign_cells=True, reliable_only=True,
+                            create_new=False, aggr_dir='/n/coxfs01/julianarhee/aggregate-visual-areas'):
+    '''
+    Does the same thing as aggr.load_rfedf_and_pos(assign_cells=True)
+    '''
+
+    src_dir = os.path.join(aggr_dir, 'receptive-fields', '%s__%s' % (traceid, rf_fit_desc))
+    reliable_str = 'reliable' if reliable_only else ''
+    df_fpath = os.path.join(src_dir, 'fits_and_coords_%s_%s.pkl' % (str(filter_by), reliable_str))
+    if not os.path.exists(df_fpath):
+        print("file does not exist")
+        create_new=True
+    
+    if os.path.exists(df_fpath) and create_new is False:
+        print("Loading existing RF coord conversions...")
+        try:
+            with open(df_fpath, 'rb') as f:
+                rfdf = pkl.load(f)
+            if isinstance(rfdf, dict):
+                rfdf = rfdf['df']
+            create_new=False
+        except Exception as e:
+            print("Creating new RFDF")
+            create_new=True
+            traceback.print_exc()
+
+    if create_new:      
+        rfdf, _ = aggregate_rf_dataframes(filter_by, fit_desc=rf_fit_desc, traceid=traceid, 
+                                        reliable_only=reliable_only, assign_cells=assign_cells) 
+        rfdf = update_roi_positions(rfdf, traceid=traceid)
+
+        with open(df_fpath, 'wb') as f:
+            pkl.dump(rfdf, f, protocol=pkl.HIGHEST_PROTOCOL)
+        print("... saved: %s" % df_fpath)
+
+    return rfdf
+
+
+def update_roi_positions(rfdf, traceid='traces001'):
+    from pipeline.python.rois.utils import load_roi_coords
+    print("Calculating RF coord conversions...")
+    pos_params = ['fov_xpos', 'fov_xpos_pix', 'fov_ypos', 'fov_ypos_pix', 'ml_pos','ap_pos']
+    for p in pos_params:
+        rfdf[p] = ''
+    
+    # Add fov coord info and save
+    p_list=[]
+    for (visual_area, animalid, session, fovnum, exp), g in rfdf.groupby(['visual_area', 'animalid', 'session', 'fovnum', 'experiment']):
+        cell_ids = g['cell'].unique()
+        fcoords = load_roi_coords(animalid, session, 'FOV%i_zoom2p0x' % fovnum, 
+                                  traceid=traceid, create_new=False)
+        p_ = fcoords['roi_positions'].loc[cell_ids]
+        for p in pos_params:
+            try:
+                rfdf[p][g.index] = p_[p]
+            except Exception as e:
+                print(p)
+                print(session, animalid, fovnum, exp)
     return rfdf
 
 
@@ -405,7 +720,7 @@ def get_rf_luminances(animalid, session, fovnum, curr_exp, traceid='traces001', 
 
 def calculate_rf_luminances(images, rfstats, rfparams, sdf, roi_list=None):
     from pipeline.python.utils import natural_keys
-    
+
     if roi_list is None:
         roi_list = rfstats['fit_results'].keys()
     image_list = sorted(images.keys(), key=natural_keys)
@@ -639,60 +954,66 @@ def update_rfparams(rfparams):
     
     return rfparams
 
-def pairwise_compare_single_metric(comdf, curr_metric='avg_size', 
-                                    c1='rfs', c2='rfs10', compare_var='experiment',
-                                    ax=None, marker='o', visual_areas=['V1', 'Lm', 'Li'],
-                                    area_colors=None):
-    assert 'datakey' in comdf.columns, "Need a sorter, 'datakey' not found."
 
-    if area_colors is None:
-        visual_areas = ['V1', 'Lm', 'Li']
-        colors = ['magenta', 'orange', 'dodgerblue'] #sns.color_palette(palette='colorblind') #, n_colors=3)
-        area_colors = {'V1': colors[0], 'Lm': colors[1], 'Li': colors[2]}
+# AGGREGATE_STATS.py()
+# pairwise_compare_single_metric - now in aggr
+# set_split_xlabels - not in aggr.
 
-
-    offset = 0.25
-    
-    if ax is None:
-        fig, ax = pl.subplots(figsize=(5,4), dpi=dpi)
-        fig.patch.set_alpha(0)
-        ax.patch.set_alpha(0)
-    
-    # Plot paired values
-    aix=0
-    for ai, visual_area in enumerate(visual_areas):
-
-        plotdf = comdf[comdf['visual_area']==visual_area]
-        a_vals = plotdf[plotdf[compare_var]==c1].sort_values(by='datakey')[curr_metric].values
-        b_vals = plotdf[plotdf[compare_var]==c2].sort_values(by='datakey')[curr_metric].values
-
-        by_exp = [(a, e) for a, e in zip(a_vals, b_vals)]
-        for pi, p in enumerate(by_exp):
-            ax.plot([aix-offset, aix+offset], p, marker=marker, color=area_colors[visual_area], 
-                    alpha=1, lw=0.5,  zorder=0, markerfacecolor=None, markeredgecolor=area_colors[visual_area])
-        tstat, pval = spstats.ttest_rel(a_vals, b_vals)
-        print("%s: (t-stat:%.2f, p=%.2f)" % (visual_area, tstat, pval))
-        aix = aix+1
-
-    # Plot average
-    sns.barplot("visual_area", curr_metric, data=comdf, 
-                hue=compare_var, #zorder=0,
-                ax=ax, order=visual_areas,
-                errcolor="k", edgecolor=('k', 'k', 'k'), facecolor=(1,1,1,0), linewidth=2.5)
-    ax.legend_.remove()
-
-    set_split_xlabels(ax, a_label=c1, b_label=c2)
-    
-    return ax
-
-def set_split_xlabels(ax, offset=0.25, a_label='rfs', b_label='rfs10'):
-    ax.set_xticks([0-offset, 0+offset, 1-offset, 1+offset, 2-offset, 2+offset])
-    ax.set_xticklabels([a_label, b_label, a_label, b_label, a_label, b_label])
-    ax.set_xlabel('')
-    ax.tick_params(axis='x', size=0)
-    sns.despine(bottom=True, offset=4)
-    return ax
-
+#def pairwise_compare_single_metric(comdf, curr_metric='avg_size', 
+#                                    c1='rfs', c2='rfs10', compare_var='experiment',
+#                                    ax=None, marker='o', visual_areas=['V1', 'Lm', 'Li'],
+#                                    area_colors=None):
+#    assert 'datakey' in comdf.columns, "Need a sorter, 'datakey' not found."
+#
+#    if area_colors is None:
+#        visual_areas = ['V1', 'Lm', 'Li']
+#        colors = ['magenta', 'orange', 'dodgerblue'] #sns.color_palette(palette='colorblind') #, n_colors=3)
+#        area_colors = {'V1': colors[0], 'Lm': colors[1], 'Li': colors[2]}
+#
+#
+#    offset = 0.25
+#    
+#    if ax is None:
+#        fig, ax = pl.subplots(figsize=(5,4), dpi=dpi)
+#        fig.patch.set_alpha(0)
+#        ax.patch.set_alpha(0)
+#    
+#    # Plot paired values
+#    aix=0
+#    for ai, visual_area in enumerate(visual_areas):
+#
+#        plotdf = comdf[comdf['visual_area']==visual_area]
+#        a_vals = plotdf[plotdf[compare_var]==c1].sort_values(by='datakey')[curr_metric].values
+#        b_vals = plotdf[plotdf[compare_var]==c2].sort_values(by='datakey')[curr_metric].values
+#
+#        by_exp = [(a, e) for a, e in zip(a_vals, b_vals)]
+#        for pi, p in enumerate(by_exp):
+#            ax.plot([aix-offset, aix+offset], p, marker=marker, color=area_colors[visual_area], 
+#                    alpha=1, lw=0.5,  zorder=0, markerfacecolor=None, 
+#                    markeredgecolor=area_colors[visual_area])
+#        tstat, pval = spstats.ttest_rel(a_vals, b_vals)
+#        print("%s: (t-stat:%.2f, p=%.2f)" % (visual_area, tstat, pval))
+#        aix = aix+1
+#
+#    # Plot average
+#    sns.barplot("visual_area", curr_metric, data=comdf, 
+#                hue=compare_var, hue_order=[c1, c2], #zorder=0,
+#                ax=ax, order=visual_areas,
+#                errcolor="k", edgecolor=('k', 'k', 'k'), facecolor=(1,1,1,0), linewidth=2.5)
+#    ax.legend_.remove()
+#
+#    set_split_xlabels(ax, a_label=c1, b_label=c2)
+#    
+#    return ax
+#
+#def set_split_xlabels(ax, offset=0.25, a_label='rfs', b_label='rfs10', rotation=0, ha='center'):
+#    ax.set_xticks([0-offset, 0+offset, 1-offset, 1+offset, 2-offset, 2+offset])
+#    ax.set_xticklabels([a_label, b_label, a_label, b_label, a_label, b_label], rotation=rotation, ha=ha)
+#    ax.set_xlabel('')
+#    ax.tick_params(axis='x', size=0)
+#    sns.despine(bottom=True, offset=4)
+#    return ax
+#
 # ------------------------------------------------------------------------------------
 # Coordinate remapping
 # ------------------------------------------------------------------------------------
@@ -836,6 +1157,17 @@ def rfs_to_polys(rffits, sigma_scale=2.35):
     
     returns list of polygons to do calculations with
     '''
+    sz_param_names = [f for f in rffits.columns if '_' in f]
+    sz_metrics = np.unique([f.split('_')[0] for f in sz_param_names])
+    sz_metric = sz_metrics[0]
+    assert sz_metric in ['fwhm', 'std'], "Unknown size metric: %s" % str(sz_metrics)
+
+    sigma_scale = 1.0 if sz_metric=='fwhm' else sigma_scale
+    roi_param = 'cell' if 'cell' in rffits.columns else 'rid'
+
+    rf_columns=[roi_param, '%s_x' % sz_metric, '%s_y' % sz_metric, 'theta', 'x0', 'y0']
+    #print(rf_columns, '[%s] Scale sigma: %.2f' % (sz_metric, sigma_scale))
+    rffits = rffits[rf_columns]
     rf_polys=[(rid, 
         create_ellipse((x0, y0), (abs(sx)*sigma_scale, abs(sy)*sigma_scale), np.rad2deg(th))) \
         for rid, sx, sy, th, x0, y0 in rffits.values]
@@ -870,3 +1202,224 @@ def get_proportion_overlap(poly_tuple1, poly_tuple2):
                         'perc_overlap': perc_overlap}, index=[0])
     
     return odf
+
+
+# ===================================================
+# plotting
+# ===================================================
+def anisotropy_polarplot(rdf, metric='anisotropy', cmap='spring_r', alpha=0.5, 
+                            marker='o', ax=None, dpi=150, cbar_bbox=[0.4, 0.15, 0.2, 0.03]):
+
+    vmin=0; vmax=1;
+    norm = mpl.colors.Normalize(vmin=vmin, vmax=vmax)
+    iso_cmap = cm.ScalarMappable(norm=norm, cmap=cmap)
+    
+    if ax is None:
+        fig, ax = pl.subplots(1, subplot_kw=dict(projection='polar'), figsize=(4,3), dpi=dpi)
+
+    thetas = rdf['theta_Mm_c'].values #% np.pi
+    ratios = rdf[metric].values
+    ax.scatter(thetas, ratios, s=30, c=ratios, cmap=cmap, alpha=alpha) # c=thetas, cmap='hsv', alpha=0.7)
+
+    ax.set_theta_zero_location("E")
+    ax.set_theta_direction(1)
+    # ax.set_theta_direction(1)
+    ax.set_xticklabels(['0$^\circ$', '', '90$^\circ$', '', '', '', '-90$^\circ$', ''])
+    ax.set_rlabel_position(135) #315)
+    ax.set_xlabel('')
+    ax.set_yticklabels(['', 0.4, '', 0.8])
+    ax.set_ylabel(metric, fontsize=12)
+
+    # Grid lines and such
+    ax.spines['polar'].set_visible(False)
+    pl.subplots_adjust(left=0.1, right=0.9, wspace=0.2, bottom=0.3, top=0.8, hspace=0.5)
+
+    # Colorbar
+    iso_cmap._A = []
+    cbar_ax = ax.figure.add_axes(cbar_bbox)
+    cbar = ax.figure.colorbar(iso_cmap, cax=cbar_ax, orientation='horizontal', ticks=[0, 1])
+    if metric == 'anisotropy':
+        xlabel_min = 'Iso\n(%.1f)' % (vmin) 
+        xlabel_max= 'Aniso\n(%.1f)' % (vmax) 
+    else:             
+        xlabel_min = 'H\n(%.1f)' % (vmin) if hue_param in ['angle', 'aniso_index'] else '%.2f' % vmin
+        xlabel_max= 'V\n(%.1f)' % (vmax) if hue_param in ['angle', 'aniso_index'] else '%.2f' % vmax
+    cbar.ax.set_xticklabels([xlabel_min, xlabel_max])  # horizontal colorbar
+    cbar.ax.tick_params(which='both', size=0)
+
+    return ax
+
+def draw_rf_on_screen(rdf, hue_param='aniso_index', shape_str='ellipse', ax=None, dpi=150,
+                      ellipse_scale=0.3, ellipse_alpha=0.2, ellipse_lw=1, ellipse_facecolor='none', 
+                      axis_lw=2, axis_alpha=0.9, n_plot_rfs=-1, n_plot_skip=1, 
+                      centroid_size=5, centroid_alpha=0.3, vmin=-1, vmax=1):
+
+    # Get screen info
+    screen = get_screen_dims()
+    screenleft, screenright = [-screen['azimuth_deg']*0.5, screen['azimuth_deg']*0.5]
+    screenbottom, screentop = [-screen['altitude_deg']*0.5, screen['altitude_deg']*0.5]
+
+    metric = 'anisotropy' if hue_param=='angle' else hue_param
+    sat_param = 'aniso' if hue_param=='angle' else 'none'
+    cmap = cm.cool if hue_param in ['angle', 'aniso_index'] else cm.spring_r
+    #n_plot_rfs = -1
+    #n_plot_skip = 1
+    #axis_lw=2
+    #axis_alpha=0.9
+    #ellipse_lw=1
+    #ellipse_alpha=0.2
+    #ellipse_facecolor = 'none'
+    borderpad=0
+
+    centroid_size = centroid_size if shape_str=='centroid' else 2
+    centroid_alpha = centroid_alpha if shape_str=='centroid' else 1.0
+    ellipse_scale = ellipse_scale if shape_str=='ellipse' else 1.0
+
+    vmin = vmin if metric=='aniso_index' else 0 
+    vmax = vmax if metric=='aniso_index' else 1
+
+    norm = mpl.colors.Normalize(vmin=vmin, vmax=vmax)
+    scalar_cmap = cm.ScalarMappable(norm=norm, cmap=cmap)
+
+    if ax is None:
+        fig, ax = pl.subplots(1, figsize=(5,4), dpi=dpi)
+        
+    ax.set_xlim([screenleft-borderpad, screenright+borderpad])
+    ax.set_ylim([screenbottom-borderpad, screentop+borderpad])
+    
+    rf_indices = rdf.index.tolist()[0::n_plot_skip] #n_plot_rfs]
+    for i in rf_indices:
+                      
+        # Current ROI's RF fit params
+        x0, y0, std_x, std_y, theta, theta_c, aniso, aniso_v = rdf[[
+            'x0', 'y0', 'std_x', 'std_y', 'theta', 'theta_Mm_c', metric, 'anisotropy']].loc[i]
+        
+        # Set color based on hue_param and cmap
+        if hue_param == 'angle':
+            theta_col = rfutils.assign_saturation(theta_c, aniso, cmap=cmap, min_v=vmin, max_v=vmax)
+        elif hue_param == 'aniso_index':
+            theta_col = scalar_cmap.to_rgba(aniso)
+        elif hue_param == 'aniso':
+            theta_col = scalar_cmap.to_rgba(aniso)
+                      
+        # PLOT
+        if 'centroid' in shape_str:
+            ax.plot(x0, y0, marker='o', color=theta_col, alpha=centroid_alpha, markersize=centroid_size)
+
+        if 'ellipse' in shape_str:
+            el = Ellipse((x0, y0), width=std_x*ellipse_scale, height=std_y*ellipse_scale, 
+                         angle=theta, edgecolor=theta_col, facecolor=ellipse_facecolor, 
+                         alpha=ellipse_alpha, lw=ellipse_lw)
+            ax.add_artist(el)
+
+        if 'major' in shape_str:
+            M = rdf[['std_x', 'std_y']].loc[i].max()  
+            m = rdf[['std_x', 'std_y']].loc[i].min()  
+            xe = (M/2.) * np.cos(np.deg2rad(theta)) if std_x>std_y else -(M/2.) * np.sin(np.deg2rad(theta))
+            ye = (M/2.) * np.sin(np.deg2rad(theta)) if std_x>std_y else (M/2.) * np.cos(np.deg2rad(theta))
+            ax.plot([x0, x0+xe], [y0, y0+ye], color=theta_col, alpha=axis_alpha, lw=axis_lw)
+
+        if 'minor' in shape_str:
+            xe2 = (m/2.) * np.sin(np.deg2rad(theta)) if std_x>std_y else -(m/2.) * np.cos(np.deg2rad(180-theta))
+            ye2 = (m/2.) * np.cos(np.deg2rad(theta)) if std_x>std_y else (m/2.) * np.sin(np.deg2rad(180-theta))
+            ax.plot([x0, x0+xe2], [y0, y0+ye2], color=theta_col, alpha=axis_alpha, lw=axis_lw)
+    ax.set_aspect('equal')
+
+    # COLOR BAR
+    scalar_cmap._A = []
+    cbar_ax = ax.figure.add_axes([0.43, 0.1, 0.15, 0.05])
+    cbar = ax.figure.colorbar(scalar_cmap, cax=cbar_ax, orientation='horizontal', ticks=[vmin, vmax])
+    if hue_param == 'anisotropy':
+        xlabel_min = 'Iso\n(%.1f)' % (vmin) 
+        xlabel_max= 'Aniso\n(%.1f)' % (vmax) 
+    else:             
+        xlabel_min = 'H\n(%.1f)' % (vmin) if hue_param in ['angle', 'aniso_index'] else '%.2f' % vmin
+        xlabel_max= 'V\n(%.1f)' % (vmax) if hue_param in ['angle', 'aniso_index'] else '%.2f' % vmax
+                 
+    cbar.ax.set_xticklabels([xlabel_min, xlabel_max])  # horizontal colorbar
+
+    return ax
+
+
+
+# ===================================================
+
+def get_scatter_df(rfdf, projdf, screen=None, min_ncells=5, verbose=False):
+    not_enough_cells_fit = []
+    bad_fits = []
+    d_list = []
+    for (visual_area, datakey, rfname), rfs_ in rfdf.groupby(['visual_area','datakey', 'experiment']): #['V1', 'Lm', 'Li']:
+        if verbose:
+            print("[%s] %s (%s)" % (visual_area, datakey, rfname))
+
+        if rfs_.shape[0] < min_ncells:
+            print("--- too few cells (min%i), %s" % (min_ncells, datakey))
+            not_enough_cells_fit.append(datakey)
+            continue
+        if datakey not in projdf['datakey'].unique():
+            print("--- bad gradient, %s" % datakey)
+            continue
+
+        # Get retino gradient
+        ret_ = projdf[(projdf['visual_area']==visual_area) & (projdf['datakey']==datakey)].copy()
+
+        for cond, ret_cond in ret_.groupby(['cond']):
+            xname = 'ml' if cond=='az' else 'ap'
+            yname = 'x0' if cond=='az' else 'y0'
+            max_degrees = screen['azimuth_deg']*2. if cond=='az' else screen['altitude_deg']*2.
+            max_fovdist = 1177*2. if cond=='ap' else 972.*2.
+
+            # Get RF fit info
+            proj_locs = np.array(rfs_['%s_proj' % xname].values)
+            rf_locs = np.array(rfs_[yname].values)
+            rf_cell_ids = rfs_['cell'].values
+
+            # Get dist to line:
+            slope = float(ret_cond['coefficient'])
+            intercept = float(ret_cond['intercept'])
+            r2 = float(ret_cond['R2'])
+            predicted_rf_locs = slope*proj_locs + intercept
+
+            # Calculate DEG and DIST scattered
+            deg_sc = abs(rf_locs - predicted_rf_locs).astype(float)
+            deg_ixs = [i for i, v in enumerate(deg_sc) if v < max_degrees] # filter out illegal vals
+            dist_sc = abs(proj_locs - (rf_locs - intercept)/slope).astype(float)
+            dist_ixs = [i for i, v in enumerate(dist_sc) if v < max_fovdist] # filter out illegal vals
+            keep_ixs = np.intersect1d(deg_ixs, dist_ixs)
+            n_pts = len(keep_ixs)
+            if (n_pts)==0:
+                bad_fits.append((datakey, cond))
+                continue
+            if verbose:
+                print("... (%s) deg: %i of %i in bounds" % (cond, len(deg_ixs), len(deg_sc)))
+                print("... (%s) dist: %i of %i in bounds" % (cond, len(dist_ixs), len(dist_sc)))
+            assert len(rf_cell_ids)==len(deg_sc)
+
+            if any(np.isnan(dist_sc)):
+                print(visual_area, datakey, r2)
+            if any(np.isnan(deg_sc)):
+                print(visual_area, datakey, r2)
+            tmpd=pd.DataFrame({'cell': rf_cell_ids[keep_ixs],
+                               'deg_scatter': deg_sc[keep_ixs],
+                               'dist_scatter': dist_sc[keep_ixs],
+                               'measured_rf': rf_locs[keep_ixs],
+                               'predicted_rf': predicted_rf_locs[keep_ixs],
+                               'measured_loc': proj_locs[keep_ixs],
+                               'predicted_loc': (rf_locs[keep_ixs] - intercept)/slope,
+                               'retino_R2': [r2 for _ in np.arange(0, n_pts)],
+                               'axis': [cond for _ in np.arange(0, n_pts)],
+                               'visual_area': [visual_area for _ in np.arange(0, n_pts)],
+                               'datakey': [datakey for _ in np.arange(0, n_pts)],
+                               'rfname': [rfname for _ in np.arange(0, n_pts)]
+                         })
+
+            d_ = pd.merge(tmpd, rfs_[rfs_['cell'].isin(rf_cell_ids[keep_ixs])].reset_index(drop=True))
+            d_list.append(d_)
+    scatdf = pd.concat(d_list, axis=0)
+    
+    print("Not enough cells passed (min=%i cells):" % min_ncells, not_enough_cells_fit)
+    print("Bad fits for predicted pos/rf:", bad_fits)
+
+    return scatdf
+
+

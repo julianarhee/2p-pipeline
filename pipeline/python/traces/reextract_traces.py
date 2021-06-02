@@ -194,7 +194,7 @@ def redo_manual_extraction(options):
                                                         fit_thr=fit_thr, 
                                                         make_pretty_plots=True,
                                                         create_new=True,
-                                                        reload_data=True
+                                                        reload_data=True,
                                                         sigma_scale=sigma_scale, 
                                                         scale_sigma=scale_sigma,
                                                         post_stimulus_sec=post_stimulus_sec,

@@ -167,27 +167,29 @@ def get_roi_id(animalid, session, fov, traceid, run_name='', rootdir='/n/coxfs01
         
     return roi_id, traceid
 
-def get_anatomical(animalid, session, fov, channel_num=2, verbose=False, 
+def load_anatomical(animalid, session, fov, channel_num=2, verbose=False, 
                     rootdir='/n/coxfs01/2p-data'):
     anatomical = None
     fov_dir = os.path.join(rootdir, animalid, session, fov)
     anatomical_dirs = glob.glob(os.path.join(fov_dir, 'anatomical'))
     try:
-        assert len(anatomical_dirs) > 0, "---> (warning): no anatomicals for (%s|%s|%s)" % (animalid, session, fov)
+        if verbose:
+            assert len(anatomical_dirs) > 0, "---> (warning): no anatomicals for (%s|%s|%s)" % (animalid, session, fov)
         anatomical_dir = anatomical_dirs[0]
         if verbose:
             print("... found %i anatomical runs." % len(anatomical_dirs))
         anatomical_imgs = glob.glob(os.path.join(anatomical_dir, 'processed',
                                                  'processed*', 'mcorrected_*_mean_deinterleaved',
                                                  'Channel%02d' % channel_num, 'File*', '*.tif'))
-        assert len(anatomical_imgs) > 0, "... No processed anatomicals found!"
+        if verbose:
+            assert len(anatomical_imgs) > 0, "... No processed anatomicals found!"
         images=[]
         for fpath in anatomical_imgs:
             im = tf.imread(fpath)
             images.append(im)
         anatomical = np.array(images).sum(axis=0)
     except Exception as e:
-        print e
+        print("... no anat")
         
     return anatomical
         
@@ -467,14 +469,21 @@ def get_receptive_field_fits(animalid, session, fov, response_type='dff',
 def get_responsive_cells(animalid, session, fov, run=None, traceid='traces001',
                          response_type='dff',create_new=False, n_processes=1,
                          responsive_test='ROC', responsive_thr=0.05, n_stds=2.5,
-                         rootdir='/n/coxfs01/2p-data'):
+                         rootdir='/n/coxfs01/2p-data', verbose=False):
         
     roi_list=None; nrois_total=None;
-    traceid_dir =  glob.glob(os.path.join(rootdir, animalid, session, 
-                                    fov, run, 'traces', '%s*' % traceid))[0]        
+    rname = run if 'combined' in run else 'combined_%s_' % run
 
+    traceid_dir =  glob.glob(os.path.join(rootdir, animalid, session, 
+                                    fov, '%s*' % rname, 'traces', '%s*' % traceid))[0]        
+    stat_dir = os.path.join(traceid_dir, 'summary_stats', responsive_test)
+    if not os.path.exists(stat_dir):
+        os.makedirs(stat_dir) 
+    #assert os.path.exists(stats_dir), "Stats dir does not exist: %s" % stats_dir
+    #results_str = '' % responsive_thr if responsive_test=='nstds' else ''
+    # move old dir
     if create_new and (('gratings' in run) or ('blobs' in run)):
-        print("@@@ running anew, might take awhile @@@")
+        print("@@@ running anew, might take awhile (%s|%s|%s) @@@" % (animalid, session, fov))
         try:
             if responsive_test=='ROC':
                 print("DOING BOOT - run: %s" % run) 
@@ -487,32 +496,32 @@ def get_responsive_cells(animalid, session, fov, run=None, traceid='traces001',
                             #response_type=response_type, 
                             n_processes=n_processes, rootdir=rootdir, 
                             create_new=True)
-                #print(fdf.head())
-            print('@@@ finished responsivity test @@@')
+            print('@@@@@@ finished responsivity test (%s|%s|%s) @@@@@@' % (animalid, session, fov))
 
         except Exception as e:
+            traceback.print_exc()
             print("JK ERROR")
-            print(e)
+            return None, None 
 
-    stats_dir = os.path.join(traceid_dir, 'summary_stats', responsive_test)
-    assert os.path.exists(stats_dir), "Stats dir does not exist: %s" % stats_dir
-    #results_str = '' % responsive_thr if responsive_test=='nstds' else ''
-    stats_fpath = glob.glob(os.path.join(stats_dir, '*results*.pkl'))
     #if len(stats_fpath)==0:
     #    print("-- using old stats")
     #    stats_dir = os.path.join(traceid_dir, 'summary_stats', '_%s' % responsive_test)
     #    stats_fpath = glob.glob(os.path.join(stats_dir, '*results*.pkl'))
 
-    # move old dir
-    if create_new:
-        if os.path.exists(stats_dir):
-            old_dir = os.path.join(traceid_dir, 'summary_stats', '_%s' % responsive_test)
-            shutil.move(stats_dir, old_dir) 
+    if responsive_test=='nstds':
+        stats_fpath = glob.glob(os.path.join(stat_dir, 
+                            '%s-%.2f_result*.pkl' % (responsive_test, n_stds)))
+    else:
+        stats_fpath = glob.glob(os.path.join(stat_dir, 'roc_result*.pkl'))
+
+
+
     try:
         #stats_fpath = glob.glob(os.path.join(stats_dir, '*results*.pkl'))
-        assert len(stats_fpath) == 1, "Stats results paths: %s" % str(stats_fpath)
+        #assert len(stats_fpath) == 1, "Stats results paths: %s" % str(stats_fpath)
         with open(stats_fpath[0], 'rb') as f:
-            print("... loading stats")
+            if verbose:
+                print("... loading stats")
             rstats = pkl.load(f)
         # print("...loaded")        
         if responsive_test == 'ROC':
@@ -520,13 +529,16 @@ def get_responsive_cells(animalid, session, fov, run=None, traceid='traces001',
             nrois_total = len(rstats.keys())
         elif responsive_test == 'nstds':
             assert n_stds == rstats['nstds'], "... incorrect nstds, need to recalculate"
-            roi_list = [r for r in rstats['nframes_above'].columns if any(rstats['nframes_above'][r] > responsive_thr)]
+            #print rstats
+            roi_list = [r for r in rstats['nframes_above'].columns \
+                            if any(rstats['nframes_above'][r] > responsive_thr)]
             nrois_total = rstats['nframes_above'].shape[-1]
     except Exception as e:
         print(e)
         traceback.print_exc()
 
-    print("%i of %i cells responsive" % (len(roi_list), nrois_total))
+    if verbose:
+        print("... %i of %i cells responsive" % (len(roi_list), nrois_total))
  
     return roi_list, nrois_total
    
@@ -560,25 +572,28 @@ def calculate_nframes_above_nstds(animalid, session, fov, run=None, traceid='tra
         calculate_frames = True
     
     if calculate_frames:
-        print("Testing responsive (n_stds=%.2f)" % n_stds)
+        print("... Testing responsive (n_stds=%.2f)" % n_stds)
         # Load data
-        soma_fpath = glob.glob(os.path.join(traceid_dir, 'data_arrays', 'np_subtracted.npz'))[0]
+        soma_fpath = glob.glob(os.path.join(traceid_dir, 
+                                    'data_arrays', 'np_subtracted.npz'))[0]
         traces, labels, sdf, run_info = util.load_dataset(soma_fpath, 
-                                                trace_type='corrected', #response_type, 
-                                                add_offset=True, 
-                                                make_equal=False) #make_equal)
+                                            trace_type='corrected', #response_type, 
+                                            add_offset=True, 
+                                            make_equal=False) #make_equal)
         #self.load(trace_type=trace_type, add_offset=add_offset)
         ncells_total = traces.shape[-1]
         
         # Calculate N frames 
+        print("... Traces: %s, Labels: %s" % (str(traces.shape), str(labels.shape)))
         framesdf = pd.concat([resp.find_n_responsive_frames(traces[roi], labels, 
                                 n_stds=n_stds) for roi in range(ncells_total)], axis=1)
         results = {'nframes_above': framesdf,
                    'nstds': n_stds}
-        
+        # Save    
         with open(results_fpath, 'wb') as f:
             pkl.dump(results, f, protocol=pkl.HIGHEST_PROTOCOL)
-            
+        print("... Saved: %s" % os.path.split(results_fpath)[-1])
+ 
     return framesdf
 
  
@@ -654,7 +669,7 @@ def get_roi_stats(animalid, session, fov, exp_name=None, traceid='traces001',
 
 class Session():
     def __init__(self, animalid, session, fov, visual_area=None, state=None, 
-                    verbose=False, rootdir='/n/coxfs01/2p-data'):
+                    get_anatomical=True, verbose=False, rootdir='/n/coxfs01/2p-data'):
         self.animalid = animalid
         self.session = session
         self.fov = fov
@@ -672,9 +687,11 @@ class Session():
         
         if verbose:
             print("Creating session object [%s|%s|%s]" % (animalid, session, fov))
-
-        self.anatomical = get_anatomical(animalid, session, fov, rootdir=rootdir)
         
+        self.anatomical=None
+        if get_anatomical:
+            self.anatomical = load_anatomical(animalid, session, fov, rootdir=rootdir)
+
         self.rois = None
         self.traceid = None
         self.trace_type = None
@@ -712,7 +729,6 @@ class Session():
             else:
                 expdata = self.experiments[ex]
                 sdf = expdata.data.sdf.copy()
-
             if ex == 'gratings' and len(sdf['size'].unique())>1: 
                 # deal with FF stimuli
                 sdf = sdf[sdf['size']<200]
@@ -731,9 +747,9 @@ class Session():
             assert len(xpos)==1, "blobs and gratings have different XPOS: %s" % str(xpos)
             ypos = list(set(ypositions))
             assert len(ypos)==1, "blobs and gratings have different YPOS: %s" % str(ypos)
-            xpos = xpos[0]
-            ypos = ypos[0]
-            print("Stimuli presented at coords: (%i, %i)" % (xpos, ypos))
+            xpos = float(xpos[0])
+            ypos = float(ypos[0])
+            #print("Stimuli presented at coords: (%i, %i)" % (xpos, ypos))
             
             return xpos, ypos
         else:
@@ -848,10 +864,11 @@ class Session():
         experiment_list = list(set([os.path.split(f)[-1].split('_run')[0] \
                                     for f in run_list]))
         
-        if int(self.session) < 20190511 and 'gratings' in experiment_list:
+        if 'gratings' in experiment_list and (20190405 <= int(self.session) < 20190511):
             # Old experiment, where "gratings" were actually RFs
             experiment_list = [e for e in experiment_list if e != 'gratings']
             experiment_list.append('rfs') # These are always 5 degree res        
+        
         
         return experiment_list
     
@@ -1154,7 +1171,7 @@ class Experiment(object):
         
         if not(isinstance(self.source, list)):
             assert os.path.exists(self.source), "Path does not exist! -- %s" % self.source
-            print("... exp.load()") 
+            #print("... exp.load()") 
             try:
                 if self.source.endswith('npz'):
                     basename = os.path.splitext(os.path.split(self.source)[-1])[0]
@@ -1193,7 +1210,7 @@ class Experiment(object):
                                                     self.source, info=self.data.info)       
                 # Update self:"
                 if update_self:
-                    print("... updating self")
+                    #print("... updating self")
                     self.data.traces = traces
                 else:
                     #print(".... returning")
@@ -1329,8 +1346,8 @@ class Experiment(object):
     def get_responsive_cells(self, response_type='dff', responsive_test='ROC', 
                                 responsive_thr=0.05, n_stds=2.5, 
                                 create_new=False, n_processes=1):
-        print("... getting responsive cells (test: %s, thr: %.2f')" % (responsive_test, responsive_thr))
-        assert ('blobs' in self.name) or ('gratings' in self.name and int(self.session) >= 20190511), "Incorrect call for event data analysis (expecting gratings or blobs)."
+        print("... (%s|%s) getting responsive cells (test: %s, thr: %.2f')" % (self.animalid, self.session, responsive_test, responsive_thr))
+        assert ('blobs' in self.name) or ('gratings' in self.name and ((int(self.session) >= 20190511) or (int(self.session)<=20190405))), "Incorrect call for event data analysis (expecting gratings or blobs)."
         try:
             roi_list, nrois_total = get_responsive_cells(self.animalid, 
                                             self.session, 
@@ -1343,15 +1360,17 @@ class Experiment(object):
                                             n_processes=n_processes)
             assert roi_list is not None, "--- no stats on initial pass"
         except Exception as e:
-            if responsive_test == 'nstds':
-                print("... trying calculating nframes above/below nstd")
-                framesdf = self.calculate_nframes_above_nstds(n_stds=n_stds, 
-                                                                trace_type=response_type) #'dff')
-                roi_list = [roi for roi in framesdf.columns \
-                                if any(framesdf[roi] > responsive_thr)]
-                nrois_total = framesdf.shape[-1]
-            else:
-                return None, None
+            print(e)
+            return None, None
+#            if responsive_test == 'nstds':
+#                print("... trying calculating nframes above/below nstd")
+#                framesdf = self.calculate_nframes_above_nstds(n_stds=n_stds, 
+#                                                        trace_type=response_type) #'dff')
+#                roi_list = [roi for roi in framesdf.columns \
+#                                if any(framesdf[roi] > responsive_thr)]
+#                nrois_total = framesdf.shape[-1]
+#            else:
+#                return None, None
             
         return roi_list, nrois_total
 
@@ -1399,7 +1418,7 @@ class Experiment(object):
         estats.rois = roi_list
         estats.nrois = self.data.traces.shape[-1]
         
-        estats.gdf = esp.group_roidata_stimresponse(self.data.traces[roi_list], 
+        estats.gdf = resp.group_roidata_stimresponse(self.data.traces[roi_list], 
                                                     self.data.labels, 
                                                     roi_list=roi_list,
                                                     return_grouped=get_grouped,
@@ -1409,40 +1428,18 @@ class Experiment(object):
         return estats #{experiment_id: estats}
     
 
-    def calculate_nframes_above_nstds(self, n_stds=2.5, trace_type='dff', add_offset=True):
+    def calculate_nframes_above_nstds(self, n_stds=2.5, trace_type='dff', add_offset=True,
+                        rootdir='/n/coxfs01/2p-data'):
         traces_basedir = self.source.split('/data_arrays/')[0]
         output_dir = os.path.join(traces_basedir, 'summary_stats', 'nstds')
         if not os.path.exists(output_dir):
             os.makedirs(output_dir)
-            
-        results_fpath = os.path.join(output_dir, 'nstds-%.2f_results.pkl' % n_stds)
-        
-        calculate_frames = False
-        if os.path.exists(results_fpath):
-            try:
-                with open(results_fpath, 'rb') as f:
-                    results = pkl.load(f)
-                assert results['nstds'] == n_stds, "... different nstds requested. Re-calculating"
-                framesdf = results['nframes_above']            
-            except Exception as e:
-                calculate_frames = True
-        else:
-            calculate_frames = True
-        
-        if calculate_frames:
-            # Load data
-            self.load(trace_type=trace_type, add_offset=add_offset)
-            ncells_total = self.data.traces.shape[-1]
-            
-            # Calculate N frames 
-            framesdf = pd.concat([resp.find_n_responsive_frames(self.data.traces[roi], self.data.labels, n_stds=n_stds)\
-                                  for roi in range(ncells_total)], axis=1)
-            results = {'nframes_above': framesdf,
-                       'nstds': n_stds}
-            
-            with open(results_fpath, 'wb') as f:
-                pkl.dump(results, f, protocol=pkl.HIGHEST_PROTOCOL)
-                
+ 
+        framesdf = calculate_nframes_above_nstds(self.animalid, self.session, self.fov, 
+                                                run=self.name, traceid=self.traceid,
+                                            n_stds=2.5, create_new=True,
+                                            n_processes=1, rootdir=rootdir)
+               
         return framesdf
     
     
@@ -1457,7 +1454,8 @@ class Gratings(Experiment):
                    responsive_thr=10, n_stds=2.5,
                    n_bootstrap_iters=1000, n_resamples=20, n_intervals_interp=3, 
                    min_cfgs_above=2, nframes_post=0, 
-                   rootdir='/n/coxfs01/2p-data', create_new=False, n_processes=1, make_plots=False):
+                   rootdir='/n/coxfs01/2p-data', create_new=False, n_processes=1, make_plots=False,
+                   verbose=False):
         '''
         This method is effecively the same as osi.get_tuning(), but without 
         having to do redundant data loading.
@@ -1467,7 +1465,7 @@ class Gratings(Experiment):
                                           responsive_test=responsive_test, responsive_thr=responsive_thr, n_stds=n_stds,
                                           n_bootstrap_iters=n_bootstrap_iters, n_resamples=n_resamples, 
                                           rootdir=rootdir)
-        print("... getting OSI results: %s" % fit_desc)
+        #print("... getting OSI results: %s" % fit_desc)
         
         # tmp:
         if not os.path.exists(os.path.join(os.path.split(self.source)[0], 'np_subtracted.npz')):
@@ -1478,7 +1476,7 @@ class Gratings(Experiment):
             bootresults, fitparams = osi.load_tuning_results(self.animalid, self.session, self.fov,
                                                                 self.name, traceid=self.traceid, 
                                                                 fit_desc=fit_desc,
-                                                                rootdir=rootdir)
+                                                                rootdir=rootdir, verbose=verbose)
             do_fits = bootresults is None
         else:
             do_fits=True
@@ -1572,6 +1570,9 @@ class Gratings(Experiment):
                                                     n_stds=n_stds, 
                                                     create_new=create_new, 
                                                     n_processes=n_processes)
+        if rstats is None:
+            return None, None
+
         if responsive_test == 'nstds':
             statdf = rstats['nframes_above']
         else:

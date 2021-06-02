@@ -542,7 +542,7 @@ def aggregate_experiment_runs(animalid, session, fov, experiment, traceid='trace
     # #########################################################################
     # Get combo dir
     existing_combined = glob.glob(os.path.join(fovdir, 'combined_%s_static' % experiment, 
-                                               'traces', '*%s*' % traceid))
+                                               'traces', '%s*' % traceid))
     if len(existing_combined) > 0:
         combined_dir = os.path.join(existing_combined[0], 'data_arrays')
     else:

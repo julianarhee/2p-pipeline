@@ -5,7 +5,8 @@ Created on Fri Feb  21 12:17:55 2020
 
 @author: julianarhee
 """
-
+import matplotlib as mpl
+mpl.use('agg')
 import h5py
 import glob
 import os
@@ -18,10 +19,12 @@ import sys
 
 import pandas as pd
 import numpy as np
-from pipeline.python.utils import natural_keys, get_frame_info
+from pipeline.python.utils import natural_keys, get_frame_info, load_dataset
 from pipeline.python.paradigm import align_acquisition_events as alignacq
 from pipeline.python.traces import trial_alignment as talignment
+from pipeline.python.traces import remake_neuropil_masks as mk
 
+from pipeline.python.paradigm.plot_responses import make_clean_psths
 from pipeline.python.classifications import experiment_classes as cutils
 
 
@@ -60,9 +63,29 @@ def extract_options(options):
                           default=None, help='Transform to plot by HUE within each subplot')
     parser.add_option('-d', '--response', action='store', dest='response_type',
                           default='dff', help='Traces to plot (default: dff)')
-
     parser.add_option('-f', '--filetype', action='store', dest='filetype',
                           default='svg', help='File type for images [default: svg]')
+    parser.add_option('--resp-test', action='store', dest='responsive_test',
+                          default='nstds', help='Responsive test or plotting rois [default: nstds]')
+    parser.add_option('--resp-thr', action='store', dest='responsive_thr',
+                          default=10, help='Responsive test or plotting rois [default: 10]')
+
+
+    # Neuropil mask params
+    parser.add_option('-N', '--np-outer', action='store', dest='np_niterations', default=24, 
+                      help="Num cv dilate iterations for outer annulus (default: 24, ~50um for zoom2p0x)")
+    parser.add_option('-g', '--np-inner', action='store', dest='gap_niterations', default=4, 
+                      help="Num cv dilate iterations for inner annulus (default: 4, gap ~8um for zoom2p0x)")
+    parser.add_option('--np-factor', action='store', dest='np_correction_factor', default=0.7, 
+                      help="Neuropil correction factor (default: 0.7)")
+    parser.add_option('--plot-masks', action='store_true', dest='plot_masks', default=False, 
+                      help="set flag to plot soma and NP masks")
+    parser.add_option('--masks', action='store_true', dest='do_masks', default=False,
+                      help='set flag to remake neuropil masks')
+
+    parser.add_option('--apply-only', action='store_true', dest='apply_masks_only', default=False, 
+                      help="set flag to just APPLY soma and NP masks")
+
 
     (options, args) = parser.parse_args(options)
 
@@ -85,11 +108,26 @@ def parse_trial_epochs(animalid, session, fov, experiment, traceid,
         with open(alignment_info_filepath, 'w') as f:
             json.dump(trial_info, f, sort_keys=True, indent=4)       
 
+        # Update extraction_params.json
+        extraction_info_filepath = os.path.join(traceid_dir, 'extraction_params.json')
+        if os.path.exists(extraction_info_filepath):
+            with open(extraction_info_filepath, 'r') as f:
+                eparams = json.load(f)
+            for k, v in trial_info.items():
+                if k in eparams:
+                    eparams[k] = v
+        else:
+            eparams = trial_info
+        with open(extraction_info_filepath, 'w') as f:
+            json.dump(eparams, f, sort_keys=True, indent=4)       
+
         # Get parsed frame indices
         parsed_frames_filepath = alignacq.assign_frames_to_trials(si_info, trial_info, paradigm_dir, create_new=True)
 
     print("Done!")
-   
+  
+    return
+ 
 def align_traces(animalid, session, fov, experiment, traceid, rootdir='/n/coxfs01/2p-data'):
 
     talignment.aggregate_experiment_runs(animalid, session, fov, experiment, traceid=traceid)
@@ -101,6 +139,19 @@ def align_traces(animalid, session, fov, experiment, traceid, rootdir='/n/coxfs0
 #
 #    exp.load(trace_type='dff', update_self=True, make_equal=False, create_new=True)
     print("Aligned traces!") 
+    return 
+
+def remake_dataframes(animalid, session, fov, experiment, traceid, rootdir='/n/coxfs01/2p-data'):
+    soma_fpath = glob.glob(os.path.join(rootdir, animalid, session, fov, 
+                        'combined_%s_*' % experiment, 'traces', '%s*' % traceid,
+                        'data_arrays', 'np_subtracted.npz'))[0]
+
+    tr, lb, rinfo, sdf = load_dataset(soma_fpath, trace_type='dff', add_offset=True, 
+                                    make_equal=False, create_new=True)
+    
+    print("Remade all the other dataframes.")
+    return
+
 
 
 def main(options):
@@ -114,7 +165,23 @@ def main(options):
     iti_post = float(opts.iti_post)
     rootdir = opts.rootdir
     plot_psth = opts.plot_psth    
-   
+
+    do_masks = opts.do_masks 
+    np_niterations = int(opts.np_niterations)
+    gap_niterations = int(opts.gap_niterations)
+    np_correction_factor = float(opts.np_correction_factor)
+    plot_masks = opts.plot_masks
+    apply_masks_only = opts.apply_masks_only
+ 
+    if do_masks:
+        print("0. PRE-step: Remaking masks")
+        mk.make_masks(animalid, session, fov, traceid=traceid, np_niterations=np_niterations, gap_niterations=gap_niterations,
+                np_correction_factor=np_correction_factor, rootdir=rootdir, plot_masks=plot_masks, 
+                apply_masks_only=apply_masks_only)
+        print("done!")
+
+
+ 
     print("1. Parsing") 
     parse_trial_epochs(animalid, session, fov, experiment, traceid, 
                         iti_pre=iti_pre, iti_post=iti_post)
@@ -122,7 +189,8 @@ def main(options):
     print("2. Aligning - %s" % experiment)
 
     align_traces(animalid, session, fov, experiment, traceid, rootdir=rootdir)
-
+    remake_dataframes(animalid, session, fov, experiment, traceid, rootdir=rootdir)
+    
     if plot_psth:
         print("3. Plotting")
         row_str = opts.rows
@@ -130,10 +198,13 @@ def main(options):
         hue_str = opts.subplot_hue
         response_type = opts.response_type
         file_type = opts.filetype
+        responsive_test=opts.responsive_test
+        responsive_thr=opts.responsive_thr
 
         plot_opts = ['-i', animalid, '-S', session, '-A', fov, '-t', traceid, '-R', 'combined_%s_static' % experiment, 
-                     '--shade', '-r', row_str, '-c', col_str, '-H', hue_str, '-d', response_type, '-f', file_type]
-        para.make_clean_psths(plot_opts) 
+                     '--shade', '-r', row_str, '-c', col_str, '-H', hue_str, '-d', response_type, '-f', file_type,
+                    '--responsive', '--test', responsive_test, '--thr', responsive_thr]
+        make_clean_psths(plot_opts) 
     
 if __name__ == '__main__':
     main(sys.argv[1:])

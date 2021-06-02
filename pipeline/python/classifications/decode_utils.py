@@ -14,8 +14,11 @@ import copy
 import copy
 import itertools
 import datetime
+import time
+import math
 import pprint 
 pp = pprint.PrettyPrinter(indent=4)
+import traceback
 
 import numpy as np
 import pylab as pl
@@ -23,6 +26,8 @@ import seaborn as sns
 import pandas as pd
 import statsmodels as sm
 import cPickle as pkl
+import multiprocessing as mp
+from functools import partial
 
 from scipy import stats as spstats
 
@@ -30,6 +35,7 @@ from pipeline.python.classifications import experiment_classes as util
 from pipeline.python.classifications import aggregate_data_stats as aggr
 from pipeline.python.classifications import rf_utils as rfutils
 from pipeline.python import utils as putils
+from pipeline.python.eyetracker import dlc_utils as dlcutils
 
 from pipeline.python.retinotopy import fit_2d_rfs as fitrf
 from pipeline.python.rois.utils import load_roi_coords
@@ -58,166 +64,986 @@ from sklearn.model_selection import GridSearchCV
 from sklearn.metrics import classification_report
 from sklearn import svm
 
+
+def shuffle_pupil_labels(pupil_low, pupil_high):
+    '''
+    Shuffle pupil labels (assumes only 'low' and 'high'), but preserves # trials per config
+    '''
+    lo_=[]
+    hi_=[]
+    for cfg, low_g in pupil_low.groupby(['config']):
+        high_g = pupil_high[pupil_high.config==cfg].copy()
+        n_low = low_g.shape[0]
+        n_high = high_g.shape[0]
+        p_all = pd.concat([low_g, high_g], axis=0)
+        p_shuffled = p_all.sample(frac=1).reset_index(drop=True)
+        lo_shuff = p_shuffled.iloc[0:n_low]
+        hi_shuff = p_shuffled.iloc[n_low:]
+        lo_.append(lo_shuff)
+        hi_.append(hi_shuff)
+    pupil_low_shuffled = pd.concat(lo_, axis=0).reset_index()
+    pupil_high_shuffled = pd.concat(hi_, axis=0).reset_index()
+    
+    return pupil_low_shuffled, pupil_high_shuffled
+
+
+def balance_pupil_split(pupildf, feature_name='pupil_fraction', n_cuts=3,
+                        match_cond=True, match_cond_name='size', equalize_after_split=True, 
+                        equalize_by='config', common_labels=None, verbose=False, shuffle_labels=False):
+    '''
+    Split pupildf (trials) by "low" and "high" states, with diff options for balancing samples.
+    match_cond (bool): 
+        Set to split pupil distribution within condition (for ex., match pupil for each SIZE separately).
+    match_cond_name (str):
+        The condition to split by, if match_cond==True *(Should be a column in pupildf)
+    equalize_after_split (bool):
+        Set to equalize across stimulus configs AFTER doing pupil split.
+    equalize_by (str):
+        Condition to match across, e.g., config label, or, morphlevel, etc. *(Should be column in pupildf)
+    '''
+    from pipeline.python.eyetracker import dlc_utils as dlcutils
+    if match_cond:
+        assert match_cond_name in pupildf.columns, "Requested split within <%s>, but not found." % match_cond_name
+        low_=[]; high_=[];
+        for sz, sd in pupildf.groupby([match_cond_name]):
+            p_low, p_high = dlcutils.split_pupil_range(sd, feature_name=feature_name, n_cuts=n_cuts)
+            # if shuffle, shuffle labels, then equalize conds
+            if shuffle_labels:
+                n_low = p_low.shape[0]
+                n_high = p_high.shape[0]
+                p_all = pd.concat([p_low, p_high], axis=0)
+                p_all_shuffled = p_all.sample(frac=1).reset_index(drop=True)
+                p_low = p_all_shuffled.sample(n=n_low)
+                unused_ixs = [i for i in p_all_shuffled['trial'].values if i not in p_low['trial'].values]
+                p_high = p_all_shuffled[p_all_shuffled['trial'].isin(unused_ixs)] #p_all_shuffled.sample(n=n_high)
+            if equalize_after_split:
+                p_low_eq, p_high_eq = balance_samples_by_config(p_low, p_high, 
+                                            config_label=equalize_by, common_labels=common_labels)
+                if verbose:
+                    print("... sz %i, pre/post balance. Low: %i/%i | High: %i/%i" \
+                      % (sz, p_low.shape[0], p_low_eq.shape[0], p_high.shape[0], p_high_eq.shape[0]))
+                low_.append(p_low_eq)
+                high_.append(p_high_eq)
+            else:
+                low_.append(p_low)
+                high_.append(p_high)
+        high = pd.concat(high_)
+        low = pd.concat(low_)
+    else:
+        low, high = dlcutils.split_pupil_range(pupildf, feature_name=pupil_feature, n_cuts=n_cuts)
+
+    return low, high
+
+def balance_samples_by_config(df1, df2, config_label='config', common_labels=None):
+    '''
+    Given 2 dataframes with config labels on each trial, match reps per config.
+    config_label: if 'config', matches across all configs found (config001, config002, etc.)
+    For ex., can also use "morphlevel" to just match counts of morphlevel (ignoring unique size, etc.)
+    '''
+    assert config_label in df1.columns, "Label <%s> not in df1 columns" % config_label
+    assert config_label in df2.columns, "Label <%s> not in df2 columns" % config_label
+
+    if common_labels is None:
+        common_labels = np.intersect1d(df1[config_label].unique(), df2[config_label].unique())
+        config_subset = False
+    else:
+        config_subset = True
+
+    # Get equal counts for specified labels 
+    df1_eq = aggr.equal_counts_df(df1[df1[config_label].isin(common_labels)], equalize_by=config_label)
+    df2_eq = aggr.equal_counts_df(df2[df2[config_label].isin(common_labels)], equalize_by=config_label) 
+    # Check that each partition has the same # of labels (i.e., if missing 1 label, will ahve diff #s)
+    #df1_labels = df1_eq[df1_eq[config_label].isin(common_labels)][config_label].unique()
+    #df2_labels = df2_eq[df2_eq[config_label].isin(common_labels)][config_label].unique()
+
+ 
+    # Get min N reps per condition (based on N reps per train condition)
+    min_reps_per = min([df1_eq[config_label].value_counts()[0], df2_eq[config_label].value_counts()[0]])
+    
+    # Draw min_reps_per samples without replacement
+    if config_subset:
+        # we set sample #s by train configs, and include the other trials for test
+        df1_resampled = pd.concat([g.sample(n=min_reps_per, replace=False) if g.shape[0]>min_reps_per \
+                                    else g for c, g in df1.groupby([config_label])])
+        df2_resampled = pd.concat([g.sample(n=min_reps_per, replace=False) if g.shape[0]>min_reps_per \
+                                    else g for c, g in df2.groupby([config_label])])
+
+    else:
+        df2_resampled = pd.concat([g.sample(n=min_reps_per, replace=False) \
+                                    for c, g in df2_eq.groupby([config_label])])
+        df1_resampled = pd.concat([g.sample(n=min_reps_per, replace=False) \
+                                    for c, g in df1_eq.groupby([config_label])])
+
+    return df1_resampled, df2_resampled
+
+
+def get_percentile_shuffled(iterdf, metric='heldout_test_score'):
+    # Use bootstrap distn to calculate percentiles
+    s_=[]
+    if 'cell' in iterdf.columns:
+        if 'train_transform' in iterdf.columns:
+            percentiles = group_iters_by_cell_and_transform(iterdf, metric=metric)
+        else:
+            percentiles = group_iters_by_cell(iterdf, metric=metric)
+    else:
+        if 'train_transform' in iterdf.columns:
+            percentiles = group_iters_by_fov_and_transform(iterdf, metric=metric)
+        else:
+            percentiles = group_iters_by_fov(iterdf, metric=metric)
+   
+    return percentiles
+
+def group_iters_by_cell(iterdf, metric='heldout_test_score'):
+    # p_thr=0.05
+    excl_cols = ['fit_time', 'iteration', 'n_cells',  'randi', 'score_time']
+    incl_cols = [c for c in iterdf.columns if c not in excl_cols]
+
+    s_=[]
+    for (visual_area, datakey, rid), d_ in iterdf.groupby(['visual_area', 'datakey', 'cell']):
+
+        mean_score = d_[d_['condition']=='data'][metric].mean()
+        percentile = np.mean(mean_score < d_[d_['condition']=='shuffled'][metric])
+        n_iterations = d_[d_['condition']=='data'].shape[0]
+        rdict = dict(d_[d_['condition']=='data'][incl_cols].mean())
+        rdict.update({'visual_area': visual_area, 'datakey': datakey, 'cell': rid, 
+                       'mean_score': mean_score, 'percentile': percentile, 'n_iterations': n_iterations})
+        s = pd.Series(rdict)
+        s_.append(s) 
+    percentiles = pd.concat(s_, axis=1).T.reset_index(drop=True)
+
+    return percentiles 
+
+def group_iters_by_cell_and_transform(iterdf, metric='heldout_test_score'):
+    # p_thr=0.05
+    excl_cols = ['fit_time', 'iteration', 'n_cells',  'randi', 'score_time']
+    incl_cols = [c for c in iterdf.columns if c not in excl_cols]
+
+    s_=[]
+    for (visual_area, datakey, rid, tr), d_ in iterdf.groupby(['visual_area', 'datakey', 'cell', 'train_transform']):
+
+        mean_score = d_[d_['condition']=='data'][metric].mean()
+        percentile = np.mean(mean_score < d_[d_['condition']=='shuffled'][metric])
+        n_iterations = d_[d_['condition']=='data'].shape[0]
+        rdict = dict(d_[d_['condition']=='data'][incl_cols].mean())
+        rdict.update({'visual_area': visual_area, 'datakey': datakey, 'cell': rid, 'train_transform': tr,
+                       'mean_score': mean_score, 'percentile': percentile, 'n_iterations': n_iterations})
+        s = pd.Series(rdict)
+        s_.append(s) 
+    percentiles = pd.concat(s_, axis=1).T.reset_index(drop=True)
+
+    return percentiles 
+
+
+def group_iters_by_fov_and_transform(iterdf, metric='heldout_test_score'):
+    # p_thr=0.05
+    excl_cols = ['fit_time', 'iteration', 'n_cells',  'randi', 'score_time']
+    incl_cols = [c for c in iterdf.columns if c not in excl_cols]
+
+    s_=[]
+    for (visual_area, datakey, sz), d_ in iterdf.groupby(['visual_area', 'datakey', 'train_transform']):
+
+        mean_score = d_[d_['condition']=='data'][metric].mean()
+        percentile = np.mean(mean_score < d_[d_['condition']=='shuffled'][metric])
+        n_iterations = d_[d_['condition']=='data'].shape[0]
+        rdict = dict(d_[d_['condition']=='data'][incl_cols].mean())
+        rdict.update({'visual_area': visual_area, 'datakey': datakey, 'train_transform': sz,
+                       'mean_score': mean_score, 'percentile': percentile, 'n_iterations': n_iterations})
+        s = pd.Series(rdict)
+        s_.append(s) 
+    percentiles = pd.concat(s_, axis=1).T.reset_index(drop=True)
+
+    return percentiles 
+
+def group_iters_by_fov(iterdf, metric='heldout_test_score'):
+    # p_thr=0.05
+    excl_cols = ['fit_time', 'iteration', 'n_cells',  'randi', 'score_time']
+    incl_cols = [c for c in iterdf.columns if c not in excl_cols]
+
+    s_=[]
+    for (visual_area, datakey), d_ in iterdf.groupby(['visual_area', 'datakey']):
+
+        mean_score = d_[d_['condition']=='data'][metric].mean()
+        percentile = np.mean(mean_score < d_[d_['condition']=='shuffled'][metric])
+        n_iterations = d_[d_['condition']=='data'].shape[0]
+        rdict = dict(d_[d_['condition']=='data'][incl_cols].mean())
+        rdict.update({'visual_area': visual_area, 'datakey': datakey,
+                       'mean_score': mean_score, 'percentile': percentile, 'n_iterations': n_iterations})
+        s = pd.Series(rdict)
+        s_.append(s) 
+    percentiles = pd.concat(s_, axis=1).T.reset_index(drop=True)
+
+    return percentiles 
+
+
+def get_training_results(iterdf, test_type=None, train_classes=[0, 106], drop_arousal=True):
+    if 'arousal' not in iterdf.columns:
+        drop_arousal=False
+    if 'train_transform' in iterdf.columns:
+        print("transforms are split")
+        if 'morph' in test_type:
+            traindf = iterdf[(iterdf.train_transform==iterdf.test_transform) 
+                        & (iterdf['morphlevel']==train_classes[0])]\
+                        .drop(['morphlevel', 'p_chooseB'], axis=1).drop_duplicates()
+#            traindf = iterdf[(iterdf.train_transform==iterdf.test_transform) 
+#                        & (iterdf['morphlevel'].isin(train_classes))]\
+#                        .drop(['morphlevel', 'p_chooseB'], axis=1).drop_duplicates()
+# 
+        else:
+            traindf = iterdf[(iterdf.train_transform==iterdf.test_transform) 
+                        & (iterdf.novel==False)].drop_duplicates()
+    else:
+        print("reg")
+        traindf = iterdf.copy()
+
+    if drop_arousal:
+        traindf = traindf[(traindf.arousal=='all')].drop_duplicates()
+        #traindf.groupby( 
+    return traindf
+
+
 # ======================================================================
 # Load/Aggregate data functions 
 # ======================================================================
-def load_aggregate_rfs(rf_dsets, traceid='traces001', 
-                        fit_desc='fit-2dgaus_dff-no-cutoff', 
-                        reliable_only=True, verbose=False):
-    rf_dpaths, no_fits = rfutils.get_fit_dpaths(rf_dsets, traceid=traceid, fit_desc=fit_desc)
-    rfdf = rfutils.aggregate_rf_data(rf_dpaths, reliable_only=reliable_only, 
-                                        fit_desc=fit_desc, traceid=traceid, verbose=verbose)
-    rfdf = rfdf.reset_index(drop=True)
-    return rfdf
+# load_aggregate_rfs : now in rf_utils.py
+# get_rf_positions: in rf_utils.py
+def initializer(terminating_):
+    # This places terminating in the global namespace of the worker subprocesses.
+    # This allows the worker function to access `terminating` even though it is
+    # not passed as an argument to the function.
+    global terminating
+    terminating = terminating_
 
-def get_rf_positions(rf_dsets, df_fpath, traceid='traces001', 
-                        fit_desc='fit-2dgaus_dff-no-cutoff', reliable_only=True, verbose=False):
-    rfdf = load_aggregate_rfs(rf_dsets, traceid=traceid, fit_desc=fit_desc, 
-                                reliable_only=reliable_only, verbose=verbose)
-    get_positions = False
-    if os.path.exists(df_fpath) and get_positions is False:
-        print("Loading existing RF coord conversions...")
-        try:
-            with open(df_fpath, 'rb') as f:
-                df= pkl.load(f)
-            rfdf = df['df']
-        except Exception as e:
-            get_positions = True
+def pool_bootstrap(neuraldf, sdf, n_iterations=50, n_processes=1, 
+                   C_value=None, cv_nfolds=5, test_split=0.2, 
+                   test_type=None, n_train_configs=4, verbose=False, within_fov=True,
+                   class_a=0, class_b=106, do_shuffle=True, balance_configs=True):   
+    '''
+    This function replaces fit_svm_mp() -- includes opts for generalization test.
+    Only tested for within-fov analyses (by_fov).
 
-    if get_positions:
-        print("Calculating RF coord conversions...")
-        pos_params = ['fov_xpos', 'fov_xpos_pix', 'fov_ypos', 'fov_ypos_pix', 'ml_pos','ap_pos']
-        for p in pos_params:
-            rfdf[p] = ''
-        p_list=[]
-        for (animalid, session, fovnum), g in rfdf.groupby(['animalid', 'session', 'fovnum']):
-            fcoords = load_roi_coords(animalid, session, 'FOV%i_zoom2p0x' % fovnum, 
-                                      traceid=traceid, create_new=False)
+    test_type (str, None)
+        None  : Classify A/B only 
+                single=True to train/test on each size
+        morph : Train on anchors, test on intermediate morphs
+                single=True to train/test on each size
+        size  : Train on specific size(s), test on un-trained sizes
+                single=True to train/test on each size
+    '''
+    iter_df = None
 
-            for ei, e_df in g.groupby(['experiment']):
-                cell_ids = e_df['cell'].unique()
-                p_ = fcoords['roi_positions'].loc[cell_ids]
-                for p in pos_params:
-                    rfdf[p][e_df.index] = p_[p].values
-        with open(df_fpath, 'wb') as f:
-            pkl.dump(rfdf, f, protocol=pkl.HIGHEST_PROTOCOL)
-    return rfdf
+    C=C_value
+    vb = verbose 
+    results = []
+    terminating = mp.Event()
 
-def pick_rfs_with_most_overlap(rfdf, MEANS):
-    r_list=[]
-    for datakey, expdf in MEANS.items(): #corrs.groupby(['datakey']):
-        # Get active blob cells
-        exp_rids = [r for r in expdf.columns if putils.isnumber(r)]     
-        # Get current fov's RFs
-        rdf = rfdf[rfdf['datakey']==datakey].copy()
-        
-        # If have both rfs/rfs10, pick the best one
-        if len(rdf['experiment'].unique())>1:
-            rf_rids = rdf[rdf['experiment']=='rfs']['cell'].unique()
-            rf10_rids = rdf[rdf['experiment']=='rfs10']['cell'].unique()
-            same_as_rfs = np.intersect1d(rf_rids, exp_rids)
-            same_as_rfs10 = np.intersect1d(rf10_rids, exp_rids)
-            rfname = 'rfs' if len(same_as_rfs) > len(same_as_rfs10) else 'rfs10'
-            print("%s: Selecting %s, overlappig rfs, %i | rfs10, %i (of %i cells)" 
-                  % (datakey, rfname, len(same_as_rfs), len(same_as_rfs10), len(exp_rids)))
-            r_list.append(rdf[rdf['experiment']==rfname])
+    pool = mp.Pool(initializer=initializer, initargs=(terminating, ), processes=n_processes)  
+    try:
+        ntrials, sample_size = neuraldf.shape
+        print("[%s]... n: %i (%i procs)" % (test_type, int(sample_size-1), n_processes))
+        if test_type=='morph':
+            func = partial(train_test_morph, curr_data=neuraldf, sdf=sdf, 
+                                verbose=verbose, C_value=C_value, test_split=test_split, cv_nfolds=cv_nfolds,
+                                class_a=class_a, class_b=class_b, balance_configs=balance_configs) 
+#                               MEANS=MEANS, sdf=sdf, sample_size=sample_size)
+        elif test_type=='morph_single':
+            func = partial(train_test_morph_single, curr_data=neuraldf, sdf=sdf, 
+                                verbose=verbose, C_value=C_value, test_split=test_split, cv_nfolds=cv_nfolds,
+                                class_a=class_a, class_b=class_b, balance_configs=balance_configs) 
+#
+#            if single: # train on 1 size, test on other sizes
+#                func = partial(dutils.do_fit_train_single_test_morph, global_rois=global_rois, 
+#                               MEANS=MEANS, sdf=sdf, sample_size=sample_size)
+#            else: # combine data across sizes
+#                func = partial(dutils.do_fit_train_test_morph, global_rois=global_rois, 
+#                               MEANS=MEANS, sdf=sdf, sample_size=sample_size)             
+        elif test_type=='size_single':
+            func = partial(train_test_size_single, curr_data=neuraldf, sdf=sdf,
+                                verbose=verbose, C_value=C_value, balance_configs=balance_configs) 
+#                func = partial(dutils.do_fit_train_test_single, global_rois=global_rois, 
+#                               MEANS=MEANS, sdf=sdf, sample_size=sample_size)
+        elif test_type=='size_subset':
+            func = partial(train_test_size_subset, curr_data=neuraldf, sdf=sdf,
+                                verbose=verbose, C_value=C_value, n_train_configs=n_train_configs,
+                                balance_configs=balance_configs) 
+#                func = partial(dutils.cycle_train_sets, global_rois=global_rois, 
+#                               MEANS=MEANS, sdf=sdf, sample_size=sample_size, 
+#                                n_train_configs=n_train_configs)
         else:
-            r_list.append(rdf)
-    RFs = pd.concat(r_list, axis=0)
+            func = partial(do_fit_within_fov, curr_data=neuraldf, sdf=sdf, verbose=verbose,
+                                C_value=C_value, balance_configs=balance_configs)
+        output = pool.map_async(func, range(n_iterations)).get() #999999)
+        #results = [pool.apply_async(do_fit_within_fov, args=(i, neuraldf, sdf, vb, C)) \
+        #            for i in range(n_iterations)]
+        #output= [p.get(99999999) for p in results]
+        iter_df = pd.concat(output, axis=0)
+ 
+    except KeyboardInterrupt:
+        terminating.set()
+        print("**interupt")
+        pool.terminate()
+        print("***Terminating!")
+    except Exception as e:
+        traceback.print_exc()
+        pool.terminate() 
+    finally:
+        pool.close()
+        pool.join()
 
-    return RFs
+    return iter_df #output #results
+#
 
-def plot_all_rfs(RFs, MEANS, screeninfo, cmap='cubehelix', dpi=150):
+def iterate_by_ncells(n_cells, NEURALDATA, CELLS, sdf, n_iterations=100, n_processes=1, 
+                        C_value=None, cv_nfolds=5, test_split=0.2, 
+                        test_type=None, n_train_configs=4, verbose=False, within_fov=False,
+                        class_name='morphlevel', class_a=0, class_b=106, do_shuffle=True, balance_configs=True,
+                        feature_name='pupil_fraction', n_cuts=3, equalize_by='config', match_all_configs=True,
+                        with_replacement=False):   
+    #from pipeline.python.eyetracker import dlc_utils as dlcutils
+    iterdf = None 
+
+    # Select how to filter trial-matching
+    train_labels = sdf[sdf[class_name].isin([class_a, class_b])][equalize_by].unique()
+    common_labels = None if match_all_configs else train_labels
+
+    #### Define MP worker
+    results = []
+    terminating = mp.Event() 
+    def worker_by_ncells(out_q, n_iters, n_cells, NEURALDATA, CELLS, sdf, common_labels, test_type,
+                    C_value=None, verbose=False, class_a=0, class_b=106, cv_nfolds=5, test_split=0.2):
+        r_ = []        
+        i_=[]
+        for ni in n_iters:
+            randi = random.randint(1, 10000)
+            #### Get new sample set
+            print("... sampling data, n=%i cells" % n_cells)
+            neuraldf = sample_neuraldata(n_cells, CELLS, NEURALDATA, with_replacement=with_replacement,
+                                                    train_configs=common_labels, randi=randi)
+            neuraldf = aggr.zscore_neuraldf(neuraldf)
+            n_cells = int(neuraldf.shape[1]-1) 
+            #print("... doing decode BY_NCELLS | n=%i cells" % (n_cells))
+
+            # Decoding -----------------------------------------------------
+            # Fit.
+            start_t = time.time()
+            i_df = select_test(ni, neuraldf, sdf, 
+                            C_value=C_value, class_a=class_a, class_b=class_b, 
+                            cv_nfolds=cv_nfolds, test_split=test_split, 
+                            verbose=verbose, do_shuffle=True, balance_configs=True,
+                            test_type=test_type, n_train_configs=n_train_configs)  
+            if i_df is None:
+                out_q.put(None)
+                raise ValueError("No results for current iter")
+            end_t = time.time() - start_t
+            print("--> Elapsed time: {0:.2f}sec".format(end_t))
+            i_df['randi'] = randi
+            i_.append(i_df)
+        curr_iterdf = pd.concat(i_, axis=0)
+        out_q.put(curr_iterdf) 
+    try:        
+        # Each process gets "chunksize' filenames and a queue to put his out-dict into:
+        iter_list = np.arange(0, n_iterations) #gdf.groups.keys()
+        out_q = mp.Queue()
+        chunksize = int(math.ceil(len(iter_list) / float(n_processes)))
+        procs = []
+        for i in range(n_processes):
+            p = mp.Process(target=worker_by_ncells,
+                           args=(out_q, iter_list[chunksize * i:chunksize * (i + 1)],
+                                    n_cells, NEURALDATA, CELLS, sdf, common_labels, test_type))
+            procs.append(p)
+            p.start() # start asynchronously
+        # Collect all results into 1 results dict. We should know how many dicts to expect:
+        results = []
+        for i in range(n_processes):
+            results.append(out_q.get(99999))
+        # Wait for all worker processes to finish
+        for p in procs:
+            p.join() # will block until finished
+    except KeyboardInterrupt:
+        terminating.set()
+        print("***Terminating!")
+    except Exception as e:
+        traceback.print_exc()
+    finally:
+        for p in procs:
+            p.join()
+
+    if len(results)>0:
+        iterdf = pd.concat(results, axis=0)
+
+    return iterdf
+
+
+def select_test_return_clf(ni, neuraldf, sdf, C_value=None, cv_nfolds=5, test_split=0.2, 
+                   test_type=None, n_train_configs=4, verbose=False, within_fov=True,
+                   class_a=0, class_b=106, do_shuffle=True, balance_configs=True):   
+    curr_iter = None
+    try:
+        if test_type=='size_subset':
+            curr_iter = train_test_size_subset(ni, curr_data=neuraldf, sdf=sdf, 
+                                C_value=C_value, class_a=class_a, class_b=class_b, 
+                                cv_nfolds=cv_nfolds, test_split=test_split, 
+                                verbose=verbose, do_shuffle=do_shuffle, 
+                                balance_configs=balance_configs,
+                                n_train_configs=n_train_configs)
+        elif test_type=='size_single':
+            curr_iter = train_test_size_single(ni, curr_data=neuraldf, sdf=sdf, 
+                                C_value=C_value, class_a=class_a, class_b=class_b, 
+                                cv_nfolds=cv_nfolds, test_split=test_split, 
+                                verbose=verbose, do_shuffle=do_shuffle, 
+                                balance_configs=balance_configs) 
+        elif test_type=='morph_single':
+            curr_iter = train_test_morph_single(ni, curr_data=neuraldf, sdf=sdf, 
+                                    C_value=C_value, class_a=class_a, class_b=class_b, 
+                                    cv_nfolds=cv_nfolds, test_split=test_split, 
+                                    verbose=verbose, do_shuffle=do_shuffle, 
+                                    balance_configs=balance_configs) 
+        elif test_type=='morph':
+            curr_iter = train_test_morph(ni, curr_data=neuraldf, sdf=sdf, 
+                                    C_value=C_value, class_a=class_a, class_b=class_b, 
+                                    cv_nfolds=cv_nfolds, test_split=test_split, 
+                                    verbose=verbose, do_shuffle=do_shuffle, 
+                                    balance_configs=balance_configs)  
+        else: 
+            curr_iter, curr_clf = do_fit_within_fov(ni, curr_data=neuraldf, sdf=sdf, 
+                                C_value=C_value, class_a=class_a, class_b=class_b, 
+                                cv_nfolds=cv_nfolds, test_split=test_split, 
+                                verbose=verbose, do_shuffle=do_shuffle, 
+                                balance_configs=balance_configs, return_clf=True)
+        curr_iter['iteration'] = ni 
+    except Exception as e:
+        return None, None
+
+    return curr_iter, curr_clf
+
+
+
+def select_test(ni, neuraldf, sdf, C_value=None, cv_nfolds=5, test_split=0.2, 
+                   test_type=None, n_train_configs=4, verbose=False, within_fov=True,
+                   class_a=0, class_b=106, do_shuffle=True, balance_configs=True):   
+    curr_iter = None
+    try:
+        if test_type=='size_subset':
+            curr_iter = train_test_size_subset(ni, curr_data=neuraldf, sdf=sdf, 
+                                            C_value=C_value, class_a=class_a, class_b=class_b, 
+                                            cv_nfolds=cv_nfolds, test_split=test_split, 
+                                            verbose=verbose, do_shuffle=do_shuffle, balance_configs=balance_configs,
+                                            n_train_configs=n_train_configs)
+        elif test_type=='size_single':
+            curr_iter = train_test_size_single(ni, curr_data=neuraldf, sdf=sdf, 
+                                            C_value=C_value, class_a=class_a, class_b=class_b, 
+                                            cv_nfolds=cv_nfolds, test_split=test_split, 
+                                            verbose=verbose, do_shuffle=do_shuffle, balance_configs=balance_configs) 
+        elif test_type=='morph_single':
+            curr_iter = train_test_morph_single(ni, curr_data=neuraldf, sdf=sdf, 
+                                            C_value=C_value, class_a=class_a, class_b=class_b, 
+                                            cv_nfolds=cv_nfolds, test_split=test_split, 
+                                            verbose=verbose, do_shuffle=do_shuffle, balance_configs=balance_configs) 
+        elif test_type=='morph':
+            curr_iter = train_test_morph(ni, curr_data=neuraldf, sdf=sdf, 
+                                            C_value=C_value, class_a=class_a, class_b=class_b, 
+                                            cv_nfolds=cv_nfolds, test_split=test_split, 
+                                            verbose=verbose, do_shuffle=do_shuffle, balance_configs=balance_configs)  
+        else: 
+            curr_iter = do_fit_within_fov(ni, curr_data=neuraldf, sdf=sdf, 
+                                            C_value=C_value, class_a=class_a, class_b=class_b, 
+                                            cv_nfolds=cv_nfolds, test_split=test_split, 
+                                            verbose=verbose, do_shuffle=do_shuffle, balance_configs=balance_configs)
+        curr_iter['iteration'] = ni 
+    except Exception as e:
+        return None
+
+    return curr_iter
+
+
+def split_and_match_arousal_trials(neuraldf, pupildf, sdf, feature_name='pupil_fraction', n_cuts=3, 
+                                equalize_by='config', common_labels=None, verbose=False):
     '''
-    Plot ALL receptive field pos, mark CoM by FOV. Colormap = datakey.
-    One subplot per visual area.
+    Returns trial nums for matched neural and pupil data, split by arousal type
+    common_labels: list of Configs to match between neural and pupil data
     '''
-    screenright = float(screeninfo['azimuth_deg']/2)
-    screenleft = -1*screenright #float(screeninfo['screen_right'].unique())
-    screentop = float(screeninfo['altitude_deg']/2)
-    screenbottom = -1*screentop
-    screenaspect = float(screeninfo['resolution'][0]) / float(screeninfo['resolution'][1])
+    from pipeline.python.eyetracker import dlc_utils as dlcutils
+
+    low_ixs=None; high_ixs=None; 
+    ndf, pdf = dlcutils.match_neural_and_pupil_trials(neuraldf, pupildf, equalize_conditions=False)
+    p_low, p_high = balance_pupil_split(pdf, feature_name=feature_name, n_cuts=n_cuts, 
+                                    match_cond=True, match_cond_name='size', equalize_after_split=True, 
+                                    equalize_by='config', common_labels=common_labels, verbose=verbose,
+                                    shuffle_labels=False)
+
+    # Make sure training set conditions are balanced 
+    train_sizes_low = p_low[p_low[equalize_by].isin(common_labels)].shape[0] \
+                                if common_labels is not None else p_low.shape[0]
+    train_sizes_high = p_high[p_high[equalize_by].isin(common_labels)].shape[0] \
+                                if common_labels is not None else p_high.shape[0]
+    assert train_sizes_low==train_sizes_high, \
+            "Unequal pupil training trials: low=%i, high=%i" % (train_sizes_low, train_sizes_high) 
+    low_ixs = p_low['trial'].unique()
+    high_ixs = p_high['trial'].unique()
+
+    return p_low, p_high
+
+def shuffle_arousal_trials(p_low, p_high, equalize_by='config', common_labels=None):
+    '''
+    Returns trial indices for low and high arousal trials, shuffled labels
+    '''
+    low_shuffle_ixs=None
+    high_shuffle_ixs=None 
+    p_low_shuff, p_high_shuff = shuffle_pupil_labels(p_low, p_high) 
+    train_sizes_low_shuffled = p_low_shuff[p_low_shuff[equalize_by].isin(common_labels)].shape[0] \
+                                if common_labels is not None else p_low_shuff.shape[0]
+    train_sizes_high_shuffled = p_high_shuff[p_high_shuff[equalize_by].isin(common_labels)].shape[0] \
+                                if common_labels is not None else p_high_shuff.shape[0]
+    assert train_sizes_low_shuffled==train_sizes_high_shuffled, \
+            "[SHUFFLED] Unequal pupil training trials: low=%i, high=%i" \
+            % (train_sizes_low_shuffled, train_sizes_high_shuffled) 
+
+    low_shuffle_ixs = p_low_shuff['trial'].unique()
+    high_shuffle_ixs = p_high_shuff['trial'].unique()
+
+    return low_shuffle_ixs, high_shuffle_ixs
+
+class WorkerStop(Exception):
+    pass
+
+def pupil_worker(out_q, n_iters, neuraldf, pupildf, sdf, equalize_by, common_labels, 
+                test_type, cv_nfolds=5, test_split=0.2, C_value=None, verbose=True, return_clf=True,
+                class_a=0, class_b=106, do_shuffle=True, feature_name='pupil_fraction', n_cuts=3,
+                n_train_configs=4):
+
+    curr_iterdf=None; inputdf=None; coefdf=None;
+    curr_rois = np.array([c for c in neuraldf.columns if putils.isnumber(c)])
+    print("ROIS:", curr_rois.shape)
+    r_ = []        
+    i_=[]
+    c_=[]
+    for ni in n_iters:
+        print("... iter %i" % ni)
+        #randi = random.randint(1, 10000)
+        p_low, p_high = split_and_match_arousal_trials(neuraldf, pupildf, sdf, 
+                                        feature_name=feature_name, n_cuts=n_cuts, 
+                                        equalize_by=equalize_by, common_labels=common_labels, 
+                                        verbose=verbose)
+        # get shuffled
+        low_shuff_ixs, high_shuff_ixs = shuffle_arousal_trials(p_low, p_high, 
+                                            equalize_by=equalize_by,
+                                            common_labels=common_labels)
+        # trial indices of low/high pupil 
+        low_trial_ixs = p_low['trial'].unique()
+        high_trial_ixs = p_high['trial'].unique()
+        #all_trial_ixs = pdf_matched['trial'].unique()
+
+        # Decodinng -----------------------------------------------------
+        start_t = time.time()
+        arousal_conds = ['low', 'high', 'low_shuffle', 'high_shuffle']
+        arousal_trial_ixs = [low_trial_ixs, high_trial_ixs, low_shuff_ixs, high_shuff_ixs]
+        iter_list=[]
+        trial_list=[]
+        coef_list=[]
+        for arousal_cond, curr_trial_ixs in zip(arousal_conds, arousal_trial_ixs):
+            #print(arousal_cond)
+            # Get neuraldf for current trials
+            curr_data = neuraldf.loc[curr_trial_ixs].copy()
+            print(curr_data.shape)
+            print(curr_data.head())
+            # Fit.
+            start_t = time.time()
+            if return_clf:
+                cond_df, cond_clf = select_test_return_clf(ni, curr_data, sdf, 
+                                C_value=C_value, class_a=class_a, class_b=class_b, 
+                                cv_nfolds=cv_nfolds, test_split=test_split, 
+                                verbose=verbose, do_shuffle=do_shuffle, balance_configs=True,
+                                test_type=test_type, n_train_configs=n_train_configs)  
+            else:
+                cond_clf=None
+                cond_df = select_test(ni, curr_data, sdf, 
+                                C_value=C_value, class_a=class_a, class_b=class_b, 
+                                cv_nfolds=cv_nfolds, test_split=test_split, 
+                                verbose=verbose, do_shuffle=do_shuffle, balance_configs=True,
+                                test_type=test_type, n_train_configs=n_train_configs)  
+            if cond_df is None:
+                out_q.put((None, None, None))
+                raise WorkerStop("No results for current iter")
+                #break
+            end_t = time.time() - start_t
+            print("--> Elapsed time: {0:.2f}sec".format(end_t))
+            # clf results
+            cond_df['n_trials'] = len(curr_trial_ixs)
+            cond_df['arousal'] = 'high' if 'high' in arousal_cond else 'low'
+            cond_df['true_labels'] = 'shuffle' not in arousal_cond
+            iter_list.append(cond_df)
+
+            # input trials
+            trials_ = pd.DataFrame({'trial': curr_trial_ixs}) #, index=[ni])
+            trials_['iteration'] = ni
+            trials_['arousal'] = 'high' if 'high' in arousal_cond else 'low'
+            trials_['true_labels'] = 'shuffle' not in arousal_cond 
+            trial_list.append(trials_)
+
+            if return_clf is True and cond_clf is not None:
+                # weights
+                coefs_= pd.DataFrame(cond_clf.coef_[0], columns=['coef'])
+                #print(coefs_)
+                coefs_['iteration'] = ni
+                coefs_['arousal'] = 'high' if 'high' in arousal_cond else 'low'
+                coefs_['true_labels'] = 'shuffle' not in arousal_cond 
+                coefs_['cell'] = curr_rois
+                coef_list.append(coefs_)
+
+        curr_iter = pd.concat(iter_list, axis=0) 
+        curr_trials = pd.concat(trial_list, axis=0)
+        if return_clf:
+            curr_coefs = pd.concat(coef_list, axis=0)
+        r_.append(curr_iter)
+        i_.append(curr_trials)
+        c_.append(curr_coefs)
+ 
+    curr_iterdf = pd.concat(r_, axis=0)
+    inputdf = pd.concat(i_, axis=0)
+
+    if return_clf:
+        coefdf = pd.concat(c_, axis=0)
+
+    out_q.put((curr_iterdf, inputdf, coefdf))
+    
+def iterate_split_pupil(neuraldf, pupildf, sdf, n_iterations=100, n_processes=1, 
+                    C_value=None, cv_nfolds=5, test_split=0.2, 
+                    test_type=None, n_train_configs=4, verbose=False, within_fov=True,
+                    class_name='morphlevel', class_a=0, class_b=106, 
+                    do_shuffle=True, balance_configs=True,
+                    feature_name='pupil_fraction', n_cuts=3, equalize_by='config', 
+                    match_all_configs=True, return_clf=True):   
+    '''
+    Run classifier analysis for all arousal conditions, resample and repeat for n_iterations.
+    match_all_configs: False to only match trial #s for TRAIN conditions
+    Returns:
+        inptudf (input data selected for each iteration): TODO, just use random_state
+        iterdf (results from bootstrapped decoding analysis)
+    '''
+    #from pipeline.python.eyetracker import dlc_utils as dlcutils
+    iterdf = None 
+    inputsdf = None
+    coefsdf = None
+
+    # Select how to filter trial-matching
+    if 'config' not in sdf.columns:
+        sdf['config'] = sdf.index.tolist()
+    train_labels = sdf[sdf[class_name].isin([class_a, class_b])][equalize_by].unique()
+    common_labels = None if match_all_configs else train_labels 
+
+    #### Define MP worker
+    results = []
+    terminating = mp.Event() 
+    try:        
+        # Each process gets "chunksize' filenames and a queue to put his out-dict into:
+        iter_list = np.arange(0, n_iterations) #gdf.groups.keys()
+        out_q = mp.Queue()
+        #data_q = mp.Queue()
+        chunksize = int(math.ceil(len(iter_list) / float(n_processes)))
+        procs = []
+        for i in range(n_processes):
+            p = mp.Process(target=pupil_worker,
+                           args=(out_q, iter_list[chunksize * i:chunksize * (i + 1)],
+                                neuraldf, pupildf, sdf, equalize_by, common_labels, test_type,
+                                cv_nfolds, test_split, C_value, verbose, return_clf))
+            procs.append(p)
+            p.start() # start asynchronously
+        # Collect all results into 1 results dict. We should know how many dicts to expect:
+        results = []
+        inputs = []
+        coefs=[]
+        for i in range(n_processes):
+            res = out_q.get(99999)
+            results.append(res[0])
+            inputs.append(res[1])
+            if return_clf:
+                coefs.append(res[2])
+        # Wait for all worker processes to finish
+        for p in procs:
+            p.join() # will block until finished
+    except WorkerStop:
+        print("No result (terminating)")
+        terminating.set()
+    except KeyboardInterrupt:
+        terminating.set()
+        print("***Terminating!")
+    except Exception as e:
+        traceback.print_exc()
+        print("----- here.")
+    finally:
+        for p in procs:
+            p.join()
+            print '%s.exitcode = %s' % (p.name, p.exitcode)
+
+    res_ = [i for i in results if i is not None]
+    in_ = [i for i in inputs if i is not None]
+    coef_ = [i for i in coefs if i is not None]
+    if len(res_)>0:
+        iterdf = pd.concat(res_, axis=0)
+        inputsdf = pd.concat(in_, axis=0)
+        if return_clf:
+            coefsdf = pd.concat(coef_, axis=0)
+    if return_clf:
+        return iterdf, inputsdf, coefsdf
+    else:
+        return iterdf, inputsdf #results
+
+def fit_svm_mp(neuraldf, sdf, n_iterations=50, n_processes=1, 
+                   C_value=None, cv_nfolds=5, test_split=0.2, 
+                   test_type=None, n_train_configs=4, verbose=False, within_fov=True,
+                   class_a=0, class_b=106, do_shuffle=True, balance_configs=True):   
+    iter_df = None
+    #neuraldf = aggr.zscore_neuraldf(neuraldf)
+    #### Define MP worker
+    results = []
+    terminating = mp.Event() 
+    def worker(out_q, n_iters, neuraldf, sdf, test_type, C_value, verbose, 
+                class_a, class_b, cv_nfold, test_split, do_shuffle, balance_configs, n_train_configs):
+        i_ = []        
+        for ni in n_iters:
+            n_cells = int(neuraldf.shape[1]-1) 
+            # Decoding -----------------------------------------------------
+            # Fit.
+            start_t = time.time()
+            i_df = select_test(ni, neuraldf, sdf, test_type=test_type,
+                                    C_value=C_value, class_a=class_a, class_b=class_b, 
+                                    cv_nfolds=cv_nfolds, test_split=test_split, 
+                                    verbose=verbose, do_shuffle=do_shuffle, balance_configs=balance_configs,
+                                    n_train_configs=n_train_configs)  
+            if i_df is None:
+                out_q.put(None)
+                raise ValueError("No results for current iter")
+            end_t = time.time() - start_t
+            print("--> Elapsed time: {0:.2f}sec".format(end_t))
+            #i_df['n_trials'] = neuraldf.shape[0]
+            i_.append(i_df)
+        curr_iterdf = pd.concat(i_, axis=0)
+        out_q.put(curr_iterdf)  
+    try:        
+        # Each process gets "chunksize' filenames and a queue to put his out-dict into:
+        iter_list = np.arange(0, n_iterations) #gdf.groups.keys()
+        out_q = mp.Queue()
+        chunksize = int(math.ceil(len(iter_list) / float(n_processes)))
+        procs = []
+        for i in range(n_processes):
+            p = mp.Process(target=worker, args=(out_q, iter_list[chunksize * i:chunksize * (i + 1)],
+                                neuraldf, sdf, test_type, C_value, verbose, class_a, class_b,
+                                cv_nfolds, test_split, do_shuffle, balance_configs, n_train_configs))
+            procs.append(p)
+            p.start() # start asynchronously
+        # Collect all results into 1 results dict. We should know how many dicts to expect:
+        results = []
+        for i in range(n_processes):
+            results.append(out_q.get(99999))
+        # Wait for all worker processes to finish
+        for p in procs:
+            p.join() # will block until finished
+    except KeyboardInterrupt:
+        terminating.set()
+        print("***Terminating!")
+    except Exception as e:
+        traceback.print_exc()
+        terminating.set()
+    finally:
+        for p in procs:
+            p.join()
+
+    if len(results)>0:
+        iterdf = pd.concat(results, axis=0)
+
+    return iterdf
 
 
-    visual_areas = ['V1', 'Lm', 'Li']
-    fig, axn = pl.subplots(1,3, figsize=(10,6), dpi=dpi)
-    for visual_area, v_df in RFs.groupby(['visual_area']):
-        ai = visual_areas.index(visual_area)
-        ax = axn[ai]
-        dcolors = sns.color_palette(cmap, n_colors=len(v_df['datakey'].unique()))
-        for di, (datakey, d_df) in enumerate(v_df.groupby(['datakey'])):
-            
-            exp_rids = [r for r in MEANS[datakey] if putils.isnumber(r)]     
-            rf_rids = d_df['cell'].unique()
-            common_to_rfs_and_blobs = np.intersect1d(rf_rids, exp_rids)
-            curr_df = d_df[d_df['cell'].isin(common_to_rfs_and_blobs)].copy()
-            
-            sns.scatterplot('x0', 'y0', data=curr_df, ax=ax, color=dcolors[di],
-                           s=10, marker='o', alpha=0.5) 
+def fit_svm_mp0(neuraldf, sdf, n_iterations=50, n_processes=1, 
+                   C_value=None, cv_nfolds=5, test_split=0.2, 
+                   test_type=None, n_train_configs=4, verbose=False, within_fov=True,
+                   class_a=0, class_b=106, do_shuffle=True, balance_configs=True):   
+    iter_df = None
 
-            x = curr_df['x0'].values
-            y=curr_df['y0'].values
-            
-            ncells_rfs = len(rf_rids)
-            ncells_common = len(common_to_rfs_and_blobs) #curr_df.shape[0]
-            m=np.ones(curr_df['x0'].shape)
-            cgx = np.sum(x*m)/np.sum(m)
-            cgy = np.sum(y*m)/np.sum(m)
-            #print('The center of mass: (%.2f, %.2f)' % (cgx, cgy))
-            ax.plot(cgx, cgy, marker='+', markersize=20, color=dcolors[di], 
-                    label='%s (%s, %i/%i)' 
-                            % (visual_area, datakey, ncells_common, ncells_rfs), lw=3) 
-        ax.set_title(visual_area)
-        ax.legend(bbox_to_anchor=(0.95, -0.4), fontsize=8) #1))
+    #### Define MP worker
+    results = []
+    terminating = mp.Event() 
+    def worker(n_iters, neuraldf, sdf, C_value, verbose, class_a, class_b, do_shuffle, balance_configs, out_q):
+        r_ = []        
+        for ni in n_iters:
 
-    for ax in axn:
-        ax.set_xlim([screenleft, screenright])
-        ax.set_ylim([screenbottom, screentop])
-        ax.set_aspect('equal')
-        ax.set_ylabel('')
-        ax.set_xlabel('')
-        
-    pl.subplots_adjust(top=0.9, bottom=0.4)
+            curr_iter = do_fit_within_fov(ni, curr_data=neuraldf, sdf=sdf, 
+                                        C_value=C_value, class_a=class_a, class_b=class_b,  
+                                        verbose=verbose, do_shuffle=do_shuffle, balance_configs=balance_configs)
+            r_.append(curr_iter)
+        curr_iterdf = pd.concat(r_, axis=0)
+        out_q.put(curr_iterdf) 
 
-    return fig
+    def worker_size_subset(n_iters, neuraldf, sdf, C_value, verbose, class_a, class_b, 
+                                do_shuffle, balance_configs, n_train_configs, out_q):
+        r_ = []        
+        curr_iterdf=None
+        for ni in n_iters: 
+            curr_iter = train_test_size_subset(ni, curr_data=neuraldf, sdf=sdf, 
+                                        C_value=C_value, class_a=class_a, class_b=class_b, 
+                                        verbose=verbose, do_shuffle=do_shuffle, balance_configs=balance_configs,
+                                        n_train_configs=n_train_configs)
+            r_.append(curr_iter)
+        if len(r_)>0:
+            curr_iterdf = pd.concat(r_, axis=0)
+        out_q.put(curr_iterdf)
 
+    def worker_size_single(n_iters, neuraldf, sdf, C_value, verbose, class_a, class_b, 
+                                do_shuffle, balance_configs, out_q):
+        curr_iterdf=None
+        r_ = []        
+        for ni in n_iters: 
+            curr_iter = train_test_size_single(ni, curr_data=neuraldf, sdf=sdf, 
+                                        C_value=C_value, class_a=class_a, class_b=class_b, 
+                                        verbose=verbose, do_shuffle=do_shuffle, balance_configs=balance_configs) 
+            r_.append(curr_iter)
+        if len(r_)>0:
+            curr_iterdf = pd.concat(r_, axis=0)
+        out_q.put(curr_iterdf)
+
+    def worker_morph_single(n_iters, neuraldf, sdf, C_value, verbose, class_a, class_b, 
+                                do_shuffle, balance_configs, out_q):
+        curr_iterdf=None
+        r_ = []        
+        for ni in n_iters: 
+            curr_iter = train_test_morph_single(ni, curr_data=neuraldf, sdf=sdf, 
+                                        C_value=C_value, class_a=class_a, class_b=class_b, 
+                                        verbose=verbose, do_shuffle=do_shuffle, balance_configs=balance_configs) 
+            r_.append(curr_iter)
+        if len(r_)>0:
+            curr_iterdf = pd.concat(r_, axis=0)
+        out_q.put(curr_iterdf)
+
+    def worker_morph(n_iters, neuraldf, sdf, C_value, verbose, class_a, class_b, 
+                                do_shuffle, balance_configs, out_q):
+        curr_iterdf=None
+        r_ = []        
+        for ni in n_iters: 
+            curr_iter = train_test_morph(ni, curr_data=neuraldf, sdf=sdf, 
+                                        C_value=C_value, class_a=class_a, class_b=class_b, 
+                                        verbose=verbose, do_shuffle=do_shuffle, balance_configs=balance_configs) 
+            r_.append(curr_iter)
+        if len(r_)>0:
+            curr_iterdf = pd.concat(r_, axis=0)
+        out_q.put(curr_iterdf)
+
+    try:        
+        # Each process gets "chunksize' filenames and a queue to put his out-dict into:
+        iter_list = np.arange(0, n_iterations) #gdf.groups.keys()
+        out_q = mp.Queue()
+        chunksize = int(math.ceil(len(iter_list) / float(n_processes)))
+        procs = []
+        for i in range(n_processes):
+            if test_type=='size_subset':
+                p = mp.Process(target=worker_size_subset,
+                           args=(iter_list[chunksize * i:chunksize * (i + 1)],
+                                    neuraldf, sdf, C_value, verbose, class_a, class_b,
+                                    do_shuffle, balance_configs, n_train_configs, out_q))
+            elif test_type=='size_single':
+                p = mp.Process(target=worker_size_single,
+                           args=(iter_list[chunksize * i:chunksize * (i + 1)],
+                                    neuraldf, sdf, C_value, verbose, class_a, class_b,
+                                    do_shuffle, balance_configs, out_q))
+ 
+            elif test_type=='morph_single':
+                p = mp.Process(target=worker_morph_single,
+                           args=(iter_list[chunksize * i:chunksize * (i + 1)],
+                                    neuraldf, sdf, C_value, verbose, class_a, class_b,
+                                    do_shuffle, balance_configs, out_q)) 
+            elif test_type=='morph':
+                p = mp.Process(target=worker_morph,
+                           args=(iter_list[chunksize * i:chunksize * (i + 1)],
+                                    neuraldf, sdf, C_value, verbose, class_a, class_b,
+                                    do_shuffle, balance_configs, out_q)) 
+ 
+            else: 
+                p = mp.Process(target=worker,
+                           args=(iter_list[chunksize * i:chunksize * (i + 1)],
+                                    neuraldf, sdf, C_value, verbose, class_a, class_b,
+                                    do_shuffle, balance_configs, out_q))
+            print(p)
+            procs.append(p)
+            p.start() # start asynchronously
+
+        # Collect all results into 1 results dict. We should know how many dicts to expect:
+        results = []
+        for i in range(n_processes):
+            results.append(out_q.get(99999))
+        # Wait for all worker processes to finish
+        for p in procs:
+            p.join() # will block until finished
+    except KeyboardInterrupt:
+        terminating.set()
+        print("***Terminating!")
+    except Exception as e:
+        traceback.print_exc()
+    finally:
+        for p in procs:
+            p.join()
+
+    if len(results)>0:
+        iter_df = pd.concat(results, axis=0)
+
+    return iter_df #results
+
+
+#def by_ncells_fit_svm_mp(ncells, celldf, NEURALDATA, sdf, 
+#                           n_iterations=50, n_processes=1, 
+#                           C_value=None, cv_nfolds=5, test_split=0.2, 
+#                           test=None, single=False, n_train_configs=4, verbose=False,
+#                           class_a=0, class_b=106):   
+#    iter_df = None
+#    #### Define multiprocessing worker
+#    results = []
+#    terminating = mp.Event()    
+#    def worker(n_iters, ncells, celldf, sdf, NEURALDATA, C_value, class_a, class_b, out_q):
+#        r_ = []        
+#        for ni in n_iters:
+#            curr_iter = do_fit_sample_cells(ni, sample_ize=sample_size, global_rois=celldf, sdf=sdf,
+#                                        MEANS=NEURALDATA, do_shuffle=True, 
+#                                        C_value=C_value, class_a=class_a, class_b=class_b)
+#            r_.append(curr_iter)
+#        curr_iterdf = pd.concat(r_, axis=0)
+#        out_q.put(curr_iterdf)
+#        
+#    try:        
+#        # Each process gets "chunksize' filenames and a queue to put his out-dict into:
+#        iter_list = np.arange(0, n_iterations) #gdf.groups.keys()
+#        out_q = mp.Queue()
+#        chunksize = int(math.ceil(len(iter_list) / float(n_processes)))
+#        procs = []
+#        for i in range(n_processes):
+#            p = mp.Process(target=worker,
+#                           args=(iter_list[chunksize * i:chunksize * (i + 1)],
+#                                 ncells, celldf, sdf, NEURALDATA, C_value,
+#                                 class_a, class_b, out_q))
+#            procs.append(p)
+#            p.start()
+#
+#        # Collect all results into single results dict. We should know how many dicts to expect:
+#        results = []
+#        for i in range(n_processes):
+#            results.append(out_q.get(99999))
+#        # Wait for all worker processes to finish
+#        for p in procs:
+#            p.join()
+#    except KeyboardInterrupt:
+#        terminating.set()
+#        print("***Terminating!")
+#    except Exception as e:
+#        traceback.print_exc()
+#    finally:
+#        for p in procs:
+#            p.join()
+#
+#    if len(results)>0:
+#        iter_df = pd.concat(results, axis=0)
+# 
+#    return iter_df #results
+
+#
 # ======================================================================
 # Calculation functions 
 # ======================================================================
-def calculate_overlaps(RFs, datakeys, experiment='blobs'):
-    rf_fit_params = ['cell', 'std_x', 'std_y', 'theta', 'x0', 'y0']
-
-    o_list=[]
-    for (visual_area, animalid, session, fovnum, datakey), g in RFs.groupby(['visual_area', 'animalid', 'session', 'fovnum', 'datakey']):  
-        if datakey not in datakeys: #MEANS.keys():
-            continue
-        
-        # Convert RF fit params to polygon
-        rfname = g['experiment'].unique()[0]
-        #print(rfname) 
-        g.index = g['cell'].values
-        rf_polys = rfutils.rfs_to_polys(g[rf_fit_params])
-
-        S = util.Session(animalid, session, 'FOV%i_zoom2p0x' % fovnum)
-        stim_xpos, stim_ypos = S.get_stimulus_coordinates(experiments=[experiment])
-        stim_sizes = S.get_stimulus_sizes(size_tested=[experiment])
-
-        # Convert stimuli to polyon bounding boxes
-        stim_polys = [(blob_sz, rfutils.stimsize_poly(blob_sz, xpos=stim_xpos, ypos=stim_ypos))                   for blob_sz in stim_sizes[experiment]]
-        
-        # Get all pairwise overlaps (% of smaller ellipse that overlaps larger ellipse)
-        overlaps = pd.concat([rfutils.get_proportion_overlap(rf_poly, stim_poly) \
-                    for stim_poly in stim_polys \
-                    for rf_poly in rf_polys]).rename(columns={'row': 'cell', 'col': 'stim_size'})
-        metadict={'visual_area': visual_area, 'animalid': animalid, 'rfname': rfname,
-                  'session': session, 'fovnum': fovnum, 'datakey': datakey}
-        o_ = putils.add_meta_to_df(overlaps, metadict)
-        o_list.append(o_)
-
-    stim_overlaps = pd.concat(o_list, axis=0).reset_index(drop=True)
-    return stim_overlaps
-
-
 def computeMI(x, y):
     sum_mi = 0.0
     x_value_list = np.unique(x)
@@ -261,156 +1087,113 @@ def calculate_ci(scores, ci=95):
 # ======================================================================
 # Split/pool functions 
 # ======================================================================
-def get_pooled_cells(stim_datakeys, rfs_and_blobs, filter_fovs=True, remove_too_few=False, 
-                      overlap_thr=0.8, min_ncells=20):
-    if filter_fovs:
-        if remove_too_few:
-            too_few = []
-            for (visual_area, datakey), g in rfs_and_blobs[rfs_and_blobs['perc_overlap']>=overlap_thr].groupby(['visual_area', 'datakey']):
-                if len(g['cell'].unique()) < min_ncells:
-                    print(datakey, len(g['cell'].unique()))
-                    too_few.append(datakey)
-            curr_dkeys = [s for s in stim_datakeys if s not in too_few] 
-        else:
-            curr_dkeys = stim_datakeys
-    else:
-        curr_dkeys = rfs_and_blobs['datakey'].unique()
 
-    pooled_cells, cell_counts = filter_rois(rfs_and_blobs[rfs_and_blobs['datakey'].isin(curr_dkeys)], 
-                                                            overlap_thr=overlap_thr, return_counts=True)
+# global_rois() now in aggr
+# filter_rois() now in aggr
+# get_pooled_cells() now in aggr
 
-    return pooled_cells, cell_counts
+def get_ntrials_per_config(neuraldf, n_trials=10):
+    t_list=[]
+    for cfg, trialmat in neuraldf.groupby(['config']):
+        trial_ixs = trialmat.index.tolist() # trial numbers
+        np.random.shuffle(trial_ixs) # shuffle the trials randomly
+        curr_trials = trialmat.loc[trial_ixs[0:n_trials]].copy()
+        t_list.append(curr_trials)
+    resampled_df = pd.concat(t_list, axis=0)
 
+    return resampled_df
 
-def filter_rois(rfs_and_blobs, overlap_thr=0.50, return_counts=False):
-    visual_areas=['V1', 'Lm', 'Li']
-    
-    nocells=[]; notrials=[];
-    global_rois = dict((v, []) for v in visual_areas)
-    roi_counters = dict((v, 0) for v in visual_areas)
-    
-    roidf = []
-    datakeys = dict((v, []) for v in visual_areas)
-    for (visual_area, datakey), g in rfs_and_blobs[rfs_and_blobs['perc_overlap']>=overlap_thr].groupby(['visual_area', 'datakey']):
-
-        roi_counter = roi_counters[visual_area]
-        datakeys[visual_area].append(datakey)
-
-        roi_list = sorted(g['cell'].unique()) #[int(r) for r in ddf.columns if r != 'config']
-
-        # Reindex roi ids for global
-        roi_ids = [i+roi_counter for i, r in enumerate(roi_list)]
-        nrs = len(roi_list)
-
-        global_rois[visual_area].extend(roi_ids)
-        
-        roidf.append(pd.DataFrame({'roi': roi_ids,
-                                   'dset_roi': roi_list,
-                                   'visual_area': [visual_area for _ in np.arange(0, nrs)],
-                                   'datakey': [datakey for _ in np.arange(0, nrs)]}))
-
-        # Update global roi id counter
-        roi_counters[visual_area] += len(roi_ids)
-
-    roidf = pd.concat(roidf, axis=0) #.groupby(['visual_area']).count()
-    for k, v in global_rois.items():
-        print(k, len(v))
-    
-    if return_counts:
-        return roidf, roi_counters
-    else:
-        return roidf
-
-
-def get_trials_for_N_cells(curr_ncells, gdf, MEANS):
-    '''
-    Randomly select N cells from global roi list (gdf), get cell's responses to all trials.
-    
-    gdf = dataframe (subset of global_rois dataframe), contains 
-    - all rois for a given visual area
-    - corresponding within-datakey roi IDs
-    '''
-
+def get_trials_for_N_cells_df(curr_ncells, gdf, NEURALDATA, with_replacement=False, train_configs=None, randi=None): 
     # Get current global RIDs
     ncells_t = gdf.shape[0]                      
     roi_ids = np.array(gdf['roi'].values.copy()) 
 
     # Random sample w/ replacement
-    rand_ixs = np.array([random.randint(0, ncells_t-1) for _ in np.arange(0, curr_ncells)])
-    curr_roi_list = roi_ids[rand_ixs]
-    curr_roidf = gdf[gdf['roi'].isin(curr_roi_list)].copy()
+#    if with_replacement:
+#        rand_ixs = np.array([random.randint(0, ncells_t-1) for _ in np.arange(0, curr_ncells)])
+#        curr_roi_list = roi_ids[rand_ixs]
+#        curr_roidf = gdf[gdf['roi'].isin(curr_roi_list)].copy()
+#    else:
+    curr_roidf = gdf.sample(n=curr_ncells, replace=with_replacement, random_state=randi)
+    curr_roi_list = curr_roidf['roi'].values
 
     # Make sure equal num trials per condition for all dsets
-    min_ntrials_by_config = min([MEANS[k]['config'].value_counts().min() for k in curr_roidf['datakey'].unique()])
+    curr_dkeys = curr_roidf['datakey'].unique()
+    currd = NEURALDATA[NEURALDATA['datakey'].isin(curr_dkeys)].copy()
+    currd['cell'] = currd['cell'].astype(float)
 
-    # Get data samples for these cells
-    d_list=[]; c_list=[];
+    # Make sure equal num trials per condition for all dsets
+    if train_configs is not None:
+        min_ntrials_by_config = currd[currd['config'].isin(train_configs)][['datakey', 'config', 'trial']].drop_duplicates().groupby(['datakey'])['config'].value_counts().min()
+        #print("MIn N trials in configs: %i" % min_ntrials_by_config)
+    else: 
+        min_ntrials_by_config = currd[['datakey', 'config', 'trial']].drop_duplicates().groupby(['datakey'])['config'].value_counts().min()
+    print("Min samples per config: %i" % min_ntrials_by_config)
+
+    d_list=[]
     for datakey, dkey_rois in curr_roidf.groupby(['datakey']):
-        # Get subset of trials per cond to match min N trials
-        tmpd_list=[]
-        for cfg, trialmat in MEANS[datakey].groupby(['config']):
-            # Get indices of trials in current dataset
-            trial_ixs = trialmat.index.tolist() 
-            # Shuffle them to get random order
-            np.random.shuffle(trial_ixs)                
-            # Select min_ntrials randomly
-            curr_cfg_trials = trialmat.loc[trial_ixs[0:min_ntrials_by_config]].copy() 
-            # Add current trials of current config to list
-            tmpd_list.append(curr_cfg_trials)        
-        tmpd = pd.concat(tmpd_list, axis=0) 
+        assert datakey in currd['datakey'].unique(), "ERROR: %s not found" % datakey
+        # Get current trials, make equal to min_ntrials_by_config
+        tmpd = pd.concat([trialmat.sample(n=min_ntrials_by_config, replace=False, random_state=None) 
+                         for (rid, cfg), trialmat in currd[currd['datakey']==datakey].groupby(['cell', 'config'])], axis=0)
+        tmpd['cell'] = tmpd['cell'].astype(float)
 
         # For each RID sample belonging to current dataset, get RID order
-        sampled_cells = pd.concat([dkey_rois[dkey_rois['roi']==globalid][['roi', 'dset_roi']]                                          for globalid in curr_roi_list])
+        #if with_replacement:
+        sampled_cells = pd.concat([dkey_rois[dkey_rois['roi']==globalid][['roi', 'dset_roi']] 
+                                   for globalid in curr_roi_list])
+#        else:
+#            sampled_cells = dkey_rois[dkey_rois['roi'].isin(curr_roidf['roi'])][['roi', 'dset_roi']]
+#            curr_roi_list = curr_roidf['roi'].values
+#
         sampled_dset_rois = sampled_cells['dset_roi'].values
         sampled_global_rois = sampled_cells['roi'].values
+        cell_lut = dict((k, v) for k, v in zip(sampled_dset_rois, sampled_global_rois))
 
-        # Get trial responses (some columns are repeats)
-        curr_roidata = tmpd[sampled_dset_rois].copy().reset_index(drop=True)
-        assert len(sampled_global_rois)==curr_roidata.shape[1], "Incorrect column grabbing" 
-        curr_roidata.columns = sampled_global_rois # Rename ROI columns to global-rois
-        config_list = tmpd['config'].reset_index(drop=True)  # Get configs on selected trials
+        # Get response + config, replace dset roi  name with global roi name
+        slist = [tmpd[tmpd['cell']==rid][['config', 'response']].rename(columns={'response': cell_lut[rid]})
+                 .sort_values(by='config').reset_index(drop=True) for rid in sampled_dset_rois]
+        curr_roidata = pd.concat(slist, axis=1)
+        curr_roidata = curr_roidata.loc[:,~curr_roidata.T.duplicated(keep='first')]
         d_list.append(curr_roidata)
-        c_list.append(config_list)
-    curr_neuraldf = pd.concat(d_list, axis=1).reset_index(drop=True)
+    curr_neuraldf = pd.concat(d_list, axis=1)[curr_roi_list]
 
-    cfg_df = pd.concat(c_list, axis=1)
-    cfg_df = cfg_df.T.drop_duplicates().T
+    cfg_df = pd.concat(d_list, axis=1)['config']
+
     assert cfg_df.shape[0]==curr_neuraldf.shape[0], "Bad trials"
-    assert cfg_df.shape[1]==1, "Bad configs"
+    if len(cfg_df.shape) > 1:
+        print("Requested configs: %s" % 'all' if train_configs is None else str(train_configs)) 
+        cfg_df = cfg_df.loc[:,~cfg_df.T.duplicated(keep='first')]
+        assert cfg_df.shape[1]==1, "Bad configs: %s" % str(curr_roidf['datakey'].unique()) #cfg_df
+
     df = pd.concat([curr_neuraldf, cfg_df], axis=1)
-
+    
     return df
-
 
 # ======================================================================
 # Fitting functions 
 # ======================================================================
 def tune_C(sample_data, target_labels, scoring_metric='accuracy', 
-                        cv_nfolds=5, test_split=0.2, verbose=False):
+                        cv_nfolds=3, test_split=0.2, verbose=False, n_processes=1):
     
-    train_data, test_data, train_labels, test_labels = train_test_split(sample_data, target_labels,
-                                                                        test_size=test_split)
-    
+    train_data = sample_data.copy()
+    train_labels = target_labels
+ 
     #### DATA - Fit classifier
     scaler = StandardScaler()
     scaler.fit(train_data)
     train_data = scaler.transform(train_data)
-    test_data = scaler.transform(test_data)
+    #test_data = scaler.transform(test_data)
 
     # Set the parameters by cross-validation
     tuned_parameters = [{'C': [0.001, 0.01, 0.1, 1, 10, 100, 1000]}]
 
-    #scores = ['accuracy', 'precision_macro', 'recall_macro']
-    scoring = ('accuracy') #, 'precision_macro', 'recall_macro')
-    # scoring_metric = 'accuracy' 
-    results ={}
-    #for scorer in scoring:
-    scorer = scoring_metric
-    
+    results ={} 
     if verbose:
-        print("# Tuning hyper-parameters for %s" % scorer)
+        print("# Tuning hyper-parameters for %s" % scoring_metric)
     #print()
-    clf = GridSearchCV(svm.SVC(kernel='linear'), tuned_parameters, scoring=scorer, cv=cv_nfolds)
+    clf = GridSearchCV(svm.SVC(kernel='linear'), tuned_parameters, 
+                            scoring=scoring_metric, cv=cv_nfolds, n_jobs=1) #n_processes)  
     clf.fit(train_data, train_labels)
     if verbose:
         print("Best parameters set found on development set:")
@@ -422,121 +1205,176 @@ def tune_C(sample_data, target_labels, scoring_metric='accuracy',
         for mean, std, params in zip(means, stds, clf.cv_results_['params']):
             print("%0.3f (+/-%0.03f) for %r"
                   % (mean, std * 2, params))
-    y_true, y_pred = test_labels, clf.predict(test_data)
+
+#    y_true, y_pred = test_labels, clf.predict(test_data)
+#    if verbose:
+#        print("Detailed classification report:")
+#        print("The model is trained on the full development set.")
+#        print("The scores are computed on the full evaluation set.")
+#        print(classification_report(y_true, y_pred))
+#
+#    test_score = clf.score(test_data, test_labels)
+#    if verbose:
+#        print("Held out test score: %.2f" % test_score)
+#    results.update({'%s' % scorer: {'C': clf.best_params_['C'], 'test_score': test_score}})
+#    
+    return clf #results #clf.best_params_
+
+#def fit_svm_shuffle(zdata, targets, test_split=0.2, cv_nfolds=5, verbose=False, C_value=None, randi=10):
+#
+#    cv = C_value is None
+#
+#    if verbose:
+#        print("Labels=%s" % (str(targets['label'].unique())))
+#
+#    #### For each transformation, split trials into 80% and 20%
+#    train_data, test_data, train_labels, test_labels = train_test_split(zdata, 
+#                                                        targets['label'].values, 
+#                                                        test_size=test_split, 
+#                                                        stratify=targets['label'], #targets['group'],
+#                                                        shuffle=True, random_state=randi)
+#    #print("first few:", test_labels[0:10])
+#    #### Cross validate (tune C w/ train data)
+#    if cv:
+#        cv_grid = tune_C(train_data, train_labels, scoring_metric='accuracy', 
+#                            cv_nfolds=cv_nfolds, 
+#                           test_split=test_split, verbose=verbose) #, n_processes=n_processes)
+#
+#        C_value = cv_grid.best_params_['C'] #cv_results['accuracy']['C']
+#    else:
+#        assert C_value is not None, "Provide value for hyperparam C..."
+#    #trained_svc = cv_grid.best_estimator_
+#
+#    #### Fit SVM
+#    scaler = StandardScaler().fit(train_data)
+#    train_data = scaler.transform(train_data)
+#
+#    svc = svm.SVC(kernel='linear', C=C_value, random_state=randi) #, random_state=10)
+#    #print("... cv")
+#    scores = cross_validate(svc, train_data, train_labels, cv=cv_nfolds,
+#                            scoring=('accuracy'),
+#                            #scoring=('precision_macro', 'recall_macro', 'accuracy'),
+#                            return_train_score=True)
+#    iterdict = dict((s, values.mean()) for s, values in scores.items())
+#    if verbose:
+#        print('... train (C=%.2f): %.2f, test: %.2f' % (C_value, iterdict['train_score'], iterdict['test_score']))
+#    trained_svc = svc.fit(train_data, train_labels)
+#       
+#    #### DATA - Test with held-out data
+#    test_data = scaler.transform(test_data)
+#    test_score = trained_svc.score(test_data, test_labels)
+#
+#    #### DATA - Calculate MI
+#    predicted_labels = trained_svc.predict(test_data)
+#    if verbose:    
+#        print("Detailed classification report:")
+#        print("The model is trained on the full development set.")
+#        print("The scores are computed on the full evaluation set.")
+#        print(classification_report(test_labels, predicted_labels))
+#
+#    #predicted_labels = trained_svc.predict(test_data)
+#    mi = skmetrics.mutual_info_score(test_labels, predicted_labels)
+#    ami = skmetrics.adjusted_mutual_info_score(test_labels, predicted_labels)
+#    log2_mi = computeMI(test_labels, predicted_labels)
+#    iterdict.update({'heldout_test_score': test_score, 
+#                     'heldout_MI': mi, 'heldout_aMI': ami, 'heldout_log2MI': log2_mi,
+#                     'C': C_value, 'randi': randi})
+#
+#    # ------------------------------------------------------------------
+#    # Shuffle LABELS to calculate chance level
+#    train_labels_chance = train_labels.copy()
+#    np.random.shuffle(train_labels_chance)
+#    test_labels_chance = test_labels.copy()
+#    np.random.shuffle(test_labels_chance)
+#
+#    #### CHANCE - Fit classifier
+#    chance_svc = svm.SVC(kernel='linear', C=C_value, random_state=randi)
+#    scores_chance = cross_validate(chance_svc, train_data, train_labels_chance, cv=cv_nfolds,
+#                            scoring=('accuracy'),
+#                            #scoring=('precision_macro', 'recall_macro', 'accuracy'),
+#                            return_train_score=True)
+#    iterdict_chance = dict((s, values.mean()) for s, values in scores_chance.items())
+#
+#    # CHANCE - Test with held-out data
+#    trained_svc_chance = chance_svc.fit(train_data, train_labels_chance)
+#    test_score_chance = trained_svc_chance.score(test_data, test_labels_chance)  
+#
+#    # Chance - Calculate MI
+#    predicted_labels = trained_svc_chance.predict(test_data)
+#    mi = skmetrics.mutual_info_score(test_labels, predicted_labels)
+#    ami = skmetrics.adjusted_mutual_info_score(test_labels, predicted_labels)
+#    log2_mi = computeMI(test_labels, predicted_labels)
+#
+#    iterdict_chance.update({'heldout_test_score': test_score_chance, 
+#                            'heldout_MI': mi, 'heldout_aMI': ami, 
+#                            'heldout_log2MI': log2_mi, 'C': C_value, 'randi': randi})
+#
+#    return iterdict, iterdict_chance
+#
+
+def fit_svm(zdata, targets, test_split=0.2, cv_nfolds=5,  n_processes=1,
+                C_value=None, verbose=False, return_clf=False, return_predictions=False,
+                randi=10):
+
+    cv = C_value is None
+
+    #### For each transformation, split trials into 80% and 20%
+    train_data, test_data, train_labels, test_labels = train_test_split(
+                                                        zdata, targets['label'].values, 
+                                                        test_size=test_split, 
+                                                        stratify=targets['label'], #targets['group'], 
+                                                        shuffle=True, random_state=randi)
+    print("Unique train: %s (%i)" % (str(np.unique(train_labels)), len(train_labels)))
+#    if (len(train_labels)/2.) < cv_nfolds:
+#        cv_nfolds = 2 #int(len(train_labels)/2.)
+#        print("Not enough train trials... trying w/ CV n=%i folds" % cv_nfolds)
+#        return None
+#
+    #print("first few:", test_labels[0:10])
+    #### Cross validate (tune C w/ train data)
+    if cv:
+        cv_grid = tune_C(train_data, train_labels, scoring_metric='accuracy', 
+                        cv_nfolds=cv_nfolds, #cv_nfolds, 
+                        test_split=test_split, verbose=verbose) #, n_processes=n_processes)
+
+        C_value = cv_grid.best_params_['C'] #cv_results['accuracy']['C']
+    else:
+        assert C_value is not None, "Provide value for hyperparam C..."
+
+    #trained_svc = cv_grid.best_estimator_
+
+    #### Fit SVM
+    scaler = StandardScaler().fit(train_data)
+    train_data = scaler.transform(train_data)
+
+    trained_svc = svm.SVC(kernel='linear', C=C_value, random_state=10)
+    #print("... cv")
+    scores = cross_validate(trained_svc, train_data, train_labels, cv=cv_nfolds,
+                            scoring=('accuracy'),
+                            #scoring=('precision_macro', 'recall_macro', 'accuracy'),
+                            return_train_score=True)
+    iterdict = dict((s, values.mean()) for s, values in scores.items())
     if verbose:
+        print('... train (C=%.2f): %.2f, test: %.2f' % (C_value, iterdict['train_score'], iterdict['test_score']))
+    trained_svc = svm.SVC(kernel='linear', C=C_value, random_state=randi).fit(train_data, train_labels)
+       
+    #### DATA - Test with held-out data
+    test_data = scaler.transform(test_data)
+    test_score = trained_svc.score(test_data, test_labels)
+
+    #### DATA - Calculate MI
+    predicted_labels = trained_svc.predict(test_data)
+    if verbose:    
         print("Detailed classification report:")
         print("The model is trained on the full development set.")
         print("The scores are computed on the full evaluation set.")
-        print(classification_report(y_true, y_pred))
-    test_score = clf.score(test_data, test_labels)
-    if verbose:
-        print("Held out test score: %.2f" % test_score)
-    results.update({'%s' % scorer: {'C': clf.best_params_['C'], 'test_score': test_score}})
-    return results #clf.best_params_
+        print(classification_report(test_labels, predicted_labels))
 
+    #predicted_labels = trained_svc.predict(test_data)
+    mi_dict = get_mutual_info_metrics(test_labels, predicted_labels)
+    iterdict.update(mi_dict) 
+    iterdict.update({'heldout_test_score': test_score, 'C': C_value, 'randi': randi})
 
-def fit_svm_shuffle(zdata, targets, test_split=0.2, cv_nfolds=5, verbose=False, cv=True, C_value=None):
-
-    #### For each transformation, split trials into 80% and 20%
-    train_data, test_data, train_labels, test_labels = train_test_split(zdata, targets['label'].values, 
-                                                        test_size=test_split, stratify=targets['group'])
-    #print("CV:", cv)
-    #### Cross validate (tune C w/ train data)
-    if cv:
-        cv_results = tune_C(train_data, train_labels, scoring_metric='accuracy', cv_nfolds=cv_nfolds, 
-                           test_split=test_split, verbose=verbose)
-        C_value = cv_results['accuracy']['C']
-    else:
-        assert C_value is not None, "Provide value for hyperparam C..."
-
-    #### Fit SVM
-    scaler = StandardScaler().fit(train_data)
-    train_data = scaler.transform(train_data)
-    trained_svc = svm.SVC(kernel='linear', C=C_value, random_state=10)
-    scores = cross_validate(trained_svc, train_data, train_labels, cv=5,
-                            scoring=('precision_macro', 'recall_macro', 'accuracy'),
-                            return_train_score=True)
-    iterdict = dict((s, values.mean()) for s, values in scores.items())
-    trained_svc = svm.SVC(kernel='linear', C=C_value, random_state=10).fit(train_data, train_labels)
-        
-    #### DATA - Test with held-out data
-    test_data = scaler.transform(test_data)
-    test_score = trained_svc.score(test_data, test_labels)
-
-    #### DATA - Calculate MI
-    predicted_labels = trained_svc.predict(test_data)
-    mi = skmetrics.mutual_info_score(test_labels, predicted_labels)
-    ami = skmetrics.adjusted_mutual_info_score(test_labels, predicted_labels)
-    log2_mi = computeMI(test_labels, predicted_labels)
-    iterdict.update({'heldout_test_score': test_score, 
-                     'heldout_MI': mi, 'heldout_aMI': ami, 'heldout_log2MI': log2_mi,
-                     'C': C_value})
-    # ------------------------------------------------------------------
-    # Shuffle LABELS to calculate chance level
-    train_labels_chance = train_labels.copy()
-    np.random.shuffle(train_labels_chance)
-    test_labels_chance = test_labels.copy()
-    np.random.shuffle(test_labels_chance)
-
-    #### CHANCE - Fit classifier
-    chance_svc = svm.SVC(kernel='linear', C=C_value, random_state=10)
-    scores_chance = cross_validate(chance_svc, train_data, train_labels_chance, cv=5,
-                            scoring=('precision_macro', 'recall_macro', 'accuracy'),
-                            return_train_score=True)
-    iterdict_chance = dict((s, values.mean()) for s, values in scores_chance.items())
-
-    # CHANCE - Test with held-out data
-    trained_svc_chance = chance_svc.fit(train_data, train_labels_chance)
-    test_score_chance = trained_svc_chance.score(test_data, test_labels_chance)  
-
-    # Chance - Calculate MI
-    predicted_labels = trained_svc_chance.predict(test_data)
-    mi = skmetrics.mutual_info_score(test_labels, predicted_labels)
-    ami = skmetrics.adjusted_mutual_info_score(test_labels, predicted_labels)
-    log2_mi = computeMI(test_labels, predicted_labels)
-
-    iterdict_chance.update({'heldout_test_score': test_score_chance, 
-                            'heldout_MI': mi, 'heldout_aMI': ami, 'heldout_log2MI': log2_mi})
-
-    return iterdict, iterdict_chance
-
-
-def fit_svm(zdata, targets, test_split=0.2, cv_nfolds=5, cv=True, 
-                C_value=None, verbose=False, return_clf=False, return_predictions=False):
-
-    #### For each transformation, split trials into 80% and 20%
-    train_data, test_data, train_labels, test_labels = train_test_split(zdata, targets['label'].values, 
-                                                        test_size=test_split, stratify=targets['group'])
-    #### Cross validate (tune C w/ train data)
-    if cv:
-        cv_results = tune_C(train_data, train_labels, scoring_metric='accuracy', cv_nfolds=cv_nfolds, 
-                           test_split=test_split, verbose=verbose)
-        C_value = cv_results['accuracy']['C']
-    else:
-        assert C_value is not None, "Provide value for hyperparam C..."
-
-    #### Fit SVM
-    scaler = StandardScaler().fit(train_data)
-    train_data = scaler.transform(train_data)
-    trained_svc = svm.SVC(kernel='linear', C=C_value, random_state=10)
-    scores = cross_validate(trained_svc, train_data, train_labels, cv=cv_nfolds,
-                            scoring=('precision_macro', 'recall_macro', 'accuracy'),
-                            return_train_score=True)
-    iterdict = dict((s, values.mean()) for s, values in scores.items())
-    trained_svc = svm.SVC(kernel='linear', C=C_value, random_state=10).fit(train_data, train_labels)
-        
-    #### DATA - Test with held-out data
-    test_data = scaler.transform(test_data)
-    test_score = trained_svc.score(test_data, test_labels)
-
-    #### DATA - Calculate MI
-    predicted_labels = trained_svc.predict(test_data)
-    mi = skmetrics.mutual_info_score(test_labels, predicted_labels)
-    ami = skmetrics.adjusted_mutual_info_score(test_labels, predicted_labels)
-    log2_mi = computeMI(test_labels, predicted_labels)
-    iterdict.update({'heldout_test_score': test_score, 
-                     'heldout_MI': mi, 'heldout_aMI': ami, 'heldout_log2MI': log2_mi,
-                     'C': C_value})
     if return_clf:
         if return_predictions:
             return iterdict, trained_svc, scaler, (predicted_labels, test_labels)
@@ -545,57 +1383,235 @@ def fit_svm(zdata, targets, test_split=0.2, cv_nfolds=5, cv=True,
     else:
         return iterdict
 
+def get_mutual_info_metrics(curr_test_labels, predicted_labels):
+    mi = skmetrics.mutual_info_score(curr_test_labels, predicted_labels)
+    ami = skmetrics.adjusted_mutual_info_score(curr_test_labels, predicted_labels)
+    log2_mi = computeMI(curr_test_labels, predicted_labels)
 
-def do_fit(iter_num, global_rois=None, MEANS=None, sdf=None, sample_ncells=None, cv=True,
-           C_value=None, test_split=0.2, cv_nfolds=5, class_a=0, class_b=106):
-    #[gdf, MEANS, sdf, sample_ncells, cv] * n_times)
+    mi_dict = {'heldout_MI': mi, 'heldout_aMI': ami, 'heldout_log2MI': log2_mi}
+
+    return mi_dict
+
+# --------------------------------------------------------------------------------
+# Wrappers for fitting functions - specifies what type of analysis to do
+# --------------------------------------------------------------------------------
+def do_fit_within_fov(iter_num, curr_data=None, sdf=None, verbose=False,
+                    C_value=None, test_split=0.2, cv_nfolds=5, class_a=0, class_b=106,
+                    do_shuffle=True, balance_configs=True, return_clf=False):
+
+    #[gdf, MEANS, sdf, sample_size, cv] * n_times)
     '''
-    Resample w/ replacement from pooled cells (across datasets). Assumes 'sdf' is same for all datasets.
-    Do n_iterations, return mean/sem/std over iterations as dict of results.
-    Classes (class_a, class_b) should be the actual labels of the target (i.e., value of morph level)
+    Does SVC fit for cells within FOV (no global rois). Assumes 'config' column in curr_data.
+    Does n_iterations, return mean/sem/std over iterations as dict of results.
+    Classes (class_a, class_b) should be the labels of the target (i.e., value of morph level).
+   
+    do_shuffle (bool):  Runs fit_svm() twice, once reg and once with labels shuffled. 
     '''   
-    # Get new sample set
-    curr_data = get_trials_for_N_cells(sample_ncells, global_rois, MEANS)
-
+    i_list=[]
     #### Select train/test configs for clf A vs B
     train_configs = sdf[sdf['morphlevel'].isin([class_a, class_b])].index.tolist() 
 
     #### Get trial data for selected cells and config types
-    curr_roi_list = [int(c) for c in curr_data.columns if c != 'config']
+    curr_roi_list = [int(c) for c in curr_data.columns if c not in ['config', 'trial']]
     sample_data = curr_data[curr_data['config'].isin(train_configs)]
-    zdata = sample_data.drop('config', 1) #sample_data[curr_roi_list].copy()
-    #zdata = (data - data.mean()) / data.std()
+    if balance_configs:
+        #### Make sure training data has equal nums of each config
+        sample_data = aggr.equal_counts_df(sample_data)
+
+    curr_rois = [r for r in sample_data.columns if putils.isnumber(r)]
+    zdata = sample_data[curr_rois] #.drop('config', 1)
 
     #### Get labels
     targets = pd.DataFrame(sample_data['config'].copy(), columns=['config'])
     targets['label'] = [sdf['morphlevel'][cfg] for cfg in targets['config'].values]
     targets['group'] = [sdf['size'][cfg] for cfg in targets['config'].values]
 
+    if verbose:
+        print("Labels: %s\nGroups: %s" % (str(targets['label'].unique()), str(targets['group'].unique())))
+
     #### Fit
-    #curr_iter, _ = fit_svm_shuffle(zdata, targets, cv=cv, C_value=C_value,
-    #                                      test_split=test_split, cv_nfolds=cv_nfolds)
-    curr_iter = fit_svm(zdata, targets, cv=cv, C_value=C_value, test_split=test_split, cv_nfolds=cv_nfolds)
+    cv = C_value is None
+    randi = random.randint(1, 10000) 
+    if return_clf:
+        curr_iter, curr_clf, _ = fit_svm(zdata, targets, C_value=C_value, verbose=verbose,
+                                    test_split=test_split, cv_nfolds=cv_nfolds, randi=randi,
+                                    return_clf=True)
+    else:
+        curr_iter = fit_svm(zdata, targets, C_value=C_value, verbose=verbose,
+                            test_split=test_split, cv_nfolds=cv_nfolds, randi=randi)
+    tmpdf = pd.DataFrame(curr_iter, index=[iter_num])
+    tmpdf['condition'] = 'data'
+    i_list.append(tmpdf)
 
-    return pd.DataFrame(curr_iter, index=[iter_num])
+    #### Shuffle labels
+    if do_shuffle:
+        tmpdf_shuffled = fit_shuffled(zdata, targets, C_value=C_value, verbose=verbose,
+                                test_split=test_split, cv_nfolds=cv_nfolds, randi=randi)
+        tmpdf_shuffled.index = [iter_num]   
+        i_list.append(tmpdf_shuffled)
+ 
+    # Combine TRUE/SHUFF, add Meta info
+    iter_df = pd.concat(i_list, axis=0) 
+    iter_df['n_cells'] = zdata.shape[1]
+    iter_df['n_trials'] = zdata.shape[0]
+    for label, g in targets.groupby(['label']):
+        iter_df['n_samples_%i' % label] = len(g['label'])
+    iter_df['iteration'] = iter_num
 
+    if return_clf:
+        return iter_df, curr_clf
+    else:
+        return iter_df 
 
-def do_fit_train_test_single(iter_num, global_rois=None, MEANS=None, sdf=None, sample_ncells=None,
-           cv=True, C_value=None, test_size=0.2, cv_nfolds=5, class_a=0, class_b=106):
+def sample_neuraldata(sample_size, global_rois, MEANS, with_replacement=False, train_configs=None, randi=None):
+#    if isinstance(MEANS, dict):
+#        if isinstance(MEANS[MEANS.keys()[0]], dict): # df_is_split
+#            curr_data = get_trials_for_N_cells_split(sample_size, global_rois, 
+#                                        MEANS, train_configs=train_configs)
+#        else:
+#            curr_data = get_trials_for_N_cells(sample_size, global_rois, 
+#                                        MEANS, train_configs=train_configs)
+#    else:
+#   
+    if isinstance(MEANS, dict):
+        MEANS = aggr.neuraldf_dict_to_dataframe(MEANS)
+
+    curr_data = get_trials_for_N_cells_df(sample_size, global_rois, MEANS, 
+                        train_configs=train_configs, with_replacement=with_replacement, randi=randi)
+
+    return curr_data
+
+#def do_fit_within_fov(iter_num, curr_data=None, sdf=None, verbose=False,
+#                    C_value=None, test_split=0.2, cv_nfolds=5, class_a=0, class_b=106,
+#                    do_shuffle=True, balance_configs=True):
+#
+
+#def do_fit_sample_cells(iter_num, sample_size=1, global_rois=None, MEANS=None, sdf=None, 
+#           C_value=None, test_split=0.2, cv_nfolds=5, class_a=0, class_b=106, 
+#           do_shuffle=True, verbose=False, balance_configs=True, train_configs=None,
+#            with_replacement=False):
+#    #[gdf, MEANS, sdf, sample_size, cv] * n_times)
+#    '''
+#    Resample w/ replacement from pooled cells (across datasets). Assumes 'sdf' is same for all datasets.
+#    Do n_iterations, return mean/sem/std over iterations as dict of results.
+#    Classes (class_a, class_b) should be the actual labels of the target (i.e., value of morph level)
+#
+#    do_shuffle (bool):   Calls 'fit_svm' twice, once on true data, once on shuffled labels
+#   
+#    sample_size (int):  sample size 
+#    '''   
+#    i_list=[]
+#    #### Get new sample set
+#    try:
+#        curr_data = sample_neuraldata(sample_size, global_rois, MEANS, train_configs=train_configs,
+#                                    with_replacement=with_replacement)
+#    except Exception as e:
+#        traceback.print_exc()
+#        return None
+#
+#    #### Select train/test configs for clf A vs B
+#    train_configs = sdf[sdf['morphlevel'].isin([class_a, class_b])].index.tolist() 
+#
+#    #### Get trial data for selected cells and config types
+#    curr_roi_list = [int(c) for c in curr_data.columns if c not in ['config', 'trial']]
+#    sample_data = curr_data[curr_data['config'].isin(train_configs)]
+#    if balance_configs:
+#        #### Make sure equal counts per config
+#        sample_data = aggr.equal_counts_df(sample_data)
+#
+#    zdata = sample_data.drop('config', 1) #sample_data[curr_roi_list].copy()
+#    #zdata = (data - data.mean()) / data.std()
+#
+#    #### Get labels
+#    targets = pd.DataFrame(sample_data['config'].copy(), columns=['config'])
+#    targets['label'] = [sdf['morphlevel'][cfg] for cfg in targets['config'].values]
+#    targets['group'] = [sdf['size'][cfg] for cfg in targets['config'].values]
+#
+#    #### Fit
+#    randi = random.randint(1, 10000)
+#    curr_iter = fit_svm(zdata, targets, C_value=C_value, test_split=test_split, 
+#                            cv_nfolds=cv_nfolds, randi=randi)
+#    curr_iter['condition'] = 'data'
+#    tmp_df = pd.DataFrame(curr_iter, index=[iter_num]) 
+#    i_list.append(tmp_df)
+#
+#    #### Shuffle labels
+#    if do_shuffle:
+#        tmpdf_shuffled = fit_shuffled(zdata, targets, C_value=C_value, verbose=verbose,
+#                                test_split=test_split, cv_nfolds=cv_nfolds, randi=randi)
+#        tmpdf_shuffled.index = [iter_num]   
+#        i_list.append(tmpdf_shuffled)
+# 
+#    iter_df = pd.concat(i_list, axis=0) 
+# 
+#    iter_df['n_cells'] = zdata.shape[1]
+#    iter_df['n_trials'] = zdata.shape[0]
+#    iter_df['iteration'] = iter_num 
+#    
+#    return iter_df 
+#
+
+def fit_shuffled(zdata, targets, C_value=None, test_split=0.2, cv_nfolds=5, randi=0, verbose=False,
+                    class_types=[0, 106], class_name='morph', do_pchoose=False, return_svc=False, i=0):
     '''
-    Resample w/ replacement from pooled cells (across datasets). Assumes 'sdf' is same for all datasets.
-    Return fit results for 1 iteration.
-    Classes (class_a, class_b) should be the actual labels of the target (i.e., value of morph level)
+    Shuffle target labels, do fit_svm()
     '''
-    # Get new sample set
-    curr_data = get_trials_for_N_cells(sample_ncells, global_rois, MEANS)
+    labels_shuffled = targets['label'].copy().values 
+    np.random.shuffle(labels_shuffled)
+    targets['label'] = labels_shuffled
 
+    tmp_=[]
+    if do_pchoose:
+        class_a, class_b = class_types
+        iter_shuffled, trained_svc, trained_scaler, (predicted_labels, true_labels) = fit_svm(
+                                                            zdata, targets, 
+                                                            return_clf=True, return_predictions=True,
+                                                            test_split=test_split, cv_nfolds=cv_nfolds, 
+                                                            C_value=C_value, randi=randi) 
+        # Calculate P(choose B)
+        #pchoose_dict = get_pchoose(predicted_labels, true_labels, class_a=class_a, class_b=class_b)
+        for anchor in class_types: #[class_a, class_b]:
+            a_ixs = [i for i, v in enumerate(true_labels) if v==anchor] 
+            p_chooseB = sum([1 if p==class_b else 0 for p in predicted_labels[a_ixs]])/float(len(a_ixs))
+            iter_shuffled.update({'p_chooseB': p_chooseB, '%s' % class_name: anchor, 'n_samples': len(a_ixs)})
+            tmpdf_shuffled = pd.DataFrame(iter_shuffled, index=[i])
+            i+=1
+            tmp_.append(tmpdf_shuffled)            
+        iterdf = pd.concat(tmp_, axis=0).reset_index(drop=True)
+    else:
+        iterdict = fit_svm(zdata, targets, C_value=C_value, verbose=verbose,
+                                test_split=test_split, cv_nfolds=cv_nfolds, randi=randi)
+        iterdf = pd.DataFrame(iterdict, index=[i])
+
+    iterdf['condition'] = 'shuffled'
+    #print("shuffled")
+
+    if return_svc:
+        return iterdf, trained_svc, trained_scaler
+    else:
+        return iterdf
+
+ 
+# ------
+def train_test_size_single(iter_num, curr_data=None, sdf=None, verbose=False,
+                    C_value=None, test_split=0.2, cv_nfolds=5, class_a=0, class_b=106,
+                    do_shuffle=True, balance_configs=True):
+
+    #[gdf, MEANS, sdf, sample_size, cv] * n_times)
+    '''
+    Does SVC fit for cells within FOV (no global rois). Assumes 'config' column in curr_data.
+    Does n_iterations, return mean/sem/std over iterations as dict of results.
+    Classes (class_a, class_b) should be the labels of the target (i.e., value of morph level).
+   
+    do_shuffle (bool):  Runs fit_svm() twice, once reg and once with labels shuffled. 
+    '''   
     #### Select train/test configs for clf A vs B
     class_types = [class_a, class_b]
     restrict_transform = True
     class_name='morphlevel'
     constant_transform = 'size'
-    sizes = sorted(sdf[constant_transform].unique())
-    
+    sizes = sorted(sdf[constant_transform].unique()) 
+
     i_list=[]
     i=0
     # Go thru all training sizes, then test on non-trained sizes
@@ -605,17 +1621,54 @@ def do_fit_train_test_single(iter_num, global_rois=None, MEANS=None, sdf=None, s
                                 & (sdf[constant_transform]==train_transform))].index.tolist()
 
         #### TRAIN SET: Get trial data for selected cells and config types
-        curr_roi_list = [int(c) for c in curr_data.columns if c != 'config']
+        curr_roi_list = [int(c) for c in curr_data.columns if c not in ['config', 'trial']]
         trainset = curr_data[curr_data['config'].isin(train_configs)].copy()
+        if balance_configs:
+            #### Make sure train set has equal counts per config
+            trainset = aggr.equal_counts_df(trainset)
+
         train_data = trainset.drop('config', 1)#zdata = (data - data.mean()) / data.std()
 
         #### TRAIN SET: Get labels
         targets = pd.DataFrame(trainset['config'].copy(), columns=['config'])
         targets['label'] = [sdf['morphlevel'][cfg] for cfg in targets['config'].values]
         targets['group'] = [sdf['size'][cfg] for cfg in targets['config'].values]
+        if verbose:
+            print("Labels: %s\nGroups: %s" % (str(targets['label'].unique()), str(targets['group'].unique())))
 
-        # Select generalization-test set
-        # untrained_class_types = [c for c in stimdf[class_name].unique() if c not in class_types]
+        try:
+            #### Train SVM
+            randi = random.randint(1, 10000)
+            iterdict, trained_svc, trained_scaler = fit_svm(train_data, targets, return_clf=True,
+                                                    test_split=test_split, cv_nfolds=cv_nfolds, 
+                                                    C_value=C_value, randi=randi)
+            iterdict.update({'train_transform': train_transform, 'test_transform': train_transform,
+                            'condition': 'data', 'n_trials': len(targets), 'novel': False})
+            tmpdf = pd.DataFrame(iterdict, index=[i])
+            for label, g in targets.groupby(['label']):
+                tmpdf['n_samples_%i' % label] = len(g['label'])
+             
+            i_list.append(tmpdf) #_shuffled = pd.DataFrame(curr_iter_shuffled, index=[i])
+            i+=1
+            train_columns = tmpdf.columns.tolist()
+        except Exception as e:
+            print(e)
+            return None
+
+        #### Shuffle labels
+        if do_shuffle:
+            tmpdf_shuffled = fit_shuffled(train_data, targets, C_value=C_value, verbose=verbose,
+                                    test_split=test_split, cv_nfolds=cv_nfolds, randi=randi, i=i)
+            tmpdf_shuffled['train_transform'] = train_transform
+            tmpdf_shuffled['test_transform'] = train_transform
+            tmpdf_shuffled['n_trials'] = len(targets)
+            tmpdf_shuffled['novel'] = False
+            for label, g in targets.groupby(['label']):
+                tmpdf_shuffled['n_samples_%i' % label] = len(g['label']) 
+            i_list.append(tmpdf_shuffled) #iter_df) 
+            i+=1
+
+        #### Select generalization-test set
         test_configs = sdf[((sdf[class_name].isin(class_types))\
                                 & (sdf[constant_transform]!=train_transform))].index.tolist()
         testset = curr_data[curr_data['config'].isin(test_configs)]
@@ -625,128 +1678,254 @@ def do_fit_train_test_single(iter_num, global_rois=None, MEANS=None, sdf=None, s
         test_targets['label'] = [sdf['morphlevel'][cfg] for cfg in test_targets['config'].values]
         test_targets['group'] = [sdf['size'][cfg] for cfg in test_targets['config'].values]
 
-        #### Train SVM
-        iterdict, trained_svc, trained_scaler = fit_svm(train_data, targets, return_clf=True,
-                                                test_split=test_size, cv_nfolds=cv_nfolds, 
-                                                cv=cv, C_value=C_value)
-        iterdict.update({'train_transform': train_transform, 'test_transform': train_transform})
-        i_list.append(pd.DataFrame(iterdict, index=[i]))
-        i+=1
-        
+           
         #### Test SVM
+        fit_C_value = iterdict['C']
         for test_transform, curr_test_group in test_targets.groupby(['group']):
+            iterdict = dict((k, None) for k in train_columns) 
             curr_test_labels = curr_test_group['label'].values
             curr_test_data = test_data.loc[curr_test_group.index].copy()
             curr_test_data = trained_scaler.transform(curr_test_data)
-            #test_labels = test_targets['label'].values
             curr_test_score = trained_svc.score(curr_test_data, curr_test_labels)
-            #print(test_transform, curr_test_score)
 
             #### Calculate additional metrics (MI)
             predicted_labels = trained_svc.predict(curr_test_data)
-            mi = skmetrics.mutual_info_score(curr_test_labels, predicted_labels)
-            ami = skmetrics.adjusted_mutual_info_score(curr_test_labels, predicted_labels)
-            log2_mi = computeMI(curr_test_labels, predicted_labels)
-            
-            iterdict.update({'heldout_test_score': curr_test_score, 
-                             'heldout_MI': mi, 'heldout_aMI': ami, 'heldout_log2MI': log2_mi,
-                             'train_transform': train_transform,
-                             'test_transform': test_transform}) 
-            i_list.append(pd.DataFrame(iterdict, index=[i]))
-            i+=1 
+            mi_dict = get_mutual_info_metrics(curr_test_labels, predicted_labels)
+            iterdict.update(mi_dict) 
+            is_novel = train_transform!=test_transform
+            iterdict.update({'heldout_test_score': curr_test_score, 'C': fit_C_value, 'randi': randi,
+                             'train_transform': train_transform, 'test_transform': test_transform,
+                             'n_trials': len(predicted_labels), 'novel': is_novel, 'condition': 'data'}) 
+            testdf = pd.DataFrame(iterdict, index=[i])
+            for label, g in test_targets.groupby(['label']):
+                testdf['n_samples_%i' % label] = len(g['label']) 
+            i += 1
+            #### Shuffle labels  - no shuffle, already testd above
+            i_list.append(testdf) 
+
     iterdf = pd.concat(i_list, axis=0).reset_index(drop=True)
     iterdf['iteration'] = [iter_num for _ in np.arange(0, len(iterdf))]
-    
+    iterdf['n_cells'] = curr_data.shape[1]-1
+ 
     return iterdf
 
 
-def do_fit_train_test_subset(iter_num, global_rois=None, MEANS=None, sdf=None, sample_ncells=None,
-                             train_set=[10, 30, 50], test_set=[20, 40],
-                             cv=True, C_value=None, test_split=0.2, cv_nfolds=5, class_a=0, class_b=106):
-    '''
-    Resample w/ replacement from pooled cells (across datasets). Assumes 'sdf' is same for all datasets.
-    Return fit results for 1 iteration.
-    Classes (class_a, class_b) should be the actual labels of the target (i.e., value of morph level)
-    '''
-    
-    # Get new sample set
-    curr_data = get_trials_for_N_cells(sample_ncells, global_rois, MEANS)
+def train_test_size_subset(iter_num, curr_data=None, sdf=None, verbose=False,
+                    C_value=None, test_split=0.2, cv_nfolds=5, class_a=0, class_b=106,
+                    do_shuffle=True, n_train_configs=4, balance_configs=True):
 
+    #[gdf, MEANS, sdf, sample_size, cv] * n_times)
+    '''
+    Does SVC fit for cells within FOV (no global rois). Assumes 'config' column in curr_data.
+    Does n_iterations, return mean/sem/std over iterations as dict of results.
+    Classes (class_a, class_b) should be the labels of the target (i.e., value of morph level).
+   
+    do_shuffle (bool):  Runs fit_svm() twice, once reg and once with labels shuffled. 
+    '''   
     #### Select train/test configs for clf A vs B
     class_types = [class_a, class_b]
-    restrict_transform = True
-    class_name = 'morphlevel'
+    class_name='morphlevel'
     constant_transform = 'size'
-    sizes = sorted(sdf[constant_transform].unique())
-    
+    sizes = sorted(sdf[constant_transform].unique()) 
+
+    #### Get all combinations of n_train_configs    
+    combo_train_sizes = list(itertools.combinations(sizes, n_train_configs))
+
+    # Go thru all training sizes, then test on non-trained sizes
     i_list=[]
     i=0
-    # Go thru all training sizes, then test on non-trained sizes
-    #for train_transform in sizes:
+    for train_sizes in combo_train_sizes: #training_sets:
+
+        # Get train configs
+        train_configs = sdf[(sdf[class_name].isin(class_types))\
+                                & (sdf[constant_transform].isin(train_sizes))].index.tolist()
+
+        #### TRAIN SET: Get trial data for selected cells and config types
+        curr_roi_list = [int(c) for c in curr_data.columns if c not in ['config', 'trial']]
+        trainset = curr_data[curr_data['config'].isin(train_configs)].copy()
+        if balance_configs:
+            #### Make sure train set has equal counts per config
+            trainset = aggr.equal_counts_df(trainset)
+
+        train_data = trainset.drop('config', 1)#zdata = (data - data.mean()) / data.std()
+
+        #### TRAIN SET: Get labels
+        targets = pd.DataFrame(trainset['config'].copy(), columns=['config'])
+        targets['label'] = [sdf['morphlevel'][cfg] for cfg in targets['config'].values]
+        targets['group'] = [sdf['size'][cfg] for cfg in targets['config'].values]
+        if verbose:
+            print("Labels: %s\nGroups: %s" % (str(targets['label'].unique()), str(targets['group'].unique())))
+        train_transform = '_'.join([str(int(s)) for s in train_sizes])
+
+        #### Train SVM
+        randi = random.randint(1, 10000)
+        iterdict, trained_svc, trained_scaler = fit_svm(train_data, targets, return_clf=True,
+                                                test_split=test_split, cv_nfolds=cv_nfolds, 
+                                                C_value=C_value, randi=randi)
+        iterdict.update({'train_transform': train_transform, 'test_transform': train_transform, 
+                         'condition': 'data', 'n_trials': len(targets), 'novel': False})
+        tmpdf = pd.DataFrame(iterdict, index=[i])
+        for label, g in targets.groupby(['label']):
+            tmpdf['n_samples_%i' % label] = len(g['label']) 
+        i+=1
+        i_list.append(tmpdf)
+        train_columns = tmpdf.columns.tolist()
     
-    # Get train configs
-    train_configs = sdf[((sdf[class_name].isin(class_types))\
-                            & (sdf[constant_transform].isin(train_sizes)))].index.tolist()
+        #### Shuffle labels
+        if do_shuffle:
+            tmpdf_shuffled = fit_shuffled(train_data, targets, C_value=C_value, verbose=verbose,
+                                    test_split=test_split, cv_nfolds=cv_nfolds, randi=randi, i=i)
+            tmpdf_shuffled['train_transform'] = train_transform
+            tmpdf_shuffled['test_transform'] = train_transform
+            tmpdf_shuffled['n_trials'] = len(targets)
+            tmpdf_shuffled['novel'] = False
+            for label, g in targets.groupby(['label']):
+                tmpdf_shuffled['n_samples_%i' % label] = len(g['label'])  
+            # combine
+            i_list.append(tmpdf_shuffled)
+            i+=1
 
-    #### TRAIN SET: Get trial data for selected cells and config types
-    curr_roi_list = np.array([int(c) for c in curr_data.columns if c != 'config'])
-    train_subset = curr_data[curr_data['config'].isin(train_configs)].copy()
-    train_data = train_subset.drop('config', 1)#zdata = (data - data.mean()) / data.std()
+        #### Select generalization-test set
+        test_sizes = [t for t in sizes if t not in train_sizes]
+        test_configs = sdf[((sdf[class_name].isin(class_types))\
+                                & (sdf[constant_transform].isin(test_sizes)))].index.tolist()
+        test_subset = curr_data[curr_data['config'].isin(test_configs)]
+        test_data = test_subset.drop('config', 1) #zdata = (data - data.mean()) / data.std()
 
-    #### TRAIN SET: Get labels
-    targets = pd.DataFrame(train_subset['config'].copy(), columns=['config'])
-    targets['label'] = [sdf['morphlevel'][cfg] for cfg in targets['config'].values]
-    targets['group'] = [sdf['size'][cfg] for cfg in targets['config'].values]
+        test_targets = pd.DataFrame(test_subset['config'].copy(), columns=['config'])
+        test_targets['label'] = [sdf['morphlevel'][cfg] for cfg in test_targets['config'].values]
+        test_targets['group'] = [sdf['size'][cfg] for cfg in test_targets['config'].values]
+ 
+        #### Test SVM
+        fit_C_value = iterdict['C']
+        for test_transform, curr_test_group in test_targets.groupby(['group']):
+            iterdict = dict((k, None) for k in train_columns) 
+            curr_test_labels = curr_test_group['label'].values
+            curr_test_data = test_data.loc[curr_test_group.index].copy()
+            curr_test_data = trained_scaler.transform(curr_test_data)
+            curr_test_score = trained_svc.score(curr_test_data, curr_test_labels)
 
-
-    # Select generalization-test set
-    # untrained_class_types = [c for c in stimdf[class_name].unique() if c not in class_types]
-    test_configs = sdf[((sdf[class_name].isin(class_types))\
-                            & (sdf[constant_transform].isin(test_sizes)))].index.tolist()
-    test_subset = curr_data[curr_data['config'].isin(test_configs)]
-    test_data = test_subset.drop('config', 1) #zdata = (data - data.mean()) / data.std()
-
-    test_targets = pd.DataFrame(test_subset['config'].copy(), columns=['config'])
-    test_targets['label'] = [sdf['morphlevel'][cfg] for cfg in test_targets['config'].values]
-    test_targets['group'] = [sdf['size'][cfg] for cfg in test_targets['config'].values]
-
-    #### Train SVM
-    iterdict, trained_svc, trained_scaler = fit_svm(train_data, targets, return_clf=True,
-                                                    test_split=test_split, cv_nfolds=cv_nfolds, 
-                                                    cv=cv, C_value=C_value)
-    iterdict.update({'train_transform': '_'.join([str(s) for s in train_sizes]),
-                     'test_transform': '_'.join([str(s) for s in train_sizes])})
-
-    i_list.append(pd.DataFrame(iterdict, index=[i]))
-    i+=1
-
-    #### Test SVM
-    #for test_transform, curr_test_group in test_targets.groupby(['group']):
-    test_labels = test_targets['label'].values
-    test_data = trained_scaler.transform(test_data)
-    curr_test_score = trained_svc.score(test_data, test_labels)
-
-    #### Calculate additional metrics (MI)
-    predicted_labels = trained_svc.predict(test_data)
-    mi = skmetrics.mutual_info_score(test_labels, predicted_labels)
-    ami = skmetrics.adjusted_mutual_info_score(test_labels, predicted_labels)
-    log2_mi = computeMI(test_labels, predicted_labels)
-
-    iterdict.update({'heldout_test_score': curr_test_score, 
-                     'heldout_MI': mi, 'heldout_aMI': ami, 'heldout_log2MI': log2_mi,
-                     'train_transform': '_'.join([str(s) for s in train_sizes]),
-                     'test_transform': '_'.join([str(s) for s in test_sizes])})
-
-    i_list.append(pd.DataFrame(iterdict, index=[i]))
-    i+=1
+            #### Calculate additional metrics (MI)
+            predicted_labels = trained_svc.predict(curr_test_data)
+            mi_dict = get_mutual_info_metrics(curr_test_labels, predicted_labels)
+            iterdict.update(mi_dict) 
+            is_novel = train_transform!=test_transform
+            iterdict.update({'heldout_test_score': curr_test_score, 'C': fit_C_value, 'randi': randi,
+                             'train_transform': train_transform, 'test_transform': test_transform, 
+                             'novel': is_novel,
+                             'condition': 'data', 'n_trials': len(predicted_labels)}) 
+            testdf = pd.DataFrame(iterdict, index=[i])
+            for label, g in test_targets.groupby(['label']):
+                testdf['n_samples_%i' % label] = len(g['label']) 
+            i += 1
+            #### Shuffle labels  - no shuffle, already testd above
+            i_list.append(testdf) 
     
+    #print([i for i in i_list if not isinstance(i, pd.DataFrame)])
     iterdf = pd.concat(i_list, axis=0).reset_index(drop=True)
     iterdf['iteration'] = [iter_num for _ in np.arange(0, len(iterdf))]
-    
+    iterdf['n_cells'] = curr_data.shape[1]-1
+
     return iterdf
 
 
-def cycle_train_sets(iter_num, global_rois=None, MEANS=None, sdf=None, sample_ncells=None, n_train_configs=4,
+# -------------------------
+#def do_fit_train_test_single(iter_num, sample_size=None, global_rois=None, MEANS=None, sdf=None,
+#                            cv=True, C_value=None, test_size=0.2, cv_nfolds=5, class_a=0, class_b=106,
+#                            balance_configs=True):
+#    '''
+#    Train/test PER SIZE.
+#
+#    Resample w/ replacement from pooled cells (across datasets). 
+#    Assumes 'sdf' is same for all datasets.
+#
+#    Return fit results for 1 iteration.
+#    Classes (class_a, class_b) should be labels of the target (i.e., value of morph level)
+#    '''
+#    #### Get new sample set
+#    try:
+#        curr_data = sample_neuraldata(sample_size, global_rois, MEANS)
+#    except Exception as e:
+#        traceback.print_exc()
+#        return None
+#
+#    #### Select train/test configs for clf A vs B
+#    class_types = [class_a, class_b]
+#    restrict_transform = True
+#    class_name='morphlevel'
+#    constant_transform = 'size'
+#    sizes = sorted(sdf[constant_transform].unique())
+#    
+#    i_list=[]
+#    i=0
+#    # Go thru all training sizes, then test on non-trained sizes
+#    for train_transform in sizes:
+#        # Get train configs
+#        train_configs = sdf[((sdf[class_name].isin(class_types))\
+#                                & (sdf[constant_transform]==train_transform))].index.tolist()
+#
+#        #### TRAIN SET: Get trial data for selected cells and config types
+#        curr_roi_list = [int(c) for c in curr_data.columns if c not in ['config', 'trial']]
+#        trainset = curr_data[curr_data['config'].isin(train_configs)].copy()
+#        if balance_configs:
+#            #### Make sure train set has equal counts per config
+#            trainset = aggr.equal_counts_df(trainset)
+#
+#        train_data = trainset.drop('config', 1)#zdata = (data - data.mean()) / data.std()
+#
+#        #### TRAIN SET: Get labels
+#        targets = pd.DataFrame(trainset['config'].copy(), columns=['config'])
+#        targets['label'] = [sdf['morphlevel'][cfg] for cfg in targets['config'].values]
+#        targets['group'] = [sdf['size'][cfg] for cfg in targets['config'].values]
+#
+#        # Select generalization-test set
+#        # untrained_class_types = [c for c in stimdf[class_name].unique() if c not in class_types]
+#        test_configs = sdf[((sdf[class_name].isin(class_types))\
+#                                & (sdf[constant_transform]!=train_transform))].index.tolist()
+#        testset = curr_data[curr_data['config'].isin(test_configs)]
+#        test_data = testset.drop('config', 1) #zdata = (data - data.mean()) / data.std()
+#
+#        test_targets = pd.DataFrame(testset['config'].copy(), columns=['config'])
+#        test_targets['label'] = [sdf['morphlevel'][cfg] for cfg in test_targets['config'].values]
+#        test_targets['group'] = [sdf['size'][cfg] for cfg in test_targets['config'].values]
+#
+#        #### Train SVM
+#        randi = random.randint(1, 10000)
+#        iterdict, trained_svc, trained_scaler = fit_svm(train_data, targets, return_clf=True,
+#                                                test_split=test_size, cv_nfolds=cv_nfolds, 
+#                                                C_value=C_value, randi=randi)
+#        iterdict.update({'train_transform': train_transform, 'test_transform': train_transform})
+#        i_list.append(pd.DataFrame(iterdict, index=[i]))
+#        i+=1
+#        
+#        #### Test SVM
+#        for test_transform, curr_test_group in test_targets.groupby(['group']):
+#            curr_test_labels = curr_test_group['label'].values
+#            curr_test_data = test_data.loc[curr_test_group.index].copy()
+#            curr_test_data = trained_scaler.transform(curr_test_data)
+#            #test_labels = test_targets['label'].values
+#            curr_test_score = trained_svc.score(curr_test_data, curr_test_labels)
+#            #print(test_transform, curr_test_score)
+#
+#            #### Calculate additional metrics (MI)
+#            predicted_labels = trained_svc.predict(curr_test_data)
+#            mi = skmetrics.mutual_info_score(curr_test_labels, predicted_labels)
+#            ami = skmetrics.adjusted_mutual_info_score(curr_test_labels, predicted_labels)
+#            log2_mi = computeMI(curr_test_labels, predicted_labels)
+#            
+#            iterdict.update({'heldout_test_score': curr_test_score, 
+#                             'heldout_MI': mi, 'heldout_aMI': ami, 'heldout_log2MI': log2_mi,
+#                             'train_transform': train_transform,
+#                             'test_transform': test_transform}) 
+#            i_list.append(pd.DataFrame(iterdict, index=[i]))
+#            i+=1 
+#    iterdf = pd.concat(i_list, axis=0).reset_index(drop=True)
+#    iterdf['iteration'] = [iter_num for _ in np.arange(0, len(iterdf))]
+#    
+#    return iterdf
+#
+
+def cycle_train_sets(iter_num, global_rois=None, MEANS=None, sdf=None, sample_size=None, n_train_configs=4,
                       cv=True, C_value=None, test_split=0.2, cv_nfolds=5, class_a=0, class_b=106):
     
     constant_transform = 'size'
@@ -757,9 +1936,9 @@ def cycle_train_sets(iter_num, global_rois=None, MEANS=None, sdf=None, sample_nc
     i_list=[]
     for train_set in training_sets:
         test_set = [t for t in sizes if t not in train_set]
-        tmpdf = do_fit_test_gen_subset(iter_num, global_rois=global_rois, MEANS=MEANS, sdf=sdf, 
-                                        sample_ncells=sample_ncells,
-                                        train_set=train_set, test_set=test_set,
+        tmpdf = do_fit_train_test_subset(iter_num, global_rois=global_rois, MEANS=MEANS, sdf=sdf, 
+                                        sample_size=sample_size,
+                                        train_sizes=train_set, test_sizes=test_set,
                                         cv=cv, C_value=C_value, test_split=test_split, 
                                         cv_nfolds=cv_nfolds, class_a=class_a, class_b=class_b)
 
@@ -769,45 +1948,115 @@ def cycle_train_sets(iter_num, global_rois=None, MEANS=None, sdf=None, sample_nc
     
     return iterdf
 
-
-def do_fit_train_test_morph(iter_num, global_rois=None, MEANS=None, sdf=None, sample_ncells=None,
-                               cv=True, C_value=None, test_size=0.2, cv_nfolds=5, class_a=0, class_b=106):
+#-----
+def get_pchoose(predicted_labels, true_labels, class_a=0, class_b=106):
     '''
-    Resample w/ replacement from pooled cells (across datasets). Assumes 'sdf' is same for all datasets.
-    Return fit results for 1 iteration.
-    Classes (class_a, class_b) should be the actual labels of the target (i.e., value of morph level)
+    For given predicted and true labels, calculate p_chooseB and p_correct. Return dict.
     '''
-    # Get new sample set
-    curr_data = get_trials_for_N_cells(sample_ncells, global_rois, MEANS)
+    iterdict={}
+    for anchor in [class_a, class_b]:
+        a_ixs = np.array([i for i, v in enumerate(true_labels) if v==anchor]) # trials where A shown
+        if len(a_ixs)==0:
+            p_chooseB=0
+            p_correct=0
+        else:
+            p_chooseB = sum([1 if p==class_b else 0 \
+                                for p in predicted_labels[a_ixs]])/float(len(a_ixs))
+            p_correct = sum([1 if p==anchor else 0 \
+                                for p in predicted_labels[a_ixs]])/float(len(a_ixs))
+        iterdict.update({'p_chooseB': p_chooseB, 'morph_level': anchor, 'p_correct': p_correct})
 
+    return iterdict
+
+def train_test_morph(iter_num, curr_data=None, sdf=None, verbose=False,
+                    C_value=None, test_split=0.2, cv_nfolds=5, class_a=0, class_b=106, midp=53,
+                    do_shuffle=True, balance_configs=True, 
+                    fit_psycho=True, P_model='weibull', par0=np.array([0.5, 0.5, 0.1]), nfits=20):
+
+    #[gdf, MEANS, sdf, sample_size, cv] * n_times)
+    '''
+    Test generalization to morph stimuli (combine diff sizes)
+    train_transform: 0_106 (class types)
+    test_transform:  intermediate morphs
+
+    Note: 
+    If do_pchoose=True for fit_shuffled(), returns df updated with ['p_chooseB', 'morphlevel', n_samples']. 
+    '''   
     #### Select train/test configs for clf A vs B
     class_types = [class_a, class_b]
-    restrict_transform = True
     class_name='morphlevel'
     constant_transform = 'size'
-    sizes = sorted(sdf[constant_transform].unique())
-    
-    i_list=[]
-    i=0
-    # Go thru all training sizes, then test on non-trained sizes
-    #for train_transform in sizes:
-    
-    # Get train configs -- ANCHORS (A/B)
+    sizes = sorted(sdf[constant_transform].unique()) 
+
+    #### Get train configs -- ANCHORS (A/B)
     train_configs = sdf[sdf[class_name].isin(class_types)].index.tolist()
 
-    #### TRAIN SET --------------------------------------------------------------------
-    # Get trial data for selected cells and config types
-    curr_roi_list = [int(c) for c in curr_data.columns if c != 'config']
-    trainset = curr_data[curr_data['config'].isin(train_configs)].copy()
-    train_data = trainset.drop('config', 1)#zdata = (data - data.mean()) / data.std()
+    # Go thru all training sizes, then test on non-trained sizes
+    i_list=[]
+    i=0
 
-    # Get labels
+    #### TRAIN SET: Get trial data for selected cells and config types
+    curr_roi_list = [int(c) for c in curr_data.columns if c not in ['config', 'trial']]
+    trainset = curr_data[curr_data['config'].isin(train_configs)].copy()
+    if balance_configs:
+        #### Make sure train set has equal counts per config
+        trainset = aggr.equal_counts_df(trainset)
+
+    train_data = trainset.drop('config', 1)#zdata = (data - data.mean()) / data.std()
+    train_transform = '_'.join([str(c) for c in class_types]) #'anchor'
+
+    #### TRAIN SET: Get labels
     targets = pd.DataFrame(trainset['config'].copy(), columns=['config'])
     targets['label'] = [sdf['morphlevel'][cfg] for cfg in targets['config'].values]
     targets['group'] = [sdf['size'][cfg] for cfg in targets['config'].values]
+    if verbose:
+        print("Labels: %s\nGroups: %s" % (str(targets['label'].unique()), str(targets['group'].unique())))
 
+
+    #### Train SVM ----------------------------------------------------------------------
+    randi = random.randint(1, 10000)
+    iterdict, trained_svc, trained_scaler, (predicted_labels, true_labels) = fit_svm(
+                                                        train_data, targets, 
+                                                        return_clf=True, return_predictions=True,
+                                                        test_split=test_split, cv_nfolds=cv_nfolds, 
+                                                        C_value=C_value, randi=randi) 
+    iterdict.update({'train_transform': train_transform, 'test_transform': train_transform, 
+                     'condition': 'data', 'novel': False, 'n_trials': len(targets)})
+    # Calculate P(choose B)
+    #pchoose_dict = get_pchoose(predicted_labels, true_labels, class_a=class_a, class_b=class_b)
+    train_samples={}
+    for t in targets['label'].unique():
+        curr_ncounts = len(np.where(targets['label'].values==t)[0])
+        train_samples.update({'n_samples_%i' % t: curr_ncounts})
+
+    for anchor in class_types:
+        a_ixs = [i for i, v in enumerate(true_labels) if v==anchor] 
+        p_chooseB = sum([1 if p==class_b else 0 for p in predicted_labels[a_ixs]])/float(len(a_ixs))
+        iterdict.update({'p_chooseB': p_chooseB, 'morphlevel': anchor, 'n_samples': len(a_ixs)})
+        tmpdf = pd.DataFrame(iterdict, index=[i])
+        #for label, g in targets.groupby(['label']):
+        for t, v in train_samples.items():
+            tmpdf[t] = v
+        i_list.append(tmpdf)
+        i += 1
+    train_columns = tmpdf.columns.tolist()
+ 
+    #### Shuffle labels
+    if do_shuffle:
+        tmpdf_shuffled, shuffled_svc, shuffled_scaler = fit_shuffled(train_data, targets, C_value=C_value, 
+                                                    verbose=verbose, test_split=test_split, 
+                                                    cv_nfolds=cv_nfolds, randi=randi, do_pchoose=True, 
+                                                    class_types=[class_a, class_b], class_name=class_name,
+                                                    return_svc=True, i=i)
+        tmpdf_shuffled['train_transform'] = train_transform
+        tmpdf_shuffled['test_transform'] = train_transform
+        tmpdf_shuffled['n_trials'] = len(targets)
+        tmpdf_shuffled['novel'] = False
+        for t, v in train_samples.items():
+            tmpdf_shuffled[t] = v
+        i_list.append(tmpdf_shuffled) 
+        i+=1
     #### TEST SET --------------------------------------------------------------------
-    # Get data, specify configs
     novel_class_types = [c for c in sdf[class_name].unique() if c not in class_types]
     test_configs = sdf[sdf[class_name].isin(novel_class_types)].index.tolist()
     testset = curr_data[curr_data['config'].isin(test_configs)]
@@ -817,50 +2066,102 @@ def do_fit_train_test_morph(iter_num, global_rois=None, MEANS=None, sdf=None, sa
     test_targets = pd.DataFrame(testset['config'].copy(), columns=['config'])
     test_targets['label'] = [sdf['morphlevel'][cfg] for cfg in test_targets['config'].values]
     test_targets['group'] = [sdf['size'][cfg] for cfg in test_targets['config'].values]
-
-    #### Train SVM ----------------------------------------------------------------------
-    iterdict, trained_svc, trained_scaler, (predicted_labels, true_labels) = fit_svm(
-                                                        train_data, targets, 
-                                                        return_clf=True, return_predictions=True,
-                                                        test_split=test_size, cv_nfolds=cv_nfolds, 
-                                                        cv=cv, C_value=C_value)
-    for anchor in [class_a, class_b]:
-        a_ixs = np.array([i for i, v in enumerate(true_labels) if v==anchor])
-        p_chooseB = sum([1 if p==class_b else 0 \
-                            for p in predicted_labels[a_ixs]])/float(len(predicted_labels[a_ixs]))
-        iterdict.update({'p_chooseB': p_chooseB, 'test_transform': anchor})
-        i_list.append(pd.DataFrame(iterdict, index=[i]))
-        i+=1
-
+       
     #### Test SVM
-    for test_transform, curr_test_group in test_targets.groupby(['label']):
+    fit_C_value = iterdict['C']
+    if do_shuffle:
+        fit_C_shuffled = float(tmpdf_shuffled['C'].unique())
+
+    for test_transform, curr_test_group in test_targets.groupby(['label']): #(['group']):
+        # print(test_transform, curr_test_group.shape)
+        iterdict = dict((k, None) for k in train_columns) 
+        if do_shuffle:
+            shuffdict = dict((k, None) for k in train_columns)
+        curr_test_labels = curr_test_group['label'].values
         curr_test_data = test_data.loc[curr_test_group.index].copy()
         curr_test_data = trained_scaler.transform(curr_test_data)
+       
+        # Calculate "score" 
+        if test_transform in [-1, midp]:         # Ignore midp trials
+            split_trials = np.array([int(i) for i, v in enumerate(curr_test_labels) ])
+            # rando assign values
+            split_labels = [class_a if i<0.5 else class_b for i in np.random.rand(len(split_trials),)]
+        else:
+            split_trials = np.array([int(i) for i, v in enumerate(curr_test_labels) if v!=midp])
+            split_labels = [class_a if lvl < midp else class_b for lvl in curr_test_labels[split_trials]] 
+        split_data = curr_test_data[split_trials, :]
+        curr_test_score = trained_svc.score(split_data, split_labels) #(curr_test_data, curr_test_labels)
+        iterdict.update({'heldout_test_score': curr_test_score, 'C': fit_C_value, 'randi': randi,
+                         'train_transform': train_transform, 'test_transform': test_transform, 
+                         'novel': True, 'n_trials': len(curr_test_labels), 'condition': 'data'}) 
 
-        #### Calculate p choose B on trials where morph X shown (test_transform)
+        # predict p_chooseB
         predicted_labels = trained_svc.predict(curr_test_data)
-        p_chooseB = sum([1 if p==class_b else 0 for p in predicted_labels])/float(len(predicted_labels))
- 
-        iterdict.update({'p_chooseB': p_chooseB, 'test_transform': test_transform}) 
-        i_list.append(pd.DataFrame(iterdict, index=[i]))
-        i+=1 
+        predicted_labels = np.array(predicted_labels)
+        p_chooseB = sum([1 if p==class_b else 0 for p in predicted_labels])/float(len(predicted_labels)) 
+        iterdict.update({'p_chooseB': p_chooseB, 'morphlevel': test_transform, 
+                         'n_samples': len(curr_test_labels)}) 
+        testdf = pd.DataFrame(iterdict, index=[i])
+        for t, v in train_samples.items():
+            testdf[t] = v
+        i += 1
+        i_list.append(testdf) 
+
+        # shuffled:  Calculate score
+        if do_shuffle:
+            curr_score_shuff = shuffled_svc.score(split_data, split_labels) 
+            shuffdict = iterdict.copy()
+            # shuffled:  predict p_chooseB
+            predicted_labels = shuffled_svc.predict(curr_test_data)
+            predicted_labels = np.array(predicted_labels)
+            p_chooseB = sum([1 if p==class_b else 0 for p in predicted_labels])/float(len(predicted_labels))
+            shuffdict.update({'heldout_test_score': curr_score_shuff, 'p_chooseB': p_chooseB,
+                              'condition': 'shuffled', 'C': fit_C_shuffled}) 
+            testdf_shuff = pd.DataFrame(shuffdict, index=[i])
+            for t, v in train_samples.items():
+                testdf_shuff[t] = v
+            i += 1
+            i_list.append(testdf_shuff) 
+
+    # Aggregate 
     iterdf = pd.concat(i_list, axis=0).reset_index(drop=True)
     iterdf['iteration'] = [iter_num for _ in np.arange(0, len(iterdf))]
-    
+    iterdf['n_cells'] = curr_data.shape[1]-1
+
+    # fit curve?
+    if fit_psycho:
+        iterdf['threshold']=None
+        iterdf['slope'] = None
+        iterdf['lapse'] = None
+        iterdf['likelihood'] = None
+        for dcond, mdf in iterdf.groupby(['condition']):
+            data = mdf[mdf.morphlevel!=-1].sort_values(by=['morphlevel'])\
+                            [['morphlevel', 'n_samples', 'p_chooseB']].values.T
+            max_v = max([class_a, class_b])
+            data[0,:] /= float(max_v)
+            try:
+                par, L = mle_weibull(data, P_model=P_model, parstart=par0, nfits=nfits) 
+                iterdf['threshold'].loc[mdf.index] = float(par[0])
+                iterdf['slope'].loc[mdf.index] = float(par[1])
+                iterdf['lapse'].loc[mdf.index] = float(par[2])
+                iterdf['likelihood'].loc[mdf.index] = float(L)
+            except Exception as e:
+                traceback.print_exc()
+                continue
+           
     return iterdf
 
 
+def train_test_morph_single(iter_num, curr_data=None, sdf=None, verbose=False,
+                    C_value=None, test_split=0.2, cv_nfolds=5, class_a=0, class_b=106, midp=53,
+                    do_shuffle=True, balance_configs=True,
+                    fit_psycho=True, P_model='weibull', par0=np.array([0.5, 0.5, 0.1]), nfits=20):
 
-def do_fit_train_single_test_morph(iter_num, global_rois=None, MEANS=None, sdf=None, sample_ncells=None,
-                               cv=True, C_value=None, test_size=0.2, cv_nfolds=5, class_a=0, class_b=106):
     '''
     Resample w/ replacement from pooled cells (across datasets). Assumes 'sdf' is same for all datasets.
     Return fit results for 1 iteration.
     Classes (class_a, class_b) should be the actual labels of the target (i.e., value of morph level)
     '''
-    # Get new sample set
-    curr_data = get_trials_for_N_cells(sample_ncells, global_rois, MEANS)
-
     #### Select train/test configs for clf A vs B
     class_types = [class_a, class_b]
     restrict_transform = True
@@ -879,14 +2180,62 @@ def do_fit_train_single_test_morph(iter_num, global_rois=None, MEANS=None, sdf=N
 
         #### TRAIN SET --------------------------------------------------------------------
         # Get trial data for selected cells and config types
-        curr_roi_list = [int(c) for c in curr_data.columns if c != 'config']
+        curr_roi_list = [int(c) for c in curr_data.columns if c not in ['config', 'trial']]
         trainset = curr_data[curr_data['config'].isin(train_configs)].copy()
+        if balance_configs:
+            #### Make sure train set has equal counts per config
+            trainset = aggr.equal_counts_df(trainset)
+
         train_data = trainset.drop('config', 1)#zdata = (data - data.mean()) / data.std()
 
         # Get labels
         targets = pd.DataFrame(trainset['config'].copy(), columns=['config'])
         targets['label'] = [sdf['morphlevel'][cfg] for cfg in targets['config'].values]
         targets['group'] = [sdf['size'][cfg] for cfg in targets['config'].values]
+
+        #### Train SVM ----------------------------------------------------------------------
+        randi = random.randint(1, 10000)
+        iterdict, trained_svc, trained_scaler, (predicted_labels, true_labels) = fit_svm(
+                                                            train_data, targets, 
+                                                            return_clf=True, return_predictions=True,
+                                                            test_split=test_split, cv_nfolds=cv_nfolds, 
+                                                            C_value=C_value, randi=randi) 
+        iterdict.update({'train_transform': train_transform, 'test_transform': train_transform, 
+                         'condition': 'data', 'n_trials': len(true_labels), 'novel': False})
+
+        train_samples={}
+        for t in targets['label'].unique():
+            curr_ncounts = len(np.where(targets['label'].values==t)[0])
+            train_samples.update({'n_samples_%i' % t: curr_ncounts})
+
+        for anchor in class_types:
+            a_ixs = [i for i, v in enumerate(true_labels) if v==anchor] 
+            p_chooseB = sum([1 if p==class_b else 0 for p in predicted_labels[a_ixs]])/float(len(a_ixs))
+            iterdict.update({'p_chooseB': p_chooseB, 
+                            '%s' % class_name: anchor, #'%s' % constant_transform: train_transform, 
+                            'n_samples': len(a_ixs)})
+            tmpdf = pd.DataFrame(iterdict, index=[i])
+            for t, v in train_samples.items():
+                tmpdf[t] = v
+            i += 1
+            i_list.append(tmpdf)
+        train_columns = tmpdf.columns.tolist()
+     
+        #### Shuffle labels
+        if do_shuffle:
+            tmpdf_shuffled, shuffled_svc, shuffled_scaler = fit_shuffled(train_data, targets, C_value=C_value, 
+                                                    verbose=verbose, test_split=test_split, 
+                                                    cv_nfolds=cv_nfolds, randi=randi, do_pchoose=True, 
+                                                    class_types=[class_a, class_b], class_name=class_name,
+                                                    return_svc=True, i=i) 
+            tmpdf_shuffled['train_transform'] = train_transform
+            tmpdf_shuffled['test_transform'] = train_transform
+            tmpdf_shuffled['n_trials'] = len(targets) 
+            tmpdf_shuffled['novel'] = False
+            for t, v in train_samples.items():
+                tmpdf_shuffled[t] = v
+            i_list.append(tmpdf_shuffled) 
+            i+=1 
 
         #### TEST SET --------------------------------------------------------------------
         # Get data, specify configs
@@ -902,49 +2251,138 @@ def do_fit_train_single_test_morph(iter_num, global_rois=None, MEANS=None, sdf=N
         test_targets['label'] = [sdf['morphlevel'][cfg] for cfg in test_targets['config'].values]
         test_targets['group'] = [sdf['size'][cfg] for cfg in test_targets['config'].values]
 
-        #### Train SVM ----------------------------------------------------------------------
-        iterdict, trained_svc, trained_scaler, (predicted_labels, true_labels) = fit_svm(
-                                                            train_data, targets, 
-                                                            return_clf=True, return_predictions=True,
-                                                            test_split=test_size, cv_nfolds=cv_nfolds, 
-                                                            cv=cv, C_value=C_value)
-        for anchor in [class_a, class_b]:
-            a_ixs = np.array([i for i, v in enumerate(true_labels) if v==anchor])
-            p_chooseB = sum([1 if p==class_b else 0 \
-                                for p in predicted_labels[a_ixs]])/float(len(predicted_labels[a_ixs]))
-            iterdict.update({'p_chooseB': p_chooseB, 
-                             '%s' % class_name: anchor, 
-                             '%s' % constant_transform: train_transform})
-            i_list.append(pd.DataFrame(iterdict, index=[i]))
-            i+=1
-
+        fit_C_value = iterdict['C']
+        if do_shuffle:
+            fit_C_shuffled = float(tmpdf_shuffled['C'].unique())
         #### Test SVM
-        for test_transform, curr_test_group in test_targets.groupby(['label']):
+        for curr_morph_test, curr_test_group in test_targets.groupby(['label']):
+            iterdict = dict((k, None) for k in train_columns) 
+            if do_shuffle:
+                shuffdict = dict((k, None) for k in train_columns)
+            curr_test_labels = curr_test_group['label'].values
             curr_test_data = test_data.loc[curr_test_group.index].copy()
             curr_test_data = trained_scaler.transform(curr_test_data)
+
+            # Calculate scores
+            if curr_morph_test in [-1, midp]:        # Ignore midp trials
+                split_trials = np.array([int(i) for i, v in enumerate(curr_test_labels) ])
+                # rando assign values
+                split_labels = [class_a if i<0.5 else class_b for i in np.random.rand(len(split_trials),)]
+            else:
+                split_trials = np.array([int(i) for i, v in enumerate(curr_test_labels) if v!=midp])
+                split_labels = [class_a if lvl < midp else class_b for lvl in curr_test_labels[split_trials]] 
+            split_data = curr_test_data[split_trials, :]
+            curr_test_score = trained_svc.score(split_data, split_labels) #(curr_test_data, curr_test_labels)
+            iterdict.update({'heldout_test_score': curr_test_score, 'C': fit_C_value, 'randi': randi,
+                             'train_transform': train_transform, 'test_transform': train_transform, 
+                             'novel': True, 'n_trials': len(curr_test_labels), 'condition': 'data'}) 
 
             #### Calculate p choose B on trials where morph X shown (test_transform)
             predicted_labels = trained_svc.predict(curr_test_data)
             p_chooseB = sum([1 if p==class_b else 0 \
                                 for p in predicted_labels])/float(len(predicted_labels))
-
-            iterdict.update({'p_chooseB': p_chooseB, 
-                             '%s' % class_name: test_transform,
-                             '%s' % constant_transform: train_transform})
-            
-            i_list.append(pd.DataFrame(iterdict, index=[i]))
+            iterdict.update({'p_chooseB': p_chooseB, '%s' % class_name: curr_morph_test, #test_transform,
+                            'n_samples': len(predicted_labels)})
+            testdf = pd.DataFrame(iterdict, index=[i])
+            # add N training samples            
+            for t, v in train_samples.items():
+                testdf[t] = v
+            i_list.append(testdf) #pd.DataFrame(iterdict, index=[i]))
             i+=1 
-            
+
+            # shuffled:  Calculate score
+            if do_shuffle:
+                curr_score_shuff = shuffled_svc.score(split_data, split_labels) 
+                shuffdict = iterdict.copy()
+                # shuffled:  predict p_chooseB
+                predicted_labels = shuffled_svc.predict(curr_test_data)
+                predicted_labels = np.array(predicted_labels)
+                p_chooseB = sum([1 if p==class_b else 0 for p in predicted_labels])/float(len(predicted_labels))
+                shuffdict.update({'heldout_test_score': curr_score_shuff, 'p_chooseB': p_chooseB,
+                                  'condition': 'shuffled', 'C': fit_C_shuffled}) 
+                testdf_shuff = pd.DataFrame(shuffdict, index=[i])
+                for t, v in train_samples.items():
+                    testdf_shuff[t] = v
+                i_list.append(testdf_shuff) 
+                i+=1
+
+    # Aggregate            
     iterdf = pd.concat(i_list, axis=0).reset_index(drop=True)
     iterdf['iteration'] = [iter_num for _ in np.arange(0, len(iterdf))]
-    
+    iterdf['n_cells'] = curr_data.shape[1]-1
+   
+     # fit curve?
+    if fit_psycho:
+        iterdf['threshold']=None
+        iterdf['slope'] = None
+        iterdf['lapse'] = None
+        iterdf['likelihood'] = None
+        for (dcond, train_transform), mdf in iterdf.groupby(['condition', 'train_transform']):
+            data = mdf[mdf.morphlevel!=-1].sort_values(by=['morphlevel'])\
+                            [['morphlevel', 'n_samples', 'p_chooseB']].values.T
+            max_v = max([class_a, class_b])
+            data[0,:] /= float(max_v)
+            try:
+                par, L = mle_weibull(data, P_model=P_model, parstart=par0, nfits=nfits) 
+                iterdf['threshold'].loc[mdf.index] = float(par[0])
+                iterdf['slope'].loc[mdf.index] = float(par[1])
+                iterdf['lapse'].loc[mdf.index] = float(par[2])
+                iterdf['likelihood'].loc[mdf.index] = float(L)
+            except Exception as e:
+                traceback.print_exc()
+                continue
+           
     return iterdf
 
+# ------
 
 
 # ======================================================================
 # Performance plotting 
 # ======================================================================
+def plot_individual_shuffle_distn(dk, va, traindf, metric='heldout_test_score', axn=None):
+
+    d_ = traindf[(traindf.visual_area==va) & (traindf.datakey==dk) ].copy()
+
+
+    if 'train_transform' in d_.columns and len(d_['train_transform'].unique())>1:
+        if axn is None:
+            fig, axn = pl.subplots(1, 5, figsize=(10,4), sharex=True, sharey=True)
+
+        for ai, (transf, g) in enumerate(d_.groupby(['train_transform'])):
+            ax = axn[ai]
+            mean_score = g[g['condition']=='data'][metric].mean()
+            percentile = np.mean(mean_score < g[g['condition']=='shuffled'][metric])
+            ax.set_title('%s: \navg.%.2f (p=%.2f)' % (str(transf), mean_score, percentile), loc='left', fontsize=8)
+            sns.distplot(g[g['condition']=='data'][metric], color='m', ax=ax)
+            sns.distplot(g[g['condition']=='shuffled'][metric], color='k', ax=ax)
+            ax.set_xlabel('')
+        fig.text(0.5, 0.05, metric, ha='center', fontsize=12)
+        fig.text(0.05, 0.95, '%s (%s)' % (dk, va), fontsize=16)
+        return fig
+    else:       
+        is_fig=False
+        if axn is None:
+            fig, axn = pl.subplots(1, 1, figsize=(5,4), sharex=True, sharey=True)
+            is_fig=True
+        if isinstance(axn, list):
+            ax=axn[0]
+        else:
+            ax=axn
+        mean_score = d_[d_['condition']=='data'][metric].mean()
+        percentile = np.mean(mean_score < d_[d_['condition']=='shuffled'][metric])
+        ax.set_title('avg.%.2f (p=%.2f)' % ( mean_score, percentile), loc='left', fontsize=8)
+        sns.distplot(d_[d_['condition']=='data'][metric], color='m', ax=ax)
+        sns.distplot(d_[d_['condition']=='shuffled'][metric], color='k', ax=ax)
+        ax.set_xlabel('')
+        if is_fig:
+            fig.text(0.5, 0.05, metric, ha='center', fontsize=12)
+            fig.text(0.05, 0.95, '%s (%s)' % (dk, va), fontsize=16)
+            pl.subplots_adjust(bottom=0.2, left=0.1, right=0.95, wspace=0.5, top=0.8)
+        else:
+            ax.set_title(dk, loc='left')
+        return ax
+    
 
 def plot_score_by_ncells(pooled, metric='heldout_test_score', area_colors=None,
         lw=2, ls='-', capsize=3, ax=None, dpi=150):
@@ -1219,7 +2657,6 @@ def default_train_test_subset(results, sdf, metric='heldout_test_score', area_co
     pl.savefig(os.path.join(dst_dir, '%s.svg' % figname))
     print(dst_dir, figname)
 
-
     # Then, plot average differences
     means = results.groupby(['visual_area', 'train_transform', 'test_transform']).mean().reset_index()
     trained = pd.concat([g[g['test_transform']==train][['visual_area', metric]]
@@ -1253,4 +2690,201 @@ def default_train_test_subset(results, sdf, metric='heldout_test_score', area_co
     return
 
 
-# 
+#  MISC fitting
+
+import functools
+import numpy as np
+import scipy.optimize
+from scipy.special import erf
+
+def neg_likelihood(pars, data, P_model='weibull', 
+                   parmin=np.array([.005, 0., 0.]), parmax=np.array([.5, 10., .25])):
+    """
+    From: https://github.com/cortex-lab/psychofit/blob/master/psychofit.py
+    Compare with scipy.optimize
+    
+    Negative likelihood of a psychometric function.
+    Args:
+        pars: Model parameters [threshold, slope, gamma], or if
+              using the 'erf_psycho_2gammas' model append a second gamma value.
+        data: 3 x n matrix where first row corresponds to stim levels,
+              the second to number of trials for each stim level (int),
+              the third to proportion correct / proportion rightward (float between 0 and 1)
+        P_model: The psychometric function. Possibilities include 'weibull'
+                 (DEFAULT), 'weibull50', 'erf_psycho' and 'erf_psycho_2gammas'
+        parmin: Minimum bound for parameters.  If None, some reasonable defaults are used
+        parmax: Maximum bound for parameters.  If None, some reasonable defaults are used
+    Returns:
+        l: The likelihood of the parameters.  The equation is:
+            - sum(nn.*(pp.*log10(P_model)+(1-pp).*log10(1-P_model)))
+            See the the appendix of Watson, A.B. (1979). Probability
+            summation over time. Vision Res 19, 515-522.
+    """
+    # Validate input
+    if isinstance(data, (list, tuple)):
+        data = np.array(data)
+    elif not isinstance(data, np.ndarray):
+        raise TypeError('data must be a list or numpy array')
+
+    if data.shape[0] == 3:
+        xx = data[0, :]
+        nn = data[1, :]
+        pp = data[2, :]
+    else:
+        raise ValueError('data must be m by 3 matrix')
+
+    # here is where you effectively put the constraints.
+    if (any(pars < parmin)) or (any(pars > parmax)):
+        l = 10000000
+        return l
+
+    dispatcher = {
+        'weibull': weibull,
+        'weibull50': weibull50,
+        'weibull_wh': weibull_wh
+#         'erf_psycho': erf_psycho,
+#         'erf_psycho_2gammas': erf_psycho_2gammas
+    }
+    try:
+        probs = dispatcher[P_model](pars, xx)
+    except KeyError:
+        raise ValueError('invalid model, options are "weibull", ' +
+                         '"weibull50", "erf_psycho" and "erf_psycho_2gammas"')
+
+    assert (max(probs) <= 1) or (min(probs) >= 0), 'At least one of the probabilities is not ' \
+                                                   'between 0 and 1'
+
+    probs[probs == 0] = np.finfo(float).eps
+    probs[probs == 1] = 1 - np.finfo(float).eps
+
+    l = - sum(nn * (pp * np.log(probs) + (1 - pp) * np.log(1 - probs)))
+    
+    return l
+
+def weibull(pars, xx):
+    """
+    From: https://github.com/cortex-lab/psychofit/blob/master/psychofit.py
+
+    Weibull function from 0 to 1, with lapse rate.
+    Args:
+        pars: Model parameters [alpha, beta, gamma].
+        xx: vector of stim levels.
+    Returns:
+        A vector of length xx
+    Raises:
+        ValueError: pars must be of length 3
+        TypeError: pars must be list-like or numpy array
+    """
+    # Validate input
+    if not isinstance(pars, (list, tuple, np.ndarray)):
+        raise TypeError('pars must be list-like or numpy array')
+
+    if len(pars) != 3:
+        raise ValueError('pars must be of length 3')
+
+    alpha, beta, gamma = pars
+    
+    return (1 - gamma) - (1 - 2*gamma) * np.exp(-((xx / alpha)**beta))
+
+def weibull50(pars, xx):
+    """
+    From: https://github.com/cortex-lab/psychofit/blob/master/psychofit.py
+
+    Weibull function from 0.5 to 1, with lapse rate.
+    Args:
+        pars: Model parameters [alpha, beta, gamma].
+        xx: vector of stim levels.
+    Returns:
+        A vector of length xx
+    Raises:
+        ValueError: pars must be of length 3
+        TypeError: pars must be list-like or numpy array
+    Information:
+        2000-04 MC wrote it
+        2018-08 MW ported to Python
+    """
+    # Validate input
+    if not isinstance(pars, (list, tuple, np.ndarray)):
+        raise TypeError('pars must be list-like or numpy array')
+
+    if len(pars) != 3:
+        raise ValueError('pars must be of length 3')
+
+    alpha, beta, gamma = pars
+    return (1 - gamma) - (.5 - gamma) * np.exp(-((xx / alpha) ** beta))
+
+
+def mle_weibull(data, P_model='weibull', parstart=None, parmin=None, parmax=None, nfits=5):
+    '''
+    From: https://github.com/cortex-lab/psychofit/blob/master/psychofit.py
+    Compare with scipy.optimize
+    '''
+    # Input validation
+    if isinstance(data, (list, tuple)):
+        data = np.array(data)
+    elif not isinstance(data, np.ndarray):
+        raise TypeError('data must be a list or numpy array')
+
+    if data.shape[0] != 3:
+        raise ValueError('data must be m by 3 matrix')
+
+    if parstart is None:
+        parstart = np.array([np.mean(data[0, :]), 0.5, 0.5])
+    if parmin is None:
+        parmin = np.array([np.min(data[0, :]), 0.0, 0.0])
+    if parmax is None:
+        parmax = np.array([np.max(data[0, :]), 10., .5])
+        
+    ii = np.isfinite(data[2, :])
+
+    likelihoods = np.zeros(nfits,)
+    pars = np.empty((nfits, parstart.size))
+    
+    f = functools.partial(neg_likelihood, data=data[:, ii],
+                          P_model=P_model, parmin=parmin, parmax=parmax)
+    for ifit in range(nfits):
+        pars[ifit, :] = scipy.optimize.fmin(f, parstart, disp=False)
+        parstart = parmin + np.random.rand(parmin.size) * (parmax-parmin)
+        likelihoods[ifit] = -neg_likelihood(pars[ifit, :], data[:, ii], P_model, parmin, parmax)
+
+    # the values to be output
+    L = likelihoods.max()
+    iBestFit = likelihoods.argmax()
+    
+    return pars[iBestFit, :], L
+
+
+def weibull_wh(pars, xx):
+    """
+    Weibull function from 0.5 to 1, with lapse rate.
+    Britten et al., 1993; Wichmann & Hill.
+    alpha: threshold
+    beta:  slope
+    lm:  lambda, ceiling
+    gamma: floor (min=0.5)
+
+    Args:
+        pars: Model parameters [alpha, beta, lambda, gamma].
+        xx: vector of stim levels.
+    Returns:
+        A vector of length xx
+    Raises:
+        ValueError: pars must be of length 3
+        TypeError: pars must be list-like or numpy array
+    Information:
+    """
+    # Validate input
+    if not isinstance(pars, (list, tuple, np.ndarray)):
+        raise TypeError('pars must be list-like or numpy array')
+
+    if len(pars) != 3:
+        raise ValueError('pars must be of length 3')
+
+    alpha, beta, lm = pars
+    #alpha, beta, lm, gamma = pars
+    #return gamma + (lm-gamma)*(1-np.exp(-1*((xx/alpha)**beta)))
+    #return gamma + (lm-gamma)*(1-np.exp(-1*((xx/alpha)**beta)))
+    return lm - (lm-0.5)*np.exp(-((xx/alpha)**beta))
+
+
+
