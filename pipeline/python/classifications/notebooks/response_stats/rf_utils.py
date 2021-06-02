@@ -725,22 +725,25 @@ def cycle_and_load(rfmeta, assigned_cells, fit_desc=None, traceid='traces001', f
                                    & (assigned_cells.datakey==datakey)]['cell'].unique() #g['cell'].unique() 
         try:
             curr_rfname = experiment if int(session)>=20190511 else 'gratings'
-            #### Load eval results 
-            eval_results, eval_params = load_eval_results(animalid, session, fov,
-                                                experiment=curr_rfname, traceid=traceid, 
-                                                fit_desc=fit_desc)   
-            if eval_results is None:
-                print('-- no good (%s (%s, %s)), skipping' % (datakey, visual_area, experiment))
-                continue
-            
+            if reliable_only:
+                #### Load eval results 
+                eval_results, eval_params = load_eval_results(animalid, session, fov,
+                                                    experiment=curr_rfname, traceid=traceid, 
+                                                    fit_desc=fit_desc)   
+                if eval_results is None:
+                    print('-- no good (%s (%s, %s)), skipping' % (datakey, visual_area, experiment))
+                    continue
+                
             #### Load fit results from measured
             fit_results, fit_params = load_fit_results(
                                                 animalid, session, fov,
                                                 experiment=curr_rfname,
                                                 traceid=traceid, 
                                                 fit_desc=fit_desc)
-            #fit_rois = sorted(fit_results['fit_results'].keys())
-            fit_rois = sorted(eval_results['data']['cell'].unique())
+            if reliable_only:
+                fit_rois = sorted(eval_results['data']['cell'].unique())
+            else:
+                fit_rois = sorted(list(fit_results.keys()))
 
             scale_sigma = fit_params['scale_sigma']
             sigma_scale = fit_params['sigma_scale']
@@ -751,10 +754,12 @@ def cycle_and_load(rfmeta, assigned_cells, fit_desc=None, traceid='traces001', f
             #### Identify cells with measured params within 95% CI of bootstrap distN
             pass_rois = rfit_df[rfit_df['r2']>fit_thr].index.tolist()
             param_list = [param for param in rfit_df.columns if param != 'r2']
-            # Note: get_good_fits(rfit_df, eval_results, param_list=param_list) returns same
-            # as reliable_rois, since checks if all params within 95% CI
-            reliable_rois = get_reliable_fits(eval_results['pass_cis'],
-                                                     pass_criterion='all')
+            reliable_rois=[]
+            if reliable_only:
+                # Note: get_good_fits(rfit_df, eval_results, param_list=param_list) returns same
+                # as reliable_rois, since checks if all params within 95% CI
+                reliable_rois = get_reliable_fits(eval_results['pass_cis'],
+                                                         pass_criterion='all')
             if verbose:
                 print("[%s] %s: %i of %i fit rois pass for all params" \
                             % (visual_area, datakey, len(pass_rois), len(fit_rois)))
@@ -918,7 +923,7 @@ def aggregate_rfdata(rf_dsets, assigned_cells, traceid='traces001',
     # Only try to load rfdata if we can find fit + evaluation results
     rfmeta, no_fits = get_fit_dpaths(rf_dsets, traceid=traceid, fit_desc=fit_desc)
     rfdf = cycle_and_load(rfmeta, assigned_cells, reliable_only=reliable_only,
-                                        fit_desc=fit_desc, traceid=traceid, verbose=verbose)
+                            fit_desc=fit_desc, traceid=traceid, verbose=verbose)
     rfdf = rfdf.reset_index(drop=True)
 
     return rfdf
