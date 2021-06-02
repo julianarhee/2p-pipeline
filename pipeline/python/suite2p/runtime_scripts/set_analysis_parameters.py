@@ -34,7 +34,7 @@ def get_ops(save_path='', scratch_folder='/scratch/tmp'):
             # registration settings
             'do_registration': True, # whether to register data
             'nimg_init': 200, # subsampled frames for finding reference image
-            'batch_size': 200, # number of frames per batch
+            'batch_size': 1000, # number of frames per batch
             'maxregshift': 0.1, # max allowed registration shift, as a fraction of frame max(width and height)
             'align_by_chan' : 1, # when multi-channel, you can align by non-functional channel (1-based)
             'reg_tif': False, # whether to save registered tiffs
@@ -43,7 +43,9 @@ def get_ops(save_path='', scratch_folder='/scratch/tmp'):
        #     'source_reg' : registered_dir,
             # non rigid registration settings
             'nonrigid': True, # whether to use nonrigid registration
-            'block_size': [64, 64], # block size to register
+            'block_size': [128, 128], # block size to register
+            #'keep_movie_raw': True,
+            #'two_step_registration': True,
             'snr_thresh': 1.2, # if any nonrigid block is below this threshold, it gets smoothed until above this threshold. 1.0 results in no smoothing
             'maxregshiftNR': 5, # maximum pixel shift allowed for nonrigid, relative to rigid
             # cell detection settings
@@ -110,12 +112,18 @@ def main(options):
     #scratch_root = optsE.scratchdir #'/scratch/tmp'
 
     #analysis_header = 'suite2p_analysis001'
-    analysis_header = 'suite2p_analysis001'
+    #analysis_header = 'suite2p'
 
     #figure out directories to search
     data_dir = os.path.join(rootdir, animalid, session, fov, 'all_combined') #run)
     print(data_dir)
+    
+    # check if analyses exist
+    existing_dirs = glob.glob(os.path.join(data_dir, 'processed', 'suite2p*'))
+    dir_index = len(existing_dirs)+1
+    analysis_header = 'suite2p%03d' % dir_index
     analysis_dir = os.path.join(data_dir, 'processed', analysis_header)
+    print("Found %i existing dirs. Current header: %s" % (len(existing_dirs), analysis_header))
 
     #raw_dir = glob.glob(os.path.join(data_dir,'raw'))[0]
     #raw_dir = glob.glob(os.path.join(data_dir,'raw*'))[0]
@@ -137,7 +145,7 @@ def main(options):
     print(analysis_dir)
     # set your options for running
     # overwrites the run_s2p.default_ops
-    ops = get_ops(save_dir=analysis_dir, scratch_folder=scratch_folder)
+    ops = get_ops(save_path=analysis_dir, scratch_folder=scratch_folder)
 
      # provide an h5 path in 'h5py' or a tiff path in 'data_path'
     # db overwrites any ops (allows for experiment specific settings)
