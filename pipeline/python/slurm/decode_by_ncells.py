@@ -86,7 +86,7 @@ overlap_thr = None if args.overlap_thr in ['None', None] else float(args.overlap
 
 analysis_type = args.analysis_type
 c_value = None if args.c_value in ['None', None] else float(args.c_value)
-c_str = 'tune-C' if c_value is None else 'C-%.2f' % c_value
+c_str = 'tuneC' if c_value is None else 'C%.2f' % c_value
 trial_epoch = args.trial_epoch
 shuffle_thr = None if args.shuffle_thr in ['None', None] else float(args.shuffle_thr)
 drop_repeats = args.drop_repeats 
@@ -198,6 +198,7 @@ if analysis_type=='by_ncells':
     for visual_area in visual_areas:
         for ncells in sample_sizes: #ncells_test:
             mtag = '%s_%i_%s_%s' % (visual_area, ncells, response_type, C_str) 
+            print("MTAG: %s" % mtag)
             #
             if drop_repeats:
                 cmd = "sbatch --job-name={PROCID}.{ANALYSIS}.{MTAG}.{RTEST} \
@@ -210,6 +211,7 @@ if analysis_type=='by_ncells':
                     RTEST=responsive_test, OVERLAP=overlap_thr, 
                     CVAL=c_value, VAREA=visual_area, NCELLS=ncells, DKEY=datakey, 
                     EPOCH=trial_epoch, TEST=test_type, PASS=shuffle_thr, NITER=n_iterations, DFF=response_type) 
+
             else: 
                 cmd = "sbatch --job-name={PROCID}.{ANALYSIS}.{MTAG}.{RTEST} \
                 -o '{LOGDIR}/{PROCID}.{ANALYSIS}.{MTAG}.{RTEST}.out' \
@@ -253,17 +255,12 @@ elif analysis_type in ['by_fov', 'split_pupil']:
         if test_type is not None:
             mtag = 'GEN%s-%s-%s' % (test_type, responsive_test, mtag)
 
-        cmd = "sbatch --job-name={procid}.{mtag}.{analysis}.{rtest} \
-                -o '{logdir}/{procid}.{mtag}.{analysis}.{rtest}.out' \
-                -e '{logdir}/{procid}.{mtag}.{analysis}.{rtest}.err' \
-        /n/coxfs01/2p-pipeline/repos/2p-pipeline/pipeline/python/slurm/decode_by_ncells.sbatch \
-        {exp} {traceid} {rtest} {overlap} {analysis} {cval} {varea} {ncells} {dkey} {epoch} {test} {shuffthr} {niter} {dff}"\
-            .format(procid=piper, mtag=mtag, logdir=logdir,
+        cmd = "sbatch --job-name={procid}.{mtag}.{analysis}.{rtest} -o '{logdir}/{procid}.{mtag}.{analysis}.{rtest}.out' -e '{logdir}/{procid}.{mtag}.{analysis}.{rtest}.err' /n/coxfs01/2p-pipeline/repos/2p-pipeline/pipeline/python/slurm/decode_by_ncells.sbatch {exp} {traceid} {rtest} {overlap} {analysis} {cval} {varea} {ncells} {dkey} {epoch} {test} {shuffthr} {niter} {dff}".format(procid=piper, mtag=mtag, logdir=logdir,
                     exp=experiment, traceid=traceid, analysis=analysis_type,
                     rtest=responsive_test, overlap=overlap_thr, 
                     cval=c_value, varea=visual_area, ncells=ncells, dkey=datakey, epoch=trial_epoch, 
                     test=test_type, shuffthr=shuffle_thr, niter=n_iterations, dff=response_type) 
-
+        print(cmd)
         #
         status, joboutput = commands.getstatusoutput(cmd)
         jobnum = joboutput.split(' ')[-1]

@@ -47,7 +47,7 @@ echo "N ITERS: ${NITER}"
 echo "response type: ${DFF}"
 
 #
-python /n/coxfs01/2p-pipeline/repos/2p-pipeline/pipeline/python/classifications/decode_by_ncells.py -E $EXP -t $TRACEID -R $RTEST --new -o $OVERLAP -C ${CVAL} -V $VAREA -S $SAMPLESIZE -X $ANALYSIS -k $DKEY --epoch $EPOCH --shuffle -T $GENTEST --shuffle-thr $SHUFFTHR --unique -n 8 -N ${NITER} -d $DFF
+python /n/coxfs01/2p-pipeline/repos/2p-pipeline/pipeline/python/classifications/decode_by_ncells.py -E $EXP -t $TRACEID -R $RTEST --new -o $OVERLAP -C ${CVAL} -V $VAREA -S $SAMPLESIZE -X $ANALYSIS -k $DKEY --epoch $EPOCH --shuffle -T $GENTEST --shuffle-thr $SHUFFTHR --drop-repeats -n 8 -N $NITER -d $DFF
 
 #{EXP} {TRACEID} {RTEST} {OVERLAP} {ANALYSIS} {CVAL} {VAREA} {NCELLS} {DKEY}".format(
 

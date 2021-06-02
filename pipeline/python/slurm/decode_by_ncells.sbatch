@@ -1,6 +1,6 @@
 #!/bin/bash
 # decode_by_ncells.sbatch
-#
+
 #SBATCH -J decode # A single job name for the array
 #SBATCH -p shared # run on cox gpu to use correct env 
 #SBATCH -n 4 # one core
