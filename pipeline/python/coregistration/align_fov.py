@@ -368,12 +368,15 @@ def plot_transforms(sampleimg, referenceimg, out, npoints, out_path='/tmp'):
 def plot_merged(reference, out, npoints=None, out_path='/tmp'):
     print "Getting MERGED figure..."
 
-    pl.figure()
     merged = np.zeros((reference.shape[0], reference.shape[1], 3), dtype=np.uint8)
     merged[:,:,0] = reference
     merged[:,:,1] = out
-    pl.imshow(merged)
-    pl.axis('off')
+
+    fig = pl.figure(figsize=(6,4), frameon=False)
+    ax=pl.Axes(fig, [0., 0., 1., 1.])
+    ax.set_axis_off()
+    fig.add_axes(ax)
+    ax.imshow(merged)
 
     if npoints is None:
         imname = 'overlay_ALL_FOVs'
@@ -470,14 +473,17 @@ class Animal():
         aligned = self.session_list[curr_fov].alignment['aligned']
         a = np.ma.masked_where(aligned==0, aligned)
 
-        pl.figure()
-        pl.imshow(self.reference, cmap='gray')
+        fig = pl.figure(figsize=(6,4), frameon=False)
+        ax = pl.Axes(fig, [0., 0., 1., 1.])
+        ax.set_axis_off()
+        fig.add_axes(ax)
+        ax.imshow(self.reference, cmap='gray')
         print(aligned.min(), aligned.max())
         pl.imshow(a, alpha=0.5)
-        pl.axis('off')
         pl.title(curr_fov)
-        
         pl.savefig(os.path.join(self.session_list[curr_fov].coreg_dir, 'overlay_npoints%i.png' % len(self.session_list[curr_fov].alignment['coreg_points']['sample_points_x'])))
+        
+        pl.savefig(os.path.join(self.session_list[curr_fov].coreg_dir, 'overlay_npoints%i.svg' % len(self.session_list[curr_fov].alignment['coreg_points']['sample_points_x'])))
         pl.show(block=False)
         
     
