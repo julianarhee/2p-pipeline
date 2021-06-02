@@ -64,11 +64,17 @@ sphr_str = 'sphere' if do_spherical_correction else ''
 sys.stdout = open('log/info_%s_%s.txt' % (EXP, sphr_str), 'w')
 
 def load_metadata(rootdir='/n/coxfs01/2p-data', aggregate_dir='/n/coxfs01/julianarhee/aggregate-visual-areas',
-                experiment='', traceid='traces001', response_type='dff', do_spherical_correction=False):
+                experiment='', traceid='traces001', response_type='dff', do_spherical_correction=False,
+                old_data=False):
 
     sdata_fpath = os.path.join(aggregate_dir, 'dataset_info_assigned.pkl')
     with open(sdata_fpath, 'rb') as f:
         sdata = pkl.load(f, encoding='latin1')
+
+    if old_data:
+        sdata['session_int'] = sdata['session'].astype(int)
+        sdata = sdata[sdata['session_int']<20190511]
+
 
     if do_spherical_correction:
         fit_desc = 'fit-2dgaus_%s_sphr' % response_type
@@ -96,15 +102,16 @@ def load_metadata(rootdir='/n/coxfs01/2p-data', aggregate_dir='/n/coxfs01/julian
     return meta_list
 
 
-#meta_list = [('JC110', '20191006', 'FOV1_zoom2p0x', 'rfs', 'traces001'),
-#             ('JC110', '20191006', 'FOV1_zoom2p0x', 'rfs10', 'traces001'),
+#meta_list = [('JC083', '20190508', 'FOV1_zoom2p0x', 'rfs', 'traces001'),
+#             ('JC076', '20190420', 'FOV1_zoom2p0x', 'rfs', 'traces001')]
 #             ('JC097', '20190616', 'FOV1_zoom2p0x', 'rfs', 'traces001')]
 
 #[('JC097', '20190617', 'FOV1_zoom2p0x', 'rfs', 'traces001'),
 #            ('JC084', '20190522', 'FOV1_zoom2p0x', 'rfs', 'traces001'),
 #             ('JC120', '20191111', 'FOV1_zoom2p0x', 'rfs10', 'traces001')]
 
-meta_list = load_metadata(experiment=EXP, do_spherical_correction=do_spherical_correction)
+meta_list = load_metadata(experiment=EXP, do_spherical_correction=do_spherical_correction,
+                old_data=True)
 
 if len(meta_list)==0:
     fatal("NO FOVs found.")
